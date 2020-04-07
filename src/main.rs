@@ -951,7 +951,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Can't generate groups of imports with codegen::Import so we just output this as raw text
     // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
     // does not work.
-    global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cardano-serialization-lib/tree/master/cddl_test");
+    global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
     global.scope().raw("use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializer}};");
     global.scope().import("std::io", "Write");
     global.scope().import("wasm_bindgen::prelude", "*");
