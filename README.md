@@ -2,8 +2,7 @@
 
 ### Purpose ###
 
-This would be used to get baseline code for a library we could compile to web-asm for use in Yoroi, Tangata, etc.
-It would have the added benefit of being more prepared for the future when/if new CDDL specs are used.
+Instead of hand-writing CBOR code and writing tests to make sure it matches your CDDL spec, it's much faster to just generate the code from the spec! It will save time and make it easier to keep all your code in sync with any changes to your specification.
 
 ### Current capacities
 
