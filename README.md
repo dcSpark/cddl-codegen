@@ -24,22 +24,27 @@ All generated types contain a `new(...)` constructor as well as a `to_bytes()` f
 * Optional fields - `foo = { ? 0 : bytes }`
 * Type aliases - `foo = bar`
 
-It should be noted that for our purposes when we encounter a type that is an alias or transitiviely an alias for binary bytes, we always create a wrapper type for it, as in our use cases those should not be mixed and are crypt
-o keys, hashes, and so on.
+It should be noted that for our purposes when we encounter a type that is an alias or transitiviely an alias for binary bytes, we always create a wrapper type for it, as in our use cases those should not be mixed and are crypto keys, hashes, and so on.
 
 Any array of non-primitives such as `[foo]` will generate another type called `foos` which supports all basic array operations.
 This lets us get around the `wasm_bindgen` limitation (without implementing cross-boundary traits which could be inefficient/tedious/complicated) discussed in the limitations section.
 
+Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Name: text }` gets converted into `struct FooBar { field_name: String }`
 
 ### Limitations
 
-* Primitive `int` not supported due to no type choice support
-* There is no support for deserialization as this is not of immediate use for use.
+* Primitive `int` not supported due to no type choice support (defined as `uint / nint`)
+* There is no support for deserialization as this is not of immediate use for us.
 * No accessor functions (easily added but we don't need them yet as the focus is constructing CBOR not deserializing)
-* No type choices - `foo = uint / tstr`
+* No type choices - `foo = uint / tstr`. Only found in transaction metadata in `shelley.cddl`
 * Does not support optional group `[(...)]` or `{(...)}` syntax - must use `[...]` for `{...}` for groups
 * Ignores occurence specifiers: `*`, `+` or `n*m`
 * No support for sockets
+* No inline maps as fields - `foo = ( x: { y: uint, z: uint } )`, but is fine for `bar = { y: uint, z: uint }` then `foo = ( x: bar )`. Oonly found in block definition for `shelley.cddl`
+* No heterogenous arrays as fields - `foo: [uint]` is fine but `foo: [uint, tstr]` is not. Not found anywhere in `shelley.cddl`
 * CDDL generics not supported - just edit the cddl to inline it yourself for now
+* No serialization for group choices inside of a map - `foo = { a // b // c }` but `foo = [ a // b // c }` is fine. Not found anywhre in `shelley.cddl`
+* Keys in struct-type maps are limited to `uint` and text. Other types are not found anywhere in `shelley.cddl`.
+
 
 `wasm_bindgen` also cannot expose doubly-nested types like `Vec<Vec<T>` which can be a limitation if `T` was a non-byte primtive.
