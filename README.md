@@ -4,6 +4,8 @@
 
 Instead of hand-writing CBOR code and writing tests to make sure it matches your CDDL spec, it's much faster to just generate the code from the spec! It will save time and make it easier to keep all your code in sync with any changes to your specification.
 
+You can learn more about CDDL [here](https://github.com/cbor-wg/cddl)
+
 ### Current capacities
 
 Generates a `/export/` folder with wasm-compilable rust code (including Cargo.toml, etc) which can then be compiled with `wasm-pack build`.
