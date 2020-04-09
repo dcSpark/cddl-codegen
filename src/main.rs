@@ -360,26 +360,81 @@ fn add_struct_derives<T: DataType>(data_type: &mut T) {
         .derive("PartialOrd");
 }
 
-fn group_entry_to_field_name(entry: &GroupEntry, index: usize) -> String {
-    match entry {
+fn is_identifier_reserved(name: &str) -> bool {
+    match name {
+        // Do we need more? We don't support any other ones.
+        "uint"  |
+        "int"   |
+        "nint"  |
+        "text"  |
+        "tstr"  |
+        "bytes" |
+        "bstr"  => true,
+        _ => false,
+    }
+}
+
+fn type_to_field_name(t: &Type) -> Option<String> {
+    match t.type_choices.len() {
+        1 => match &t.type_choices.first().unwrap().type2 {
+            Type2::Typename{ ident, .. } => Some(ident.to_string()),
+            Type2::TextValue { value, .. } => Some(value.clone()),
+            Type2::Array { group, .. } => match group.group_choices.len() {
+                1 => {
+                    let entries = &group.group_choices.first().unwrap().group_entries;
+                    match entries.len() {
+                        1 => {
+                            match &entries.first().unwrap().0 {
+                                // should we do this? here it possibly allows [[foo]] -> fooss
+                                GroupEntry::ValueMemberKey{ ge, .. } => Some(format!("{}s", type_to_field_name(&ge.entry_type)?)),
+                                GroupEntry::TypeGroupname{ ge, .. } => Some(format!("{}s", ge.name.to_string())),
+                                GroupEntry::InlineGroup { .. } => None,
+                            }
+                        },
+                        // only supports homogenous arrays for now
+                        _ => None,
+                    }
+                },
+                // no group choice support here
+                _ => None
+            }
+            // non array/text/identifier types not supported here - value keys are caught earlier anyway
+            _ => None
+        },
+        // no type choice support here
+        _ => None,
+    }
+}
+
+// Attempts to use the style-converted type name as a field name, and if we have already
+// generated one, then we simply add numerals starting at 2, 3, 4...
+fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>) -> String {
+    let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
             Some(member_key) => match member_key {
                 MemberKey::Value{ value, .. } => format!("key_{}", value),
-                MemberKey::Bareword{ ident, .. } => convert_to_snake_case(&ident.to_string()),
+                MemberKey::Bareword{ ident, .. } => ident.to_string(),
                 MemberKey::Type1{ t1, .. } => match t1.type2 {
                     Type2::UintValue{ value, .. } => format!("key_{}", value),
                     _ => panic!("Encountered Type1 member key in multi-field map - not supported: {:?}", entry),
                 },
             },
-            None => format!("index_{}", index),
+            None => {
+                type_to_field_name(&ge.entry_type).unwrap_or_else(|| format!("index_{}", index))
+            }
         },
-        GroupEntry::TypeGroupname{ .. } => {
-            // This was before, but it makes more sense for what we've done so far
-            // to have it be indexed. This may or may not be correct.
-            //("tgn_".to_owned() + &tge.name.to_string()),
-            format!("index_{}", index)
+        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match is_identifier_reserved(&name.to_string()) {
+            true => format!("index_{}", index),
+            false => name.to_string(),
         },
         GroupEntry::InlineGroup{ group, .. } => panic!("not implemented (define a new struct for this!) = {}\n\n {:?}", group, group),
+    });
+    let entry = already_generated.entry(field_name.clone()).or_default();
+    *entry += 1;
+    if *entry > 1 {
+        format!("{}{}", field_name, *entry)
+    } else {
+        field_name
     }
 }
 
@@ -522,8 +577,9 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                     .vis("pub");
                 let mut output_comma = false;
                 let mut ctor = format!("Self(groups::{}::new(", name);
+                let mut generated_fields = BTreeMap::<String, u32>::new();
                 for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
-                    let field_name = group_entry_to_field_name(group_entry, index); 
+                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                     // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                         if group_entry_optional(group_entry) {
@@ -560,9 +616,10 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 .vis("pub");
             let mut output_comma = false;
             let mut ctor = format!("Self(groups::{}::{}(groups::{}::new(", name, variant_name, variant_name);
+            let mut generated_fields = BTreeMap::<String, u32>::new();
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 if !group_entry_optional(group_entry) {
-                    let field_name = group_entry_to_field_name(group_entry, index);
+                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                     // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                         if output_comma {
@@ -729,9 +786,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                 .ret("Self")
                 .vis("pub (super)");
             let mut new_func_block = codegen::Block::new("Self");
+            let mut generated_fields = BTreeMap::<String, u32>::new();
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 let optional_field = group_entry_optional(group_entry);
-                let field_name = group_entry_to_field_name(group_entry, index);
+                let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                 // Unsupported types so far are fixed values, only have fields for these.
                 if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                     if optional_field {
