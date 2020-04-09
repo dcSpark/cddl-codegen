@@ -210,7 +210,7 @@ impl GlobalScope {
         if self.already_generated.insert(array_type.clone()) {
             let mut s = codegen::Struct::new(&array_type);
             s
-                .field("data", format!("Vec<{}>", element_type_rust))
+                .tuple_field(format!("Vec<{}>", element_type_rust))
                 .vis("pub");
             add_struct_derives(&mut s);
             // TODO: accessors (mostly only necessary if we support deserialization)
@@ -219,8 +219,8 @@ impl GlobalScope {
             let mut ser_impl = codegen::Impl::new(&array_type);
             ser_impl.impl_trait("cbor_event::se::Serialize");
             let mut ser_func = make_serialization_function("serialize");
-            ser_func.line("serializer.write_array(cbor_event::Len::Len(self.data.len() as u64))?;");
-            let mut loop_block = codegen::Block::new("for element in &self.data");
+            ser_func.line("serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;");
+            let mut loop_block = codegen::Block::new("for element in &self.0");
             loop_block.line("element.serialize(serializer)?;");
             ser_func.push_block(loop_block);
             ser_func.line("Ok(serializer)");
@@ -231,26 +231,26 @@ impl GlobalScope {
                 .new_fn("new")
                 .vis("pub")
                 .ret("Self")
-                .line("Self { data: Vec::new() }");
+                .line("Self(Vec::new())");
             array_impl
                 .new_fn("size")
                 .vis("pub")
                 .ret("usize")
                 .arg_ref_self()
-                .line("self.data.len()");
+                .line("self.0.len()");
             array_impl
                 .new_fn("get")
                 .vis("pub")
                 .ret(&element_type_wasm)
                 .arg_ref_self()
                 .arg("index", "usize")
-                .line("self.data[index].clone()");
+                .line("self.0[index].clone()");
             array_impl
                 .new_fn("add")
                 .vis("pub")
                 .arg_mut_self()
                 .arg("elem", element_type_wasm)
-                .line("self.data.push(elem);");
+                .line("self.0.push(elem);");
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_impl(array_impl);
         }
@@ -267,8 +267,8 @@ impl GlobalScope {
             RustType::Rust(t) => {
                 if self.generate_if_plain_group((*t).clone(), rep) {
                     match rep {
-                        Representation::Map => body.line(&format!("{}.group.serialize_as_embedded_map_group(serializer)?;", expr)),
-                        Representation::Array => body.line(&format!("{}.group.serialize_as_embedded_array_group(serializer)?;", expr)),
+                        Representation::Map => body.line(&format!("{}.0.serialize_as_embedded_map_group(serializer)?;", expr)),
+                        Representation::Array => body.line(&format!("{}.0.serialize_as_embedded_array_group(serializer)?;", expr)),
                     };
                 } else {
                     body.line(&format!("{}.serialize(serializer)?;", expr));
@@ -281,7 +281,7 @@ impl GlobalScope {
                 };
                 // non-literal types are contained in vec wrapper types
                 if !ty.directly_wasm_exposable() {
-                    expr.push_str(".data");
+                    expr.push_str(".0");
                 }
                 body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
                 //if !ty.directly_wasm_exposable() {
@@ -467,22 +467,22 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
     let (mut s, mut group_impl) = create_exposed_group(name);
     s
         .vis("pub")
-        .field("group", format!("groups::{}", name));
+        .tuple_field(format!("groups::{}", name));
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
     match rep {
-        Representation::Map => ser_func.line("self.group.serialize_as_map(serializer)"),
-        Representation::Array => ser_func.line("self.group.serialize_as_array(serializer)"),
+        Representation::Map => ser_func.line("self.0.serialize_as_map(serializer)"),
+        Representation::Array => ser_func.line("self.0.serialize_as_array(serializer)"),
     };
     ser_impl.push_fn(ser_func);
-    let mut from_impl = codegen::Impl::new(name);
-    from_impl
-        .impl_trait(format!("From<groups::{}>", name))
-        .new_fn("from")
-        .ret("Self")
-        .arg("group", format!("groups::{}", name))
-        .line(format!("{} {{ group: group }}", name));
+    // let mut from_impl = codegen::Impl::new(name);
+    // from_impl
+    //     .impl_trait(format!("From<groups::{}>", name))
+    //     .new_fn("from")
+    //     .ret("Self")
+    //     .arg("group", format!("groups::{}", name))
+    //     .line(format!("{} {{ group: group }}", name));
     // TODO: write accessors here? would be common with codegen_group_as_array
     if group.group_choices.len() == 1 {
         // No group choices, inner group is a single group
@@ -498,9 +498,7 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 new_func
                     .ret("Self")
                     .vis("pub");
-                let mut new_func_block = codegen::Block::new("Self");
-                new_func_block.line(format!("group: groups::{}::new(),", name));
-                new_func.push_block(new_func_block);
+                new_func.line(format!("Self(groups::{}::new())", name));
                 group_impl.push_fn(new_func);
                 // insert
                 let mut insert_func = codegen::Function::new("insert");
@@ -511,7 +509,7 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                     .arg("value", value_type.for_wasm())
                     .line(
                         format!(
-                            "self.group.table.insert({}, {});",
+                            "self.0.table.insert({}, {});",
                             key_type.from_wasm_boundary("key", GenScope::Root),
                             value_type.from_wasm_boundary("value", GenScope::Root)));
                 group_impl.push_fn(insert_func);
@@ -522,9 +520,8 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 new_func
                     .ret("Self")
                     .vis("pub");
-                let mut new_func_block = codegen::Block::new("Self");
                 let mut output_comma = false;
-                let mut args = format!("group: groups::{}::new(", name);
+                let mut ctor = format!("Self(groups::{}::new(", name);
                 for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                     let field_name = group_entry_to_field_name(group_entry, index); 
                     // Unsupported types so far are fixed values, only have fields
@@ -532,18 +529,17 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                         if !group_entry_optional(group_entry) {
                             if output_comma {
-                                args.push_str(", ");
+                                ctor.push_str(", ");
                             } else {
                                 output_comma = true;
                             }
                             new_func.arg(&field_name, rust_type.for_wasm());
-                            args.push_str(&rust_type.from_wasm_boundary(&field_name, GenScope::Root));
+                            ctor.push_str(&rust_type.from_wasm_boundary(&field_name, GenScope::Root));
                         }
                     }
                 }
-                args.push_str(")");
-                new_func_block.line(args);
-                new_func.push_block(new_func_block);
+                ctor.push_str("))");
+                new_func.line(ctor);
                 group_impl.push_fn(new_func);
             }
         }
@@ -555,34 +551,32 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
             new_func
                 .ret("Self")
                 .vis("pub");
-            let mut new_func_block = codegen::Block::new("Self");
             let mut output_comma = false;
-            let mut args = format!("group: groups::{}::{}(groups::{}::new(", name, variant_name, variant_name);
+            let mut ctor = format!("Self(groups::{}::{}(groups::{}::new(", name, variant_name, variant_name);
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 if !group_entry_optional(group_entry) {
                     let field_name = group_entry_to_field_name(group_entry, index);
                     // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                         if output_comma {
-                            args.push_str(", ");
+                            ctor.push_str(", ");
                         } else {
                             output_comma = true;
                         }
                         new_func.arg(&field_name, rust_type.for_wasm());
-                        args.push_str(&field_name);
+                        ctor.push_str(&field_name);
                     }
                 }
             }
-            args.push_str("))");
-            new_func_block.line(args);
-            new_func.push_block(new_func_block);
+            ctor.push_str(")))");
+            new_func.line(ctor);
             group_impl.push_fn(new_func);
         }
     }
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
     global.scope().push_impl(ser_impl);
-    global.scope().push_impl(from_impl);
+    //global.scope().push_impl(from_impl);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_impl(group_impl);
 }
@@ -851,11 +845,11 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     let (mut s, mut group_impl) = create_exposed_group(type_name);
     s
         .vis("pub")
-        .field("data", field_type.for_member(GenScope::Root));
+        .tuple_field(field_type.for_member(GenScope::Root));
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = codegen::Impl::new(type_name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
-    global.generate_serialize(&field_type, String::from("self.data"), &mut ser_func, rep);
+    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, rep);
     ser_func.line("Ok(serializer)");
     ser_impl.push_fn(ser_func);
     let mut new_func = codegen::Function::new("new");
@@ -863,11 +857,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
         .ret("Self")
         .arg("data", field_type.for_wasm())
         .vis("pub");
-    let mut new_func_block = codegen::Block::new("Self");
-    new_func_block.line(format!(
-        "data: {},",
-        field_type.from_wasm_boundary("data", GenScope::Root)));
-    new_func.push_block(new_func_block);
+    new_func.line(format!("Self({})", field_type.from_wasm_boundary("data", GenScope::Root)));
     group_impl.push_fn(new_func);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
