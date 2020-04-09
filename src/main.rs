@@ -38,7 +38,14 @@ enum RustType {
     Array(Box<RustType>),
     // Tagged type. Behavior depends entirely on wrapped type.
     Tagged(usize, Box<RustType>),
-    // TODO: table type?
+
+    // TODO: table type to support inlined defined table-type groups as fields
+
+    // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
+    // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
+    // RustField so that we could basically expand them and not care about having to generate
+    // and intermediate fields - although this could pose an issue for optional types... so maybe
+    // another approach would be necessary.
 }
 
 impl RustType {
@@ -210,7 +217,7 @@ impl GlobalScope {
         if self.already_generated.insert(array_type.clone()) {
             let mut s = codegen::Struct::new(&array_type);
             s
-                .field("data", format!("Vec<{}>", element_type_rust))
+                .tuple_field(format!("Vec<{}>", element_type_rust))
                 .vis("pub");
             add_struct_derives(&mut s);
             // TODO: accessors (mostly only necessary if we support deserialization)
@@ -219,8 +226,8 @@ impl GlobalScope {
             let mut ser_impl = codegen::Impl::new(&array_type);
             ser_impl.impl_trait("cbor_event::se::Serialize");
             let mut ser_func = make_serialization_function("serialize");
-            ser_func.line("serializer.write_array(cbor_event::Len::Len(self.data.len() as u64))?;");
-            let mut loop_block = codegen::Block::new("for element in &self.data");
+            ser_func.line("serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;");
+            let mut loop_block = codegen::Block::new("for element in &self.0");
             loop_block.line("element.serialize(serializer)?;");
             ser_func.push_block(loop_block);
             ser_func.line("Ok(serializer)");
@@ -231,26 +238,26 @@ impl GlobalScope {
                 .new_fn("new")
                 .vis("pub")
                 .ret("Self")
-                .line("Self { data: Vec::new() }");
+                .line("Self(Vec::new())");
             array_impl
                 .new_fn("size")
                 .vis("pub")
                 .ret("usize")
                 .arg_ref_self()
-                .line("self.data.len()");
+                .line("self.0.len()");
             array_impl
                 .new_fn("get")
                 .vis("pub")
                 .ret(&element_type_wasm)
                 .arg_ref_self()
                 .arg("index", "usize")
-                .line("self.data[index].clone()");
+                .line("self.0[index].clone()");
             array_impl
                 .new_fn("add")
                 .vis("pub")
                 .arg_mut_self()
                 .arg("elem", element_type_wasm)
-                .line("self.data.push(elem);");
+                .line("self.0.push(elem);");
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_impl(array_impl);
         }
@@ -258,7 +265,7 @@ impl GlobalScope {
     }
 
     fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, rep: Representation) {
-        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         match rust_type {
             RustType::Primitive(_) => {
                 // clone() is to handle String, might not be necessary
@@ -267,8 +274,8 @@ impl GlobalScope {
             RustType::Rust(t) => {
                 if self.generate_if_plain_group((*t).clone(), rep) {
                     match rep {
-                        Representation::Map => body.line(&format!("{}.group.serialize_as_embedded_map_group(serializer)?;", expr)),
-                        Representation::Array => body.line(&format!("{}.group.serialize_as_embedded_array_group(serializer)?;", expr)),
+                        Representation::Map => body.line(&format!("{}.0.serialize_as_embedded_map_group(serializer)?;", expr)),
+                        Representation::Array => body.line(&format!("{}.0.serialize_as_embedded_array_group(serializer)?;", expr)),
                     };
                 } else {
                     body.line(&format!("{}.serialize(serializer)?;", expr));
@@ -281,7 +288,7 @@ impl GlobalScope {
                 };
                 // non-literal types are contained in vec wrapper types
                 if !ty.directly_wasm_exposable() {
-                    expr.push_str(".data");
+                    expr.push_str(".0");
                 }
                 body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
                 //if !ty.directly_wasm_exposable() {
@@ -306,7 +313,7 @@ fn convert_to_snake_case(ident: &str) -> String {
             '-' => {
                 snake_case.push('_');
             },
-            '$' | '#' => {
+            '$' | '@' => {
                 // ignored
             },
             c => {
@@ -353,26 +360,81 @@ fn add_struct_derives<T: DataType>(data_type: &mut T) {
         .derive("PartialOrd");
 }
 
-fn group_entry_to_field_name(entry: &GroupEntry, index: usize) -> String {
-    match entry {
+fn is_identifier_reserved(name: &str) -> bool {
+    match name {
+        // Do we need more? We don't support any other ones.
+        "uint"  |
+        "int"   |
+        "nint"  |
+        "text"  |
+        "tstr"  |
+        "bytes" |
+        "bstr"  => true,
+        _ => false,
+    }
+}
+
+fn type_to_field_name(t: &Type) -> Option<String> {
+    match t.type_choices.len() {
+        1 => match &t.type_choices.first().unwrap().type2 {
+            Type2::Typename{ ident, .. } => Some(ident.to_string()),
+            Type2::TextValue { value, .. } => Some(value.clone()),
+            Type2::Array { group, .. } => match group.group_choices.len() {
+                1 => {
+                    let entries = &group.group_choices.first().unwrap().group_entries;
+                    match entries.len() {
+                        1 => {
+                            match &entries.first().unwrap().0 {
+                                // should we do this? here it possibly allows [[foo]] -> fooss
+                                GroupEntry::ValueMemberKey{ ge, .. } => Some(format!("{}s", type_to_field_name(&ge.entry_type)?)),
+                                GroupEntry::TypeGroupname{ ge, .. } => Some(format!("{}s", ge.name.to_string())),
+                                GroupEntry::InlineGroup { .. } => None,
+                            }
+                        },
+                        // only supports homogenous arrays for now
+                        _ => None,
+                    }
+                },
+                // no group choice support here
+                _ => None
+            }
+            // non array/text/identifier types not supported here - value keys are caught earlier anyway
+            _ => None
+        },
+        // no type choice support here
+        _ => None,
+    }
+}
+
+// Attempts to use the style-converted type name as a field name, and if we have already
+// generated one, then we simply add numerals starting at 2, 3, 4...
+fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>) -> String {
+    let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
             Some(member_key) => match member_key {
                 MemberKey::Value{ value, .. } => format!("key_{}", value),
-                MemberKey::Bareword{ ident, .. } => convert_to_snake_case(&ident.to_string()),
+                MemberKey::Bareword{ ident, .. } => ident.to_string(),
                 MemberKey::Type1{ t1, .. } => match t1.type2 {
                     Type2::UintValue{ value, .. } => format!("key_{}", value),
                     _ => panic!("Encountered Type1 member key in multi-field map - not supported: {:?}", entry),
                 },
             },
-            None => format!("index_{}", index),
+            None => {
+                type_to_field_name(&ge.entry_type).unwrap_or_else(|| format!("index_{}", index))
+            }
         },
-        GroupEntry::TypeGroupname{ .. } => {
-            // This was before, but it makes more sense for what we've done so far
-            // to have it be indexed. This may or may not be correct.
-            //("tgn_".to_owned() + &tge.name.to_string()),
-            format!("index_{}", index)
+        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match is_identifier_reserved(&name.to_string()) {
+            true => format!("index_{}", index),
+            false => name.to_string(),
         },
         GroupEntry::InlineGroup{ group, .. } => panic!("not implemented (define a new struct for this!) = {}\n\n {:?}", group, group),
+    });
+    let entry = already_generated.entry(field_name.clone()).or_default();
+    *entry += 1;
+    if *entry > 1 {
+        format!("{}{}", field_name, *entry)
+    } else {
+        field_name
     }
 }
 
@@ -467,22 +529,15 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
     let (mut s, mut group_impl) = create_exposed_group(name);
     s
         .vis("pub")
-        .field("group", format!("groups::{}", name));
+        .tuple_field(format!("groups::{}", name));
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
     match rep {
-        Representation::Map => ser_func.line("self.group.serialize_as_map(serializer)"),
-        Representation::Array => ser_func.line("self.group.serialize_as_array(serializer)"),
+        Representation::Map => ser_func.line("self.0.serialize_as_map(serializer)"),
+        Representation::Array => ser_func.line("self.0.serialize_as_array(serializer)"),
     };
     ser_impl.push_fn(ser_func);
-    let mut from_impl = codegen::Impl::new(name);
-    from_impl
-        .impl_trait(format!("From<groups::{}>", name))
-        .new_fn("from")
-        .ret("Self")
-        .arg("group", format!("groups::{}", name))
-        .line(format!("{} {{ group: group }}", name));
     // TODO: write accessors here? would be common with codegen_group_as_array
     if group.group_choices.len() == 1 {
         // No group choices, inner group is a single group
@@ -498,9 +553,7 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 new_func
                     .ret("Self")
                     .vis("pub");
-                let mut new_func_block = codegen::Block::new("Self");
-                new_func_block.line(format!("group: groups::{}::new(),", name));
-                new_func.push_block(new_func_block);
+                new_func.line(format!("Self(groups::{}::new())", name));
                 group_impl.push_fn(new_func);
                 // insert
                 let mut insert_func = codegen::Function::new("insert");
@@ -511,7 +564,7 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                     .arg("value", value_type.for_wasm())
                     .line(
                         format!(
-                            "self.group.table.insert({}, {});",
+                            "self.0.table.insert({}, {});",
                             key_type.from_wasm_boundary("key", GenScope::Root),
                             value_type.from_wasm_boundary("value", GenScope::Root)));
                 group_impl.push_fn(insert_func);
@@ -522,28 +575,34 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 new_func
                     .ret("Self")
                     .vis("pub");
-                let mut new_func_block = codegen::Block::new("Self");
                 let mut output_comma = false;
-                let mut args = format!("group: groups::{}::new(", name);
+                let mut ctor = format!("Self(groups::{}::new(", name);
+                let mut generated_fields = BTreeMap::<String, u32>::new();
                 for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
-                    let field_name = group_entry_to_field_name(group_entry, index); 
-                    // Unsupported types so far are fixed values, only have fields
-                    // for these.
+                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
+                    // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
-                        if !group_entry_optional(group_entry) {
+                        if group_entry_optional(group_entry) {
+                            let mut setter = codegen::Function::new(&format!("set_{}", field_name));
+                            setter
+                                .arg_mut_self()
+                                .arg(&field_name, &rust_type.for_wasm())
+                                .vis("pub")
+                                .line(format!("self.0.{} = Some({})", field_name, field_name));
+                            group_impl.push_fn(setter);
+                        } else {
                             if output_comma {
-                                args.push_str(", ");
+                                ctor.push_str(", ");
                             } else {
                                 output_comma = true;
                             }
                             new_func.arg(&field_name, rust_type.for_wasm());
-                            args.push_str(&rust_type.from_wasm_boundary(&field_name, GenScope::Root));
+                            ctor.push_str(&rust_type.from_wasm_boundary(&field_name, GenScope::Root));
                         }
                     }
                 }
-                args.push_str(")");
-                new_func_block.line(args);
-                new_func.push_block(new_func_block);
+                ctor.push_str("))");
+                new_func.line(ctor);
                 group_impl.push_fn(new_func);
             }
         }
@@ -555,34 +614,32 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
             new_func
                 .ret("Self")
                 .vis("pub");
-            let mut new_func_block = codegen::Block::new("Self");
             let mut output_comma = false;
-            let mut args = format!("group: groups::{}::{}(groups::{}::new(", name, variant_name, variant_name);
+            let mut ctor = format!("Self(groups::{}::{}(groups::{}::new(", name, variant_name, variant_name);
+            let mut generated_fields = BTreeMap::<String, u32>::new();
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 if !group_entry_optional(group_entry) {
-                    let field_name = group_entry_to_field_name(group_entry, index);
+                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                     // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                         if output_comma {
-                            args.push_str(", ");
+                            ctor.push_str(", ");
                         } else {
                             output_comma = true;
                         }
                         new_func.arg(&field_name, rust_type.for_wasm());
-                        args.push_str(&field_name);
+                        ctor.push_str(&field_name);
                     }
                 }
             }
-            args.push_str("))");
-            new_func_block.line(args);
-            new_func.push_block(new_func_block);
+            ctor.push_str(")))");
+            new_func.line(ctor);
             group_impl.push_fn(new_func);
         }
     }
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
     global.scope().push_impl(ser_impl);
-    global.scope().push_impl(from_impl);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_impl(group_impl);
 }
@@ -618,14 +675,6 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         global.group_scope().push_enum(e);
         global.group_scope().push_impl(e_impl);
     }
-    // let mut from_impl = codegen::Impl::new(name);
-    // from_impl
-    //     .impl_trait(format!("From<super::{}>", name))
-    //     .new_fn("from")
-    //     .ret("Self")
-    //     .arg("wrapper", format!("super::{}", name))
-    //     .line("wrapper.group");
-    // global.group_scope().push_impl(from_impl);
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -737,9 +786,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                 .ret("Self")
                 .vis("pub (super)");
             let mut new_func_block = codegen::Block::new("Self");
+            let mut generated_fields = BTreeMap::<String, u32>::new();
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 let optional_field = group_entry_optional(group_entry);
-                let field_name = group_entry_to_field_name(group_entry, index);
+                let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                 // Unsupported types so far are fixed values, only have fields for these.
                 if let Some(rust_type) = group_entry_to_type(global, group_entry) {
                     if optional_field {
@@ -755,7 +805,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     } else {
                         (format!("self.{}", field_name), rust_type.for_member(GenScope::Groups), &mut ser_map_embedded)
                     };
-                    s.field(&field_name, &field_type_string);
+                    s.field(&format!("pub (super) {}", field_name), &field_type_string);
                     if optional_field {
                         new_func_block.line(format!("{}: None,", field_name));
                     } else {
@@ -851,11 +901,11 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     let (mut s, mut group_impl) = create_exposed_group(type_name);
     s
         .vis("pub")
-        .field("data", field_type.for_member(GenScope::Root));
+        .tuple_field(field_type.for_member(GenScope::Root));
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = codegen::Impl::new(type_name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
-    global.generate_serialize(&field_type, String::from("self.data"), &mut ser_func, rep);
+    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, rep);
     ser_func.line("Ok(serializer)");
     ser_impl.push_fn(ser_func);
     let mut new_func = codegen::Function::new("new");
@@ -863,16 +913,11 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
         .ret("Self")
         .arg("data", field_type.for_wasm())
         .vis("pub");
-    let mut new_func_block = codegen::Block::new("Self");
-    new_func_block.line(format!(
-        "data: {},",
-        field_type.from_wasm_boundary("data", GenScope::Root)));
-    new_func.push_block(new_func_block);
+    new_func.line(format!("Self({})", field_type.from_wasm_boundary("data", GenScope::Root)));
     group_impl.push_fn(new_func);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
     global.scope().push_impl(ser_impl);
-    //global.scope().push_impl(from_impl);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_impl(group_impl);
 }
@@ -986,8 +1031,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // ignores control operators - only used in shelley spec to limit string length for application metadata
                     generate_type(&mut global, &convert_to_camel_case(&rule.name.to_string()), &choice.type2);
                     //println!("{} type2 = {:?}\n", tr.name, choice.type2);
-                    //s.field("foo", "usize");
-                    // remove and implement type choices
+                    // remove break and implement type choices
                     break;
                 }
             },
