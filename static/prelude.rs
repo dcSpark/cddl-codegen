@@ -2,10 +2,6 @@ use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializ
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 
-// TODO: handle this by not passing throught be barrior directly.
-//       instead have it either:
-//  1) generate 1 per each wrapped type
-//  2) don't pass it, instead wrap it/unwrap it automatically
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct TaggedData<T> {
     pub (crate) data: T,
