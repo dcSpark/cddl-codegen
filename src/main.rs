@@ -38,7 +38,14 @@ enum RustType {
     Array(Box<RustType>),
     // Tagged type. Behavior depends entirely on wrapped type.
     Tagged(usize, Box<RustType>),
-    // TODO: table type?
+
+    // TODO: table type to support inlined defined table-type groups as fields
+
+    // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
+    // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
+    // RustField so that we could basically expand them and not care about having to generate
+    // and intermediate fields - although this could pose an issue for optional types... so maybe
+    // another approach would be necessary.
 }
 
 impl RustType {
@@ -258,7 +265,7 @@ impl GlobalScope {
     }
 
     fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, rep: Representation) {
-        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         match rust_type {
             RustType::Primitive(_) => {
                 // clone() is to handle String, might not be necessary
@@ -306,7 +313,7 @@ fn convert_to_snake_case(ident: &str) -> String {
             '-' => {
                 snake_case.push('_');
             },
-            '$' | '#' => {
+            '$' | '@' => {
                 // ignored
             },
             c => {
@@ -476,13 +483,6 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
         Representation::Array => ser_func.line("self.0.serialize_as_array(serializer)"),
     };
     ser_impl.push_fn(ser_func);
-    // let mut from_impl = codegen::Impl::new(name);
-    // from_impl
-    //     .impl_trait(format!("From<groups::{}>", name))
-    //     .new_fn("from")
-    //     .ret("Self")
-    //     .arg("group", format!("groups::{}", name))
-    //     .line(format!("{} {{ group: group }}", name));
     // TODO: write accessors here? would be common with codegen_group_as_array
     if group.group_choices.len() == 1 {
         // No group choices, inner group is a single group
@@ -524,10 +524,17 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
                 let mut ctor = format!("Self(groups::{}::new(", name);
                 for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                     let field_name = group_entry_to_field_name(group_entry, index); 
-                    // Unsupported types so far are fixed values, only have fields
-                    // for these.
+                    // Unsupported types so far are fixed values, only have fields for these.
                     if let Some(rust_type) = group_entry_to_type(global, group_entry) {
-                        if !group_entry_optional(group_entry) {
+                        if group_entry_optional(group_entry) {
+                            let mut setter = codegen::Function::new(&format!("set_{}", field_name));
+                            setter
+                                .arg_mut_self()
+                                .arg(&field_name, &rust_type.for_wasm())
+                                .vis("pub")
+                                .line(format!("self.0.{} = Some({})", field_name, field_name));
+                            group_impl.push_fn(setter);
+                        } else {
                             if output_comma {
                                 ctor.push_str(", ");
                             } else {
@@ -576,7 +583,6 @@ fn codegen_group_exposed(global: &mut GlobalScope, group: &Group, name: &str, re
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
     global.scope().push_impl(ser_impl);
-    //global.scope().push_impl(from_impl);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_impl(group_impl);
 }
@@ -612,14 +618,6 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         global.group_scope().push_enum(e);
         global.group_scope().push_impl(e_impl);
     }
-    // let mut from_impl = codegen::Impl::new(name);
-    // from_impl
-    //     .impl_trait(format!("From<super::{}>", name))
-    //     .new_fn("from")
-    //     .ret("Self")
-    //     .arg("wrapper", format!("super::{}", name))
-    //     .line("wrapper.group");
-    // global.group_scope().push_impl(from_impl);
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -749,7 +747,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     } else {
                         (format!("self.{}", field_name), rust_type.for_member(GenScope::Groups), &mut ser_map_embedded)
                     };
-                    s.field(&field_name, &field_type_string);
+                    s.field(&format!("pub (super) {}", field_name), &field_type_string);
                     if optional_field {
                         new_func_block.line(format!("{}: None,", field_name));
                     } else {
@@ -862,7 +860,6 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_struct(s);
     global.scope().push_impl(ser_impl);
-    //global.scope().push_impl(from_impl);
     global.scope().raw("#[wasm_bindgen]");
     global.scope().push_impl(group_impl);
 }
@@ -976,8 +973,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // ignores control operators - only used in shelley spec to limit string length for application metadata
                     generate_type(&mut global, &convert_to_camel_case(&rule.name.to_string()), &choice.type2);
                     //println!("{} type2 = {:?}\n", tr.name, choice.type2);
-                    //s.field("foo", "usize");
-                    // remove and implement type choices
+                    // remove break and implement type choices
                     break;
                 }
             },
