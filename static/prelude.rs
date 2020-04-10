@@ -2,27 +2,8 @@ use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializ
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct TaggedData<T> {
-    pub (crate) data: T,
-    pub (crate) tag: u64,
-}
-
-impl<T> TaggedData<T> {
-    pub fn new(data: T, tag: u64) -> Self {
-        Self {
-            data,
-            tag,
-        }
-    }
-}
-
-impl<T: Serialize> Serialize for TaggedData<T> {
-    fn serialize<'a, W: Write + Sized>(&self, serializer: &'a mut Serializer<W>) -> cbor_event::Result<&'a mut Serializer<W>> {
-        serializer.write_tag(self.tag)?;
-        self.data.serialize(serializer)
-    }
-}
+// if we don't have anything else here anymore, we should probably just
+// generate this directly at the top of serialization.rs
 
 pub trait SerializeEmbeddedGroup {
     fn serialize_as_embedded_group<'a, W: Write + Sized>(

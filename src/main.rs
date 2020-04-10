@@ -74,13 +74,14 @@ impl RustType {
             } else {
                 format!("{}s", ty.for_wasm())
             },
-            RustType::Tagged(_tag, ty) => format!("TaggedData<{}>", ty.for_member()),
+            RustType::Tagged(_tag, ty) => ty.for_member(),
         }
     }
 
+    // TODO: should we get rid of from_wasm_boundary() entirely, or will it be useful for things that aren't tagged types?        
     fn from_wasm_boundary(&self, expr: &str) -> String {
         match self {
-            RustType::Tagged(tag, ty) => format!("TaggedData::<{}>::new({}, {})", ty.for_member(), expr, tag),
+            //RustType::Tagged(tag, ty) => format!("TaggedData::<{}>::new({}, {})", ty.for_member(), expr, tag),
             _ => expr.to_owned(),
         }
     }
@@ -181,16 +182,12 @@ impl GlobalScope {
             if self.already_generated.insert(name.clone()) {
                 // TODO: implement ability to have both an array and a map representation
                 //       if someone ever needs that
-                self.generate_exposed_group(&group, &name, rep);
+                codegen_group(self, &group, &name, rep, None);
             }
             true
         } else {
             false
         }
-    }
-
-    fn generate_exposed_group(&mut self, group: &Group, name: &str, rep: Representation) {
-        codegen_group(self, group, name, rep);
     }
 
     // generate array type ie [Foo] generates Foos if not already created
@@ -222,7 +219,7 @@ impl GlobalScope {
             ser_func.push_block(loop_block);
             ser_func.line("Ok(serializer)");
             ser_impl.push_fn(ser_func);
-            self.global_scope.push_impl(ser_impl);
+            self.serialize_scope.push_impl(ser_impl);
             let mut array_impl = codegen::Impl::new(&array_type);
             array_impl
                 .new_fn("new")
@@ -278,16 +275,14 @@ impl GlobalScope {
                     expr.push_str(".0");
                 }
                 body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
-                //if !ty.directly_wasm_exposable() {
-                    expr = format!("&{}", expr);
-                //}
+                expr = format!("&{}", expr);
                 let mut loop_block = codegen::Block::new(&format!("for element in {}", expr));
                 loop_block.line("element.serialize(serializer)?;");
                 body.push_block(loop_block);
             },
             RustType::Tagged(tag, ty) => {
                 body.line(&format!("serializer.write_tag({}u64)?;", tag));
-                self.generate_serialize(ty, format!("{}.data", expr), body, rep);
+                self.generate_serialize(ty, expr, body, rep);
             },
         }
     }
@@ -514,10 +509,13 @@ fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
 
 // The serialize impls calls the embedded serialize impl, but the embedded one is
 // empty and must be implemented yourself.
-fn create_serialize_impls(name: &str, rep: Representation) -> (codegen::Impl, codegen::Impl) {
+fn create_serialize_impls(name: &str, rep: Representation, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
     let mut ser_func = make_serialization_function("serialize");
+    if let Some(tag) = tag {
+        ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
+    }
     // TODO: indefinite or definite encoding?
     match rep {
         Representation::Array => ser_func.line(format!("serializer.write_array(cbor_event::Len::Indefinite)?;")),
@@ -549,9 +547,9 @@ fn push_exposed_struct(
         .push_impl(ser_embedded_impl);
 }
 
-fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation) {
+fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(name);
-    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep);
+    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep, tag);
     s.vis("pub");
     let table_types = table_domain_range(group_choice, rep);
     match table_types {
@@ -641,18 +639,18 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             s_impl.push_fn(new_func);
 
             // Generate serialization
+            let mut ser_func = make_serialization_function("serialize_as_embedded_group");
             match rep {
                 Representation::Array => {
-                    let mut ser_array_embedded = make_serialization_function("serialize_as_embedded_group");
                     for (field_name, field_type, optional_field, group_entry) in &fields {
                         // Unsupported types so far are fixed values, only have fields for these.
                         if let Some(rust_type) = field_type {
                             if *optional_field {
                                 let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
                                 global.generate_serialize(&rust_type, String::from("field"), &mut optional_array_ser_block, Representation::Array);
-                                ser_array_embedded.push_block(optional_array_ser_block);
+                                ser_func.push_block(optional_array_ser_block);
                             } else {
-                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_array_embedded, Representation::Array);
+                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_func, Representation::Array);
                             }
                         } else {
                             // But even without a field, we still need to serialize them.
@@ -663,7 +661,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                     match ge.entry_type.type_choices.first() {
                                         Some(x) => match &x.type2 {
                                             Type2::UintValue{ value, .. } => {
-                                                ser_array_embedded.line(format!("serializer.write_unsigned_integer({})?;", value));
+                                                ser_func.line(format!("serializer.write_unsigned_integer({})?;", value));
                                             },
                                             x => panic!("unsupported fixed type: {}", x),
                                         },
@@ -674,11 +672,8 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             }
                         }
                     }
-                    ser_array_embedded.line("Ok(serializer)");
-                    ser_embedded_impl.push_fn(ser_array_embedded);
                 },
                 Representation::Map => {
-                    let mut ser_map_embedded = make_serialization_function("serialize_as_embedded_group");
                     // If we have a group with entries that have no names, that's fine for arrays
                     // but not for maps, so if we encounter one assume we should not generate
                     // map-related functions.
@@ -693,7 +688,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if *optional_field {
                                 (String::from("field"), &mut optional_map_ser_block)
                             } else {
-                                (format!("self.{}", field_name), &mut ser_map_embedded)
+                                (format!("self.{}", field_name), &mut ser_func)
                             };
                             // This match is for serializing KEYS for maps
                             match group_entry {
@@ -735,27 +730,27 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             // and serialize value
                             global.generate_serialize(&rust_type, data_name, map_ser_block, Representation::Map);
                             if *optional_field {
-                                ser_map_embedded.push_block(optional_map_ser_block);
+                                ser_func.push_block(optional_map_ser_block);
                             }
                         } else {
                             panic!("could not generate map serialization for group with non-ValueMemberKey field: {:?}", group_choice);
                         }
                     }
-                    ser_map_embedded.line("Ok(serializer)");
                     assert!(!contains_entries_without_names, "could not generate as map without key names");
-                    ser_embedded_impl.push_fn(ser_map_embedded);
                 },
             };
+            ser_func.line("Ok(serializer)");
+            ser_embedded_impl.push_fn(ser_func);
         }
     }
     push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
 }
 
 // Separate function for when we support multiple choices as an enum
-fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Representation) {
+fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Representation, tag: Option<usize>) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
-        codegen_group_choice(global, group.group_choices.first().unwrap(), name, rep);
+        codegen_group_choice(global, group.group_choices.first().unwrap(), name, rep, tag);
     } else {
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
@@ -765,7 +760,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         let mut e = codegen::Enum::new(&enum_name);
         add_struct_derives(&mut e);
         //let mut e_impl = codegen::Impl::new(name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(&enum_name, rep);
+        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(&enum_name, rep, None);
         //let mut ser_func = make_serialization_function("serialize");
         let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
         //ser_func.vis("pub (super)");
@@ -776,7 +771,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
             let variant_name = name.to_owned() + &i.to_string();
             e.push_variant(codegen::Variant::new(&format!("{}({})", variant_name, variant_name)));
             // TODO: Should we generate these within their own namespace?
-            codegen_group_choice(global, group_choice, &variant_name, rep);
+            codegen_group_choice(global, group_choice, &variant_name, rep, None);
             //ser_array_match_block.line(format!("{}::{}(x) => x.serialize(serializer),", enum_name, variant_name));
             ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant_name));
         }
@@ -796,7 +791,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep);
+        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep, tag);
         s
             .vis("pub")
             .tuple_field(&enum_name);
@@ -875,7 +870,7 @@ fn make_serialization_function(name: &str) -> codegen::Function {
     f
 }
 
-fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, rep: Representation) {
+fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, rep: Representation, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(type_name);
     s
         .vis("pub")
@@ -883,6 +878,9 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = codegen::Impl::new(type_name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
+    if let Some(tag) = tag {
+        ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
+    }
     global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, rep);
     ser_func.line("Ok(serializer)");
     ser_impl.push_fn(ser_func);
@@ -900,7 +898,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     global.serialize_scope().push_impl(ser_impl);
 }
 
-fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2) {
+fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer_tag: Option<usize>) {
     match type2 {
         Type2::Typename{ ident, .. } => {
             // This should be controlled in a better way - maybe we can annotate the cddl
@@ -925,7 +923,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2) {
             };
             if generate_binary_wrapper {
                 let field_type = RustType::Array(Box::new(RustType::Primitive(String::from("u8"))));
-                generate_wrapper_struct(global, type_name, &field_type, Representation::Array);
+                generate_wrapper_struct(global, type_name, &field_type, Representation::Array, None);
                 global.apply_type_alias_without_codegen(type_name.to_owned(), field_type);
             } else {
                 // Using RustType here just to get a string out of it that applies
@@ -935,29 +933,27 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2) {
             }
         },
         Type2::Map{ group, .. } => {
-            global.generate_exposed_group(group, type_name, Representation::Map);
+            codegen_group(global, group, type_name, Representation::Map, outer_tag);
         },
         Type2::Array{ group, .. } => {
-            global.generate_exposed_group(group, type_name, Representation::Array);
+            codegen_group(global,group, type_name, Representation::Array, outer_tag);
         },
         Type2::TaggedData{ tag, t, .. } => {
-            let tag = tag.unwrap();
+            if let Some(_) = outer_tag {
+                panic!("doubly nested tags are not supported");
+            }
+            tag.expect("not sure what empty tag here would mean - unsupported");
             assert_eq!(t.type_choices.len(), 1, "root level tagged type choices not supported");
             let inner_type = &t.type_choices.first().unwrap().type2;
-            let field_type = RustType::Tagged(tag, Box::new(match match inner_type {
+            match match inner_type {
                 Type2::Typename{ ident, .. } => Either::Right(ident),
                 Type2::Map{ group, .. } => Either::Left(group),
                 Type2::Array{ group, .. } => Either::Left(group),
                 x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
             } {
-                Either::Left(_group) => {
-                    let inner_group_name = format!("Untagged{}", type_name);
-                    generate_type(global, &inner_group_name, inner_type);
-                    global.new_raw_type(&inner_group_name)
-                },
-                Either::Right(ident) => global.new_raw_type(&ident.to_string()),
-            }));
-            generate_wrapper_struct(global, type_name, &field_type, Representation::Map /* Representation is ignored here */);
+                Either::Left(_group) => generate_type(global, type_name, inner_type, *tag),
+                Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), Representation::Map /* Representation is ignored here since we wrap an identifier */, *tag),
+            };
         },
         x => {
             println!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -1006,7 +1002,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // TODO: choices (as enums I guess?)
                 for choice in &rule.value.type_choices {
                     // ignores control operators - only used in shelley spec to limit string length for application metadata
-                    generate_type(&mut global, &convert_to_camel_case(&rule.name.to_string()), &choice.type2);
+                    generate_type(&mut global, &convert_to_camel_case(&rule.name.to_string()), &choice.type2, None);
                     //println!("{} type2 = {:?}\n", tr.name, choice.type2);
                     // remove break and implement type choices
                     break;
