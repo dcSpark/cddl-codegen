@@ -23,3 +23,10 @@ impl<T: Serialize> Serialize for TaggedData<T> {
         self.data.serialize(serializer)
     }
 }
+
+pub trait SerializeEmbeddedGroup {
+    fn serialize_as_embedded_group<'a, W: Write + Sized>(
+        &self,
+        serializer: &'a mut Serializer<W>,
+    ) -> cbor_event::Result<&'a mut Serializer<W>>;
+}
