@@ -43,7 +43,6 @@ Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Nam
 * No inline maps as fields - `foo = ( x: { y: uint, z: uint } )`, but is fine for `bar = { y: uint, z: uint }` then `foo = ( x: bar )`. Oonly found in block definition for `shelley.cddl`
 * No heterogenous arrays as fields - `foo: [uint]` is fine but `foo: [uint, tstr]` is not. Not found anywhere in `shelley.cddl`
 * CDDL generics not supported - just edit the cddl to inline it yourself for now
-* No serialization for group choices inside of a map - `foo = { a // b // c }` but `foo = [ a // b // c }` is fine. Not found anywhre in `shelley.cddl`
 * Keys in struct-type maps are limited to `uint` and text. Other types are not found anywhere in `shelley.cddl`.
 
 
