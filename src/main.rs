@@ -52,6 +52,7 @@ impl RustType {
         }
     }
 
+    // TODO: should we unify this and for_member() in to_string()? (they were different previously) will we need the distinction for other types?
     fn for_wasm(&self) -> String {
         match self {
             RustType::Primitive(s) => s.clone(),
@@ -75,6 +76,25 @@ impl RustType {
                 format!("{}s", ty.for_wasm())
             },
             RustType::Tagged(_tag, ty) => ty.for_member(),
+        }
+    }
+
+    fn for_variant(&self) -> String {
+        match self {
+            RustType::Primitive(p) => match p.as_str() {
+                // to get around issues with String (CamelCase) or str (snake_case)
+                "String" => String::from("Text"),
+                p => convert_to_camel_case(p),
+            },
+            RustType::Array(inner) => {
+                if let RustType::Primitive(p) = &**inner {
+                    if p == "u8" {
+                        return String::from("Bytes");
+                    }
+                }
+                format!("Arr{}", inner.for_variant())
+            },
+            _ => self.for_member(),
         }
     }
 
@@ -129,10 +149,12 @@ impl GlobalScope {
 
     fn new_raw_type(&self, raw: &str) -> RustType {
         let resolved = self.apply_type_aliases(raw);
-        if let RustType::Array(inner) = &resolved {
-            if let RustType::Primitive(inner) = &**inner {
-                if inner == "u8" {
-                    return RustType::Rust(raw.to_owned());
+        if !is_identifier_reserved(raw) {
+            if let RustType::Array(inner) = &resolved {
+                if let RustType::Primitive(inner) = &**inner {
+                    if inner == "u8" {
+                        return RustType::Rust(raw.to_owned());
+                    }
                 }
             }
         }
@@ -191,14 +213,29 @@ impl GlobalScope {
     }
 
     // TODO: Also generates individual choices if required, ie for a / [foo] / c would generate Foos
-    fn create_type_choice_names(&mut self, type_choices: &Vec<Type1>) -> Vec<String> {
-        type_choices.iter().map(|type1| match rust_type_from_type2(self, &type1.type2) {
-            Some(rust_type) => rust_type.for_member(),
-            None => panic!("Could not generate type from {:?}", type_choices),
+    fn create_variants_from_type_choices(&mut self, type_choices: &Vec<Type1>) -> Vec<EnumVariant> {
+        let mut variant_names_used = BTreeMap::<String, u32>::new();
+        type_choices.iter().map(|type1| {
+            let rust_type = match rust_type_from_type2(self, &type1.type2) {
+                Some(t) => t,
+                None => panic!("Could not generate type from {:?} in {:?}", type1.type2, type_choices),
+            };
+            let variant_name = rust_type.for_variant();
+            let entry = variant_names_used.entry(rust_type.for_member()).or_default();
+            *entry += 1;
+            let variant_name = if *entry > 1 {
+                format!("{}{}", variant_name, *entry)
+            } else {
+                variant_name
+            };
+            EnumVariant {
+                name: variant_name,
+                rust_type: rust_type,
+            }
         }).collect()
     }
 
-    fn generate_type_choices(&mut self, name: &str, variants: &Vec<String>, tag: Option<usize>) {
+    fn generate_type_choices(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
         generate_enum(self, &enum_name, &variants, None);
@@ -210,14 +247,14 @@ impl GlobalScope {
             .vis("pub")
             .tuple_field(&enum_name);
         // new
-        for variant_name in variants.iter() {
-            let variant_arg = convert_to_snake_case(&variant_name);
+        for variant in variants.iter() {
+            let variant_arg = convert_to_snake_case(&variant.name);
             let mut new_func = codegen::Function::new(&format!("new_{}", variant_arg));
             new_func
                 .ret("Self")
                 .vis("pub")
-                .arg(&variant_arg, variant_name)
-                .line(format!("Self({}::{}({}))", enum_name, variant_name, variant_arg));
+                .arg(&variant_arg, &variant.rust_type.for_wasm())
+                .line(format!("Self({}::{}({}))", enum_name, variant.name, variant_arg));
             s_impl.push_fn(new_func);
         }
         // serialize
@@ -501,18 +538,18 @@ fn rust_type(global: &mut GlobalScope, t: &Type) -> Option<RustType> {
     if t.type_choices.len() == 1 {
         rust_type_from_type2(global, &t.type_choices.first().unwrap().type2)
     } else {
-        let choice_names = global.create_type_choice_names(&t.type_choices);
+        let variants = global.create_variants_from_type_choices(&t.type_choices);
         let mut combined_name = String::new();
         // one caveat: nested types can leave ambiguous names and cause problems like
         // (a / b) / c and a / (b / c) would both be AOrBOrC
-        for choice_name in &choice_names {
+        for variant in &variants {
         if !combined_name.is_empty() {
                 combined_name.push_str("Or");
             }
             // due to undercase primitive names, we need to convert here
-            combined_name.push_str(&convert_to_camel_case(&choice_name));
+            combined_name.push_str(&variant.rust_type.for_variant());
         }
-        global.generate_type_choices(&combined_name, &choice_names, None);
+        global.generate_type_choices(&combined_name, &variants, None);
         Some(global.new_raw_type(&combined_name))
     }
 }
@@ -804,11 +841,14 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
-        let variants: Vec<String> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
+        let variants: Vec<EnumVariant> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
             let variant_name = format!("{}{}", name, i);
             // TODO: Should we generate these within their own namespace?
             codegen_group_choice(global, group_choice, &variant_name, rep, None);
-            variant_name
+            EnumVariant {
+                name: variant_name.clone(),
+                rust_type: RustType::Rust(variant_name),
+            }
         }).collect();
         generate_enum(global, &enum_name, &variants, Some(rep));
 
@@ -819,13 +859,13 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
             .vis("pub")
             .tuple_field(&enum_name);
         // new
-        for (variant_name, group_choice) in variants.iter().zip(group.group_choices.iter()) {
-            let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant_name)));
+        for (variant, group_choice) in variants.iter().zip(group.group_choices.iter()) {
+            let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant.name)));
             new_func
                 .ret("Self")
                 .vis("pub");
             let mut output_comma = false;
-            let mut ctor = format!("Self({}::{}({}::new(", enum_name, variant_name, variant_name);
+            let mut ctor = format!("Self({}::{}({}::new(", enum_name, variant.name, variant.name);
             let mut generated_fields = BTreeMap::<String, u32>::new();
             for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
                 if !group_entry_optional(group_entry) {
@@ -855,30 +895,27 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 }
 
 // rep is Optional - None means we just serialize raw, ie for tpye choices
-fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<String>, rep: Option<Representation>) {
+struct EnumVariant {
+    name: String,
+    rust_type: RustType,
+}
+
+fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
     let mut e = codegen::Enum::new(enum_name);
     add_struct_derives(&mut e);
-    //let mut e_impl = codegen::Impl::new(name);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
-    //let mut ser_func = make_serialization_function("serialize");
     let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
-    //ser_func.vis("pub (super)");
-    //ser_func_embedded.vis("pub (super)");
-    //let mut ser_array_match_block = codegen::Block::new("match self");
     let mut ser_array_embedded_match_block = codegen::Block::new("match self");
-    for variant_name in variants.iter() {
-        e.push_variant(codegen::Variant::new(&format!("{}({})", variant_name, variant_name)));
-        ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant_name));
+    for variant in variants.iter() {
+        e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant.rust_type.for_member())));
+        ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
     }
-    //ser_func.push_block(ser_array_match_block);
-    //e_impl.push_fn(ser_func);
     ser_func_embedded.push_block(ser_array_embedded_match_block);
     ser_embedded_impl.push_fn(ser_func_embedded);
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
     global.scope()
         .push_enum(e);
-    //    .push_impl(e_impl);
     global.serialize_scope()
         .push_impl(ser_impl)
         .push_impl(ser_embedded_impl);
@@ -1029,6 +1066,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     global.scope().raw("mod prelude;");
     global.scope().raw("mod serialization;");
     global.serialize_scope().import("super", "*");
+    global.scope().raw("type bytes = Vec<u8>");
     // Need to know beforehand which are plain groups so we can serialize them properly
     // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
     for cddl_rule in &cddl.rules {
@@ -1056,8 +1094,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let choice = &rule.value.type_choices.first().unwrap();
                     generate_type(&mut global, &rule_name, &choice.type2, None);
                 } else {
-                    let choice_names = global.create_type_choice_names(&rule.value.type_choices);
-                    global.generate_type_choices(&rule_name, &choice_names, None);
+                    let variants = global.create_variants_from_type_choices(&rule.value.type_choices);
+                    global.generate_type_choices(&rule_name, &variants, None);
                 }
             },
             Rule::Group{ rule, .. } => {
