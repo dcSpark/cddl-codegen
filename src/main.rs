@@ -184,7 +184,6 @@ impl GlobalScope {
         self.type_aliases.insert(alias.to_string(), base_type);
     }
 
-    // direct raw access
     fn scope(&mut self) -> &mut codegen::Scope {
         &mut self.global_scope
     }
@@ -197,8 +196,8 @@ impl GlobalScope {
         self.plain_groups.insert(name, group);
     }
 
-    // Returns true if it was a plain group. Generates a wrapper group if one wasn't before
-    fn generate_if_plain_group(&mut self, name: String, rep: Representation) -> bool {
+    // If it is a plain group, enerates a wrapper group if one wasn't before
+    fn generate_if_plain_group(&mut self, name: String, rep: Representation) {
         // to get around borrow checker borrowing self mutably + immutably
         if let Some(group) = self.plain_groups.get(&name).map(|g| (*g).clone()) {
             if self.already_generated.insert(name.clone()) {
@@ -206,9 +205,6 @@ impl GlobalScope {
                 //       if someone ever needs that
                 codegen_group(self, &group, &name, rep, None);
             }
-            true
-        } else {
-            false
         }
     }
 
@@ -238,7 +234,7 @@ impl GlobalScope {
     fn generate_type_choices(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
-        generate_enum(self, &enum_name, &variants, None);
+        generate_enum(self, &enum_name, &variants, None, false);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
@@ -325,7 +321,7 @@ impl GlobalScope {
         RustType::Array(Box::new(element_type))
     }
 
-    fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, rep: Representation) {
+    fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock) {
         //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         match rust_type {
             RustType::Primitive(_) => {
@@ -333,13 +329,16 @@ impl GlobalScope {
                 body.line(&format!("{}.clone().serialize(serializer)?;", expr));
             },
             RustType::Rust(t) => {
-                if self.generate_if_plain_group((*t).clone(), rep) {
+                if self.plain_groups.contains_key(t) {
                     body.line(&format!("{}.serialize_as_embedded_group(serializer)?;", expr));
                 } else {
                     body.line(&format!("{}.serialize(serializer)?;", expr));
                 }
             },
             RustType::Array(ty) => {
+                // TODO: I think this should be removed due to the TaggedData<T> removal - please test
+                //       to see if we need to replace this with something else, or if arrays of tagged things
+                //       work fine with the refactor.
                 // not iterating tagged data but instead its contents
                 if let RustType::Tagged(_, _) = &**ty {
                     expr.push_str(".data");
@@ -349,14 +348,13 @@ impl GlobalScope {
                     expr.push_str(".0");
                 }
                 body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
-                expr = format!("&{}", expr);
-                let mut loop_block = codegen::Block::new(&format!("for element in {}", expr));
+                let mut loop_block = codegen::Block::new(&format!("for element in {}.iter()", expr));
                 loop_block.line("element.serialize(serializer)?;");
                 body.push_block(loop_block);
             },
             RustType::Tagged(tag, ty) => {
                 body.line(&format!("serializer.write_tag({}u64)?;", tag));
-                self.generate_serialize(ty, expr, body, rep);
+                self.generate_serialize(ty, expr, body);
             },
         }
     }
@@ -667,8 +665,8 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             // serialize
             let mut ser_map = make_serialization_function("serialize_as_embedded_group");
             let mut table_loop = codegen::Block::new("for (key, value) in &self.table");
-            global.generate_serialize(&key_type, String::from("key"), &mut table_loop, Representation::Map);
-            global.generate_serialize(&value_type, String::from("value"), &mut table_loop, Representation::Map);
+            global.generate_serialize(&key_type, String::from("key"), &mut table_loop);
+            global.generate_serialize(&value_type, String::from("value"), &mut table_loop);
             ser_map.push_block(table_loop);
             ser_map.line("Ok(serializer)");
             ser_embedded_impl.push_fn(ser_map);
@@ -683,6 +681,9 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                     // does not exist for fixed values importantly
                     let field_type = group_entry_to_type(global, group_entry);
+                    if let Some(RustType::Rust(ident)) = &field_type {
+                        global.generate_if_plain_group(ident.clone(), rep);
+                    }
                     let optional_field = group_entry_optional(group_entry);
                     (field_name, field_type, optional_field, group_entry)
                 }
@@ -732,10 +733,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                         if let Some(rust_type) = field_type {
                             if *optional_field {
                                 let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
-                                global.generate_serialize(&rust_type, String::from("field"), &mut optional_array_ser_block, Representation::Array);
+                                global.generate_serialize(&rust_type, String::from("field"), &mut optional_array_ser_block);
                                 ser_func.push_block(optional_array_ser_block);
                             } else {
-                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_func, Representation::Array);
+                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_func);
                             }
                         } else {
                             // But even without a field, we still need to serialize them.
@@ -813,7 +814,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 },
                             };
                             // and serialize value
-                            global.generate_serialize(&rust_type, data_name, map_ser_block, Representation::Map);
+                            global.generate_serialize(&rust_type, data_name, map_ser_block);
                             if *optional_field {
                                 ser_func.push_block(optional_map_ser_block);
                             }
@@ -850,7 +851,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
                 rust_type: RustType::Rust(variant_name),
             }
         }).collect();
-        generate_enum(global, &enum_name, &variants, Some(rep));
+        generate_enum(global, &enum_name, &variants, Some(rep), true);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
@@ -900,7 +901,7 @@ struct EnumVariant {
     rust_type: RustType,
 }
 
-fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
+fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>, serialize_as_embedded_group: bool) {
     let mut e = codegen::Enum::new(enum_name);
     add_struct_derives(&mut e);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
@@ -908,9 +909,19 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumV
     let mut ser_array_embedded_match_block = codegen::Block::new("match self");
     for variant in variants.iter() {
         e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant.rust_type.for_member())));
-        ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
+        if serialize_as_embedded_group {
+            ser_array_embedded_match_block.line(&format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
+        } else {
+            let mut case_block = codegen::Block::new(&format!("{}::{}(x) =>", enum_name, variant.name));
+            global.generate_serialize(&variant.rust_type, String::from("x"), &mut case_block);
+            case_block.after(",");
+            ser_array_embedded_match_block.push_block(case_block);
+        }
     }
     ser_func_embedded.push_block(ser_array_embedded_match_block);
+    if !serialize_as_embedded_group {
+        ser_func_embedded.line("Ok(serializer)");
+    }
     ser_embedded_impl.push_fn(ser_func_embedded);
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
@@ -959,7 +970,7 @@ fn make_serialization_function(name: &str) -> codegen::Function {
     f
 }
 
-fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, rep: Representation, tag: Option<usize>) {
+fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(type_name);
     s
         .vis("pub")
@@ -970,7 +981,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     if let Some(tag) = tag {
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
-    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, rep);
+    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func);
     ser_func.line("Ok(serializer)");
     ser_impl.push_fn(ser_func);
     let mut new_func = codegen::Function::new("new");
@@ -1012,7 +1023,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
             };
             if generate_binary_wrapper {
                 let field_type = RustType::Array(Box::new(RustType::Primitive(String::from("u8"))));
-                generate_wrapper_struct(global, type_name, &field_type, Representation::Array, None);
+                generate_wrapper_struct(global, type_name, &field_type, None);
                 global.apply_type_alias_without_codegen(type_name.to_owned(), field_type);
             } else {
                 // Using RustType here just to get a string out of it that applies
@@ -1041,7 +1052,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
                 x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
             } {
                 Either::Left(_group) => generate_type(global, type_name, inner_type, *tag),
-                Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), Representation::Map /* Representation is ignored here since we wrap an identifier */, *tag),
+                Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), *tag),
             };
         },
         x => {
@@ -1066,7 +1077,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     global.scope().raw("mod prelude;");
     global.scope().raw("mod serialization;");
     global.serialize_scope().import("super", "*");
-    global.scope().raw("type bytes = Vec<u8>");
     // Need to know beforehand which are plain groups so we can serialize them properly
     // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
     for cddl_rule in &cddl.rules {
