@@ -190,6 +190,43 @@ impl GlobalScope {
         }
     }
 
+    // TODO: Also generates individual choices if required, ie for a / [foo] / c would generate Foos
+    fn create_type_choice_names(&mut self, type_choices: &Vec<Type1>) -> Vec<String> {
+        type_choices.iter().map(|type1| match rust_type_from_type2(self, &type1.type2) {
+            Some(rust_type) => rust_type.for_member(),
+            None => panic!("Could not generate type from {:?}", type_choices),
+        }).collect()
+    }
+
+    fn generate_type_choices(&mut self, name: &str, variants: &Vec<String>, tag: Option<usize>) {
+        // Handle group with choices by generating an enum then generating a group for every choice
+        let enum_name = format!("{}Enum", name);
+        generate_enum(self, &enum_name, &variants, None);
+
+        // Now generate a wrapper object that we will expose to wasm around this
+        let (mut s, mut s_impl) = create_exposed_group(name);
+        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, None, tag);
+        s
+            .vis("pub")
+            .tuple_field(&enum_name);
+        // new
+        for variant_name in variants.iter() {
+            let variant_arg = convert_to_snake_case(&variant_name);
+            let mut new_func = codegen::Function::new(&format!("new_{}", variant_arg));
+            new_func
+                .ret("Self")
+                .vis("pub")
+                .arg(&variant_arg, variant_name)
+                .line(format!("Self({}::{}({}))", enum_name, variant_name, variant_arg));
+            s_impl.push_fn(new_func);
+        }
+        // serialize
+        let mut ser_embedded_func = make_serialization_function("serialize_as_embedded_group");
+        ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
+        ser_embedded_impl.push_fn(ser_embedded_func);
+        push_exposed_struct(self, s, s_impl, ser_impl, ser_embedded_impl);
+    }
+
     // generate array type ie [Foo] generates Foos if not already created
     fn generate_array_type(&mut self, element_type: RustType) -> RustType {
         if element_type.directly_wasm_exposable() {
@@ -461,15 +498,23 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> Option<RustT
 }
 
 fn rust_type(global: &mut GlobalScope, t: &Type) -> Option<RustType> {
-    for type1 in t.type_choices.iter() {
-        // ignoring range control operator here, only interested in Type2
-        return rust_type_from_type2(global, &type1.type2);
-
-        // TODO: how to handle type choices? define an enum for every option?
-        //       deserializing would be more complicated since you'd
-        //       have to test them until one matches.
+    if t.type_choices.len() == 1 {
+        rust_type_from_type2(global, &t.type_choices.first().unwrap().type2)
+    } else {
+        let choice_names = global.create_type_choice_names(&t.type_choices);
+        let mut combined_name = String::new();
+        // one caveat: nested types can leave ambiguous names and cause problems like
+        // (a / b) / c and a / (b / c) would both be AOrBOrC
+        for choice_name in &choice_names {
+        if !combined_name.is_empty() {
+                combined_name.push_str("Or");
+            }
+            // due to undercase primitive names, we need to convert here
+            combined_name.push_str(&convert_to_camel_case(&choice_name));
+        }
+        global.generate_type_choices(&combined_name, &choice_names, None);
+        Some(global.new_raw_type(&combined_name))
     }
-    panic!("rust_type() is broken for: '{}'", t)
 }
 
 fn group_entry_optional(entry: &GroupEntry) -> bool {
@@ -509,7 +554,7 @@ fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
 
 // The serialize impls calls the embedded serialize impl, but the embedded one is
 // empty and must be implemented yourself.
-fn create_serialize_impls(name: &str, rep: Representation, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
     let mut ser_func = make_serialization_function("serialize");
@@ -517,13 +562,16 @@ fn create_serialize_impls(name: &str, rep: Representation, tag: Option<usize>) -
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
     // TODO: indefinite or definite encoding?
-    match rep {
-        Representation::Array => ser_func.line(format!("serializer.write_array(cbor_event::Len::Indefinite)?;")),
-        Representation::Map => ser_func.line(format!("serializer.write_map(cbor_event::Len::Indefinite)?;")),
-    };
-    ser_func
-        .line("self.serialize_as_embedded_group(serializer)?;")
-        .line("serializer.write_special(cbor_event::Special::Break)");
+    if let Some (rep) = rep {
+        match rep {
+            Representation::Array => ser_func.line(format!("serializer.write_array(cbor_event::Len::Indefinite)?;")),
+            Representation::Map => ser_func.line(format!("serializer.write_map(cbor_event::Len::Indefinite)?;")),
+        };
+        ser_func.line("self.serialize_as_embedded_group(serializer)?;");
+        ser_func.line("serializer.write_special(cbor_event::Special::Break)");
+    } else {
+        ser_func.line("self.serialize_as_embedded_group(serializer)");
+    }
     ser_impl.push_fn(ser_func);
     let mut ser_embedded_impl = codegen::Impl::new(name);
     ser_embedded_impl.impl_trait("SerializeEmbeddedGroup");
@@ -549,7 +597,7 @@ fn push_exposed_struct(
 
 fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(name);
-    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep, tag);
+    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
     s.vis("pub");
     let table_types = table_domain_range(group_choice, rep);
     match table_types {
@@ -657,7 +705,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             // This is for when the entry was a literal value
                             match group_entry {
                                 GroupEntry::ValueMemberKey{ ge, .. } => {
-                                    assert_eq!(ge.entry_type.type_choices.len(), 1, "Type choices not supported");
+                                    assert_eq!(ge.entry_type.type_choices.len(), 1, "Type choices not supported as map keys");
                                     match ge.entry_type.type_choices.first() {
                                         Some(x) => match &x.type2 {
                                             Type2::UintValue{ value, .. } => {
@@ -746,7 +794,6 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
     push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
 }
 
-// Separate function for when we support multiple choices as an enum
 fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Representation, tag: Option<usize>) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
@@ -757,47 +804,22 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
-        let mut e = codegen::Enum::new(&enum_name);
-        add_struct_derives(&mut e);
-        //let mut e_impl = codegen::Impl::new(name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(&enum_name, rep, None);
-        //let mut ser_func = make_serialization_function("serialize");
-        let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
-        //ser_func.vis("pub (super)");
-        //ser_func_embedded.vis("pub (super)");
-        //let mut ser_array_match_block = codegen::Block::new("match self");
-        let mut ser_array_embedded_match_block = codegen::Block::new("match self");
-        for (i, group_choice) in group.group_choices.iter().enumerate() {
-            let variant_name = name.to_owned() + &i.to_string();
-            e.push_variant(codegen::Variant::new(&format!("{}({})", variant_name, variant_name)));
+        let variants: Vec<String> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
+            let variant_name = format!("{}{}", name, i);
             // TODO: Should we generate these within their own namespace?
             codegen_group_choice(global, group_choice, &variant_name, rep, None);
-            //ser_array_match_block.line(format!("{}::{}(x) => x.serialize(serializer),", enum_name, variant_name));
-            ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant_name));
-        }
-        //ser_func.push_block(ser_array_match_block);
-        //e_impl.push_fn(ser_func);
-        ser_func_embedded.push_block(ser_array_embedded_match_block);
-        ser_embedded_impl.push_fn(ser_func_embedded);
-        // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
-        // however, clients expanding upon the generated lib might find it of use to change.
-        global.scope()
-            .push_enum(e);
-        //    .push_impl(e_impl);
-        global.serialize_scope()
-            .push_impl(ser_impl)
-            .push_impl(ser_embedded_impl);
-
+            variant_name
+        }).collect();
+        generate_enum(global, &enum_name, &variants, Some(rep));
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, rep, tag);
+        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
         s
             .vis("pub")
             .tuple_field(&enum_name);
         // new
-        for (i, group_choice) in group.group_choices.iter().enumerate() {
-            let variant_name = name.to_owned() + &i.to_string();
+        for (variant_name, group_choice) in variants.iter().zip(group.group_choices.iter()) {
             let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant_name)));
             new_func
                 .ret("Self")
@@ -830,6 +852,36 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         ser_embedded_impl.push_fn(ser_embedded_func);
         push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
     }
+}
+
+// rep is Optional - None means we just serialize raw, ie for tpye choices
+fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<String>, rep: Option<Representation>) {
+    let mut e = codegen::Enum::new(enum_name);
+    add_struct_derives(&mut e);
+    //let mut e_impl = codegen::Impl::new(name);
+    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
+    //let mut ser_func = make_serialization_function("serialize");
+    let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
+    //ser_func.vis("pub (super)");
+    //ser_func_embedded.vis("pub (super)");
+    //let mut ser_array_match_block = codegen::Block::new("match self");
+    let mut ser_array_embedded_match_block = codegen::Block::new("match self");
+    for variant_name in variants.iter() {
+        e.push_variant(codegen::Variant::new(&format!("{}({})", variant_name, variant_name)));
+        ser_array_embedded_match_block.line(format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant_name));
+    }
+    //ser_func.push_block(ser_array_match_block);
+    //e_impl.push_fn(ser_func);
+    ser_func_embedded.push_block(ser_array_embedded_match_block);
+    ser_embedded_impl.push_fn(ser_func_embedded);
+    // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
+    // however, clients expanding upon the generated lib might find it of use to change.
+    global.scope()
+        .push_enum(e);
+    //    .push_impl(e_impl);
+    global.serialize_scope()
+        .push_impl(ser_impl)
+        .push_impl(ser_embedded_impl);
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -962,7 +1014,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("supported.cddl").unwrap();
+    let cddl_in = std::fs::read_to_string("type_choice_test.cddl").unwrap();
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
     //println!("CDDL file: {}", cddl);
     let mut global = GlobalScope::new();
@@ -995,17 +1047,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match cddl_rule {
             Rule::Type{ rule, .. } => {
                 // (1) does not handle optional generic parameters
-                // (2) does not handle ranges - I think they're the character position in the CDDL
-                // (3) is_type_choice_alternate ignored since shelley cddl doesn't need it
+                // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
                 //     It's used, but used for no reason as it is the initial definition
                 //     (which is also valid cddl), but it would be fine as = instead of /=
-                // TODO: choices (as enums I guess?)
-                for choice in &rule.value.type_choices {
-                    // ignores control operators - only used in shelley spec to limit string length for application metadata
-                    generate_type(&mut global, &convert_to_camel_case(&rule.name.to_string()), &choice.type2, None);
-                    //println!("{} type2 = {:?}\n", tr.name, choice.type2);
-                    // remove break and implement type choices
-                    break;
+                // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
+                let rule_name = convert_to_camel_case(&rule.name.to_string());
+                if rule.value.type_choices.len() == 1 {
+                    let choice = &rule.value.type_choices.first().unwrap();
+                    generate_type(&mut global, &rule_name, &choice.type2, None);
+                } else {
+                    let choice_names = global.create_type_choice_names(&rule.value.type_choices);
+                    global.generate_type_choices(&rule_name, &choice_names, None);
                 }
             },
             Rule::Group{ rule, .. } => {
