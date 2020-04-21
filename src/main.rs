@@ -16,7 +16,7 @@ use codegen_helpers::{CodeBlock, DataType};
 use std::collections::{BTreeMap, BTreeSet};
 use either::{Either};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum Representation {
     Array,
     Map,
@@ -193,7 +193,21 @@ impl GlobalScope {
     }
 
     fn mark_plain_group(&mut self, name: String, group: Group) {
+        // TODO: support for plain groups with choices
+        assert_eq!(group.group_choices.len(), 1);
         self.plain_groups.insert(name, group);
+    }
+
+
+    fn is_plain_group(&self, name: &str) -> bool{
+        self.plain_groups.contains_key(name)
+    }
+
+    fn plain_group_fields(&self, name: &str) -> Option<Vec<GroupEntry>> {
+        match self.plain_groups.get(name) {
+            Some(group) => Some(group.group_choices.first().unwrap().group_entries.iter().map(|(e, _)| e.clone()).collect()),
+            None => None,
+        }
     }
 
     // If it is a plain group, enerates a wrapper group if one wasn't before
@@ -216,25 +230,15 @@ impl GlobalScope {
                 Some(t) => t,
                 None => panic!("Could not generate type from {:?} in {:?}", type1.type2, type_choices),
             };
-            let variant_name = rust_type.for_variant();
-            let entry = variant_names_used.entry(rust_type.for_member()).or_default();
-            *entry += 1;
-            let variant_name = if *entry > 1 {
-                format!("{}{}", variant_name, *entry)
-            } else {
-                variant_name
-            };
-            EnumVariant {
-                name: variant_name,
-                rust_type: rust_type,
-            }
+            let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant());
+            EnumVariant::new(variant_name, rust_type, false)
         }).collect()
     }
 
     fn generate_type_choices(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
-        generate_enum(self, &enum_name, &variants, None, false);
+        generate_enum(self, &enum_name, &variants, None);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
@@ -321,18 +325,24 @@ impl GlobalScope {
         RustType::Array(Box::new(element_type))
     }
 
-    fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock) {
+    // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
+    fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, is_end: bool) {
         //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        let line_ender = if is_end {
+            ""
+        } else {
+            "?;"
+        };
         match rust_type {
             RustType::Primitive(_) => {
                 // clone() is to handle String, might not be necessary
-                body.line(&format!("{}.clone().serialize(serializer)?;", expr));
+                body.line(&format!("{}.clone().serialize(serializer){}", expr, line_ender));
             },
             RustType::Rust(t) => {
                 if self.plain_groups.contains_key(t) {
-                    body.line(&format!("{}.serialize_as_embedded_group(serializer)?;", expr));
+                    body.line(&format!("{}.serialize_as_embedded_group(serializer){}", expr, line_ender));
                 } else {
-                    body.line(&format!("{}.serialize(serializer)?;", expr));
+                    body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
                 }
             },
             RustType::Array(ty) => {
@@ -351,10 +361,13 @@ impl GlobalScope {
                 let mut loop_block = codegen::Block::new(&format!("for element in {}.iter()", expr));
                 loop_block.line("element.serialize(serializer)?;");
                 body.push_block(loop_block);
+                if is_end {
+                    body.line("Ok(serializer)");
+                }
             },
             RustType::Tagged(tag, ty) => {
                 body.line(&format!("serializer.write_tag({}u64)?;", tag));
-                self.generate_serialize(ty, expr, body);
+                self.generate_serialize(ty, expr, body, is_end);
             },
         }
     }
@@ -428,6 +441,16 @@ fn is_identifier_reserved(name: &str) -> bool {
     }
 }
 
+fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: String) -> String {
+    let entry = used_names.entry(name.clone()).or_default();
+    *entry += 1;
+    if *entry > 1 {
+        format!("{}{}", name, *entry)
+    } else {
+        name
+    }
+}
+
 fn type_to_field_name(t: &Type) -> Option<String> {
     match t.type_choices.len() {
         1 => match &t.type_choices.first().unwrap().type2 {
@@ -462,6 +485,8 @@ fn type_to_field_name(t: &Type) -> Option<String> {
 
 // Attempts to use the style-converted type name as a field name, and if we have already
 // generated one, then we simply add numerals starting at 2, 3, 4...
+// If you wish to only check if there is an explicitly stated field name,
+// then use group_entry_to_raw_field_name()
 fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>) -> String {
     let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
@@ -483,12 +508,23 @@ fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated
         },
         GroupEntry::InlineGroup{ group, .. } => panic!("not implemented (define a new struct for this!) = {}\n\n {:?}", group, group),
     });
-    let entry = already_generated.entry(field_name.clone()).or_default();
-    *entry += 1;
-    if *entry > 1 {
-        format!("{}{}", field_name, *entry)
-    } else {
-        field_name
+    append_number_if_duplicate(already_generated, field_name.clone())
+}
+
+// Only returns Some(String) if there was an explicit field name provided, otherwise None.
+// If you need to try and make one using the type/etc, then try group_entry_to_field_name()
+// Also does not do any CamelCase or snake_case formatting.
+fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
+    match entry {
+        GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
+            Some(MemberKey::Bareword{ ident, .. } ) => Some(ident.to_string()),
+            _ => None,
+        },
+        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match is_identifier_reserved(&name.to_string()) {
+            true => None,
+            false => Some(name.to_string()),
+        },
+        GroupEntry::InlineGroup{ group, .. } => panic!("not implemented (define a new struct for this!) = {}\n\n {:?}", group, group),
     }
 }
 
@@ -665,8 +701,8 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             // serialize
             let mut ser_map = make_serialization_function("serialize_as_embedded_group");
             let mut table_loop = codegen::Block::new("for (key, value) in &self.table");
-            global.generate_serialize(&key_type, String::from("key"), &mut table_loop);
-            global.generate_serialize(&value_type, String::from("value"), &mut table_loop);
+            global.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
+            global.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
             ser_map.push_block(table_loop);
             ser_map.line("Ok(serializer)");
             ser_embedded_impl.push_fn(ser_map);
@@ -733,10 +769,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                         if let Some(rust_type) = field_type {
                             if *optional_field {
                                 let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
-                                global.generate_serialize(&rust_type, String::from("field"), &mut optional_array_ser_block);
+                                global.generate_serialize(&rust_type, String::from("field"), &mut optional_array_ser_block, false);
                                 ser_func.push_block(optional_array_ser_block);
                             } else {
-                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_func);
+                                global.generate_serialize(&rust_type, format!("self.{}", field_name), &mut ser_func, false);
                             }
                         } else {
                             // But even without a field, we still need to serialize them.
@@ -814,7 +850,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 },
                             };
                             // and serialize value
-                            global.generate_serialize(&rust_type, data_name, map_ser_block);
+                            global.generate_serialize(&rust_type, data_name, map_ser_block, false);
                             if *optional_field {
                                 ser_func.push_block(optional_map_ser_block);
                             }
@@ -842,16 +878,46 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
+        let mut variants_names_used = BTreeMap::<String, u32>::new();
         let variants: Vec<EnumVariant> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
-            let variant_name = format!("{}{}", name, i);
-            // TODO: Should we generate these within their own namespace?
-            codegen_group_choice(global, group_choice, &variant_name, rep, None);
-            EnumVariant {
-                name: variant_name.clone(),
-                rust_type: RustType::Rust(variant_name),
+            // If we're a 1-element we should just wrap that type in the variant rather than
+            // define a new struct just for each variant.
+            // TODO: handle map-based enums? It would require being able to extract the key logic
+            // We might end up doing this anyway to support table-maps in choices though.
+            if group_choice.group_entries.len() == 1 {
+                let group_entry = &group_choice.group_entries.first().unwrap().0;
+                match group_entry_to_type(global, group_entry) {
+                    Some(ty) => {
+                        if let RustType::Rust(ident) = &ty {
+                            // we might need to generate it if not used elsewhere
+                            global.generate_if_plain_group(ident.clone(), rep);
+                        }
+                        let variant_name = match group_entry_to_raw_field_name(group_entry) {
+                            Some(name) => name,
+                            None => append_number_if_duplicate(&mut variants_names_used, ty.for_variant()),
+                        };
+                        EnumVariant::new(convert_to_camel_case(&variant_name), ty, global.is_plain_group(&name))
+                    },
+                    None => {
+                        // TODO: Weird case, group choice with only one fixed-value field.
+                        // What should we do here? In the future we could make this a
+                        // non-value-taking enum then handle this in the serialization code.
+                        // However, for now we just default to default behavior:
+                        let variant_name = format!("{}{}", name, i);
+                        // TODO: Should we generate these within their own namespace?
+                        codegen_group_choice(global, group_choice, &variant_name, rep, None);
+                        EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), true)
+                    },
+                }
+            } else {
+                // General case, GroupN type identifiers and generate group choice since it's inlined here
+                let variant_name = format!("{}{}", name, i);
+                // TODO: Should we generate these within their own namespace?
+                codegen_group_choice(global, group_choice, &variant_name, rep, None);
+                EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), false)
             }
         }).collect();
-        generate_enum(global, &enum_name, &variants, Some(rep), true);
+        generate_enum(global, &enum_name, &variants, Some(rep));
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(name);
@@ -868,7 +934,11 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
             let mut output_comma = false;
             let mut ctor = format!("Self({}::{}({}::new(", enum_name, variant.name, variant.name);
             let mut generated_fields = BTreeMap::<String, u32>::new();
-            for (index, (group_entry, _has_comma)) in group_choice.group_entries.iter().enumerate() {
+            let group_entries = match global.plain_group_fields(&variant.name) {
+                Some(entries) => entries,
+                None => group_choice.group_entries.iter().map(|(e, _)| e.clone()).collect(),
+            };
+            for (index, group_entry) in group_entries.iter().enumerate() {
                 if !group_entry_optional(group_entry) {
                     let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
                     // Unsupported types so far are fixed values, only have fields for these.
@@ -899,9 +969,20 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 struct EnumVariant {
     name: String,
     rust_type: RustType,
+    serialize_as_embedded_group: bool,
 }
 
-fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>, serialize_as_embedded_group: bool) {
+impl EnumVariant {
+    pub fn new(name: String, rust_type: RustType, serialize_as_embedded_group: bool) -> Self {
+        Self {
+            name,
+            rust_type,
+            serialize_as_embedded_group,
+        }
+    }
+}
+
+fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
     let mut e = codegen::Enum::new(enum_name);
     add_struct_derives(&mut e);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
@@ -909,19 +990,16 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumV
     let mut ser_array_embedded_match_block = codegen::Block::new("match self");
     for variant in variants.iter() {
         e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant.rust_type.for_member())));
-        if serialize_as_embedded_group {
+        if variant.serialize_as_embedded_group {
             ser_array_embedded_match_block.line(&format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
         } else {
             let mut case_block = codegen::Block::new(&format!("{}::{}(x) =>", enum_name, variant.name));
-            global.generate_serialize(&variant.rust_type, String::from("x"), &mut case_block);
+            global.generate_serialize(&variant.rust_type, String::from("x"), &mut case_block, true);
             case_block.after(",");
             ser_array_embedded_match_block.push_block(case_block);
         }
     }
     ser_func_embedded.push_block(ser_array_embedded_match_block);
-    if !serialize_as_embedded_group {
-        ser_func_embedded.line("Ok(serializer)");
-    }
     ser_embedded_impl.push_fn(ser_func_embedded);
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
@@ -981,8 +1059,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     if let Some(tag) = tag {
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
-    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func);
-    ser_func.line("Ok(serializer)");
+    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, true);
     ser_impl.push_fn(ser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -1062,7 +1139,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("type_choice_test.cddl").unwrap();
+    let cddl_in = std::fs::read_to_string(/*type_choice_*/"test.cddl").unwrap();
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
     //println!("CDDL file: {}", cddl);
     let mut global = GlobalScope::new();
