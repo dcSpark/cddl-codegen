@@ -25,19 +25,26 @@ enum Representation {
 #[derive(Clone, Debug)]
 enum FixedValue {
     Null,
+    Bool(bool),
     Int(isize),
     Uint(usize),
-    Float(f64),
+    // float not supported right now - doesn't appear to be in cbor_event
+    //Float(f64),
     Text(String),
+    // UTF byte types not supported
 }
 
 impl FixedValue {
     fn for_variant(&self) -> String {
         match self {
             FixedValue::Null => String::from("Null"),
+            FixedValue::Bool(b) => match b {
+                true => String::from("True"),
+                false => String::from("False"),
+            },
             FixedValue::Int(i) => format!("U{}", i),
             FixedValue::Uint(u) => format!("I{}", u),
-            FixedValue::Float(f) => format!("F{}", f),
+            //FixedValue::Float(f) => format!("F{}", f),
             FixedValue::Text(s) => convert_to_camel_case(&s),
         }
     }
@@ -174,6 +181,7 @@ impl GlobalScope {
         // Not sure on this one, I think they can be bigger than i64 can fit
         // but the cbor_event serialization takes the argument as an i64
         aliases.insert(String::from("nint"), RustType::Primitive(String::from("i32")));
+        aliases.insert(String::from("bool"), RustType::Primitive(String::from("bool")));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
@@ -191,6 +199,8 @@ impl GlobalScope {
         let null_type = RustType::Fixed(FixedValue::Null);
         aliases.insert(String::from("null"), null_type.clone());
         aliases.insert(String::from("nil"), null_type);
+        aliases.insert(String::from("true"), RustType::Fixed(FixedValue::Bool(true)));
+        aliases.insert(String::from("false"), RustType::Fixed(FixedValue::Bool(false)));
         // What about bingint/other stuff in the standard prelude?
         Self {
             global_scope: codegen::Scope::new(),
@@ -400,10 +410,19 @@ impl GlobalScope {
                 FixedValue::Null => {
                     body.line(&format!("serializer.write_special(cbor_event::Special::Null){}", line_ender));
                 },
+                FixedValue::Bool(b) => {
+                    body.line(&format!("serializer.write_special(cbor_event::Special::Bool({})){}", b, line_ender));
+                },
                 FixedValue::Uint(u) => {
                     body.line(&format!("serializer.write_unsigned_integer({}u64){}", u, line_ender));
                 },
-                _ => unimplemented!(),
+                // TODO: should this be Nint instead of Int? CDDL spec is Nint but cddl lib is Int
+                FixedValue::Int(i) => {
+                    body.line(&format!("serializer.write_negative_integer({}i64){}", i, line_ender));
+                },
+                FixedValue::Text(s) => {
+                    body.line(&format!("serializer.write_text({}){}", s, line_ender));
+                },
             },
             RustType::Primitive(_) => {
                 // clone() is to handle String, might not be necessary
@@ -523,7 +542,9 @@ fn is_identifier_reserved(name: &str) -> bool {
         "bytes" |
         "bstr"  |
         "null"  |
-        "nil" => true,
+        "nil"   |
+        "true"  |
+        "false" => true,
         _ => false,
     }
 }
@@ -644,7 +665,7 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
     match type2 {
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
         Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
-        Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
+        //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
         Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.clone())),
         Type2::Typename{ ident, .. } => global.new_raw_type(&ident.ident),
         // Map(group) not implemented as it's not in shelley.cddl
