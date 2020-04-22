@@ -54,7 +54,8 @@ enum RustType {
     Array(Box<RustType>),
     // Tagged type. Behavior depends entirely on wrapped type.
     Tagged(usize, Box<RustType>),
-
+    // T / null in CBOR - auto-converts to Option<T> in rust for ease of use.
+    Optional(Box<RustType>),
     // TODO: table type to support inlined defined table-type groups as fields
 
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
@@ -72,6 +73,7 @@ impl RustType {
             RustType::Rust(_) => false,
             RustType::Array(ty) => ty.directly_wasm_exposable(),
             RustType::Tagged(_tag, ty) => ty.directly_wasm_exposable(),
+            RustType::Optional(ty) => ty.directly_wasm_exposable(),
         }
     }
 
@@ -95,6 +97,8 @@ impl RustType {
                 format!("{}s", ty.for_wasm())
             },
             RustType::Tagged(_tag, ty) => ty.for_wasm(),
+            // should this be Option<T>?
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm()),
         }
     }
 
@@ -109,6 +113,7 @@ impl RustType {
                 format!("{}s", ty.for_wasm())
             },
             RustType::Tagged(_tag, ty) => ty.for_member(),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
         }
     }
 
@@ -128,6 +133,7 @@ impl RustType {
                 }
                 format!("Arr{}", inner.for_variant())
             },
+            RustType::Optional(ty) => format!("Opt{}", ty.for_variant()),
             _ => self.for_member(),
         }
     }
@@ -147,6 +153,7 @@ impl RustType {
             RustType::Rust(_) => false,
             RustType::Array(_) => true,
             RustType::Tagged(_, _) => true,
+            RustType::Optional(_) => false,
         }
     }
 }
@@ -433,6 +440,20 @@ impl GlobalScope {
                 body.line(&format!("serializer.write_tag({}u64)?;", tag));
                 self.generate_serialize(ty, expr, body, is_end);
             },
+            RustType::Optional(ty) => {
+                let mut opt_block = codegen::Block::new(&format!("match {}", expr));
+                // TODO: do this in one line without a block if possible somehow.
+                //       see other comment in generate_enum()
+                let mut some_block = codegen::Block::new("Some(x) =>");
+                self.generate_serialize(ty, String::from("x"), &mut some_block, true);
+                some_block.after(",");
+                opt_block.push_block(some_block);
+                opt_block.line(&format!("None => serializer.write_special(cbor_event::Special::Null),"));
+                if !is_end {
+                    opt_block.after("?;");
+                }
+                body.push_block(opt_block);
+            }
         };
     }
 }
@@ -517,10 +538,17 @@ fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: Stri
     }
 }
 
+// would use rust_type_from_type2 but that requires GlobalScope which we shouldn't
+fn type2_is_null(t2: &Type2) -> bool {
+    match t2 {
+        Type2::Typename{ ident, .. } => ident.ident == "null" || ident.ident == "nil",
+        _ => false,
+    }
+}
+
 fn type_to_field_name(t: &Type) -> Option<String> {
-    match t.type_choices.len() {
-        1 => match &t.type_choices.first().unwrap().type2 {
-            Type2::Typename{ ident, .. } => Some(ident.to_string()),
+    let type2_to_field_name = |t2: &Type2| match t2 {
+        Type2::Typename{ ident, .. } => Some(ident.to_string()),
             Type2::TextValue { value, .. } => Some(value.clone()),
             Type2::Array { group, .. } => match group.group_choices.len() {
                 1 => {
@@ -543,6 +571,21 @@ fn type_to_field_name(t: &Type) -> Option<String> {
             }
             // non array/text/identifier types not supported here - value keys are caught earlier anyway
             _ => None
+    };
+    match t.type_choices.len() {
+        1 => type2_to_field_name(&t.type_choices.first().unwrap().type2),
+        2 => {
+            // special case for T / null -> maps to Option<T> so field name should be same as just T
+            let a = &t.type_choices[0].type2;
+            let b = &t.type_choices[1].type2;
+            if type2_is_null(a) {
+                type2_to_field_name(b)
+            } else if type2_is_null(b) {
+                type2_to_field_name(a)
+            } else {
+                // neither are null - we do not support type choices here
+                None
+            }
         },
         // no type choice support here
         _ => None,
@@ -642,6 +685,17 @@ fn rust_type(global: &mut GlobalScope, t: &Type) -> RustType {
     if t.type_choices.len() == 1 {
         rust_type_from_type2(global, &t.type_choices.first().unwrap().type2)
     } else {
+        if t.type_choices.len() == 2 {
+            // T / null   or   null / T   should map to Option<T>
+            let a = &t.type_choices[0].type2;
+            let b = &t.type_choices[1].type2;
+            if type2_is_null(a) {
+                return RustType::Optional(Box::new(rust_type_from_type2(global, b)));
+            }
+            if type2_is_null(b) {
+                return RustType::Optional(Box::new(rust_type_from_type2(global, a)));
+            }
+        }
         let variants = global.create_variants_from_type_choices(&t.type_choices);
         let mut combined_name = String::new();
         // one caveat: nested types can leave ambiguous names and cause problems like
@@ -1237,8 +1291,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let choice = &rule.value.type_choices.first().unwrap();
                     generate_type(&mut global, &rule_name, &choice.type2, None);
                 } else {
-                    let variants = global.create_variants_from_type_choices(&rule.value.type_choices);
-                    global.generate_type_choices(&rule_name, &variants, None);
+                    let optional_inner_type = if rule.value.type_choices.len() == 2 {
+                        let a = &rule.value.type_choices[0].type2;
+                        let b = &rule.value.type_choices[1].type2;
+                        if type2_is_null(a) {
+                            Some(b)
+                        } else if type2_is_null(b) {
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(inner_type2) = optional_inner_type {
+                        let inner_rust_type = rust_type_from_type2(&mut global, inner_type2);
+                        global.generate_type_alias(rule_name, &format!("Option<{}>", inner_rust_type.for_member()));
+                    } else {
+                        let variants = global.create_variants_from_type_choices(&rule.value.type_choices);
+                        global.generate_type_choices(&rule_name, &variants, None);
+                    }
                 }
             },
             Rule::Group{ rule, .. } => {
