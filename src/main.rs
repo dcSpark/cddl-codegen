@@ -136,6 +136,7 @@ impl RustType {
                 "String" => String::from("Text"),
                 p => convert_to_camel_case(p),
             },
+            RustType::Rust(ident) => ident.clone(),
             RustType::Array(inner) => {
                 if let RustType::Primitive(p) = &**inner {
                     if p == "u8" {
@@ -144,9 +145,9 @@ impl RustType {
                 }
                 format!("Arr{}", inner.for_variant())
             },
+            RustType::Tagged(_tag, ty) => ty.for_variant(),
             RustType::Optional(ty) => format!("Opt{}", ty.for_variant()),
             RustType::Map(k, v) => format!("Map{}To{}", k.for_variant(), v.for_variant()),
-            _ => self.for_member(),
         }
     }
 
@@ -1110,30 +1111,45 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
                 .ret("Self")
                 .vis("pub");
             let mut output_comma = false;
-            let mut ctor = format!("Self({}::{}({}::new(", enum_name, variant.name, variant.name);
             let mut generated_fields = BTreeMap::<String, u32>::new();
             let group_entries = match global.plain_group_fields(&variant.name) {
                 Some(entries) => entries,
                 None => group_choice.group_entries.iter().map(|(e, _)| e.clone()).collect(),
             };
-            for (index, group_entry) in group_entries.iter().enumerate() {
-                if !group_entry_optional(group_entry) {
-                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
-                    // Unsupported types so far are fixed values, only have fields for these.
-                    let rust_type = group_entry_to_type(global, group_entry);
-                    if !rust_type.is_fixed_value() {
-                        if output_comma {
-                            ctor.push_str(", ");
-                        } else {
-                            output_comma = true;
+            // We only want to generate Variant::new() calls when we created a special struct
+            // for the variant, which happens in the general case for multi-field group choices
+            if group_choice.group_entries.len() > 1 {
+                let mut ctor = format!("Self({}::{}({}::new(", enum_name, variant.name, variant.name);
+                for (index, group_entry) in group_entries.iter().enumerate() {
+                    if !group_entry_optional(group_entry) {
+                        let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
+                        // Unsupported types so far are fixed values, only have fields for these.
+                        let rust_type = group_entry_to_type(global, group_entry);
+                        if !rust_type.is_fixed_value() {
+                            if output_comma {
+                                ctor.push_str(", ");
+                            } else {
+                                output_comma = true;
+                            }
+                            new_func.arg(&field_name, rust_type.for_wasm());
+                            ctor.push_str(&field_name);
                         }
-                        new_func.arg(&field_name, rust_type.for_wasm());
-                        ctor.push_str(&field_name);
                     }
                 }
+                ctor.push_str(")))");
+                new_func.line(ctor);
+            } else {
+                let group_entry = &group_choice.group_entries.first().unwrap().0;
+                let field_name = group_entry_to_field_name(group_entry, 0, &mut generated_fields);
+                let rust_type = group_entry_to_type(global, group_entry);
+                if !group_entry_optional(group_entry) && !rust_type.is_fixed_value() {
+                    new_func
+                        .arg(&field_name, rust_type.for_wasm())
+                        .line(format!("Self({}::{}({}))", enum_name, variant.name, field_name));
+                } else {
+                    new_func.line(format!("Self({}::{})", enum_name, variant.name));
+                }
             }
-            ctor.push_str(")))");
-            new_func.line(ctor);
             s_impl.push_fn(new_func);
         }
         // serialize
