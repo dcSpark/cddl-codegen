@@ -263,8 +263,6 @@ impl GlobalScope {
     }
 
     fn mark_plain_group(&mut self, name: String, group: Group) {
-        // TODO: support for plain groups with choices
-        //assert_eq!(group.group_choices.len(), 1);
         self.plain_groups.insert(name, group);
     }
 
@@ -275,7 +273,10 @@ impl GlobalScope {
 
     fn plain_group_fields(&self, name: &str) -> Option<Vec<GroupEntry>> {
         match self.plain_groups.get(name) {
-            Some(group) => Some(group.group_choices.first().unwrap().group_entries.iter().map(|(e, _)| e.clone()).collect()),
+            Some(group) => {
+                assert_eq!(group.group_choices.len(), 1, "can only get fields of plain group without choices");
+                Some(group.group_choices.first().unwrap().group_entries.iter().map(|(e, _)| e.clone()).collect())
+            },
             None => None,
         }
     }
@@ -494,7 +495,7 @@ impl GlobalScope {
                 }
                 body.push_block(opt_block);
             },
-            RustType::Map(key_type, value_type) => {
+            RustType::Map(_key, _value) => {
                 // body.line("serializer.write_map(cbor_event::Len::Indefinite)?;");
                 // let mut table_loop = codegen::Block::new(&format!("for (key, value) in {}.iter()", expr));
                 // self.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
