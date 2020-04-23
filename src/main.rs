@@ -303,7 +303,7 @@ impl GlobalScope {
         }).collect()
     }
 
-    fn generate_type_choices(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
+    fn generate_type_choices_from_variants(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = format!("{}Enum", name);
         generate_enum(self, &enum_name, &variants, None);
@@ -777,7 +777,7 @@ fn rust_type(global: &mut GlobalScope, t: &Type) -> RustType {
             // due to undercase primitive names, we need to convert here
             combined_name.push_str(&variant.rust_type.for_variant());
         }
-        global.generate_type_choices(&combined_name, &variants, None);
+        global.generate_type_choices_from_variants(&combined_name, &variants, None);
         global.new_raw_type(&combined_name)
     }
 }
@@ -1268,6 +1268,36 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     global.serialize_scope().push_impl(ser_impl);
 }
 
+fn generate_type_choices(global: &mut GlobalScope, name: &str, type_choices: &Vec<Type1>, tag: Option<usize>) {
+    let optional_inner_type = if type_choices.len() == 2 {
+        let a = &type_choices[0].type2;
+        let b = &type_choices[1].type2;
+        if type2_is_null(a) {
+            Some(b)
+        } else if type2_is_null(b) {
+            Some(a)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if let Some(inner_type2) = optional_inner_type {
+        let inner_rust_type = rust_type_from_type2(global, inner_type2);
+        match tag {
+            Some(_) => {
+                generate_wrapper_struct(global, name, &RustType::Optional(Box::new(inner_rust_type)), tag);
+            },
+            None => {
+                global.generate_type_alias(name.to_owned(), &format!("Option<{}>", inner_rust_type.for_member()));
+            },
+        };
+    } else {
+        let variants = global.create_variants_from_type_choices(type_choices);
+        global.generate_type_choices_from_variants(&name, &variants, tag);
+    }
+}
+
 fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer_tag: Option<usize>) {
     match type2 {
         Type2::Typename{ ident, .. } => {
@@ -1306,23 +1336,29 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
             codegen_group(global, group, type_name, Representation::Map, outer_tag);
         },
         Type2::Array{ group, .. } => {
-            codegen_group(global,group, type_name, Representation::Array, outer_tag);
+            codegen_group(global, group, type_name, Representation::Array, outer_tag);
         },
         Type2::TaggedData{ tag, t, .. } => {
             if let Some(_) = outer_tag {
                 panic!("doubly nested tags are not supported");
             }
             tag.expect("not sure what empty tag here would mean - unsupported");
-            assert_eq!(t.type_choices.len(), 1, "root level tagged type choices not supported");
-            let inner_type = &t.type_choices.first().unwrap().type2;
-            match match inner_type {
-                Type2::Typename{ ident, .. } => Either::Right(ident),
-                Type2::Map{ group, .. } => Either::Left(group),
-                Type2::Array{ group, .. } => Either::Left(group),
-                x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
-            } {
-                Either::Left(_group) => generate_type(global, type_name, inner_type, *tag),
-                Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), *tag),
+            match t.type_choices.len() {
+                1 => {
+                    let inner_type = &t.type_choices.first().unwrap().type2;
+                    match match inner_type {
+                        Type2::Typename{ ident, .. } => Either::Right(ident),
+                        Type2::Map{ group, .. } => Either::Left(group),
+                        Type2::Array{ group, .. } => Either::Left(group),
+                        x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
+                    } {
+                        Either::Left(_group) => generate_type(global, type_name, inner_type, *tag),
+                        Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), *tag),
+                    };
+                },
+                _ => {
+                    generate_type_choices(global, type_name, &t.type_choices, *tag);
+                }
             };
         },
         x => {
@@ -1374,26 +1410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let choice = &rule.value.type_choices.first().unwrap();
                     generate_type(&mut global, &rule_name, &choice.type2, None);
                 } else {
-                    let optional_inner_type = if rule.value.type_choices.len() == 2 {
-                        let a = &rule.value.type_choices[0].type2;
-                        let b = &rule.value.type_choices[1].type2;
-                        if type2_is_null(a) {
-                            Some(b)
-                        } else if type2_is_null(b) {
-                            Some(a)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    if let Some(inner_type2) = optional_inner_type {
-                        let inner_rust_type = rust_type_from_type2(&mut global, inner_type2);
-                        global.generate_type_alias(rule_name, &format!("Option<{}>", inner_rust_type.for_member()));
-                    } else {
-                        let variants = global.create_variants_from_type_choices(&rule.value.type_choices);
-                        global.generate_type_choices(&rule_name, &variants, None);
-                    }
+                    generate_type_choices(&mut global, &rule_name, &rule.value.type_choices, None);
                 }
             },
             Rule::Group{ rule, .. } => {
