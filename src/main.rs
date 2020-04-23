@@ -64,6 +64,7 @@ enum RustType {
     // T / null in CBOR - auto-converts to Option<T> in rust for ease of use.
     Optional(Box<RustType>),
     // TODO: table type to support inlined defined table-type groups as fields
+    Map(Box<RustType>, Box<RustType>),
 
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
@@ -81,6 +82,7 @@ impl RustType {
             RustType::Array(ty) => ty.directly_wasm_exposable(),
             RustType::Tagged(_tag, ty) => ty.directly_wasm_exposable(),
             RustType::Optional(ty) => ty.directly_wasm_exposable(),
+            RustType::Map(_, _) => false, // should this be exposable?
         }
     }
 
@@ -106,6 +108,7 @@ impl RustType {
             RustType::Tagged(_tag, ty) => ty.for_wasm(),
             // should this be Option<T>?
             RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm()),
+            RustType::Map(k, v) => format!("Map{}To{}", k.for_wasm(), v.for_wasm()),
         }
     }
 
@@ -121,6 +124,7 @@ impl RustType {
             },
             RustType::Tagged(_tag, ty) => ty.for_member(),
             RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
+            RustType::Map(k, v) => format!("Map{}To{}", k.for_member(), v.for_member()),
         }
     }
 
@@ -141,6 +145,7 @@ impl RustType {
                 format!("Arr{}", inner.for_variant())
             },
             RustType::Optional(ty) => format!("Opt{}", ty.for_variant()),
+            RustType::Map(k, v) => format!("Map{}To{}", k.for_variant(), v.for_variant()),
             _ => self.for_member(),
         }
     }
@@ -161,6 +166,7 @@ impl RustType {
             RustType::Array(_) => true,
             RustType::Tagged(_, _) => true,
             RustType::Optional(_) => false,
+            RustType::Map(_, _) => false,
         }
     }
 }
@@ -258,7 +264,7 @@ impl GlobalScope {
 
     fn mark_plain_group(&mut self, name: String, group: Group) {
         // TODO: support for plain groups with choices
-        assert_eq!(group.group_choices.len(), 1);
+        //assert_eq!(group.group_choices.len(), 1);
         self.plain_groups.insert(name, group);
     }
 
@@ -373,7 +379,7 @@ impl GlobalScope {
                 .ret("Self")
                 .line("Self(Vec::new())");
             array_impl
-                .new_fn("size")
+                .new_fn("len")
                 .vis("pub")
                 .ret("usize")
                 .arg_ref_self()
@@ -395,6 +401,17 @@ impl GlobalScope {
             self.global_scope.push_impl(array_impl);
         }
         RustType::Array(Box::new(element_type))
+    }
+
+    // Generates MapTToV for a { t => v } table-type map
+    fn generate_table_type(&mut self, key_type: RustType, value_type: RustType) -> RustType {
+        // can't have plain groups unlike arrays, so don't try and generate those
+        // for general map types we can though but not for tables
+        let table_type = format!("Map{}To{}", key_type.for_member(), value_type.for_member());
+        if self.already_generated.insert(table_type.clone()) {
+            codegen_table_type(self, &table_type, key_type.clone(), value_type.clone(), None);
+        }
+        RustType::Map(Box::new(key_type), Box::new(value_type))
     }
 
     // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
@@ -436,23 +453,27 @@ impl GlobalScope {
                 }
             },
             RustType::Array(ty) => {
-                // TODO: I think this should be removed due to the TaggedData<T> removal - please test
-                //       to see if we need to replace this with something else, or if arrays of tagged things
-                //       work fine with the refactor.
-                // not iterating tagged data but instead its contents
-                if let RustType::Tagged(_, _) = &**ty {
-                    expr.push_str(".data");
-                };
-                // non-literal types are contained in vec wrapper types
-                if !ty.directly_wasm_exposable() {
-                    expr.push_str(".0");
-                }
-                body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
-                let mut loop_block = codegen::Block::new(&format!("for element in {}.iter()", expr));
-                loop_block.line("element.serialize(serializer)?;");
-                body.push_block(loop_block);
-                if is_end {
-                    body.line("Ok(serializer)");
+                if ty.directly_wasm_exposable() {
+                    // TODO: I think this should be removed due to the TaggedData<T> removal - please test
+                    //       to see if we need to replace this with something else, or if arrays of tagged things
+                    //       work fine with the refactor.
+                    // not iterating tagged data but instead its contents
+                    if let RustType::Tagged(_, _) = &**ty {
+                        expr.push_str(".data");
+                    };
+                    // non-literal types are contained in vec wrapper types
+                    if !ty.directly_wasm_exposable() {
+                        expr.push_str(".0");
+                    }
+                    body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
+                    let mut loop_block = codegen::Block::new(&format!("for element in {}.iter()", expr));
+                    loop_block.line("element.serialize(serializer)?;");
+                    body.push_block(loop_block);
+                    if is_end {
+                        body.line("Ok(serializer)");
+                    }
+                } else {
+                    body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
                 }
             },
             RustType::Tagged(tag, ty) => {
@@ -472,6 +493,15 @@ impl GlobalScope {
                     opt_block.after("?;");
                 }
                 body.push_block(opt_block);
+            },
+            RustType::Map(key_type, value_type) => {
+                // body.line("serializer.write_map(cbor_event::Len::Indefinite)?;");
+                // let mut table_loop = codegen::Block::new(&format!("for (key, value) in {}.iter()", expr));
+                // self.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
+                // self.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
+                // body.push_block(table_loop);
+                // body.line(&format!("serializer.write_special(cbor_event::Special::Break){}", line_ender));
+                body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
             }
         };
     }
@@ -692,6 +722,24 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
             };
             global.generate_array_type(element_type)
         },
+        Type2::Map { group, .. } => {
+            match group.group_choices.len() {
+                1 => {
+                    let group_choice = group.group_choices.first().unwrap();
+                    let table_types = table_domain_range(group_choice, Representation::Map);
+                    match table_types {
+                        // Table map - homogenous key/value types
+                        Some((domain, range)) => {
+                            let key_type = rust_type_from_type2(global, domain);
+                            let value_type = rust_type(global, range);
+                            global.generate_table_type(key_type, value_type)
+                        },
+                        None => unimplemented!("TODO: non-table types as types: {:?}", group),
+                    }
+                },
+                _ => unimplemented!("group choices in inlined map types not allowed: {:?}", group),
+            }
+        },
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData{ tag, t, .. } => {
             RustType::Tagged(tag.expect("tagged data without tag not supported"), Box::new(rust_type(global, t)))
@@ -780,8 +828,8 @@ fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<u
     // TODO: indefinite or definite encoding?
     if let Some (rep) = rep {
         match rep {
-            Representation::Array => ser_func.line(format!("serializer.write_array(cbor_event::Len::Indefinite)?;")),
-            Representation::Map => ser_func.line(format!("serializer.write_map(cbor_event::Len::Indefinite)?;")),
+            Representation::Array => ser_func.line("serializer.write_array(cbor_event::Len::Indefinite)?;"),
+            Representation::Map => ser_func.line("serializer.write_map(cbor_event::Len::Indefinite)?;"),
         };
         ser_func.line("self.serialize_as_embedded_group(serializer)?;");
         ser_func.line("serializer.write_special(cbor_event::Special::Break)");
@@ -811,51 +859,64 @@ fn push_exposed_struct(
         .push_impl(ser_embedded_impl);
 }
 
-fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation, tag: Option<usize>) {
+fn codegen_table_type(global: &mut GlobalScope, name: &str, key_type: RustType, value_type: RustType, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(name);
-    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
+    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(Representation::Map), tag);
     s.vis("pub");
+    s.tuple_field(format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
+    // new
+    s_impl
+        .new_fn("new")
+        .vis("pub")
+        .ret("Self")
+        .line("Self(std::collections::BTreeMap::new())");
+    // len
+    s_impl
+        .new_fn("len")
+        .vis("pub")
+        .ret("usize")
+        .arg_ref_self()
+        .line("self.0.len()");
+    // insert
+    let mut insert_func = codegen::Function::new("insert");
+    insert_func
+        .vis("pub")
+        .arg_mut_self()
+        .arg("key", key_type.for_wasm())
+        .arg("value", value_type.for_wasm())
+        .line(
+            format!(
+                "self.0.insert({}, {});",
+                key_type.from_wasm_boundary("key"),
+                value_type.from_wasm_boundary("value")));
+    s_impl.push_fn(insert_func);
+    // serialize
+    let mut ser_map = make_serialization_function("serialize_as_embedded_group");
+    let mut table_loop = codegen::Block::new("for (key, value) in &self.0");
+    global.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
+    global.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
+    ser_map.push_block(table_loop);
+    ser_map.line("Ok(serializer)");
+    ser_embedded_impl.push_fn(ser_map);
+    push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+}
+
+fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation, tag: Option<usize>) {
     let table_types = table_domain_range(group_choice, rep);
     match table_types {
         // Table map - homogenous key/value types
         Some((domain, range)) => {
             let key_type = rust_type_from_type2(global, domain);
             let value_type = rust_type(global, range);
-            s.field("table", format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
-            // new
-            let mut new_block = codegen::Block::new("Self");
-            new_block.line("table: std::collections::BTreeMap::new(),");
-            s_impl
-                .new_fn("new")
-                .vis("pub")
-                .ret("Self")
-                .push_block(new_block);
-            // insert
-            let mut insert_func = codegen::Function::new("insert");
-            insert_func
-                .vis("pub")
-                .arg_mut_self()
-                .arg("key", key_type.for_wasm())
-                .arg("value", value_type.for_wasm())
-                .line(
-                    format!(
-                        "self.table.insert({}, {});",
-                        key_type.from_wasm_boundary("key"),
-                        value_type.from_wasm_boundary("value")));
-            s_impl.push_fn(insert_func);
-            // serialize
-            let mut ser_map = make_serialization_function("serialize_as_embedded_group");
-            let mut table_loop = codegen::Block::new("for (key, value) in &self.table");
-            global.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
-            global.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
-            ser_map.push_block(table_loop);
-            ser_map.line("Ok(serializer)");
-            ser_embedded_impl.push_fn(ser_map);
+            codegen_table_type(global, name, key_type, value_type, tag);
         },
         // Heterogenous map (or array!) with defined key/value pairs in the cddl like a struct
         None => {
             // Construct all field data here since we iterate over it multiple times and having
             // it in one huge loop was extremely unreadable
+            let (mut s, mut s_impl) = create_exposed_group(name);
+            let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
+            s.vis("pub");
             let mut generated_fields = BTreeMap::<String, u32>::new();
             let fields: Vec<(String, RustType, bool, &GroupEntry)> = group_choice.group_entries.iter().enumerate().map(
                 |(index, (group_entry, _has_comma))| {
@@ -982,9 +1043,9 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             };
             ser_func.line("Ok(serializer)");
             ser_embedded_impl.push_fn(ser_func);
+            push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
         }
     }
-    push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
 }
 
 fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Representation, tag: Option<usize>) {
