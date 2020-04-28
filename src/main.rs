@@ -1,14 +1,3 @@
-
-// We need to figure how out we handle integers as they can only be serialized as
-// Unsigned or Negative. Do we do an enum for the int type?
-// It's only used in transaction_metadata as one choice.
-// How it has to be serialized (assuming number: i32):
-// if number >= 0 {
-//     serializer.write_unsigned_integer(number as u64)
-// } else {
-//     serializer.write_negative_integer(number as i64)
-// }
-
 mod codegen_helpers;
 
 use cddl::ast::*;
@@ -76,13 +65,13 @@ enum RustType {
 impl RustType {
     fn directly_wasm_exposable(&self) -> bool {
         match self {
-            RustType::Fixed(_) => false, // ???
+            RustType::Fixed(_) => false,
             RustType::Primitive(_) => true,
             RustType::Rust(_) => false,
             RustType::Array(ty) => ty.directly_wasm_exposable(),
             RustType::Tagged(_tag, ty) => ty.directly_wasm_exposable(),
             RustType::Optional(ty) => ty.directly_wasm_exposable(),
-            RustType::Map(_, _) => false, // should this be exposable?
+            RustType::Map(_, _) => false,
         }
     }
 
@@ -106,7 +95,6 @@ impl RustType {
                 format!("{}s", ty.for_wasm())
             },
             RustType::Tagged(_tag, ty) => ty.for_wasm(),
-            // should this be Option<T>?
             RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm()),
             RustType::Map(k, v) => format!("Map{}To{}", k.for_wasm(), v.for_wasm()),
         }
@@ -159,7 +147,7 @@ impl RustType {
         }
     }
 
-    fn is_serialize_multiline(&self) -> bool {
+    fn _is_serialize_multiline(&self) -> bool {
         match self {
             RustType::Fixed(_) => false,
             RustType::Primitive(_) => false,
@@ -507,6 +495,20 @@ impl GlobalScope {
             }
         };
     }
+
+    // creates an intermediate variable named after the var_name parameter for later use
+    fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, body: &mut dyn CodeBlock) {
+        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        match rust_type {
+            RustType::Primitive(_) => {
+                body.line(&format!("let {} = raw.deserialize()?;", var_name));
+            },
+            RustType::Rust(_) => {
+                body.line(&format!("let {} = raw.deserialize()?;", var_name));  
+            },
+            _ => panic!("deserialize not implemented for {:?}", rust_type)
+        }
+    }
 }
 
 fn convert_to_snake_case(ident: &str) -> String {
@@ -844,6 +846,42 @@ fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<u
     (ser_impl, ser_embedded_impl)
 }
 
+// The serialize impls calls the embedded serialize impl, but the embedded one is
+// empty and must be implemented yourself.
+fn create_deserialize_impls(name: &str, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+    let mut deser_impl = codegen::Impl::new(name);
+    deser_impl.impl_trait("cbor_event::de::Deserialize");
+    let mut deser_func = make_deserialization_function("deserialize");
+    if let Some(tag) = tag {
+        // TODO: compare tag and throw error if it does not match
+        deser_func.line("let _tag = raw.tag()?;");
+    }
+    // TODO: enforce finite element lengths
+    if let Some (rep) = rep {
+        match rep {
+            Representation::Array => deser_func.line("let len = raw.array()?;"),
+            Representation::Map => deser_func.line("let len = raw.map()?;"),
+        };
+        deser_func.line("let body = Self::deserialize_as_embedded_group(raw);");
+        let mut len_check_block = codegen::Block::new("match len");
+        // TODO: check that it's Special::Break and throw error if not
+        let mut indefinite_case = codegen::Block::new("cbor_event::Len::Indefinite =>");
+        indefinite_case.line("let _found = raw.special()?;");
+        indefinite_case.after(",");
+        len_check_block.push_block(indefinite_case);
+        len_check_block.line("cbor_event::Len::Len(_n) => (),");
+        len_check_block.after(";");
+        deser_func.push_block(len_check_block);
+        deser_func.line("body");
+    } else {
+        deser_func.line("Self::deserialize_as_embedded_group(serializer)");
+    }
+    deser_impl.push_fn(deser_func);
+    let mut deser_embedded_impl = codegen::Impl::new(name);
+    deser_embedded_impl.impl_trait("DeserializeEmbeddedGroup");
+    (deser_impl, deser_embedded_impl)
+}
+
 fn push_exposed_struct(
     global: &mut GlobalScope,
     s: codegen::Struct,
@@ -918,6 +956,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             // it in one huge loop was extremely unreadable
             let (mut s, mut s_impl) = create_exposed_group(name);
             let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
+            let (deser_impl, mut deser_embedded_impl) = create_deserialize_impls(name, Some(rep), tag);
             s.vis("pub");
             let mut generated_fields = BTreeMap::<String, u32>::new();
             let fields: Vec<(String, RustType, bool, &GroupEntry)> = group_choice.group_entries.iter().enumerate().map(
@@ -970,17 +1009,30 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
 
             // Generate serialization
             let mut ser_func = make_serialization_function("serialize_as_embedded_group");
+            let mut deser_func = make_deserialization_function("deserialize_as_embedded_group");
             match rep {
                 Representation::Array => {
+                    let mut deser_ret = format!("Ok({}::new(", name);
+                    let mut first_param = true;
                     for (field_name, field_type, optional_field, _group_entry) in &fields {
                         if *optional_field {
                             let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
                             global.generate_serialize(&field_type, String::from("field"), &mut optional_array_ser_block, false);
                             ser_func.push_block(optional_array_ser_block);
+                            // TODO: handle deserialize of optional fields
                         } else {
                             global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
+                            global.generate_deserialize(&field_type, field_name, &mut deser_func);
+                            if first_param {
+                                first_param = false;
+                            } else {
+                                deser_ret.push_str(", ");
+                            }
+                            deser_ret.push_str(field_name);
                         }
                     }
+                    deser_ret.push_str("))");
+                    deser_func.line(deser_ret);
                 },
                 Representation::Map => {
                     // If we have a group with entries that have no names, that's fine for arrays
@@ -1045,7 +1097,11 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             };
             ser_func.line("Ok(serializer)");
             ser_embedded_impl.push_fn(ser_func);
+            deser_embedded_impl.push_fn(deser_func);
             push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+            global.serialize_scope()
+                .push_impl(deser_impl)
+                .push_impl(deser_embedded_impl);
         }
     }
 }
@@ -1257,6 +1313,15 @@ fn make_serialization_function(name: &str) -> codegen::Function {
     f
 }
 
+fn make_deserialization_function(name: &str) -> codegen::Function {
+    let mut f = codegen::Function::new(name);
+    f
+        .generic("R: BufRead")
+        .ret("cbor_event::Result<Self>")
+        .arg("raw", "&mut Deserializer<R>");
+    f
+}
+
 fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(type_name);
     s
@@ -1384,7 +1449,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("type_choice_test.cddl").unwrap();
+    let cddl_in = std::fs::read_to_string("test.cddl").unwrap();
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
     //println!("CDDL file: {}", cddl);
     let mut global = GlobalScope::new();
@@ -1393,7 +1458,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // does not work.
     global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
     global.scope().raw("use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializer}};");
-    global.scope().import("std::io", "Write");
+    global.scope().import("std::io", "{BufRead, Write}");
     global.scope().import("wasm_bindgen::prelude", "*");
     global.scope().import("prelude", "*");
     global.scope().raw("mod prelude;");

@@ -1,5 +1,5 @@
 use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializer}};
-use std::io::Write;
+use std::io::{BufRead, Write};
 use wasm_bindgen::prelude::*;
 
 // we should probably just generate this directly at the top of serialization.rs
@@ -8,6 +8,12 @@ pub trait SerializeEmbeddedGroup {
         &self,
         serializer: &'a mut Serializer<W>,
     ) -> cbor_event::Result<&'a mut Serializer<W>>;
+}
+
+pub trait DeserializeEmbeddedGroup {
+    fn deserialize_as_embedded_group<R: BufRead>(
+        raw: &mut Deserializer<R>,
+    ) -> cbor_event::Result<Self> where Self: Sized;
 }
 
 // CBOR has int = int / nint
