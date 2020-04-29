@@ -13,6 +13,7 @@ pub trait SerializeEmbeddedGroup {
 pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead>(
         raw: &mut Deserializer<R>,
+        len: cbor_event::Len,
     ) -> cbor_event::Result<Self> where Self: Sized;
 }
 
