@@ -166,6 +166,7 @@ struct GlobalScope {
     already_generated: BTreeSet<String>,
     plain_groups: BTreeMap<String, Group>,
     type_aliases: BTreeMap::<String, RustType>,
+    no_deser_reasons: BTreeMap<String, Vec<String>>,
 }
 
 impl GlobalScope {
@@ -203,6 +204,7 @@ impl GlobalScope {
             already_generated: BTreeSet::new(),
             plain_groups: BTreeMap::new(),
             type_aliases: aliases,
+            no_deser_reasons: BTreeMap::new(),
         }
     }
 
@@ -506,7 +508,36 @@ impl GlobalScope {
             RustType::Rust(_) => {
                 body.line(&format!("let {} = raw.deserialize()?;", var_name));  
             },
-            _ => panic!("deserialize not implemented for {:?}", rust_type)
+            _ => (),//panic!("deserialize not implemented for {:?}", rust_type)
+        }
+    }
+
+    fn deserialize_generated(&self, name: &str) -> bool {
+        !self.no_deser_reasons.contains_key(name)
+    }
+
+    fn deserialize_generated_for_type(&self, field_type: &RustType) -> bool {
+        match field_type {
+            RustType::Fixed(_) => true,
+            RustType::Primitive(_) => true,
+            RustType::Rust(ident) => self.deserialize_generated(ident),
+            RustType::Array(ty) => self.deserialize_generated_for_type(ty),
+            RustType::Map(k, v) => self.deserialize_generated_for_type(k) && self.deserialize_generated_for_type(v),
+            RustType::Tagged(_tag, ty) => self.deserialize_generated_for_type(ty),
+            RustType::Optional(ty) => self.deserialize_generated_for_type(ty),
+        }
+    }
+
+    fn dont_generalize_deserialize(&mut self, name: &str, reason: String) {
+        self.no_deser_reasons.entry(name.to_owned()).or_default().push(reason);
+    }
+
+    fn print_structs_without_deserialize(&self) {
+        for (name, reasons) in &self.no_deser_reasons {
+            println!("Not generating {}::deserialize() - reasons:", name);
+            for reason in reasons {
+                println!("\t{}", reason);
+            }
         }
     }
 }
@@ -806,6 +837,29 @@ fn group_entry_to_type(global: &mut GlobalScope, entry: &GroupEntry) -> RustType
     ret
 }
 
+fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
+    match entry {
+        GroupEntry::ValueMemberKey{ ge, .. } => {
+            match ge.member_key.as_ref()? {
+                MemberKey::Value{ value, .. } => match value {
+                    cddl::token::Value::UINT(x) => Some(FixedValue::Uint(*x)),
+                    cddl::token::Value::INT(x) => Some(FixedValue::Int(*x)),
+                    cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.clone())),
+                    _ => panic!("unsupported map identifier(1): {:?}", value),
+                },
+                MemberKey::Bareword{ ident, .. } => Some(FixedValue::Text(ident.to_string())),
+                MemberKey::Type1{ t1, .. } => match &t1.type2 {
+                    Type2::UintValue{ value, .. } => Some(FixedValue::Uint(*value)),
+                    Type2::IntValue{ value, .. } => Some(FixedValue::Int(*value)),
+                    Type2::TextValue{ value, .. } => Some(FixedValue::Text(value.clone())),
+                    _ => panic!("unsupported map identifier(2): {:?}", entry),
+                },
+            }
+        },
+        _ => None,
+    }
+}
+
 fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
@@ -979,6 +1033,9 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                 .vis("pub");
             let mut new_func_block = codegen::Block::new("Self");
             for (field_name, field_type, optional_field, _group_entry) in &fields {
+                if !global.deserialize_generated_for_type(field_type) {
+                    global.dont_generalize_deserialize(name, format!("field {}: {} couldn't generate serialize", field_name, field_type.for_member()));
+                }
                 // Unsupported types so far are fixed values, only have fields for these.
                 if !field_type.is_fixed_value() {
                     if *optional_field {
@@ -1010,16 +1067,16 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             // Generate serialization
             let mut ser_func = make_serialization_function("serialize_as_embedded_group");
             let mut deser_func = make_deserialization_function("deserialize_as_embedded_group");
+            let mut deser_ret = format!("Ok({}::new(", name);
+            let mut first_param = true;
             match rep {
                 Representation::Array => {
-                    let mut deser_ret = format!("Ok({}::new(", name);
-                    let mut first_param = true;
                     for (field_name, field_type, optional_field, _group_entry) in &fields {
                         if *optional_field {
                             let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
                             global.generate_serialize(&field_type, String::from("field"), &mut optional_array_ser_block, false);
                             ser_func.push_block(optional_array_ser_block);
-                            // TODO: handle deserialize of optional fields
+                            global.dont_generalize_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
                         } else {
                             global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
                             global.generate_deserialize(&field_type, field_name, &mut deser_func);
@@ -1031,77 +1088,62 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             deser_ret.push_str(field_name);
                         }
                     }
-                    deser_ret.push_str("))");
-                    deser_func.line(deser_ret);
                 },
                 Representation::Map => {
-                    // If we have a group with entries that have no names, that's fine for arrays
-                    // but not for maps, so if we encounter one assume we should not generate
-                    // map-related functions.
-                    // In the future we could change this tool to only emit the array or map
-                    // functions when they are strictly necessary (wrapped in array or map elsewhere)
-                    // This would also reduce error checking here since we wouldn't hit certain cases
-                    let mut contains_entries_without_names = false;
+                    //let mut uint_fields = Vec::new();
                     for (field_name, field_type, optional_field, group_entry) in &fields {
+                        // to support maps with plain groups inside is very difficult as we cannot guarantee
+                        // the order of fields so foo = {a, b, bar}, bar = (c, d) could have the order ben
+                        // {a, d, c, b}, {c, a, b, d}, etc which doesn't fit with the nature of deserialize_as_embedded_group
+                        // A possible solution would be to take all fields into one big map, either in generation to begin with,
+                        // or just for deserializaiton then constructing at the end with locals like a, b, bar_c, bar_d.
+                        if let RustType::Rust(ident) = field_type {
+                            if global.is_plain_group(ident) {
+                                global.dont_generalize_deserialize(name, format!("Map with plain group field {}: {}", field_name, field_type.for_member()));
+                            }
+                        }
                         let mut optional_map_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
                         let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if *optional_field {
                             (String::from("field"), &mut optional_map_ser_block)
                         } else {
                             (format!("self.{}", field_name), &mut ser_func)
                         };
-                        // This match is for serializing KEYS for maps
-                        match group_entry {
-                            GroupEntry::ValueMemberKey{ ge, .. } => {
-                                match ge.member_key.as_ref() {
-                                    Some(member_key) => match member_key {
-                                        MemberKey::Value{ value, .. } => match value {
-                                            cddl::token::Value::UINT(x) => {
-                                                map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
-                                            },
-                                            _ => panic!("unsupported map identifier(1): {:?}", value),
-                                        },
-                                        MemberKey::Bareword{ ident, .. } => {
-                                            map_ser_block.line(&format!("serializer.write_text(\"{}\")?;", ident.to_string()));
-                                        },
-                                        MemberKey::Type1{ t1, .. } => match t1.type2 {
-                                            Type2::UintValue{ value, .. } => {
-                                                map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", value));
-                                            },
-                                            _ => panic!("unsupported map identifier(2): {:?}", member_key),
-                                        },
-                                    },
-                                    None => {
-                                        contains_entries_without_names = true;
-                                    },
-                                }
+                        // serialize key
+                        let _key_str = match group_entry_to_key(group_entry) {
+                            Some(key) => match &key {
+                                FixedValue::Uint(x) => {
+                                    map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
+                                    format!("FieldType::Uint({})", x)
+                                },
+                                FixedValue::Text(x) => {
+                                    map_ser_block.line(&format!("serializer.write_text(\"{}\")?;", x));
+                                    format!("FieldType::Text({})", x)
+                                },
+                                _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                             },
-                            // TODO: why are we hitting this?
-                            // GroupEntry::TypeGroupname(tgn) => match tgn.name.to_string().as_ref() {
-                            //     "uint" => format!("serializer.write_unsigned_integer({})?;", x),
-                            //     x => panic!("TODO: serialize '{}'", x),
-                            // },
-                            _ => {
-                                //panic!("unsupported map identifier(3): {:?}", x),
-                                // TODO: only generate map vs array stuff when needed to avoid this hack
-                                contains_entries_without_names = true;
-                            },
+                            None => panic!("no key for field {}.{}, cannot generate as map", name, field_name),
                         };
                         // and serialize value
                         global.generate_serialize(&field_type, data_name, map_ser_block, false);
+                        // due to order not being defined, we must match in a loop for deserialization
                         if *optional_field {
                             ser_func.push_block(optional_map_ser_block);
                         }
                     }
-                    assert!(!contains_entries_without_names, "could not generate as map without key names");
                 },
             };
             ser_func.line("Ok(serializer)");
+            deser_ret.push_str("))");
+            deser_func.line(deser_ret);
             ser_embedded_impl.push_fn(ser_func);
             deser_embedded_impl.push_fn(deser_func);
             push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
-            global.serialize_scope()
-                .push_impl(deser_impl)
-                .push_impl(deser_embedded_impl);
+            // TODO: generic deserialize (might need backtracking)
+            if global.deserialize_generated(name) {
+                global.serialize_scope()
+                    .push_impl(deser_impl)
+                    .push_impl(deser_embedded_impl);
+            }
         }
     }
 }
@@ -1212,6 +1254,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         let mut ser_embedded_func = make_serialization_function("serialize_as_embedded_group");
         ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
         ser_embedded_impl.push_fn(ser_embedded_func);
+        global.dont_generalize_deserialize(name, String::from("Group choices not supported"));
         push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
     }
 }
@@ -1273,6 +1316,7 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumV
     global.serialize_scope()
         .push_impl(ser_impl)
         .push_impl(ser_embedded_impl);
+    global.dont_generalize_deserialize(enum_name, String::from("Type choices not supported"))
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -1517,6 +1561,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for plain_group in global.plain_groups.iter() {
         println!("{}", plain_group.0);
     }
+
+    // TODO: this cannot accurately predict if cddl definitions are out of order
+    // e.g. foo = [bar], bar = ...
+    // with bar not having supported serialization which will also result in code
+    // that does not compile as it will try to generate Foo::deserialize() when
+    // Bar::deserialize() does not exist
+    global.print_structs_without_deserialize();
 
     Ok(())
 }
