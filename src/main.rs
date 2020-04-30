@@ -1064,10 +1064,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             let mut ser_func = make_serialization_function("serialize_as_embedded_group");
             let mut deser_func = make_deserialization_function("deserialize_as_embedded_group");
             deser_func.arg("len", "cbor_event::Len");
-            let mut deser_ret = format!("Ok({}::new(", name);
-            let mut first_param = true;
             match rep {
                 Representation::Array => {
+                    let mut deser_ret = format!("Ok({}::new(", name);
+                    let mut first_param = true;
                     for (field_name, field_type, optional_field, _group_entry) in &fields {
                         if *optional_field {
                             let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
@@ -1085,6 +1085,8 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             deser_ret.push_str(field_name);
                         }
                     }
+                    deser_ret.push_str("))");
+                    deser_func.line(deser_ret);
                     // TODO: check Len
                 },
                 Representation::Map => {
@@ -1166,28 +1168,22 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     deser_loop.push_block(type_match);
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
+                    let mut ctor_block = codegen::Block::new("Ok(Self");
                     for (field_name, _field_type, optional_field, _group_entry) in &fields {
-                        if *optional_field {
-                            // TODO: call obj.set_whatever(), etc?
-                        } else {
+                        if !*optional_field {
                             let mut mandatory_field_check = codegen::Block::new(&format!("let {} = match {}", field_name, field_name));
                             mandatory_field_check.line("Some(x) => x,");
                             mandatory_field_check.line(format!("None => panic!(\"mandatory field {}.{} missing - TODO: throw error\"),", name, field_name));
                             mandatory_field_check.after(";");
                             deser_func.push_block(mandatory_field_check);
-                            if first_param {
-                                first_param = false;
-                            } else {
-                                deser_ret.push_str(", ");
-                            }
-                            deser_ret.push_str(field_name);
                         }
+                        ctor_block.line(format!("{},", field_name));
                     }
+                    ctor_block.after(")");
+                    deser_func.push_block(ctor_block);
                 },
             };
             ser_func.line("Ok(serializer)");
-            deser_ret.push_str("))");
-            deser_func.line(deser_ret);
             ser_embedded_impl.push_fn(ser_func);
             deser_embedded_impl.push_fn(deser_func);
             push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
