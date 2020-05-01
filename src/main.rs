@@ -1,14 +1,60 @@
 mod codegen_helpers;
 
+use cbor_event::Type as CBORType;
+use cbor_event::Special as CBORSpecial;
 use cddl::ast::*;
+use codegen::{Block};
 use codegen_helpers::{CodeBlock, DataType};
 use std::collections::{BTreeMap, BTreeSet};
 use either::{Either};
+
+use cbor_event::de::Deserializer;
+pub trait Seek {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64>;
+
+    fn stream_len(&mut self) -> std::io::Result<u64> {
+        let old_pos = self.stream_position()?;
+        let len = self.seek(std::io::SeekFrom::End(0))?;
+
+        // Avoid seeking a third time when we were already at the end of the
+        // stream. The branch is usually way cheaper than a seek operation.
+        if old_pos != len {
+            self.seek(std::io::SeekFrom::Start(old_pos))?;
+        }
+
+        Ok(len)
+    }
+    fn stream_position(&mut self) -> std::io::Result<u64> {
+        self.seek(std::io::SeekFrom::Current(0))
+    }
+}
+impl<T> Seek for Deserializer<T>
+where
+    T: std::io::Seek + AsRef<[u8]>
+{
+    fn seek(&mut self, style: std::io::SeekFrom) -> std::io::Result<u64> {
+        unimplemented!()
+        //self.0.seek(style)
+    }
+}
 
 #[derive(Copy, Clone, PartialEq)]
 enum Representation {
     Array,
     Map,
+}
+
+fn cbor_type_code_str(cbor_type: CBORType) -> &'static str {
+    match cbor_type {
+        CBORType::UnsignedInteger => "CBORType::UnsignedInteger",
+        CBORType::NegativeInteger => "CBORType::NegativeInteger",
+        CBORType::Bytes => "CBORType::Bytes",
+        CBORType::Text => "CBORType::Text",
+        CBORType::Array => "CBORType::Array",
+        CBORType::Map => "CBORType::Map",
+        CBORType::Tag => "CBORType::Tag",
+        CBORType::Special => "CBORType::Special",
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -40,10 +86,42 @@ impl FixedValue {
 }
 
 #[derive(Clone, Debug)]
+enum Primitive {
+    Bool,
+    U8,
+    U32,
+    I32,
+    Str,
+}
+
+// TODO: impl display or fmt or whatever rust uses
+impl Primitive {
+    fn to_string(&self) -> String {
+        String::from(match self {
+            Primitive::Bool => "bool",
+            Primitive::U8 => "u8",
+            Primitive::U32 => "u32",
+            Primitive::I32 => "i32",
+            Primitive::Str => "String",
+        })
+    }
+
+    fn cbor_type(&self) -> CBORType {
+        match self {
+            Primitive::Bool => CBORType::Special,
+            Primitive::U8 |
+            Primitive::U32 => CBORType::UnsignedInteger,
+            Primitive::I32 => CBORType::NegativeInteger,
+            Primitive::Str => CBORType::Text,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 enum RustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm - TODO: make this an enum so we can get type guarantees on it
-    Primitive(String),
+    Primitive(Primitive),
     // Rust-defined type that cannot be put in arrays/etc
     Rust(String),
     // Array-wrapped type. Passed as Vec<T> if T is Primitive
@@ -87,7 +165,7 @@ impl RustType {
     fn for_wasm(&self) -> String {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
-            RustType::Primitive(s) => s.clone(),
+            RustType::Primitive(s) => s.to_string(),
             RustType::Rust(s) => s.clone(),
             RustType::Array(ty) => if ty.directly_wasm_exposable() {
                 format!("Vec<{}>", ty.for_wasm())
@@ -103,7 +181,7 @@ impl RustType {
     fn for_member(&self) -> String {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
-            RustType::Primitive(s) => s.clone(),
+            RustType::Primitive(s) => s.to_string(),
             RustType::Rust(s) => s.clone(),
             RustType::Array(ty) => if ty.directly_wasm_exposable() {
                 format!("Vec<{}>", ty.for_wasm())
@@ -119,17 +197,15 @@ impl RustType {
     fn for_variant(&self) -> String {
         match self {
             RustType::Fixed(f) => f.for_variant(),
-            RustType::Primitive(p) => match p.as_str() {
+            RustType::Primitive(p) => match p {
                 // to get around issues with String (CamelCase) or str (snake_case)
-                "String" => String::from("Text"),
-                p => convert_to_camel_case(p),
+                Primitive::Str => String::from("Text"),
+                p => convert_to_camel_case(&p.to_string()),
             },
             RustType::Rust(ident) => ident.clone(),
             RustType::Array(inner) => {
-                if let RustType::Primitive(p) = &**inner {
-                    if p == "u8" {
-                        return String::from("Bytes");
-                    }
+                if let RustType::Primitive(Primitive::U8) = &**inner {
+                    return String::from("Bytes");
                 }
                 format!("Arr{}", inner.for_variant())
             },
@@ -145,6 +221,35 @@ impl RustType {
             //RustType::Tagged(tag, ty) => format!("TaggedData::<{}>::new({}, {})", ty.for_member(), expr, tag),
             _ => expr.to_owned(),
         }
+    }
+
+    // Ok case is single first cbor type in bytes, Err is multiple possibilities
+    fn cbor_types(&self) -> Vec<CBORType> {
+        match self {
+            RustType::Fixed(f) => vec![match f {
+                FixedValue::Uint(_) => CBORType::UnsignedInteger,
+                FixedValue::Int(_) => CBORType::NegativeInteger,
+                FixedValue::Text(_) => CBORType::Text,
+                FixedValue::Null => CBORType::Special,
+                FixedValue::Bool(_) => CBORType::Special,
+            }],
+            RustType::Primitive(p) => vec![p.cbor_type()],
+            RustType::Rust(ident) => panic!("TODO: store first cbor tag somewhere"),
+            RustType::Tagged(_tag, _ty) => vec![CBORType::Tag],
+            RustType::Array(_) => vec![CBORType::Array],
+            RustType::Map(_k, _v) => vec![CBORType::Map],
+            RustType::Optional(ty) => {
+                let mut inner_types = ty.cbor_types();
+                if !inner_types.contains(&CBORType::Special) {
+                    inner_types.push(CBORType::Special);
+                }
+                inner_types
+            }
+        }
+    }
+
+    fn cbor_special_type(&self) -> Option<CBORSpecial> {
+        unimplemented!()
     }
 
     fn _is_serialize_multiline(&self) -> bool {
@@ -173,25 +278,25 @@ impl GlobalScope {
     fn new() -> Self {
         let mut aliases = BTreeMap::<String, RustType>::new();
         // TODO: use u64/i64 later when you figure out the BigInt issues from wasm
-        aliases.insert(String::from("uint"), RustType::Primitive(String::from("u32")));
+        aliases.insert(String::from("uint"), RustType::Primitive(Primitive::U32));
         // Not sure on this one, I think they can be bigger than i64 can fit
         // but the cbor_event serialization takes the argument as an i64
-        aliases.insert(String::from("nint"), RustType::Primitive(String::from("i32")));
-        aliases.insert(String::from("bool"), RustType::Primitive(String::from("bool")));
+        aliases.insert(String::from("nint"), RustType::Primitive(Primitive::I32));
+        aliases.insert(String::from("bool"), RustType::Primitive(Primitive::Bool));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
         //"int" => "i64",
-        let string_type = RustType::Primitive(String::from("String"));
+        let string_type = RustType::Primitive(Primitive::Str);
         aliases.insert(String::from("tstr"), string_type.clone());
         aliases.insert(String::from("text"), string_type);
         // TODO: Is this right to have it be Vec<u8>?
         // the serialization library for bytes takes type [u8]
         // so we'll have to put some logic in there I guess?
         // it might be necessary to put a wrapper type..
-        let byte_type = RustType::Array(Box::new(RustType::Primitive(String::from("u8"))));
-        aliases.insert(String::from("bstr"), byte_type.clone());
-        aliases.insert(String::from("bytes"), byte_type);
+        let bytes_type = RustType::Array(Box::new(RustType::Primitive(Primitive::U8)));
+        aliases.insert(String::from("bstr"), bytes_type.clone());
+        aliases.insert(String::from("bytes"), bytes_type);
         let null_type = RustType::Fixed(FixedValue::Null);
         aliases.insert(String::from("null"), null_type.clone());
         aliases.insert(String::from("nil"), null_type);
@@ -212,10 +317,8 @@ impl GlobalScope {
         let resolved = self.apply_type_aliases(raw);
         if !is_identifier_reserved(raw) {
             if let RustType::Array(inner) = &resolved {
-                if let RustType::Primitive(inner) = &**inner {
-                    if inner == "u8" {
-                        return RustType::Rust(raw.to_owned());
-                    }
+                if let RustType::Primitive(Primitive::U8) = &**inner {
+                    return RustType::Rust(raw.to_owned());
                 }
             }
         }
@@ -358,7 +461,7 @@ impl GlobalScope {
             ser_impl.impl_trait("cbor_event::se::Serialize");
             let mut ser_func = make_serialization_function("serialize");
             ser_func.line("serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;");
-            let mut loop_block = codegen::Block::new("for element in &self.0");
+            let mut loop_block = Block::new("for element in &self.0");
             loop_block.line("element.serialize(serializer)?;");
             ser_func.push_block(loop_block);
             ser_func.line("Ok(serializer)");
@@ -417,10 +520,10 @@ impl GlobalScope {
         match rust_type {
             RustType::Fixed(value) => match value {
                 FixedValue::Null => {
-                    body.line(&format!("serializer.write_special(cbor_event::Special::Null){}", line_ender));
+                    body.line(&format!("serializer.write_special(CBORSpecial::Null){}", line_ender));
                 },
                 FixedValue::Bool(b) => {
-                    body.line(&format!("serializer.write_special(cbor_event::Special::Bool({})){}", b, line_ender));
+                    body.line(&format!("serializer.write_special(CBORSpecial::Bool({})){}", b, line_ender));
                 },
                 FixedValue::Uint(u) => {
                     body.line(&format!("serializer.write_unsigned_integer({}u64){}", u, line_ender));
@@ -458,7 +561,7 @@ impl GlobalScope {
                         expr.push_str(".0");
                     }
                     body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
-                    let mut loop_block = codegen::Block::new(&format!("for element in {}.iter()", expr));
+                    let mut loop_block = Block::new(&format!("for element in {}.iter()", expr));
                     loop_block.line("element.serialize(serializer)?;");
                     body.push_block(loop_block);
                     if is_end {
@@ -473,14 +576,14 @@ impl GlobalScope {
                 self.generate_serialize(ty, expr, body, is_end);
             },
             RustType::Optional(ty) => {
-                let mut opt_block = codegen::Block::new(&format!("match {}", expr));
+                let mut opt_block = Block::new(&format!("match {}", expr));
                 // TODO: do this in one line without a block if possible somehow.
                 //       see other comment in generate_enum()
-                let mut some_block = codegen::Block::new("Some(x) =>");
+                let mut some_block = Block::new("Some(x) =>");
                 self.generate_serialize(ty, String::from("x"), &mut some_block, true);
                 some_block.after(",");
                 opt_block.push_block(some_block);
-                opt_block.line(&format!("None => serializer.write_special(cbor_event::Special::Null),"));
+                opt_block.line(&format!("None => serializer.write_special(CBORSpecial::Null),"));
                 if !is_end {
                     opt_block.after("?;");
                 }
@@ -488,32 +591,80 @@ impl GlobalScope {
             },
             RustType::Map(_key, _value) => {
                 // body.line("serializer.write_map(cbor_event::Len::Indefinite)?;");
-                // let mut table_loop = codegen::Block::new(&format!("for (key, value) in {}.iter()", expr));
+                // let mut table_loop = Block::new(&format!("for (key, value) in {}.iter()", expr));
                 // self.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
                 // self.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
                 // body.push_block(table_loop);
-                // body.line(&format!("serializer.write_special(cbor_event::Special::Break){}", line_ender));
+                // body.line(&format!("serializer.write_special(CBORSpecial::Break){}", line_ender));
                 body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
             }
         };
     }
 
-    // creates an intermediate variable named after the var_name parameter for later use
-    fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, is_var_option: bool, body: &mut dyn CodeBlock) {
-        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
-        let method = match rust_type {
-            RustType::Primitive(p) => String::from(match p.as_str() {
-                "u32" => "u32::deserialize(raw)",
-                "String" => "raw.text()",
-                _ => panic!("unknown primitive: {}", p),
-            }),
-            RustType::Rust(ident) => format!("{}::deserialize(raw)", ident),
+    // formats as {before}{<deserialized value>}{after} in a line within the body param, allowing freedom e.g.:
+    // * {let x = }{<value>}{;} - creation of variables
+    // * {x = Some(}{<value>}{);} - variable assignment (could be nested in function call, etc, too)
+    // * {}{<value>}{} - for last-expression eval in blocks
+    // * etc
+    // var_name is passed in for use in creating unique identifiers for temporaries
+    fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, before: &str, after: &str, body: &mut dyn CodeBlock) {
+        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        match rust_type {
+            RustType::Fixed(f) => match f {
+                // we don't set values since we don't store fixed values, we just verify here
+                FixedValue::Null => {
+                    let mut special_block = Block::new("if raw.special()? != CBORSpecial::Null");
+                    special_block.line("panic!(\"TODO: throw error\");");
+                    body.push_block(special_block);
+                },
+                _ => unimplemented!(),
+            },
+            RustType::Primitive(p) => {
+                body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
+            },
+            RustType::Rust(ident) => {
+                body.line(&format!("{}{}::deserialize(raw)?{}", before, ident, after));
+            },
+            RustType::Tagged(_tag, ty) => {
+                // TODO: compare tag and throw error if it does not match
+                body.line(&format!("let _{}_tag = raw.tag()?;", var_name));
+                self.generate_deserialize(ty, var_name, before, after, body);
+            },
+            RustType::Optional(ty) => {
+                // codegen crate doesn't support if/else or appending a block after a block, only strings
+                // so we need to create a local bool var and use a match instead
+                let is_some_check_var = format!("{}_is_some", var_name);
+                if ty.cbor_types().contains(&CBORType::Special) {
+                    let mut is_some_check = Block::new(&format!("let {} = match cbor_type()?", is_some_check_var));
+                    let mut special_block = Block::new("CBORType::Special => match raw.special()?");
+                    // TODO: we need to check that we don't have null / null somewhere
+                    special_block.line("CBORSpecial::Null => false,");
+                    // no need to error check - would happen in generated deserialize code
+                    special_block.line("_ => true,");
+                    special_block.after(",");
+                    is_some_check.push_block(special_block);
+                    // it's possible the Some case only has Special as its starting tag(s),
+                    // but we don't care since it'll fail in either either case anyway,
+                    // and would give a good enough error (ie expected Special::X but found non-Special)
+                    is_some_check.line("_ => true,");
+                    is_some_check.after(";");
+                    body.push_block(is_some_check);
+                } else {
+                    body.line(&format!("let {} = raw.cbor_type()? == CBORType::Special;", is_some_check_var));
+                };
+                let mut deser_block = Block::new(&format!("{}match {}", before, is_some_check_var));
+                let mut some_block = Block::new("true =>");
+                self.generate_deserialize(ty, var_name, "Some(", ")", &mut some_block);
+                some_block.after(",");
+                deser_block.push_block(some_block);
+                let mut none_block = Block::new("false =>");
+                self.generate_deserialize(&RustType::Fixed(FixedValue::Null), var_name, "", "", &mut none_block);
+                none_block.line("None");
+                deser_block.after(after);
+                deser_block.push_block(none_block);
+                body.push_block(deser_block);
+            },
             _ => panic!("deserialize not implemented for {:?}", rust_type)
-        };
-        if is_var_option {
-            body.line(&format!("{} = Some({}?);", var_name, method));
-        } else {
-            body.line(&format!("{} = {}?;", var_name, method));
         }
     }
 
@@ -895,7 +1046,7 @@ fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<u
             Representation::Map => ser_func.line("serializer.write_map(cbor_event::Len::Indefinite)?;"),
         };
         ser_func.line("self.serialize_as_embedded_group(serializer)?;");
-        ser_func.line("serializer.write_special(cbor_event::Special::Break)");
+        ser_func.line("serializer.write_special(CBORSpecial::Break)");
     } else {
         ser_func.line("self.serialize_as_embedded_group(serializer)");
     }
@@ -982,7 +1133,7 @@ fn codegen_table_type(global: &mut GlobalScope, name: &str, key_type: RustType, 
     s_impl.push_fn(insert_func);
     // serialize
     let mut ser_map = make_serialization_function("serialize_as_embedded_group");
-    let mut table_loop = codegen::Block::new("for (key, value) in &self.0");
+    let mut table_loop = Block::new("for (key, value) in &self.0");
     global.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
     global.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
     ser_map.push_block(table_loop);
@@ -1027,7 +1178,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
             new_func
                 .ret("Self")
                 .vis("pub");
-            let mut new_func_block = codegen::Block::new("Self");
+            let mut new_func_block = Block::new("Self");
             for (field_name, field_type, optional_field, _group_entry) in &fields {
                 if !global.deserialize_generated_for_type(field_type) {
                     global.dont_generate_deserialize(name, format!("field {}: {} couldn't generate serialize", field_name, field_type.for_member()));
@@ -1070,13 +1221,13 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     let mut first_param = true;
                     for (field_name, field_type, optional_field, _group_entry) in &fields {
                         if *optional_field {
-                            let mut optional_array_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
+                            let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
                             global.generate_serialize(&field_type, String::from("field"), &mut optional_array_ser_block, false);
                             ser_func.push_block(optional_array_ser_block);
                             global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
                         } else {
                             global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
-                            global.generate_deserialize(&field_type, &format!("let {}", field_name), false, &mut deser_func);
+                            global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
                             if first_param {
                                 first_param = false;
                             } else {
@@ -1104,7 +1255,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             }
                         }
                         deser_func.line(format!("let mut {} = None;", field_name));
-                        let mut optional_map_ser_block = codegen::Block::new(&format!("if let Some(field) = &self.{}", field_name));
+                        let mut optional_map_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
                         let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if *optional_field {
                             (String::from("field"), &mut optional_map_ser_block)
                         } else {
@@ -1117,12 +1268,12 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             None => panic!("no key for field {}.{}, cannot generate as map", name, field_name),
                         };
                         let mut deser_block = match &key {
-                            FixedValue::Uint(x) => codegen::Block::new(&format!("{} => ", x)),
-                            FixedValue::Text(x) => codegen::Block::new(&format!("\"{}\" => ", x)),
+                            FixedValue::Uint(x) => Block::new(&format!("{} => ", x)),
+                            FixedValue::Text(x) => Block::new(&format!("\"{}\" => ", x)),
                             _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                         };
                         deser_block.after(",");
-                        global.generate_deserialize(field_type, field_name, true, &mut deser_block);
+                        global.generate_deserialize(field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
                         match &key {
                             FixedValue::Uint(x) => {
                                 map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
@@ -1140,26 +1291,26 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             ser_func.push_block(optional_map_ser_block);
                         }
                     }
-                    // needs to be in one line rather than a block because codegen::Block::after() only takes a string
+                    // needs to be in one line rather than a block because Block::after() only takes a string
                     let unknown_key = String::from("x => panic!(\"unknown key {} - TODO: throw error\", x),");
                     deser_func.line("let mut read = 0;");
-                    let mut deser_loop = codegen::Block::new("while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, }");
-                    let mut type_match = codegen::Block::new("match raw.cbor_type()?");
-                    let mut uint_match = codegen::Block::new("cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()?");
+                    let mut deser_loop = Block::new("while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, }");
+                    let mut type_match = Block::new("match raw.cbor_type()?");
+                    let mut uint_match = Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer()?");
                     for case in uint_field_deserializers {
                         uint_match.push_block(case);
                     }
                     uint_match.line(unknown_key.clone());
                     uint_match.after(",");
                     type_match.push_block(uint_match);
-                    let mut text_match = codegen::Block::new("cbor_event::Type::Text => match raw.text()?.as_str()");
+                    let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
                     for case in text_field_deserializers {
                         text_match.push_block(case);
                     }
                     text_match.line(unknown_key.clone());
                     text_match.after(",");
                     type_match.push_block(text_match);
-                    let mut special_match = codegen::Block::new("cbor_event::Type::Special => match len");
+                    let mut special_match = Block::new("CBORType::Special => match len");
                     special_match.line("cbor_event::Len::Len(_) => panic!(\"CBOR Break found in definite map - TODO: throw error\"),");
                     special_match.line("cbor_event::Len::Indefinite => break,");
                     special_match.after(",");
@@ -1168,10 +1319,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     deser_loop.push_block(type_match);
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
-                    let mut ctor_block = codegen::Block::new("Ok(Self");
+                    let mut ctor_block = Block::new("Ok(Self");
                     for (field_name, _field_type, optional_field, _group_entry) in &fields {
                         if !*optional_field {
-                            let mut mandatory_field_check = codegen::Block::new(&format!("let {} = match {}", field_name, field_name));
+                            let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field_name, field_name));
                             mandatory_field_check.line("Some(x) => x,");
                             mandatory_field_check.line(format!("None => panic!(\"mandatory field {}.{} missing - TODO: throw error\"),", name, field_name));
                             mandatory_field_check.after(";");
@@ -1330,7 +1481,7 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumV
     add_struct_derives(&mut e);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
     let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
-    let mut ser_array_embedded_match_block = codegen::Block::new("match self");
+    let mut ser_array_embedded_match_block = Block::new("match self");
     for variant in variants.iter() {
         if variant.rust_type.is_fixed_value() {
             e.push_variant(codegen::Variant::new(&format!("{}", variant.name)));
@@ -1349,7 +1500,7 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumV
             // Problem: generate_serialize() works in terms of line() and push_block()
             //          but we'd just want to inline the single one inside of a line...
             //if variant.rust_type.is_serialize_multiline() {
-                let mut case_block = codegen::Block::new(&format!("{}::{}{} =>", enum_name, variant.name, capture));
+                let mut case_block = Block::new(&format!("{}::{}{} =>", enum_name, variant.name, capture));
                 global.generate_serialize(&variant.rust_type, String::from("x"), &mut case_block, true);
                 case_block.after(",");
                 ser_array_embedded_match_block.push_block(case_block);
@@ -1486,8 +1637,8 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
             let generate_binary_wrapper = match ident.to_string().as_ref() {
                 "bytes" | "bstr" => true,
                 ident => if let RustType::Array(inner) = global.apply_type_aliases(&convert_to_camel_case(ident)) {
-                    if let RustType::Primitive(x) = *inner {
-                        x == "u8"
+                    if let RustType::Primitive(Primitive::U8) = *inner {
+                        true
                     } else {
                         false
                     }
@@ -1496,7 +1647,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
                 },
             };
             if generate_binary_wrapper {
-                let field_type = RustType::Array(Box::new(RustType::Primitive(String::from("u8"))));
+                let field_type = RustType::Array(Box::new(RustType::Primitive(Primitive::U8)));
                 generate_wrapper_struct(global, type_name, &field_type, None);
                 global.apply_type_alias_without_codegen(type_name.to_owned(), field_type);
             } else {
@@ -1554,6 +1705,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     global.scope().import("std::io", "{BufRead, Write}");
     global.scope().import("wasm_bindgen::prelude", "*");
     global.scope().import("prelude", "*");
+    global.scope().raw("use cbor_event::Type as CBORType;");
+    global.scope().raw("use cbor_event::Special as CBORSpecial;");
     global.scope().raw("mod prelude;");
     global.scope().raw("mod serialization;");
     global.serialize_scope().import("super", "*");
