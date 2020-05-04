@@ -614,7 +614,7 @@ impl GlobalScope {
                 // we don't set values since we don't store fixed values, we just verify here
                 FixedValue::Null => {
                     let mut special_block = Block::new("if raw.special()? != CBORSpecial::Null");
-                    special_block.line("panic!(\"TODO: throw error\");");
+                    special_block.line("return Err(DeserializeError::ExpectedNull);");
                     body.push_block(special_block);
                 },
                 _ => unimplemented!(),
@@ -625,10 +625,15 @@ impl GlobalScope {
             RustType::Rust(ident) => {
                 body.line(&format!("{}{}::deserialize(raw)?{}", before, ident, after));
             },
-            RustType::Tagged(_tag, ty) => {
-                // TODO: compare tag and throw error if it does not match
-                body.line(&format!("let _{}_tag = raw.tag()?;", var_name));
-                self.generate_deserialize(ty, var_name, before, after, body);
+            RustType::Tagged(tag, ty) => {
+                let mut tag_check = Block::new(&format!("{}match raw.tag()?", before));
+                let mut deser_block = Block::new(&format!("{} =>", tag));
+                self.generate_deserialize(ty, var_name, "", "", &mut deser_block);
+                deser_block.after(",");
+                tag_check.push_block(deser_block);
+                tag_check.line(&format!("tag => return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }}),", tag));
+                tag_check.after(after);
+                body.push_block(tag_check);
             },
             RustType::Optional(ty) => {
                 // codegen crate doesn't support if/else or appending a block after a block, only strings
@@ -636,11 +641,15 @@ impl GlobalScope {
                 let is_some_check_var = format!("{}_is_some", var_name);
                 if ty.cbor_types().contains(&CBORType::Special) {
                     let mut is_some_check = Block::new(&format!("let {} = match cbor_type()?", is_some_check_var));
-                    let mut special_block = Block::new("CBORType::Special => match raw.special()?");
+                    let mut special_block = Block::new("CBORType::Special =>");
+                    special_block.line("let special = raw.special()?;");
+                    special_block.line("raw.seek(std::io::SeekFrom(-1));");
+                    let mut special_match = Block::new("match special()");
                     // TODO: we need to check that we don't have null / null somewhere
-                    special_block.line("CBORSpecial::Null => false,");
+                    special_match.line("CBORSpecial::Null => false,");
                     // no need to error check - would happen in generated deserialize code
-                    special_block.line("_ => true,");
+                    special_match.line("_ => true,");
+                    special_block.push_block(special_match);
                     special_block.after(",");
                     is_some_check.push_block(special_block);
                     // it's possible the Some case only has Special as its starting tag(s),
@@ -1060,11 +1069,16 @@ fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<u
 // empty and must be implemented yourself.
 fn create_deserialize_impls(name: &str, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
     let mut deser_impl = codegen::Impl::new(name);
-    deser_impl.impl_trait("cbor_event::de::Deserialize");
+    // TODO: add config param to decide if we want to use our deserialize
+    // or theirs using Error::Cusom(String) + DeserializeError::to_string()
+    //deser_impl.impl_trait("cbor_event::de::Deserialize");
+    deser_impl.impl_trait("Deserialize");
     let mut deser_func = make_deserialization_function("deserialize");
     if let Some(tag) = tag {
-        // TODO: compare tag and throw error if it does not match
-        deser_func.line("let _tag = raw.tag()?;");
+        deser_func.line("let tag = raw.tag()?;");
+        let mut tag_check = Block::new(&format!("if tag == {}", tag));
+        tag_check.line(&format!("return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }});", tag));
+        deser_func.push_block(tag_check);
     }
     // TODO: enforce finite element lengths
     if let Some (rep) = rep {
@@ -1292,7 +1306,6 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                         }
                     }
                     // needs to be in one line rather than a block because Block::after() only takes a string
-                    let unknown_key = String::from("x => panic!(\"unknown key {} - TODO: throw error\", x),");
                     deser_func.line("let mut read = 0;");
                     let mut deser_loop = Block::new("while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, }");
                     let mut type_match = Block::new("match raw.cbor_type()?");
@@ -1300,31 +1313,37 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     for case in uint_field_deserializers {
                         uint_match.push_block(case);
                     }
-                    uint_match.line(unknown_key.clone());
+                    uint_match.line("unknown_key => return Err(DeserializeError::UnknownKey(Key::Uint(unknown_key))),");
                     uint_match.after(",");
                     type_match.push_block(uint_match);
                     let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
                     for case in text_field_deserializers {
                         text_match.push_block(case);
                     }
-                    text_match.line(unknown_key.clone());
+                    text_match.line("unknown_key => return Err(DeserializeError::UnknownKey(Key::Str(unknown_key.to_owned()))),");
                     text_match.after(",");
                     type_match.push_block(text_match);
                     let mut special_match = Block::new("CBORType::Special => match len");
-                    special_match.line("cbor_event::Len::Len(_) => panic!(\"CBOR Break found in definite map - TODO: throw error\"),");
+                    special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeError::BreakInDefiniteLen),");
                     special_match.line("cbor_event::Len::Indefinite => break,");
                     special_match.after(",");
                     type_match.push_block(special_match);
-                    type_match.line("other_type => panic!(\"unexpected CBOR key: {:?} - TODO: throw error\", other_type),");
+                    type_match.line("other_type => return Err(DeserializeError::UnexpectedKeyType(other_type)),");
                     deser_loop.push_block(type_match);
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
                     let mut ctor_block = Block::new("Ok(Self");
-                    for (field_name, _field_type, optional_field, _group_entry) in &fields {
+                    for (field_name, _field_type, optional_field, group_entry) in &fields {
                         if !*optional_field {
                             let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field_name, field_name));
                             mandatory_field_check.line("Some(x) => x,");
-                            mandatory_field_check.line(format!("None => panic!(\"mandatory field {}.{} missing - TODO: throw error\"),", name, field_name));
+                            // unwrap since error case handled in match above
+                            let key = match group_entry_to_key(group_entry).unwrap() {
+                                FixedValue::Uint(x) => format!("Key::Uint({})", x),
+                                FixedValue::Text(x) => format!("Key::Str(String::from(\"{}\"))", x),
+                                _ => unimplemented!(),
+                            };
+                            mandatory_field_check.line(format!("None => return Err(DeserializeError::MandatoryFieldMissing({})),", key));
                             mandatory_field_check.after(";");
                             deser_func.push_block(mandatory_field_check);
                         }
@@ -1561,7 +1580,7 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f
         .generic("R: BufRead")
-        .ret("cbor_event::Result<Self>")
+        .ret("Result<Self, DeserializeError>")
         .arg("raw", "&mut Deserializer<R>");
     f
 }
@@ -1579,6 +1598,17 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     }
     global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, true);
     ser_impl.push_fn(ser_func);
+    let mut deser_func = make_deserialization_function("deserialize");
+    let mut deser_impl = codegen::Impl::new(type_name);
+    deser_impl.impl_trait("Deserialize");
+    if let Some(tag) = tag {
+        deser_func.line("let tag = raw.tag()?;");
+        let mut tag_check = Block::new(&format!("if tag == {}", tag));
+        tag_check.line(&format!("return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }});", tag));
+        deser_func.push_block(tag_check);
+    }
+    global.generate_deserialize(field_type, "", "Self(", ")", &mut deser_func);
+    deser_impl.push_fn(deser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
         .ret("Self")
@@ -1701,7 +1731,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
     // does not work.
     global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
-    global.scope().raw("use cbor_event::{self, de::{Deserialize, Deserializer}, se::{Serialize, Serializer}};");
+    global.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
     global.scope().import("std::io", "{BufRead, Write}");
     global.scope().import("wasm_bindgen::prelude", "*");
     global.scope().import("prelude", "*");
