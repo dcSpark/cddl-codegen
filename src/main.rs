@@ -38,6 +38,11 @@ where
     }
 }
 
+// TODO: add these as cmd args
+// TODO: make non-annotation generate different DeserializeError that is simpler
+//       and works with From<cbor_event:Error> only
+const ANNOTATE_FIELDS: bool = true;
+
 #[derive(Copy, Clone, PartialEq)]
 enum Representation {
     Array,
@@ -614,7 +619,7 @@ impl GlobalScope {
                 // we don't set values since we don't store fixed values, we just verify here
                 FixedValue::Null => {
                     let mut special_block = Block::new("if raw.special()? != CBORSpecial::Null");
-                    special_block.line("return Err(DeserializeError::ExpectedNull);");
+                    special_block.line("return Err(DeserializeFailure::ExpectedNull.into());");
                     body.push_block(special_block);
                 },
                 _ => unimplemented!(),
@@ -631,7 +636,7 @@ impl GlobalScope {
                 self.generate_deserialize(ty, var_name, "", "", &mut deser_block);
                 deser_block.after(",");
                 tag_check.push_block(deser_block);
-                tag_check.line(&format!("tag => return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }}),", tag));
+                tag_check.line(&format!("tag => return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),", tag));
                 tag_check.after(after);
                 body.push_block(tag_check);
             },
@@ -755,6 +760,7 @@ fn convert_to_camel_case(ident: &str) -> String {
 fn add_struct_derives<T: DataType>(data_type: &mut T) {
     data_type
         .derive("Clone")
+        .derive("Debug")
         .derive("Eq")
         .derive("Ord")
         .derive("PartialEq")
@@ -1029,13 +1035,22 @@ fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
     let mut group_impl = codegen::Impl::new(name);
-    group_impl.new_fn("to_bytes")
+    // unwrap should be fine here as we'd only be dealing with memory errors
+    group_impl
+        .new_fn("to_bytes")
         .ret("Vec<u8>")
         .arg_ref_self()
         .vis("pub")
         .line("let mut buf = Serializer::new_vec();")
         .line("self.serialize(&mut buf).unwrap();")
         .line("buf.finalize()");
+    group_impl
+        .new_fn("from_bytes")
+        .ret(format!("Result<{}, JsValue>", name))
+        .arg("data", "Vec<u8>")
+        .vis("pub")
+        .line("let mut raw = Deserializer::from(std::io::Cursor::new(data));")
+        .line("Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))");
     (s, group_impl)
 }
 
@@ -1074,22 +1089,31 @@ fn create_deserialize_impls(name: &str, rep: Option<Representation>, tag: Option
     //deser_impl.impl_trait("cbor_event::de::Deserialize");
     deser_impl.impl_trait("Deserialize");
     let mut deser_func = make_deserialization_function("deserialize");
+    let mut error_annotator = make_err_annotate_block(name, "", "");
+    let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
+        &mut error_annotator
+    } else {
+        &mut deser_func
+    };
     if let Some(tag) = tag {
-        deser_func.line("let tag = raw.tag()?;");
+        deser_body.line("let tag = raw.tag()?;");
         let mut tag_check = Block::new(&format!("if tag == {}", tag));
-        tag_check.line(&format!("return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }});", tag));
-        deser_func.push_block(tag_check);
+        tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", name, tag));
+        deser_body.push_block(tag_check);
     }
     // TODO: enforce finite element lengths
     if let Some (rep) = rep {
         match rep {
-            Representation::Array => deser_func.line("let len = raw.array()?;"),
-            Representation::Map => deser_func.line("let len = raw.map()?;"),
+            Representation::Array => deser_body.line("let len = raw.array()?;"),
+            Representation::Map => deser_body.line("let len = raw.map()?;"),
         };
-        deser_func.line("Self::deserialize_as_embedded_group(raw, len)");
+        deser_body.line("Self::deserialize_as_embedded_group(raw, len)");
     } else {
         panic!("TODO: how should we handle this considering we are dealing with Len?");
-        //deser_func.line("Self::deserialize_as_embedded_group(serializer)");
+        //deser_body.line("Self::deserialize_as_embedded_group(serializer)");
+    }
+    if ANNOTATE_FIELDS {
+        deser_func.push_block(error_annotator);
     }
     deser_impl.push_fn(deser_func);
     let mut deser_embedded_impl = codegen::Impl::new(name);
@@ -1112,6 +1136,14 @@ fn push_exposed_struct(
     global.serialize_scope()
         .push_impl(ser_impl)
         .push_impl(ser_embedded_impl);
+}
+
+// We need to execute field deserialization inside a closure in order to capture and annotate with the field name
+// without having to put error annotation inside of every single cbor_event call.
+fn make_err_annotate_block(annotation: &str, before: &str, after: &str) -> Block {
+    let mut if_block = Block::new(&format!("{}(|| -> Result<_, DeserializeError>", before));
+    if_block.after(&format!(")().map_err(|e| e.annotate(\"{}\")){}", annotation, after));
+    if_block
 }
 
 fn codegen_table_type(global: &mut GlobalScope, name: &str, key_type: RustType, value_type: RustType, tag: Option<usize>) {
@@ -1241,7 +1273,13 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
                         } else {
                             global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
-                            global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
+                            if ANNOTATE_FIELDS {
+                                let mut err_deser = make_err_annotate_block(field_name, &format!("let {} = ", field_name), "?;");
+                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                                deser_func.push_block(err_deser);
+                            } else {
+                                global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
+                            }
                             if first_param {
                                 first_param = false;
                             } else {
@@ -1287,7 +1325,13 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                         };
                         deser_block.after(",");
-                        global.generate_deserialize(field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
+                        if ANNOTATE_FIELDS {
+                            let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
+                            global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                            deser_block.push_block(err_deser);
+                        } else {
+                            global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
+                        }
                         match &key {
                             FixedValue::Uint(x) => {
                                 map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
@@ -1313,22 +1357,22 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     for case in uint_field_deserializers {
                         uint_match.push_block(case);
                     }
-                    uint_match.line("unknown_key => return Err(DeserializeError::UnknownKey(Key::Uint(unknown_key))),");
+                    uint_match.line(format!("unknown_key => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnknownKey(Key::Uint(unknown_key)))),", name));
                     uint_match.after(",");
                     type_match.push_block(uint_match);
                     let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
                     for case in text_field_deserializers {
                         text_match.push_block(case);
                     }
-                    text_match.line("unknown_key => return Err(DeserializeError::UnknownKey(Key::Str(unknown_key.to_owned()))),");
+                    text_match.line(format!("unknown_key => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())))),", name));
                     text_match.after(",");
                     type_match.push_block(text_match);
                     let mut special_match = Block::new("CBORType::Special => match len");
-                    special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeError::BreakInDefiniteLen),");
+                    special_match.line(format!("cbor_event::Len::Len(_) => return Err(DeserializeError::new(\"{}\", DeserializeFailure::BreakInDefiniteLen)),", name));
                     special_match.line("cbor_event::Len::Indefinite => break,");
                     special_match.after(",");
                     type_match.push_block(special_match);
-                    type_match.line("other_type => return Err(DeserializeError::UnexpectedKeyType(other_type)),");
+                    type_match.line(format!("other_type => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnexpectedKeyType(other_type))),", name));
                     deser_loop.push_block(type_match);
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
@@ -1343,7 +1387,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 FixedValue::Text(x) => format!("Key::Str(String::from(\"{}\"))", x),
                                 _ => unimplemented!(),
                             };
-                            mandatory_field_check.line(format!("None => return Err(DeserializeError::MandatoryFieldMissing({})),", key));
+                            mandatory_field_check.line(format!("None => return Err(DeserializeError::new(\"{}\", DeserializeFailure::MandatoryFieldMissing({}))),", name, key));
                             mandatory_field_check.after(";");
                             deser_func.push_block(mandatory_field_check);
                         }
@@ -1602,9 +1646,9 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     let mut deser_impl = codegen::Impl::new(type_name);
     deser_impl.impl_trait("Deserialize");
     if let Some(tag) = tag {
-        deser_func.line("let tag = raw.tag()?;");
+        deser_func.line(format!("let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{}\"))?;", type_name));
         let mut tag_check = Block::new(&format!("if tag == {}", tag));
-        tag_check.line(&format!("return Err(DeserializeError::TagMismatch{{ found: tag, expected: {} }});", tag));
+        tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", type_name, tag));
         deser_func.push_block(tag_check);
     }
     global.generate_deserialize(field_type, "", "Self(", ")", &mut deser_func);
