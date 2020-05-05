@@ -2,13 +2,23 @@ use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
 use std::io::{BufRead, Write};
 use wasm_bindgen::prelude::*;
 
+#[derive(Debug)]
 pub enum Key {
     Str(String),
     Uint(u64),
 }
 
-// we might want to add more info like which field, etc
-pub enum DeserializeError {
+impl std::fmt::Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Key::Str(x) => write!(f, "\"{}\"", x),
+            Key::Uint(x) => write!(f, "{}", x),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DeserializeFailure {
     BreakInDefiniteLen,
     CBOR(cbor_event::Error),
     ExpectedNull,
@@ -21,9 +31,62 @@ pub enum DeserializeError {
     UnexpectedKeyType(cbor_event::Type),
 }
 
+// we might want to add more info like which field,
+#[derive(Debug)]
+pub struct DeserializeError {
+    location: Option<String>,
+    failure: DeserializeFailure,
+}
+
+impl DeserializeError {
+    pub fn new<T: Into<String>>(location: T, failure: DeserializeFailure) -> Self {
+        Self {
+            location: Some(location.into()),
+            failure,
+        }
+    }
+
+    pub fn annotate<T: Into<String>>(self, location: T) -> Self {
+        match self.location {
+            Some(loc) => Self::new(format!("{}.{}", location.into(), loc), self.failure),
+            None => Self::new(location, self.failure),
+        }
+    }
+}
+
+impl std::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.location {
+            Some(loc) => write!(f, "Deserialization failed in {} because: ", loc),
+            None => write!(f, "Deserialization: "),
+        }?;
+        match &self.failure {
+            DeserializeFailure::BreakInDefiniteLen => write!(f, "Encountered CBOR Break while reading definite length sequence"),
+            DeserializeFailure::CBOR(e) => e.fmt(f),
+            DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
+            DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
+            DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
+            DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
+            DeserializeFailure::UnexpectedKeyType(ty) => write!(f, "Found unexpected key of CBOR type {:?}", ty),
+        }
+    }
+}
+
+impl From<DeserializeFailure> for DeserializeError {
+    fn from(failure: DeserializeFailure) -> DeserializeError {
+        DeserializeError {
+            location: None,
+            failure,
+        }
+    }
+}
+
 impl From<cbor_event::Error> for DeserializeError {
     fn from(err: cbor_event::Error) -> DeserializeError {
-        DeserializeError::CBOR(err)
+        DeserializeError {
+            location: None,
+            failure: DeserializeFailure::CBOR(err),
+        }
     }
 }
 
