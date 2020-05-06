@@ -641,7 +641,7 @@ impl GlobalScope {
                     body.line(&format!("serializer.write_negative_integer({}i64){}", i, line_ender));
                 },
                 FixedValue::Text(s) => {
-                    body.line(&format!("serializer.write_text({}){}", s, line_ender));
+                    body.line(&format!("serializer.write_text(\"{}\"){}", s, line_ender));
                 },
             },
             RustType::Primitive(_) => {
@@ -684,7 +684,7 @@ impl GlobalScope {
                 self.generate_serialize(ty, expr, body, is_end);
             },
             RustType::Optional(ty) => {
-                let mut opt_block = Block::new(&format!("match {}", expr));
+                let mut opt_block = Block::new(&format!("match &{}", expr));
                 // TODO: do this in one line without a block if possible somehow.
                 //       see other comment in generate_enum()
                 let mut some_block = Block::new("Some(x) =>");
@@ -748,8 +748,8 @@ impl GlobalScope {
             RustType::Optional(ty) => {
                 // codegen crate doesn't support if/else or appending a block after a block, only strings
                 // so we need to create a local bool var and use a match instead
-                let is_some_check_var = format!("{}_is_some", var_name);
-                if ty.cbor_types().contains(&CBORType::Special) {
+                let if_label = if ty.cbor_types().contains(&CBORType::Special) {
+                    let is_some_check_var = format!("{}_is_some", var_name);
                     let mut is_some_check = Block::new(&format!("let {} = match cbor_type()?", is_some_check_var));
                     let mut special_block = Block::new("CBORType::Special =>");
                     special_block.line("let special = raw.special()?;");
@@ -768,10 +768,11 @@ impl GlobalScope {
                     is_some_check.line("_ => true,");
                     is_some_check.after(";");
                     body.push_block(is_some_check);
+                    is_some_check_var
                 } else {
-                    body.line(&format!("let {} = raw.cbor_type()? == CBORType::Special;", is_some_check_var));
+                    String::from("raw.cbor_type()? != CBORType::Special")
                 };
-                let mut deser_block = Block::new(&format!("{}match {}", before, is_some_check_var));
+                let mut deser_block = Block::new(&format!("{}match {}", before, if_label));
                 let mut some_block = Block::new("true =>");
                 self.generate_deserialize(ty, var_name, "Some(", ")", &mut some_block);
                 some_block.after(",");
@@ -783,7 +784,7 @@ impl GlobalScope {
                 deser_block.push_block(none_block);
                 body.push_block(deser_block);
             },
-            _ => panic!("deserialize not implemented for {:?}", rust_type)
+            _ => (),//panic!("deserialize not implemented for {:?}", rust_type)
         }
     }
 
@@ -1234,7 +1235,7 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
     };
     if let Some(tag) = tag {
         deser_body.line("let tag = raw.tag()?;");
-        let mut tag_check = Block::new(&format!("if tag == {}", tag));
+        let mut tag_check = Block::new(&format!("if tag != {}", tag));
         tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", name, tag));
         deser_body.push_block(tag_check);
     }
@@ -1494,22 +1495,22 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     for case in uint_field_deserializers {
                         uint_match.push_block(case);
                     }
-                    uint_match.line(format!("unknown_key => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnknownKey(Key::Uint(unknown_key)))),", name));
+                    uint_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()),");
                     uint_match.after(",");
                     type_match.push_block(uint_match);
                     let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
                     for case in text_field_deserializers {
                         text_match.push_block(case);
                     }
-                    text_match.line(format!("unknown_key => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())))),", name));
+                    text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
                     text_match.after(",");
                     type_match.push_block(text_match);
                     let mut special_match = Block::new("CBORType::Special => match len");
-                    special_match.line(format!("cbor_event::Len::Len(_) => return Err(DeserializeError::new(\"{}\", DeserializeFailure::BreakInDefiniteLen)),", name));
+                    special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),");
                     special_match.line("cbor_event::Len::Indefinite => break,");
                     special_match.after(",");
                     type_match.push_block(special_match);
-                    type_match.line(format!("other_type => return Err(DeserializeError::new(\"{}\", DeserializeFailure::UnexpectedKeyType(other_type))),", name));
+                    type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
                     deser_loop.push_block(type_match);
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
@@ -1788,11 +1789,11 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
     deser_impl.impl_trait("Deserialize");
     if let Some(tag) = tag {
         deser_func.line(format!("let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{}\"))?;", type_name));
-        let mut tag_check = Block::new(&format!("if tag == {}", tag));
+        let mut tag_check = Block::new(&format!("if tag != {}", tag));
         tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", type_name, tag));
         deser_func.push_block(tag_check);
     }
-    global.generate_deserialize(field_type, "", "Self(", ")", &mut deser_func);
+    global.generate_deserialize(field_type, "", "Ok(Self(", "))", &mut deser_func);
     deser_impl.push_fn(deser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -1801,11 +1802,17 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
         .vis("pub");
     new_func.line(format!("Self({})", field_type.from_wasm_boundary("data")));
     s_impl.push_fn(new_func);
-    global.scope().raw("#[wasm_bindgen]");
-    global.scope().push_struct(s);
-    global.scope().raw("#[wasm_bindgen]");
-    global.scope().push_impl(s_impl);
-    global.serialize_scope().push_impl(ser_impl);
+    global
+        .scope()
+        .raw("#[wasm_bindgen]")
+        .push_struct(s)
+        .raw("#[wasm_bindgen]")
+        .push_impl(s_impl);
+    global
+        .serialize_scope()
+        .push_impl(ser_impl)
+        .push_impl(deser_impl);
+    
 }
 
 fn generate_type_choices(global: &mut GlobalScope, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>) {
