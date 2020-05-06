@@ -75,17 +75,17 @@ enum FixedValue {
 }
 
 impl FixedValue {
-    fn for_variant(&self) -> String {
+    fn for_variant(&self) -> VariantIdent {
         match self {
-            FixedValue::Null => String::from("Null"),
-            FixedValue::Bool(b) => match b {
-                true => String::from("True"),
-                false => String::from("False"),
-            },
-            FixedValue::Int(i) => format!("U{}", i),
-            FixedValue::Uint(u) => format!("I{}", u),
+            FixedValue::Null => VariantIdent::new_custom("Null"),
+            FixedValue::Bool(b) => VariantIdent::new_custom(match b {
+                true => "True",
+                false => "False",
+            }),
+            FixedValue::Int(i) => VariantIdent::new_custom(format!("U{}", i)),
+            FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
             //FixedValue::Float(f) => format!("F{}", f),
-            FixedValue::Text(s) => convert_to_camel_case(&s),
+            FixedValue::Text(s) => VariantIdent::new_custom(convert_to_camel_case(&s)),
         }
     }
 }
@@ -93,10 +93,10 @@ impl FixedValue {
 #[derive(Clone, Debug)]
 enum Primitive {
     Bool,
-    U8,
     U32,
     I32,
     Str,
+    Bytes,
 }
 
 // TODO: impl display or fmt or whatever rust uses
@@ -104,23 +104,129 @@ impl Primitive {
     fn to_string(&self) -> String {
         String::from(match self {
             Primitive::Bool => "bool",
-            Primitive::U8 => "u8",
             Primitive::U32 => "u32",
             Primitive::I32 => "i32",
             Primitive::Str => "String",
+            Primitive::Bytes => "Vec<u8>",
+        })
+    }
+
+    fn to_variant(&self) -> VariantIdent {
+        VariantIdent::new_custom(match self {
+            Primitive::Bool => "Bool",
+            Primitive::U32 => "U32",
+            Primitive::I32 => "I32",
+            Primitive::Str => "Text",
+            Primitive::Bytes => "Bytes",
         })
     }
 
     fn cbor_type(&self) -> CBORType {
         match self {
             Primitive::Bool => CBORType::Special,
-            Primitive::U8 |
             Primitive::U32 => CBORType::UnsignedInteger,
             Primitive::I32 => CBORType::NegativeInteger,
             Primitive::Str => CBORType::Text,
+            Primitive::Bytes => CBORType::Bytes,
         }
     }
 }
+
+mod idents {
+    // to resolve ambiguities between raw (from CDDL) and already-formatted
+    // for things like type aliases, etc, we use this wrapper struct for both
+    #[derive(Clone, Debug)]
+    pub struct CDDLIdent(String);
+
+    impl CDDLIdent {
+        pub fn new<T: Into<String>>(raw: T) -> Self {
+            Self(raw.into())
+        }
+    }
+
+    // impl<'a> From<&'a CDDLIdent> for &'a str {
+    //     fn from(ident: &'a CDDLIdent) -> &'a str {
+    //         &ident.0
+    //     }
+    // }
+    // why does this not compile?
+    // impl From<&CDDLIdent> for &str {
+    //     fn from(ident: &CDDLIdent) -> &str {
+    //         &ident.0
+    //     }
+    // }
+    // since it doesn't compile, using this for now:
+    impl std::fmt::Display for CDDLIdent {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    pub struct RustIdent(String);
+
+    impl RustIdent {
+        // this should not be created directly, but instead via GlobalScope::new_type()
+        // except for defining new cddl rules, since those should not be reserved identifiers
+        pub fn new(cddl_ident: CDDLIdent) -> Self {
+            assert!(!super::is_identifier_reserved(&cddl_ident.0));
+            Self(super::convert_to_camel_case(&cddl_ident.0))
+        }
+    }
+
+    impl std::fmt::Display for RustIdent {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    pub enum VariantIdent {
+        Custom(String),
+        RustStruct(RustIdent),
+    }
+
+    impl VariantIdent {
+        pub fn new_custom<T: Into<String>>(name: T) -> Self {
+            VariantIdent::Custom(name.into())
+        }
+
+        pub fn new_rust(ident: RustIdent) -> Self {
+            VariantIdent::RustStruct(ident)
+        }
+    }
+
+    impl std::fmt::Display for VariantIdent {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                VariantIdent::Custom(name) => write!(f, "{}", name),
+                VariantIdent::RustStruct(ident) => ident.fmt(f),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    pub enum AliasIdent {
+        Reserved(String),
+        Rust(RustIdent),
+    }
+
+    impl AliasIdent {
+        pub fn new(ident: CDDLIdent) -> Self {
+            if super::is_identifier_reserved(&ident.0) {
+                AliasIdent::Reserved(ident.0)
+            } else {
+                AliasIdent::Rust(RustIdent::new(ident))
+            }
+        }
+    }
+
+    impl From<RustIdent> for AliasIdent {
+        fn from(ident: RustIdent) -> AliasIdent {
+            AliasIdent::Rust(ident)
+        }
+    }
+}
+use idents::*;
 
 #[derive(Clone, Debug)]
 enum RustType {
@@ -128,7 +234,7 @@ enum RustType {
     // Primitive type that can be passed to/from wasm - TODO: make this an enum so we can get type guarantees on it
     Primitive(Primitive),
     // Rust-defined type that cannot be put in arrays/etc
-    Rust(String),
+    Rust(RustIdent),
     // Array-wrapped type. Passed as Vec<T> if T is Primitive
     Array(Box<RustType>),
     // Tagged type. Behavior depends entirely on wrapped type.
@@ -171,7 +277,7 @@ impl RustType {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
             RustType::Primitive(s) => s.to_string(),
-            RustType::Rust(s) => s.clone(),
+            RustType::Rust(s) => s.to_string(),
             RustType::Array(ty) => if ty.directly_wasm_exposable() {
                 format!("Vec<{}>", ty.for_wasm())
             } else {
@@ -187,7 +293,7 @@ impl RustType {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
             RustType::Primitive(s) => s.to_string(),
-            RustType::Rust(s) => s.clone(),
+            RustType::Rust(s) => s.to_string(),
             RustType::Array(ty) => if ty.directly_wasm_exposable() {
                 format!("Vec<{}>", ty.for_wasm())
             } else {
@@ -199,24 +305,16 @@ impl RustType {
         }
     }
 
-    fn for_variant(&self) -> String {
+    fn for_variant(&self) -> VariantIdent {
         match self {
             RustType::Fixed(f) => f.for_variant(),
-            RustType::Primitive(p) => match p {
-                // to get around issues with String (CamelCase) or str (snake_case)
-                Primitive::Str => String::from("Text"),
-                p => convert_to_camel_case(&p.to_string()),
-            },
-            RustType::Rust(ident) => ident.clone(),
-            RustType::Array(inner) => {
-                if let RustType::Primitive(Primitive::U8) = &**inner {
-                    return String::from("Bytes");
-                }
-                format!("Arr{}", inner.for_variant())
-            },
+            RustType::Primitive(p) => p.to_variant(),
+            RustType::Rust(ident) => VariantIdent::new_rust(ident.clone()),
+            RustType::Array(inner) => VariantIdent::new_custom(format!("Arr{}", inner.for_variant())),
             RustType::Tagged(_tag, ty) => ty.for_variant(),
-            RustType::Optional(ty) => format!("Opt{}", ty.for_variant()),
-            RustType::Map(k, v) => format!("Map{}To{}", k.for_variant(), v.for_variant()),
+            // TODO: should we not end up in this situation and just insert a Null fixed value instead?
+            RustType::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.for_variant())),
+            RustType::Map(k, v) => VariantIdent::new_custom(format!("Map{}To{}", k.for_variant(), v.for_variant())),
         }
     }
 
@@ -239,7 +337,10 @@ impl RustType {
                 FixedValue::Bool(_) => CBORType::Special,
             }],
             RustType::Primitive(p) => vec![p.cbor_type()],
-            RustType::Rust(ident) => panic!("TODO: store first cbor tag somewhere"),
+            RustType::Rust(ident) => {
+                //panic!("TODO: store first cbor tag somewhere")
+                vec![CBORType::Array, CBORType::Map]
+            },
             RustType::Tagged(_tag, _ty) => vec![CBORType::Tag],
             RustType::Array(_) => vec![CBORType::Array],
             RustType::Map(_k, _v) => vec![CBORType::Map],
@@ -273,40 +374,40 @@ impl RustType {
 struct GlobalScope {
     global_scope: codegen::Scope,
     serialize_scope: codegen::Scope,
-    already_generated: BTreeSet<String>,
-    plain_groups: BTreeMap<String, Group>,
-    type_aliases: BTreeMap::<String, RustType>,
-    no_deser_reasons: BTreeMap<String, Vec<String>>,
+    already_generated: BTreeSet<RustIdent>,
+    plain_groups: BTreeMap<RustIdent, Group>,
+    type_aliases: BTreeMap::<AliasIdent, RustType>,
+    no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
 
 impl GlobalScope {
     fn new() -> Self {
-        let mut aliases = BTreeMap::<String, RustType>::new();
+        // TODO: write the rest of the reserved keywords here from the CDDL RFC
+        let mut aliases = BTreeMap::<AliasIdent, RustType>::new();
         // TODO: use u64/i64 later when you figure out the BigInt issues from wasm
-        aliases.insert(String::from("uint"), RustType::Primitive(Primitive::U32));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("uint")), RustType::Primitive(Primitive::U32));
         // Not sure on this one, I think they can be bigger than i64 can fit
         // but the cbor_event serialization takes the argument as an i64
-        aliases.insert(String::from("nint"), RustType::Primitive(Primitive::I32));
-        aliases.insert(String::from("bool"), RustType::Primitive(Primitive::Bool));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("nint")), RustType::Primitive(Primitive::I32));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("bool")), RustType::Primitive(Primitive::Bool));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
         //"int" => "i64",
         let string_type = RustType::Primitive(Primitive::Str);
-        aliases.insert(String::from("tstr"), string_type.clone());
-        aliases.insert(String::from("text"), string_type);
+        aliases.insert(AliasIdent::new(CDDLIdent::new("tstr")), string_type.clone());
+        aliases.insert(AliasIdent::new(CDDLIdent::new("text")), string_type);
         // TODO: Is this right to have it be Vec<u8>?
         // the serialization library for bytes takes type [u8]
         // so we'll have to put some logic in there I guess?
         // it might be necessary to put a wrapper type..
-        let bytes_type = RustType::Array(Box::new(RustType::Primitive(Primitive::U8)));
-        aliases.insert(String::from("bstr"), bytes_type.clone());
-        aliases.insert(String::from("bytes"), bytes_type);
+        aliases.insert(AliasIdent::new(CDDLIdent::new("bstr")), RustType::Primitive(Primitive::Bytes));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("bytes")), RustType::Primitive(Primitive::Bytes));
         let null_type = RustType::Fixed(FixedValue::Null);
-        aliases.insert(String::from("null"), null_type.clone());
-        aliases.insert(String::from("nil"), null_type);
-        aliases.insert(String::from("true"), RustType::Fixed(FixedValue::Bool(true)));
-        aliases.insert(String::from("false"), RustType::Fixed(FixedValue::Bool(false)));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("null")), null_type.clone());
+        aliases.insert(AliasIdent::new(CDDLIdent::new("nil")), null_type);
+        aliases.insert(AliasIdent::new(CDDLIdent::new("true")), RustType::Fixed(FixedValue::Bool(true)));
+        aliases.insert(AliasIdent::new(CDDLIdent::new("false")), RustType::Fixed(FixedValue::Bool(false)));
         // What about bingint/other stuff in the standard prelude?
         Self {
             global_scope: codegen::Scope::new(),
@@ -318,39 +419,41 @@ impl GlobalScope {
         }
     }
 
-    fn new_raw_type(&self, raw: &str) -> RustType {
-        let resolved = self.apply_type_aliases(raw);
-        if !is_identifier_reserved(raw) {
-            if let RustType::Array(inner) = &resolved {
-                if let RustType::Primitive(Primitive::U8) = &**inner {
-                    return RustType::Rust(raw.to_owned());
-                }
+    fn new_type(&self, raw: &CDDLIdent) -> RustType {
+        let alias_ident = AliasIdent::new(raw.clone());
+        let resolved = self.apply_type_aliases(&alias_ident);
+        // if we're not literally bytes/bstr, and instead an alias for it
+        // we would have generated a named wrapper object so we should
+        // refer to that instead
+        if !is_identifier_reserved(&raw.to_string()) {
+            if let RustType::Primitive(Primitive::Bytes) = &resolved {
+                return RustType::Rust(RustIdent::new(raw.clone()));
             }
         }
         resolved
     }
 
-    fn apply_type_aliases(&self, raw: &str) -> RustType {
+    fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> RustType {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
-        match self.type_aliases.get(raw) {
+        match self.type_aliases.get(alias_ident) {
             Some(alias) => match alias {
-                RustType::Rust(id) => self.apply_type_aliases(id),
+                RustType::Rust(id) => self.apply_type_aliases(&AliasIdent::from(id.clone())),
                 x => x.clone(),
             },
-            None => match raw {
-                x => RustType::Rust(convert_to_camel_case(x)),
+            None => match alias_ident {
+                AliasIdent::Rust(rust_ident) => RustType::Rust(rust_ident.clone()),
+                AliasIdent::Reserved(reserved) => panic!("Reserved ident {} didn't define type alias", reserved),
             },
         }
     }
 
-    fn generate_type_alias(&mut self, alias: String, value: &str) {
-        let base_type = self.new_raw_type(value);
+    fn generate_type_alias(&mut self, alias: RustIdent, base_type: RustType) {
         self.global_scope.raw(format!("type {} = {};", alias, base_type.for_member()).as_ref());
         self.apply_type_alias_without_codegen(alias, base_type);
     }
 
-    fn apply_type_alias_without_codegen(&mut self, alias: String, base_type: RustType) {
-        self.type_aliases.insert(alias.to_string(), base_type);
+    fn apply_type_alias_without_codegen(&mut self, alias: RustIdent, base_type: RustType) {
+        self.type_aliases.insert(alias.into(), base_type);
     }
 
     fn scope(&mut self) -> &mut codegen::Scope {
@@ -361,16 +464,16 @@ impl GlobalScope {
         &mut self.serialize_scope
     }
 
-    fn mark_plain_group(&mut self, name: String, group: Group) {
+    fn mark_plain_group(&mut self, name: RustIdent, group: Group) {
         self.plain_groups.insert(name, group);
     }
 
 
-    fn is_plain_group(&self, name: &str) -> bool{
+    fn is_plain_group(&self, name: &RustIdent) -> bool{
         self.plain_groups.contains_key(name)
     }
 
-    fn plain_group_fields(&self, name: &str) -> Option<Vec<GroupEntry>> {
+    fn plain_group_fields(&self, name: &RustIdent) -> Option<Vec<GroupEntry>> {
         match self.plain_groups.get(name) {
             Some(group) => {
                 assert_eq!(group.group_choices.len(), 1, "can only get fields of plain group without choices");
@@ -381,7 +484,7 @@ impl GlobalScope {
     }
 
     // If it is a plain group, enerates a wrapper group if one wasn't before
-    fn generate_if_plain_group(&mut self, name: String, rep: Representation) {
+    fn generate_if_plain_group(&mut self, name: RustIdent, rep: Representation) {
         // to get around borrow checker borrowing self mutably + immutably
         if let Some(group) = self.plain_groups.get(&name).map(|g| (*g).clone()) {
             if self.already_generated.insert(name.clone()) {
@@ -397,14 +500,14 @@ impl GlobalScope {
         let mut variant_names_used = BTreeMap::<String, u32>::new();
         type_choices.iter().map(|type1| {
             let rust_type = rust_type_from_type2(self, &type1.type2);
-            let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant());
-            EnumVariant::new(variant_name, rust_type, false)
+            let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant().to_string());
+            EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
         }).collect()
     }
 
-    fn generate_type_choices_from_variants(&mut self, name: &str, variants: &Vec<EnumVariant>, tag: Option<usize>) {
+    fn generate_type_choices_from_variants(&mut self, name: &RustIdent, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
-        let enum_name = format!("{}Enum", name);
+        let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
         generate_enum(self, &enum_name, &variants, None);
 
         // Now generate a wrapper object that we will expose to wasm around this
@@ -412,10 +515,10 @@ impl GlobalScope {
         let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, None, tag);
         s
             .vis("pub")
-            .tuple_field(&enum_name);
+            .tuple_field(&enum_name.to_string());
         // new
         for variant in variants.iter() {
-            let variant_arg = convert_to_snake_case(&variant.name);
+            let variant_arg = convert_to_snake_case(&variant.name.to_string());
             let mut new_func = codegen::Function::new(&format!("new_{}", variant_arg));
             new_func
                 .ret("Self")
@@ -452,9 +555,9 @@ impl GlobalScope {
         }
         let element_type_wasm = element_type.for_wasm();
         let element_type_rust = element_type.for_member();
-        let array_type = format!("{}s", element_type_rust);
+        let array_type = RustIdent::new(CDDLIdent::new(format!("{}s", element_type_rust)));
         if self.already_generated.insert(array_type.clone()) {
-            let mut s = codegen::Struct::new(&array_type);
+            let mut s = codegen::Struct::new(&array_type.to_string());
             s
                 .tuple_field(format!("Vec<{}>", element_type_rust))
                 .vis("pub");
@@ -462,7 +565,7 @@ impl GlobalScope {
             // TODO: accessors (mostly only necessary if we support deserialization)
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_struct(s);
-            let mut ser_impl = codegen::Impl::new(&array_type);
+            let mut ser_impl = codegen::Impl::new(&array_type.to_string());
             ser_impl.impl_trait("cbor_event::se::Serialize");
             let mut ser_func = make_serialization_function("serialize");
             ser_func.line("serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;");
@@ -472,7 +575,7 @@ impl GlobalScope {
             ser_func.line("Ok(serializer)");
             ser_impl.push_fn(ser_func);
             self.serialize_scope.push_impl(ser_impl);
-            let mut array_impl = codegen::Impl::new(&array_type);
+            let mut array_impl = codegen::Impl::new(&array_type.to_string());
             array_impl
                 .new_fn("new")
                 .vis("pub")
@@ -507,7 +610,7 @@ impl GlobalScope {
     fn generate_table_type(&mut self, key_type: RustType, value_type: RustType) -> RustType {
         // can't have plain groups unlike arrays, so don't try and generate those
         // for general map types we can though but not for tables
-        let table_type = format!("Map{}To{}", key_type.for_member(), value_type.for_member());
+        let table_type = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_member(), value_type.for_member())));
         if self.already_generated.insert(table_type.clone()) {
             codegen_table_type(self, &table_type, key_type.clone(), value_type.clone(), None);
         }
@@ -516,7 +619,7 @@ impl GlobalScope {
 
     // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
     fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, is_end: bool) {
-        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         let line_ender = if is_end {
             ""
         } else {
@@ -627,7 +730,9 @@ impl GlobalScope {
             RustType::Primitive(p) => {
                 body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
             },
-            RustType::Rust(ident) => {
+            RustType::Rust(ident) => if self.is_plain_group(ident) {
+                body.line(&format!("{}{}::deserialize_as_embedded_group(raw, len)?{}", before, ident, after));
+            } else {
                 body.line(&format!("{}{}::deserialize(raw)?{}", before, ident, after));
             },
             RustType::Tagged(tag, ty) => {
@@ -682,7 +787,7 @@ impl GlobalScope {
         }
     }
 
-    fn deserialize_generated(&self, name: &str) -> bool {
+    fn deserialize_generated(&self, name: &RustIdent) -> bool {
         !self.no_deser_reasons.contains_key(name)
     }
 
@@ -698,8 +803,8 @@ impl GlobalScope {
         }
     }
 
-    fn dont_generate_deserialize(&mut self, name: &str, reason: String) {
-        self.no_deser_reasons.entry(name.to_owned()).or_default().push(reason);
+    fn dont_generate_deserialize(&mut self, name: &RustIdent, reason: String) {
+        self.no_deser_reasons.entry(name.clone()).or_default().push(reason);
     }
 
     fn print_structs_without_deserialize(&self) {
@@ -769,17 +874,45 @@ fn add_struct_derives<T: DataType>(data_type: &mut T) {
 
 fn is_identifier_reserved(name: &str) -> bool {
     match name {
-        // Do we need more? We don't support any other ones.
-        "uint"  |
-        "int"   |
-        "nint"  |
-        "text"  |
-        "tstr"  |
-        "bytes" |
-        "bstr"  |
-        "null"  |
-        "nil"   |
-        "true"  |
+        // These are all possible reserved identifiers, even if we don't support them
+        "uint"       |
+        "int"        |
+        "nint"       |
+        "text"       |
+        "tstr"       |
+        "bytes"      |
+        "bstr"       |
+        "bool"       |
+        "float"      |
+        "float16"    |
+        "float32"    |
+        "float64"    |
+        "float16-32" |
+        "float32-64" |
+        "tdate"      |
+        "time"       |
+        "number"     |
+        "biguint"    |
+        "bignint"    |
+        "bigint"     | 
+        "integer"    |
+        "unsigned"   |
+        "decfrac"    |
+        "bigfloat"   |
+        "eb64url"    |
+        "eb64legacy" |
+        "eb16"       |
+        "encoded-cbor" |
+        "uri"        |
+        "b64url"     |
+        "b64legacy"  |
+        "regexp"     |
+        "mime-messag e" |
+        "cbor-any"   |
+        "null"       |
+        "nil"        |
+        "undefined"  |
+        "true"       |
         "false" => true,
         _ => false,
     }
@@ -903,7 +1036,7 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
         Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
         Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.clone())),
-        Type2::Typename{ ident, .. } => global.new_raw_type(&ident.ident),
+        Type2::Typename{ ident, .. } => global.new_type(&CDDLIdent::new(&ident.ident)),
         // Map(group) not implemented as it's not in shelley.cddl
         Type2::Array{ group, .. } => {
             // TODO: support for group choices in arrays?
@@ -915,7 +1048,7 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
                         let (entry, _has_comma) = choice.group_entries.first().unwrap();
                         match entry {
                             GroupEntry::ValueMemberKey{ ge, .. } => rust_type(global, &ge.entry_type),
-                            GroupEntry::TypeGroupname{ ge, .. } => global.new_raw_type(&ge.name.to_string()),
+                            GroupEntry::TypeGroupname{ ge, .. } => global.new_type(&CDDLIdent::new(&ge.name.to_string())),
                             _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
                         }
                     } else {
@@ -980,10 +1113,11 @@ fn rust_type(global: &mut GlobalScope, t: &Type) -> RustType {
                 combined_name.push_str("Or");
             }
             // due to undercase primitive names, we need to convert here
-            combined_name.push_str(&variant.rust_type.for_variant());
+            combined_name.push_str(&variant.rust_type.for_variant().to_string());
         }
-        global.generate_type_choices_from_variants(&combined_name, &variants, None);
-        global.new_raw_type(&combined_name)
+        let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
+        global.generate_type_choices_from_variants(&combined_ident, &variants, None);
+        global.new_type(&CDDLIdent::new(combined_name))
     }
 }
 
@@ -1001,7 +1135,7 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
 fn group_entry_to_type(global: &mut GlobalScope, entry: &GroupEntry) -> RustType {
     let ret = match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => rust_type(global, &ge.entry_type),
-        GroupEntry::TypeGroupname{ ge, .. } => global.new_raw_type(&ge.name.to_string()),
+        GroupEntry::TypeGroupname{ ge, .. } => global.new_type(&CDDLIdent::new(ge.name.to_string())),
         GroupEntry::InlineGroup{ .. } => panic!("inline group entries are not implemented"),
     };
     //println!("group_entry_to_typename({:?}) = {:?}\n", entry, ret);
@@ -1031,7 +1165,8 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
     }
 }
 
-fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
+fn create_exposed_group(ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
+    let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
     let mut group_impl = codegen::Impl::new(name);
@@ -1056,7 +1191,8 @@ fn create_exposed_group(name: &str) -> (codegen::Struct, codegen::Impl) {
 
 // The serialize impls calls the embedded serialize impl, but the embedded one is
 // empty and must be implemented yourself.
-fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+fn create_serialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+    let name = &ident.to_string();
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
     let mut ser_func = make_serialization_function("serialize");
@@ -1082,7 +1218,8 @@ fn create_serialize_impls(name: &str, rep: Option<Representation>, tag: Option<u
 
 // The serialize impls calls the embedded serialize impl, but the embedded one is
 // empty and must be implemented yourself.
-fn create_deserialize_impls(name: &str, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+    let name = &ident.to_string();
     let mut deser_impl = codegen::Impl::new(name);
     // TODO: add config param to decide if we want to use our deserialize
     // or theirs using Error::Cusom(String) + DeserializeError::to_string()
@@ -1146,7 +1283,7 @@ fn make_err_annotate_block(annotation: &str, before: &str, after: &str) -> Block
     if_block
 }
 
-fn codegen_table_type(global: &mut GlobalScope, name: &str, key_type: RustType, value_type: RustType, tag: Option<usize>) {
+fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: RustType, value_type: RustType, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(name);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(Representation::Map), tag);
     s.vis("pub");
@@ -1188,7 +1325,7 @@ fn codegen_table_type(global: &mut GlobalScope, name: &str, key_type: RustType, 
     push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
 }
 
-fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &str, rep: Representation, tag: Option<usize>) {
+fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>) {
     let table_types = table_domain_range(group_choice, rep);
     match table_types {
         // Table map - homogenous key/value types
@@ -1411,7 +1548,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
     }
 }
 
-fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Representation, tag: Option<usize>) {
+fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep: Representation, tag: Option<usize>) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
         codegen_group_choice(global, group.group_choices.first().unwrap(), name, rep, tag);
@@ -1420,7 +1557,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         // fully featured rust enums via wasm_bindgen
 
         // Handle group with choices by generating an enum then generating a group for every choice
-        let enum_name = format!("{}Enum", name);
+        let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
         let mut variants_names_used = BTreeMap::<String, u32>::new();
         let variants: Vec<EnumVariant> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
             // If we're a 1-element we should just wrap that type in the variant rather than
@@ -1434,11 +1571,12 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
                     // we might need to generate it if not used elsewhere
                     global.generate_if_plain_group(ident.clone(), rep);
                 }
-                let variant_name = match group_entry_to_raw_field_name(group_entry) {
+                let variant_ident = convert_to_camel_case(&match group_entry_to_raw_field_name(group_entry) {
                     Some(name) => name,
-                    None => append_number_if_duplicate(&mut variants_names_used, ty.for_variant()),
-                };
-                EnumVariant::new(convert_to_camel_case(&variant_name), ty, global.is_plain_group(&name))
+                    None => append_number_if_duplicate(&mut variants_names_used, ty.for_variant().to_string()),
+                });
+                let variant_ident = VariantIdent::new_custom(variant_ident);
+                EnumVariant::new(variant_ident, ty, global.is_plain_group(&name))
                 // None => {
                 //     // TODO: Weird case, group choice with only one fixed-value field.
                 //     // What should we do here? In the future we could make this a
@@ -1451,10 +1589,10 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
                 // },
             } else {
                 // General case, GroupN type identifiers and generate group choice since it's inlined here
-                let variant_name = format!("{}{}", name, i);
+                let variant_name = RustIdent::new(CDDLIdent::new(format!("{}{}", name, i)));
                 // TODO: Should we generate these within their own namespace?
                 codegen_group_choice(global, group_choice, &variant_name, rep, None);
-                EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), false)
+                EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), false)
             }
         }).collect();
         generate_enum(global, &enum_name, &variants, Some(rep));
@@ -1464,16 +1602,19 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
         let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
         s
             .vis("pub")
-            .tuple_field(&enum_name);
+            .tuple_field(&enum_name.to_string());
         // new
         for (variant, group_choice) in variants.iter().zip(group.group_choices.iter()) {
-            let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant.name)));
+            let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant.name.to_string())));
             new_func
                 .ret("Self")
                 .vis("pub");
             let mut output_comma = false;
             let mut generated_fields = BTreeMap::<String, u32>::new();
-            let group_entries = match global.plain_group_fields(&variant.name) {
+            let group_entries = match match &variant.name {
+                VariantIdent::RustStruct(rust_ident) => global.plain_group_fields(rust_ident),
+                VariantIdent::Custom(_) => None,
+            } {
                 Some(entries) => entries,
                 None => group_choice.group_entries.iter().map(|(e, _)| e.clone()).collect(),
             };
@@ -1524,13 +1665,13 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &str, rep: Repre
 
 // rep is Optional - None means we just serialize raw, ie for tpye choices
 struct EnumVariant {
-    name: String,
+    name: VariantIdent,
     rust_type: RustType,
     serialize_as_embedded_group: bool,
 }
 
 impl EnumVariant {
-    pub fn new(name: String, rust_type: RustType, serialize_as_embedded_group: bool) -> Self {
+    pub fn new(name: VariantIdent, rust_type: RustType, serialize_as_embedded_group: bool) -> Self {
         Self {
             name,
             rust_type,
@@ -1539,8 +1680,8 @@ impl EnumVariant {
     }
 }
 
-fn generate_enum(global: &mut GlobalScope, enum_name: &str, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
-    let mut e = codegen::Enum::new(enum_name);
+fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
+    let mut e = codegen::Enum::new(&enum_name.to_string());
     add_struct_derives(&mut e);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
     let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
@@ -1629,13 +1770,13 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     f
 }
 
-fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type: &RustType, tag: Option<usize>) {
+fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>) {
     let (mut s, mut s_impl) = create_exposed_group(type_name);
     s
         .vis("pub")
         .tuple_field(field_type.for_member());
     let mut ser_func = make_serialization_function("serialize");
-    let mut ser_impl = codegen::Impl::new(type_name);
+    let mut ser_impl = codegen::Impl::new(&type_name.to_string());
     ser_impl.impl_trait("cbor_event::se::Serialize");
     if let Some(tag) = tag {
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
@@ -1643,7 +1784,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, true);
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize");
-    let mut deser_impl = codegen::Impl::new(type_name);
+    let mut deser_impl = codegen::Impl::new(&type_name.to_string());
     deser_impl.impl_trait("Deserialize");
     if let Some(tag) = tag {
         deser_func.line(format!("let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{}\"))?;", type_name));
@@ -1667,7 +1808,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &str, field_type
     global.serialize_scope().push_impl(ser_impl);
 }
 
-fn generate_type_choices(global: &mut GlobalScope, name: &str, type_choices: &Vec<Type1>, tag: Option<usize>) {
+fn generate_type_choices(global: &mut GlobalScope, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>) {
     let optional_inner_type = if type_choices.len() == 2 {
         let a = &type_choices[0].type2;
         let b = &type_choices[1].type2;
@@ -1688,7 +1829,7 @@ fn generate_type_choices(global: &mut GlobalScope, name: &str, type_choices: &Ve
                 generate_wrapper_struct(global, name, &RustType::Optional(Box::new(inner_rust_type)), tag);
             },
             None => {
-                global.generate_type_alias(name.to_owned(), &format!("Option<{}>", inner_rust_type.for_member()));
+                global.generate_type_alias(name.to_owned(), RustType::Optional(Box::new(inner_rust_type)));
             },
         };
     } else {
@@ -1697,7 +1838,7 @@ fn generate_type_choices(global: &mut GlobalScope, name: &str, type_choices: &Ve
     }
 }
 
-fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer_tag: Option<usize>) {
+fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>) {
     match type2 {
         Type2::Typename{ ident, .. } => {
             // This should be controlled in a better way - maybe we can annotate the cddl
@@ -1708,27 +1849,21 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
             // want to expand upon the code later on.
             // Perhaps we could change the cddl and have some specific tag like "BINARY_FORMAT"
             // to generate this?
+            let cddl_ident = CDDLIdent::new(ident.to_string());
             let generate_binary_wrapper = match ident.to_string().as_ref() {
                 "bytes" | "bstr" => true,
-                ident => if let RustType::Array(inner) = global.apply_type_aliases(&convert_to_camel_case(ident)) {
-                    if let RustType::Primitive(Primitive::U8) = *inner {
-                        true
-                    } else {
-                        false
-                    }
+                ident => if let RustType::Primitive(Primitive::Bytes) = global.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
+                    true
                 } else {
                     false
                 },
             };
             if generate_binary_wrapper {
-                let field_type = RustType::Array(Box::new(RustType::Primitive(Primitive::U8)));
+                let field_type = RustType::Primitive(Primitive::Bytes);
                 generate_wrapper_struct(global, type_name, &field_type, None);
                 global.apply_type_alias_without_codegen(type_name.to_owned(), field_type);
             } else {
-                // Using RustType here just to get a string out of it that applies
-                // common conversions like uint -> u64. Since we're only using it
-                // to get a String, we should be fine.
-                global.generate_type_alias(type_name.to_owned(), &ident.to_string());
+                global.generate_type_alias(type_name.to_owned(), global.new_type(&cddl_ident));
             }
         },
         Type2::Map{ group, .. } => {
@@ -1752,7 +1887,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &str, type2: &Type2, outer
                         x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
                     } {
                         Either::Left(_group) => generate_type(global, type_name, inner_type, *tag),
-                        Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_raw_type(&ident.to_string()), *tag),
+                        Either::Right(ident) => generate_wrapper_struct(global, type_name, &global.new_type(&CDDLIdent::new(ident.to_string())), *tag),
                     };
                 },
                 _ => {
@@ -1791,7 +1926,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Freely defined group - no need to generate anything outside of group module
             match &rule.entry {
                 GroupEntry::InlineGroup{ group, .. } => {
-                    global.mark_plain_group(convert_to_camel_case(&rule.name.to_string()), group.clone());
+                    global.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), group.clone());
                 },
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
@@ -1806,12 +1941,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 //     It's used, but used for no reason as it is the initial definition
                 //     (which is also valid cddl), but it would be fine as = instead of /=
                 // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
-                let rule_name = convert_to_camel_case(&rule.name.to_string());
+                let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
                 if rule.value.type_choices.len() == 1 {
                     let choice = &rule.value.type_choices.first().unwrap();
-                    generate_type(&mut global, &rule_name, &choice.type2, None);
+                    generate_type(&mut global, &rust_ident, &choice.type2, None);
                 } else {
-                    generate_type_choices(&mut global, &rule_name, &rule.value.type_choices, None);
+                    generate_type_choices(&mut global, &rust_ident, &rule.value.type_choices, None);
                 }
             },
             Rule::Group{ rule, .. } => {
@@ -1833,9 +1968,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::copy("static/Cargo.toml", "export/Cargo.toml").unwrap();
     std::fs::copy("static/prelude.rs", "export/src/prelude.rs").unwrap();
 
-    println!("\n\nPlain groups:");
-    for plain_group in global.plain_groups.iter() {
-        println!("{}", plain_group.0);
+    if !global.plain_groups.is_empty() {
+        println!("\n\nPlain groups:");
+        for plain_group in global.plain_groups.iter() {
+            println!("{}", plain_group.0);
+        }
+    }
+
+    if !global.type_aliases.is_empty() {
+        println!("\n\nAliases:");
+        for (alias_name, alias_type) in global.type_aliases.iter() {
+            println!("{:?} -> {:?}", alias_name, alias_type);
+        }
     }
 
     // TODO: this cannot accurately predict if cddl definitions are out of order
