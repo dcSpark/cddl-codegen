@@ -716,16 +716,34 @@ impl GlobalScope {
     // * etc
     // var_name is passed in for use in creating unique identifiers for temporaries
     fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, before: &str, after: &str, body: &mut dyn CodeBlock) {
-        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        body.line(&format!("println!(\"deserializing {}\");", var_name));
         match rust_type {
-            RustType::Fixed(f) => match f {
-                // we don't set values since we don't store fixed values, we just verify here
-                FixedValue::Null => {
-                    let mut special_block = Block::new("if raw.special()? != CBORSpecial::Null");
-                    special_block.line("return Err(DeserializeFailure::ExpectedNull.into());");
-                    body.push_block(special_block);
-                },
-                _ => unimplemented!(),
+            RustType::Fixed(f) => {
+                // we don't evaluate to any values here, just verify
+                // before/after are ignored and we need to handle fixed value deserialization in a different way
+                // than normal ones.
+                assert_eq!(after, "");
+                assert_eq!(before, "");
+                match f {
+                    FixedValue::Null => {
+                        let mut special_block = Block::new("if raw.special()? != CBORSpecial::Null");
+                        special_block.line("return Err(DeserializeFailure::ExpectedNull.into());");
+                        body.push_block(special_block);
+                    },
+                    FixedValue::Uint(x) => {
+                        body.line(&format!("let {}_value = raw.unsigned_integer()?;", var_name));
+                        let mut compare_block = Block::new(&format!("if {}_value != {}", var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint({}_value), expected: Key::Uint({})}}.into());", var_name, x));
+                        body.push_block(compare_block);
+                    },
+                    FixedValue::Text(x) => {
+                        body.line(&format!("let {}_value = raw.text()?;", var_name));
+                        let mut compare_block = Block::new(&format!("if {}_value != \"{}\"", var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\"))}}.into());", var_name, x));
+                        body.push_block(compare_block);
+                    },
+                    _ => unimplemented!(),
+                }
             },
             RustType::Primitive(p) => {
                 body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
@@ -1411,19 +1429,34 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
                         } else {
                             global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
-                            if ANNOTATE_FIELDS {
-                                let mut err_deser = make_err_annotate_block(field_name, &format!("let {} = ", field_name), "?;");
-                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
-                                deser_func.push_block(err_deser);
+                            if field_type.is_fixed_value() {
+                                // don't set anything, only verify data
+                                if ANNOTATE_FIELDS {
+                                    let mut err_deser = make_err_annotate_block(field_name, "", "?;");
+                                    global.generate_deserialize(&field_type, field_name, "", "", &mut err_deser);
+                                    // this block needs to evaluate to a Result even though it has no value
+                                    err_deser.line("Ok(())");
+                                    deser_func.push_block(err_deser);
+                                } else {
+                                    global.generate_deserialize(&field_type, field_name, "", "", &mut deser_func);
+                                }
                             } else {
-                                global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
+                                if ANNOTATE_FIELDS {
+                                    let mut err_deser = make_err_annotate_block(field_name, &format!("let {} = ", field_name), "?;");
+                                    global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                                    deser_func.push_block(err_deser);
+                                } else {
+                                    global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
+                                }
                             }
-                            if first_param {
-                                first_param = false;
-                            } else {
-                                deser_ret.push_str(", ");
+                            if !field_type.is_fixed_value() {
+                                if first_param {
+                                    first_param = false;
+                                } else {
+                                    deser_ret.push_str(", ");
+                                }
+                                deser_ret.push_str(field_name);
                             }
-                            deser_ret.push_str(field_name);
                         }
                     }
                     deser_ret.push_str("))");
@@ -1444,7 +1477,11 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 global.dont_generate_deserialize(name, format!("Map with plain group field {}: {}", field_name, field_type.for_member()));
                             }
                         }
-                        deser_func.line(format!("let mut {} = None;", field_name));
+                        if field_type.is_fixed_value() {
+                            deser_func.line(&format!("let mut {}_present = false;", field_name));
+                        } else {
+                            deser_func.line(format!("let mut {} = None;", field_name));
+                        }
                         let mut optional_map_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
                         let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if *optional_field {
                             (String::from("field"), &mut optional_map_ser_block)
@@ -1463,12 +1500,25 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                         };
                         deser_block.after(",");
-                        if ANNOTATE_FIELDS {
-                            let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
-                            global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
-                            deser_block.push_block(err_deser);
+                        if field_type.is_fixed_value() {
+                            // only does verification and sets the field_present bool to do error checking later
+                            if ANNOTATE_FIELDS {
+                                let mut err_deser = make_err_annotate_block(field_name, &format!("{}_present = ", field_name), "?;");
+                                global.generate_deserialize(&field_type, field_name, "", "", &mut err_deser);
+                                err_deser.line("Ok(true)");
+                                deser_block.push_block(err_deser);
+                            } else {
+                                global.generate_deserialize(&field_type, field_name, "", "", &mut deser_block);
+                                deser_block.line(&format!("{}_present = true;", field_name));
+                            }
                         } else {
-                            global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
+                            if ANNOTATE_FIELDS {
+                                let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
+                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                                deser_block.push_block(err_deser);
+                            } else {
+                                global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
+                            }
                         }
                         match &key {
                             FixedValue::Uint(x) => {
@@ -1515,21 +1565,31 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     deser_loop.line("read += 1;");
                     deser_func.push_block(deser_loop);
                     let mut ctor_block = Block::new("Ok(Self");
-                    for (field_name, _field_type, optional_field, group_entry) in &fields {
+                    // make sure the field is present, and unwrap the Option<T>
+                    for (field_name, field_type, optional_field, group_entry) in &fields {
                         if !*optional_field {
-                            let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field_name, field_name));
-                            mandatory_field_check.line("Some(x) => x,");
                             // unwrap since error case handled in match above
                             let key = match group_entry_to_key(group_entry).unwrap() {
                                 FixedValue::Uint(x) => format!("Key::Uint({})", x),
                                 FixedValue::Text(x) => format!("Key::Str(String::from(\"{}\"))", x),
                                 _ => unimplemented!(),
                             };
-                            mandatory_field_check.line(format!("None => return Err(DeserializeError::new(\"{}\", DeserializeFailure::MandatoryFieldMissing({}))),", name, key));
-                            mandatory_field_check.after(";");
-                            deser_func.push_block(mandatory_field_check);
+                            if field_type.is_fixed_value() {
+                                let mut mandatory_field_check = Block::new(&format!("if !{}_present", field_name));
+                                mandatory_field_check.line(format!("return Err(DeserializeFailure::MandatoryFieldMissing({}).into());", key));
+                                deser_func.push_block(mandatory_field_check);
+                            } else {
+                                let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field_name, field_name));
+                                mandatory_field_check.line("Some(x) => x,");
+                                
+                                mandatory_field_check.line(format!("None => return Err(DeserializeFailure::MandatoryFieldMissing({}).into()),", key));
+                                mandatory_field_check.after(";");
+                                deser_func.push_block(mandatory_field_check);
+                            }
                         }
-                        ctor_block.line(format!("{},", field_name));
+                        if !field_type.is_fixed_value() {
+                            ctor_block.line(format!("{},", field_name));
+                        }
                     }
                     ctor_block.after(")");
                     deser_func.push_block(ctor_block);
