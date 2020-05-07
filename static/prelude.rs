@@ -21,7 +21,12 @@ impl std::fmt::Display for Key {
 pub enum DeserializeFailure {
     BreakInDefiniteLen,
     CBOR(cbor_event::Error),
+    EndingBreakMissing,
     ExpectedNull,
+    FixedValueMismatch{
+        found: Key,
+        expected: Key,
+    },
     MandatoryFieldMissing(Key),
     TagMismatch{
         found: u64,
@@ -63,7 +68,9 @@ impl std::fmt::Display for DeserializeError {
         match &self.failure {
             DeserializeFailure::BreakInDefiniteLen => write!(f, "Encountered CBOR Break while reading definite length sequence"),
             DeserializeFailure::CBOR(e) => e.fmt(f),
+            DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
+            DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
             DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
             DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
@@ -111,6 +118,7 @@ impl<T: cbor_event::de::Deserialize> Deserialize for T {
     }
 }
 
+// should we ne passing len by mut ref? or how do we keep track of finite length issues?
 pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead>(
         raw: &mut Deserializer<R>,
