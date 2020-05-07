@@ -1260,13 +1260,34 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
     // TODO: enforce finite element lengths
     if let Some (rep) = rep {
         match rep {
-            Representation::Array => deser_body.line("let len = raw.array()?;"),
-            Representation::Map => deser_body.line("let len = raw.map()?;"),
+            Representation::Array => {
+                deser_body.line("let len = raw.array()?;");
+                deser_body.line("let ret = Self::deserialize_as_embedded_group(raw, len);");
+            },
+            Representation::Map => {
+                deser_body.line("let len = raw.map()?;");
+                deser_body.line("Self::deserialize_as_embedded_group(raw, len)");
+            },
         };
-        deser_body.line("Self::deserialize_as_embedded_group(raw, len)");
     } else {
         panic!("TODO: how should we handle this considering we are dealing with Len?");
         //deser_body.line("Self::deserialize_as_embedded_group(serializer)");
+    }
+    // We only check it for arrays since the implementation for maps uses len to decide
+    // when to stop reading values, since otherwise with optional parameters it doesn't know.
+    // We also can't do it from within deserialize_as_embedded_group() as that interferes with
+    // plain groups nested inside other array groups
+    if let Some(Representation::Array) = rep {
+        // TODO: check finite len
+        let mut end_len_check = Block::new("match len");
+        end_len_check.line("cbor_event::Len::Len(_) => /* TODO: check finite len somewhere */(),");
+        let mut indefinite_check = Block::new("cbor_event::Len::Indefinite => match raw.special()?");
+        indefinite_check.line("CBORSpecial::Break => /* it's ok */(),");
+        indefinite_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+        indefinite_check.after(",");
+        end_len_check.push_block(indefinite_check);
+        deser_body.push_block(end_len_check);
+        deser_body.line("ret");
     }
     if ANNOTATE_FIELDS {
         deser_func.push_block(error_annotator);
@@ -1459,9 +1480,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             }
                         }
                     }
+                    // length checked inside of deserialize() - it causes problems for plain groups nested
+                    // in other groups otherwise
                     deser_ret.push_str("))");
                     deser_func.line(deser_ret);
-                    // TODO: check Len
                 },
                 Representation::Map => {
                     let mut uint_field_deserializers = Vec::new();
