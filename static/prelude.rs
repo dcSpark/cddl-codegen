@@ -21,6 +21,7 @@ impl std::fmt::Display for Key {
 pub enum DeserializeFailure {
     BreakInDefiniteLen,
     CBOR(cbor_event::Error),
+    DuplicateKey(Key),
     EndingBreakMissing,
     ExpectedNull,
     FixedValueMismatch{
@@ -68,6 +69,7 @@ impl std::fmt::Display for DeserializeError {
         match &self.failure {
             DeserializeFailure::BreakInDefiniteLen => write!(f, "Encountered CBOR Break while reading definite length sequence"),
             DeserializeFailure::CBOR(e) => e.fmt(f),
+            DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
