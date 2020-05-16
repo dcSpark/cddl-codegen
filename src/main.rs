@@ -614,9 +614,16 @@ impl GlobalScope {
                     body.line(&format!("serializer.write_text(\"{}\"){}", s, line_ender));
                 },
             },
-            RustType::Primitive(_) => {
-                // clone() is to handle String, might not be necessary
-                body.line(&format!("{}.clone().serialize(serializer){}", expr, line_ender));
+            RustType::Primitive(primitive) => match primitive {
+                Primitive::Bytes => {
+                    body.line(&format!("serializer.write_bytes(&{}){}", expr, line_ender));
+                },
+                Primitive::Str => {
+                    body.line(&format!("serializer.write_text(&{}){}", expr, line_ender));
+                },
+                _ => {
+                    body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
+                },
             },
             RustType::Rust(t) => {
                 if self.plain_groups.contains_key(t) {
@@ -715,8 +722,13 @@ impl GlobalScope {
                     _ => unimplemented!(),
                 }
             },
-            RustType::Primitive(p) => {
-                body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
+            RustType::Primitive(p) => match p {
+                Primitive::Bytes => {
+                    body.line(&format!("{}raw.bytes()?{}", before, after));
+                },
+                _ => {
+                    body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
+                },
             },
             RustType::Rust(ident) => if self.is_plain_group(ident) {
                 body.line(&format!("{}{}::deserialize_as_embedded_group(raw, len)?{}", before, ident, after));
