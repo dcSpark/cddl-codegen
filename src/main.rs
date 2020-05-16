@@ -8,36 +8,6 @@ use codegen_helpers::{CodeBlock, DataType};
 use std::collections::{BTreeMap, BTreeSet};
 use either::{Either};
 
-use cbor_event::de::Deserializer;
-pub trait Seek {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64>;
-
-    fn stream_len(&mut self) -> std::io::Result<u64> {
-        let old_pos = self.stream_position()?;
-        let len = self.seek(std::io::SeekFrom::End(0))?;
-
-        // Avoid seeking a third time when we were already at the end of the
-        // stream. The branch is usually way cheaper than a seek operation.
-        if old_pos != len {
-            self.seek(std::io::SeekFrom::Start(old_pos))?;
-        }
-
-        Ok(len)
-    }
-    fn stream_position(&mut self) -> std::io::Result<u64> {
-        self.seek(std::io::SeekFrom::Current(0))
-    }
-}
-impl<T> Seek for Deserializer<T>
-where
-    T: std::io::Seek + AsRef<[u8]>
-{
-    fn seek(&mut self, style: std::io::SeekFrom) -> std::io::Result<u64> {
-        unimplemented!()
-        //self.0.seek(style)
-    }
-}
-
 // TODO: add these as cmd args
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
@@ -1356,13 +1326,51 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     s_impl.push_fn(insert_func);
     // serialize
     let mut ser_map = make_serialization_function("serialize_as_embedded_group");
-    let mut table_loop = Block::new("for (key, value) in &self.0");
-    global.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
-    global.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
-    ser_map.push_block(table_loop);
+    let mut ser_loop = Block::new("for (key, value) in &self.0");
+    global.generate_serialize(&key_type, String::from("key"), &mut ser_loop, false);
+    global.generate_serialize(&value_type, String::from("value"), &mut ser_loop, false);
+    ser_map.push_block(ser_loop);
     ser_map.line("Ok(serializer)");
     ser_embedded_impl.push_fn(ser_map);
+    // deserialize
+    let mut deser_impl = codegen::Impl::new(&name.to_string());
+    deser_impl.impl_trait("Deserialize");
+    let mut deser_func = make_deserialization_function("deserialize");
+    deser_func.line("let mut table = std::collections::BTreeMap::new();");
+    let mut error_annotator = make_err_annotate_block(&name.to_string(), "", "?;");
+    let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
+        &mut error_annotator
+    } else {
+        &mut deser_func
+    };
+    if let Some(tag) = tag {
+        deser_body.line("let tag = raw.tag()?;");
+        let mut tag_check = Block::new(&format!("if tag != {}", tag));
+        tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", name, tag));
+        deser_body.push_block(tag_check);
+    }
+    deser_body.line("let len = raw.map()?;");
+    let mut deser_loop =  Block::new("while match len { cbor_event::Len::Len(n) => table.len() < n as usize, cbor_event::Len::Indefinite => true, }");
+    global.generate_deserialize(&key_type, "key", "let key = ", ";", &mut deser_loop);
+    global.generate_deserialize(&value_type, "value", "let value = ", ";", &mut deser_loop);
+    let mut dup_check = Block::new("if table.insert(key.clone(), value).is_some()");
+    let dup_key_error_key = match key_type {
+        RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
+        RustType::Primitive(Primitive::Str) => "Key::Str(key)",
+        // TODO: make a generic one then store serialized CBOR?
+        _ => "Key::Str(\"some complicated/unsupported type\")",
+    };
+    dup_check.line(format!("return Err(DeserializeFailure::DuplicateKey({}).into());", dup_key_error_key));
+    deser_loop.push_block(dup_check);
+    deser_body.push_block(deser_loop);
+    if ANNOTATE_FIELDS {
+        error_annotator.line("Ok(())");
+        deser_func.push_block(error_annotator);
+    }
+    deser_func.line("Ok(Self(table))");
+    deser_impl.push_fn(deser_func);
     push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+    global.serialize_scope().push_impl(deser_impl);
 }
 
 fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>) {
@@ -1522,7 +1530,15 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                         };
                         deser_block.after(",");
+                        let key_in_rust = match &key {
+                            FixedValue::Uint(x) => format!("Key::Uint({})", x),
+                            FixedValue::Text(x) => format!("Key::Str(\"{}\".into())", x),
+                            _ => unimplemented!(),
+                        };
                         if field_type.is_fixed_value() {
+                            let mut dup_check = Block::new(&format!("if {}_present", field_name));
+                            dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
+                            deser_block.push_block(dup_check);
                             // only does verification and sets the field_present bool to do error checking later
                             if ANNOTATE_FIELDS {
                                 let mut err_deser = make_err_annotate_block(field_name, &format!("{}_present = ", field_name), "?;");
@@ -1534,6 +1550,9 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 deser_block.line(&format!("{}_present = true;", field_name));
                             }
                         } else {
+                            let mut dup_check = Block::new(&format!("if {}.is_some()", field_name));
+                            dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
+                            deser_block.push_block(dup_check);
                             if ANNOTATE_FIELDS {
                                 let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
                                 global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
