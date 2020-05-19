@@ -242,17 +242,21 @@ impl RustType {
         }
     }
 
+    fn name_as_array(&self) -> String {
+        if self.directly_wasm_exposable() {
+            format!("Vec<{}>", self.for_wasm())
+        } else {
+            format!("{}s", self.for_wasm())
+        }
+    }
+
     // TODO: should we unify this and for_member() in to_string()? (they were different previously) will we need the distinction for other types?
     fn for_wasm(&self) -> String {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
             RustType::Primitive(s) => s.to_string(),
             RustType::Rust(s) => s.to_string(),
-            RustType::Array(ty) => if ty.directly_wasm_exposable() {
-                format!("Vec<{}>", ty.for_wasm())
-            } else {
-                format!("{}s", ty.for_wasm())
-            },
+            RustType::Array(ty) => ty.name_as_array(),
             RustType::Tagged(_tag, ty) => ty.for_wasm(),
             RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm()),
             RustType::Map(k, v) => format!("Map{}To{}", k.for_wasm(), v.for_wasm()),
@@ -264,11 +268,7 @@ impl RustType {
             RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
             RustType::Primitive(s) => s.to_string(),
             RustType::Rust(s) => s.to_string(),
-            RustType::Array(ty) => if ty.directly_wasm_exposable() {
-                format!("Vec<{}>", ty.for_wasm())
-            } else {
-                format!("{}s", ty.for_wasm())
-            },
+            RustType::Array(ty) => ty.name_as_array(),
             RustType::Tagged(_tag, ty) => ty.for_member(),
             RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
             RustType::Map(k, v) => format!("Map{}To{}", k.for_member(), v.for_member()),
@@ -400,6 +400,16 @@ impl GlobalScope {
                 return RustType::Rust(RustIdent::new(raw.clone()));
             }
         }
+        // this would interfere with map/array loop code generation unless we
+        // specially handle this case since you wouldn't know whether you hit a break
+        // or are reading a key here, unless we check, but then you'd need to store the
+        // non-break special value once read
+        if let RustType::Array(ty) = &resolved {
+            assert!(!ty.cbor_types().contains(&CBORType::Special));
+        }
+        if let RustType::Map(key_type, _val_type) = &resolved {
+            assert!(!key_type.cbor_types().contains(&CBORType::Special));
+        }
         resolved
     }
 
@@ -516,7 +526,7 @@ impl GlobalScope {
     }
 
     // generate array type ie [Foo] generates Foos if not already created
-    fn generate_array_type(&mut self, element_type: RustType) -> RustType {
+    fn generate_array_type(&mut self, element_type: RustType, array_type_name: &str) -> RustType {
         if element_type.directly_wasm_exposable() {
             return RustType::Array(Box::new(element_type));
         }
@@ -525,7 +535,7 @@ impl GlobalScope {
         }
         let element_type_wasm = element_type.for_wasm();
         let element_type_rust = element_type.for_member();
-        let array_type = RustIdent::new(CDDLIdent::new(format!("{}s", element_type_rust)));
+        let array_type = RustIdent::new(CDDLIdent::new(array_type_name));
         if self.already_generated.insert(array_type.clone()) {
             let mut s = codegen::Struct::new(&array_type.to_string());
             s
@@ -535,6 +545,7 @@ impl GlobalScope {
             // TODO: accessors (mostly only necessary if we support deserialization)
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_struct(s);
+            // serialize
             let mut ser_impl = codegen::Impl::new(&array_type.to_string());
             ser_impl.impl_trait("cbor_event::se::Serialize");
             let mut ser_func = make_serialization_function("serialize");
@@ -545,6 +556,30 @@ impl GlobalScope {
             ser_func.line("Ok(serializer)");
             ser_impl.push_fn(ser_func);
             self.serialize_scope.push_impl(ser_impl);
+            // deserialize
+            let mut deser_impl = codegen::Impl::new(&array_type.to_string());
+            deser_impl.impl_trait("Deserialize");
+            let mut deser_func = make_deserialization_function("deserialize");
+            deser_func.line("let mut arr = Vec::new();");
+            let mut error_annotator = make_err_annotate_block(&array_type.to_string(), "", "?;");
+            let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
+                &mut error_annotator
+            } else {
+                &mut deser_func
+            };
+            deser_body.line("let len = raw.array()?;");
+            let mut deser_loop = make_deser_loop("len", "arr.len()");
+            deser_loop.push_block(make_deser_loop_break_check());
+            self.generate_deserialize(&element_type, array_type_name, "arr.push(", ");", &mut deser_loop);
+            deser_body.push_block(deser_loop);
+            if ANNOTATE_FIELDS {
+                error_annotator.line("Ok(())");
+                deser_func.push_block(error_annotator);
+            }
+            deser_func.line("Ok(Self(arr))");
+            deser_impl.push_fn(deser_func);
+            self.serialize_scope().push_impl(deser_impl);
+            // other functions
             let mut array_impl = codegen::Impl::new(&array_type.to_string());
             array_impl
                 .new_fn("new")
@@ -634,17 +669,6 @@ impl GlobalScope {
             },
             RustType::Array(ty) => {
                 if ty.directly_wasm_exposable() {
-                    // TODO: I think this should be removed due to the TaggedData<T> removal - please test
-                    //       to see if we need to replace this with something else, or if arrays of tagged things
-                    //       work fine with the refactor.
-                    // not iterating tagged data but instead its contents
-                    if let RustType::Tagged(_, _) = &**ty {
-                        expr.push_str(".data");
-                    };
-                    // non-literal types are contained in vec wrapper types
-                    if !ty.directly_wasm_exposable() {
-                        expr.push_str(".0");
-                    }
                     body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
                     let mut loop_block = Block::new(&format!("for element in {}.iter()", expr));
                     loop_block.line("element.serialize(serializer)?;");
@@ -784,7 +808,30 @@ impl GlobalScope {
                 deser_block.push_block(none_block);
                 body.push_block(deser_block);
             },
-            _ => (),//panic!("deserialize not implemented for {:?}", rust_type)
+            RustType::Array(ty) => {
+                if ty.directly_wasm_exposable() {
+                    body.line("let mut arr = Vec::new();");
+                    body.line("let len = raw.array()?;");
+                    let mut deser_loop = make_deser_loop("len", "arr.len()");
+                    deser_loop.push_block(make_deser_loop_break_check());
+                    self.generate_deserialize(ty, var_name, "arr.push(", ");", &mut deser_loop);
+                    body.push_block(deser_loop);
+                    body.line(&format!("{}arr{}", before, after));
+                } else {
+                    body.line(&format!("{}{}::deserialize(raw)?{}", before, rust_type.for_member(), after));
+                }
+            },
+            RustType::Map(_key_type, _value_type) => {
+                // I don't think this will ever be used since we always generate a wrappre type for this
+                // so that we can expose it to wasm. It could be later if someone needs that later (for a non-wasm feature maybe)
+                //     body.line(&format!("let mut table = {}::new();", rust_type.for_member()));
+                //     body.line("let len = raw.map()?;");
+                //     let deser_loop = make_table_deser_loop(self, key_type, value_type, "len", "table");
+                //     body.push_block(deser_loop);
+                //     body.line(&format!("{}table{}", before, after));
+                // so instead we just generate this:
+                body.line(&format!("{}{}::deserialize(raw)?{}", before, rust_type.for_member(), after));
+            },
         }
     }
 
@@ -1038,7 +1085,6 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
         Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.clone())),
         Type2::Typename{ ident, .. } => global.new_type(&CDDLIdent::new(&ident.ident)),
-        // Map(group) not implemented as it's not in shelley.cddl
         Type2::Array{ group, .. } => {
             // TODO: support for group choices in arrays?
             let element_type = match group.group_choices.len() {
@@ -1060,7 +1106,8 @@ fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
             };
-            global.generate_array_type(element_type)
+            let array_wrapper_name = element_type.name_as_array();
+            global.generate_array_type(element_type, &array_wrapper_name)
         },
         Type2::Map { group, .. } => {
             match group.group_choices.len() {
@@ -1305,7 +1352,41 @@ fn make_err_annotate_block(annotation: &str, before: &str, after: &str) -> Block
     if_block
 }
 
+fn make_deser_loop(len_var: &str, len_expr: &str) -> Block {
+    Block::new(&format!("while match len {{ cbor_event::Len::Len(n) => {} < n as usize, cbor_event::Len::Indefinite => true, }}", len_expr))
+}
+
+fn make_deser_loop_break_check() -> Block {
+    let mut break_check = Block::new("if raw.cbor_type()? == CBORType::Special");
+    // TODO: read special and go back 1 character
+    break_check.line("assert_eq!(raw.special()?, CBORSpecial::Break);");
+    break_check.line("break;");
+    break_check
+}
+
+fn make_table_deser_loop(global: &mut GlobalScope, key_type: &RustType, value_type: &RustType, len_var: &str, table_var: &str) -> Block {
+    let mut deser_loop = make_deser_loop(len_var, &format!("{}.len()", table_var));
+    deser_loop.push_block(make_deser_loop_break_check());
+    global.generate_deserialize(key_type, "key", "let key = ", ";", &mut deser_loop);
+    global.generate_deserialize(value_type, "value", "let value = ", ";", &mut deser_loop);
+    let mut dup_check = Block::new(&format!("if {}.insert(key.clone(), value).is_some()", table_var));
+    let dup_key_error_key = match key_type {
+        RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
+        RustType::Primitive(Primitive::Str) => "Key::Str(key)",
+        // TODO: make a generic one then store serialized CBOR?
+        _ => "Key::Str(\"some complicated/unsupported type\")",
+    };
+    dup_check.line(format!("return Err(DeserializeFailure::DuplicateKey({}).into());", dup_key_error_key));
+    deser_loop.push_block(dup_check);
+    deser_loop
+}
+
 fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: RustType, value_type: RustType, tag: Option<usize>) {
+    // this would interfere with loop code generation unless we
+    // specially handle this case since you wouldn't know whether you hit a break
+    // or are reading a key here, unless we check, but then you'd need to store the
+    // non-break special value once read
+    assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let (mut s, mut s_impl) = create_exposed_group(name);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(Representation::Map), tag);
     s.vis("pub");
@@ -1330,9 +1411,10 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
         .arg_mut_self()
         .arg("key", key_type.for_wasm())
         .arg("value", value_type.for_wasm())
+        .ret(format!("Option<{}>", value_type.for_wasm()))
         .line(
             format!(
-                "self.0.insert({}, {});",
+                "self.0.insert({}, {})",
                 key_type.from_wasm_boundary("key"),
                 value_type.from_wasm_boundary("value")));
     s_impl.push_fn(insert_func);
@@ -1362,18 +1444,7 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
         deser_body.push_block(tag_check);
     }
     deser_body.line("let len = raw.map()?;");
-    let mut deser_loop =  Block::new("while match len { cbor_event::Len::Len(n) => table.len() < n as usize, cbor_event::Len::Indefinite => true, }");
-    global.generate_deserialize(&key_type, "key", "let key = ", ";", &mut deser_loop);
-    global.generate_deserialize(&value_type, "value", "let value = ", ";", &mut deser_loop);
-    let mut dup_check = Block::new("if table.insert(key.clone(), value).is_some()");
-    let dup_key_error_key = match key_type {
-        RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
-        RustType::Primitive(Primitive::Str) => "Key::Str(key)",
-        // TODO: make a generic one then store serialized CBOR?
-        _ => "Key::Str(\"some complicated/unsupported type\")",
-    };
-    dup_check.line(format!("return Err(DeserializeFailure::DuplicateKey({}).into());", dup_key_error_key));
-    deser_loop.push_block(dup_check);
+    let deser_loop = make_table_deser_loop(global, &key_type, &value_type, "len", "table");
     deser_body.push_block(deser_loop);
     if ANNOTATE_FIELDS {
         error_annotator.line("Ok(())");
@@ -1592,7 +1663,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     }
                     // needs to be in one line rather than a block because Block::after() only takes a string
                     deser_func.line("let mut read = 0;");
-                    let mut deser_loop = Block::new("while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, }");
+                    let mut deser_loop = make_deser_loop("len", "read");
                     let mut type_match = Block::new("match raw.cbor_type()?");
                     let mut uint_match = Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer()?");
                     for case in uint_field_deserializers {
@@ -1990,6 +2061,8 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
             codegen_group(global, group, type_name, Representation::Map, outer_tag);
         },
         Type2::Array{ group, .. } => {
+            // TODO: We could potentially generate an array-wrapper type around this
+            // possibly based on the occurency specifier.
             codegen_group(global, group, type_name, Representation::Array, outer_tag);
         },
         Type2::TaggedData{ tag, t, .. } => {
