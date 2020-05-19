@@ -352,6 +352,17 @@ struct GlobalScope {
 
 impl GlobalScope {
     fn new() -> Self {
+        Self {
+            global_scope: codegen::Scope::new(),
+            serialize_scope: codegen::Scope::new(),
+            already_generated: BTreeSet::new(),
+            plain_groups: BTreeMap::new(),
+            type_aliases: Self::aliases(),
+            no_deser_reasons: BTreeMap::new(),
+        }
+    }
+
+    fn aliases() -> BTreeMap<idents::AliasIdent, RustType> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
         let mut aliases = BTreeMap::<AliasIdent, RustType>::new();
         // TODO: use u64/i64 later when you figure out the BigInt issues from wasm
@@ -379,14 +390,7 @@ impl GlobalScope {
         aliases.insert(AliasIdent::new(CDDLIdent::new("true")), RustType::Fixed(FixedValue::Bool(true)));
         aliases.insert(AliasIdent::new(CDDLIdent::new("false")), RustType::Fixed(FixedValue::Bool(false)));
         // What about bingint/other stuff in the standard prelude?
-        Self {
-            global_scope: codegen::Scope::new(),
-            serialize_scope: codegen::Scope::new(),
-            already_generated: BTreeSet::new(),
-            plain_groups: BTreeMap::new(),
-            type_aliases: aliases,
-            no_deser_reasons: BTreeMap::new(),
-        }
+        aliases
     }
 
     fn new_type(&self, raw: &CDDLIdent) -> RustType {
@@ -491,7 +495,7 @@ impl GlobalScope {
         generate_enum(self, &enum_name, &variants, None);
 
         // Now generate a wrapper object that we will expose to wasm around this
-        let (mut s, mut s_impl) = create_exposed_group(name);
+        let (mut s, mut s_impl) = create_exposed_group(self, name);
         let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, None, tag);
         s
             .vis("pub")
@@ -557,28 +561,32 @@ impl GlobalScope {
             ser_impl.push_fn(ser_func);
             self.serialize_scope.push_impl(ser_impl);
             // deserialize
-            let mut deser_impl = codegen::Impl::new(&array_type.to_string());
-            deser_impl.impl_trait("Deserialize");
-            let mut deser_func = make_deserialization_function("deserialize");
-            deser_func.line("let mut arr = Vec::new();");
-            let mut error_annotator = make_err_annotate_block(&array_type.to_string(), "", "?;");
-            let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
-                &mut error_annotator
+            if self.deserialize_generated_for_type(&element_type) {
+                let mut deser_impl = codegen::Impl::new(&array_type.to_string());
+                deser_impl.impl_trait("Deserialize");
+                let mut deser_func = make_deserialization_function("deserialize");
+                deser_func.line("let mut arr = Vec::new();");
+                let mut error_annotator = make_err_annotate_block(&array_type.to_string(), "", "?;");
+                let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
+                    &mut error_annotator
+                } else {
+                    &mut deser_func
+                };
+                deser_body.line("let len = raw.array()?;");
+                let mut deser_loop = make_deser_loop("len", "arr.len()");
+                deser_loop.push_block(make_deser_loop_break_check());
+                self.generate_deserialize(&element_type, array_type_name, "arr.push(", ");", &mut deser_loop);
+                deser_body.push_block(deser_loop);
+                if ANNOTATE_FIELDS {
+                    error_annotator.line("Ok(())");
+                    deser_func.push_block(error_annotator);
+                }
+                deser_func.line("Ok(Self(arr))");
+                deser_impl.push_fn(deser_func);
+                self.serialize_scope().push_impl(deser_impl);
             } else {
-                &mut deser_func
-            };
-            deser_body.line("let len = raw.array()?;");
-            let mut deser_loop = make_deser_loop("len", "arr.len()");
-            deser_loop.push_block(make_deser_loop_break_check());
-            self.generate_deserialize(&element_type, array_type_name, "arr.push(", ");", &mut deser_loop);
-            deser_body.push_block(deser_loop);
-            if ANNOTATE_FIELDS {
-                error_annotator.line("Ok(())");
-                deser_func.push_block(error_annotator);
+                self.dont_generate_deserialize(&array_type, format!("inner type {} doesn't support deserialize", element_type.for_member()));
             }
-            deser_func.line("Ok(Self(arr))");
-            deser_impl.push_fn(deser_func);
-            self.serialize_scope().push_impl(deser_impl);
             // other functions
             let mut array_impl = codegen::Impl::new(&array_type.to_string());
             array_impl
@@ -862,6 +870,25 @@ impl GlobalScope {
                 println!("\t{}", reason);
             }
         }
+    }
+
+    fn reset_except_not_deserialized(&mut self, last_time: &mut Option<usize>) -> bool {
+        let repeat = match last_time {
+            Some(n) => *n != self.no_deser_reasons.len(),
+            None => true,
+        };
+        if repeat {
+            self.global_scope = codegen::Scope::new();
+            self.serialize_scope = codegen::Scope::new();
+            self.already_generated.clear();
+            self.type_aliases = Self::aliases();
+            // keep empty ones so we can know it's not generated
+            for (_ident, reasons) in self.no_deser_reasons.iter_mut() {
+                reasons.clear();
+            }
+        }
+        *last_time = Some(self.no_deser_reasons.len());
+        repeat
     }
 }
 
@@ -1213,7 +1240,7 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
     }
 }
 
-fn create_exposed_group(ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
+fn create_exposed_group(global: &GlobalScope, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
@@ -1227,13 +1254,15 @@ fn create_exposed_group(ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
         .line("let mut buf = Serializer::new_vec();")
         .line("self.serialize(&mut buf).unwrap();")
         .line("buf.finalize()");
-    group_impl
-        .new_fn("from_bytes")
-        .ret(format!("Result<{}, JsValue>", name))
-        .arg("data", "Vec<u8>")
-        .vis("pub")
-        .line("let mut raw = Deserializer::from(std::io::Cursor::new(data));")
-        .line("Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))");
+    if global.deserialize_generated(ident) {
+        group_impl
+            .new_fn("from_bytes")
+            .ret(format!("Result<{}, JsValue>", name))
+            .arg("data", "Vec<u8>")
+            .vis("pub")
+            .line("let mut raw = Deserializer::from(std::io::Cursor::new(data));")
+            .line("Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))");
+    }
     (s, group_impl)
 }
 
@@ -1374,7 +1403,7 @@ fn make_table_deser_loop(global: &mut GlobalScope, key_type: &RustType, value_ty
         RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
         RustType::Primitive(Primitive::Str) => "Key::Str(key)",
         // TODO: make a generic one then store serialized CBOR?
-        _ => "Key::Str(\"some complicated/unsupported type\")",
+        _ => "Key::Str(String::from(\"some complicated/unsupported type\"))",
     };
     dup_check.line(format!("return Err(DeserializeFailure::DuplicateKey({}).into());", dup_key_error_key));
     deser_loop.push_block(dup_check);
@@ -1387,7 +1416,7 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
-    let (mut s, mut s_impl) = create_exposed_group(name);
+    let (mut s, mut s_impl) = create_exposed_group(global, name);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(Representation::Map), tag);
     s.vis("pub");
     s.tuple_field(format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
@@ -1426,34 +1455,40 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     ser_map.push_block(ser_loop);
     ser_map.line("Ok(serializer)");
     ser_embedded_impl.push_fn(ser_map);
-    // deserialize
-    let mut deser_impl = codegen::Impl::new(&name.to_string());
-    deser_impl.impl_trait("Deserialize");
-    let mut deser_func = make_deserialization_function("deserialize");
-    deser_func.line("let mut table = std::collections::BTreeMap::new();");
-    let mut error_annotator = make_err_annotate_block(&name.to_string(), "", "?;");
-    let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
-        &mut error_annotator
-    } else {
-        &mut deser_func
-    };
-    if let Some(tag) = tag {
-        deser_body.line("let tag = raw.tag()?;");
-        let mut tag_check = Block::new(&format!("if tag != {}", tag));
-        tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", name, tag));
-        deser_body.push_block(tag_check);
-    }
-    deser_body.line("let len = raw.map()?;");
-    let deser_loop = make_table_deser_loop(global, &key_type, &value_type, "len", "table");
-    deser_body.push_block(deser_loop);
-    if ANNOTATE_FIELDS {
-        error_annotator.line("Ok(())");
-        deser_func.push_block(error_annotator);
-    }
-    deser_func.line("Ok(Self(table))");
-    deser_impl.push_fn(deser_func);
     push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
-    global.serialize_scope().push_impl(deser_impl);
+    // deserialize
+    if !global.deserialize_generated_for_type(&key_type) {
+        global.dont_generate_deserialize(name, format!("key type {} doesn't support deserialize", key_type.for_member()));
+    } else if !global.deserialize_generated_for_type(&value_type) {
+        global.dont_generate_deserialize(name, format!("value type {} doesn't support deserialize", value_type.for_member()));
+    } else {
+        let mut deser_impl = codegen::Impl::new(&name.to_string());
+        deser_impl.impl_trait("Deserialize");
+        let mut deser_func = make_deserialization_function("deserialize");
+        deser_func.line("let mut table = std::collections::BTreeMap::new();");
+        let mut error_annotator = make_err_annotate_block(&name.to_string(), "", "?;");
+        let deser_body: &mut dyn CodeBlock = if ANNOTATE_FIELDS {
+            &mut error_annotator
+        } else {
+            &mut deser_func
+        };
+        if let Some(tag) = tag {
+            deser_body.line("let tag = raw.tag()?;");
+            let mut tag_check = Block::new(&format!("if tag != {}", tag));
+            tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", name, tag));
+            deser_body.push_block(tag_check);
+        }
+        deser_body.line("let len = raw.map()?;");
+        let deser_loop = make_table_deser_loop(global, &key_type, &value_type, "len", "table");
+        deser_body.push_block(deser_loop);
+        if ANNOTATE_FIELDS {
+            error_annotator.line("Ok(())");
+            deser_func.push_block(error_annotator);
+        }
+        deser_func.line("Ok(Self(table))");
+        deser_impl.push_fn(deser_func);
+        global.serialize_scope().push_impl(deser_impl);
+    }
 }
 
 fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>) {
@@ -1469,7 +1504,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
         None => {
             // Construct all field data here since we iterate over it multiple times and having
             // it in one huge loop was extremely unreadable
-            let (mut s, mut s_impl) = create_exposed_group(name);
+            let (mut s, mut s_impl) = create_exposed_group(global, name);
             let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
             let (deser_impl, mut deser_embedded_impl) = create_deserialize_impls(name, Some(rep), tag);
             s.vis("pub");
@@ -1783,7 +1818,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
         generate_enum(global, &enum_name, &variants, Some(rep));
 
         // Now generate a wrapper object that we will expose to wasm around this
-        let (mut s, mut s_impl) = create_exposed_group(name);
+        let (mut s, mut s_impl) = create_exposed_group(global, name);
         let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
         s
             .vis("pub")
@@ -1956,7 +1991,7 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
 }
 
 fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>) {
-    let (mut s, mut s_impl) = create_exposed_group(type_name);
+    let (mut s, mut s_impl) = create_exposed_group(global, type_name);
     s
         .vis("pub")
         .tuple_field(field_type.for_member());
@@ -2095,60 +2130,71 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("test.cddl").unwrap();
+    let cddl_in = std::fs::read_to_string("supported.cddl").unwrap();
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
     //println!("CDDL file: {}", cddl);
     let mut global = GlobalScope::new();
-    // Can't generate groups of imports with codegen::Import so we just output this as raw text
-    // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
-    // does not work.
-    global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
-    global.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
-    global.scope().import("std::io", "{BufRead, Write}");
-    global.scope().import("wasm_bindgen::prelude", "*");
-    global.scope().import("prelude", "*");
-    global.scope().raw("use cbor_event::Type as CBORType;");
-    global.scope().raw("use cbor_event::Special as CBORSpecial;");
-    global.scope().raw("mod prelude;");
-    global.scope().raw("mod serialization;");
-    global.serialize_scope().import("super", "*");
-    // Need to know beforehand which are plain groups so we can serialize them properly
-    // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
-    for cddl_rule in &cddl.rules {
-        if let Rule::Group{ rule, .. } = cddl_rule {
-            // Freely defined group - no need to generate anything outside of group module
-            match &rule.entry {
-                GroupEntry::InlineGroup{ group, .. } => {
-                    global.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), group.clone());
-                },
-                x => panic!("Group rule with non-inline group? {:?}", x),
-            }
-        }
-    }
-    for cddl_rule in &cddl.rules {
-        println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
-        match cddl_rule {
-            Rule::Type{ rule, .. } => {
-                // (1) does not handle optional generic parameters
-                // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
-                //     It's used, but used for no reason as it is the initial definition
-                //     (which is also valid cddl), but it would be fine as = instead of /=
-                // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
-                let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
-                if rule.value.type_choices.len() == 1 {
-                    let choice = &rule.value.type_choices.first().unwrap();
-                    generate_type(&mut global, &rust_ident, &choice.type2, None);
-                } else {
-                    generate_type_choices(&mut global, &rust_ident, &rule.value.type_choices, None);
-                }
-            },
-            Rule::Group{ rule, .. } => {
+    // TODO: this is a quick hack to get around out-of-order declarations in the cddl file
+    // e.g. foo = [bar], bar = ... where bar can't deserialize would still generate foo's deserialize
+    // if we just do everything independently and it's our of order, so as a super quick fix just do multiple
+    // passes until the number of unsupported structs doesn't change.
+    // We should probably construct some dependency graph instead of doing this.
+    let mut not_deserialized = None;
+    let mut pass_count = 0;
+    while global.reset_except_not_deserialized(&mut not_deserialized) {
+        println!("Pass #{}", pass_count);
+        pass_count += 1;
+        // Can't generate groups of imports with codegen::Import so we just output this as raw text
+        // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
+        // does not work.
+        global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
+        global.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
+        global.scope().import("std::io", "{BufRead, Write}");
+        global.scope().import("wasm_bindgen::prelude", "*");
+        global.scope().import("prelude", "*");
+        global.scope().raw("use cbor_event::Type as CBORType;");
+        global.scope().raw("use cbor_event::Special as CBORSpecial;");
+        global.scope().raw("mod prelude;");
+        global.scope().raw("mod serialization;");
+        global.serialize_scope().import("super", "*");
+        // Need to know beforehand which are plain groups so we can serialize them properly
+        // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
+        for cddl_rule in &cddl.rules {
+            if let Rule::Group{ rule, .. } = cddl_rule {
                 // Freely defined group - no need to generate anything outside of group module
                 match &rule.entry {
-                    GroupEntry::InlineGroup{ .. } => (),// already handled above
+                    GroupEntry::InlineGroup{ group, .. } => {
+                        global.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), group.clone());
+                    },
                     x => panic!("Group rule with non-inline group? {:?}", x),
                 }
-            },
+            }
+        }
+        for cddl_rule in &cddl.rules {
+            println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
+            match cddl_rule {
+                Rule::Type{ rule, .. } => {
+                    // (1) does not handle optional generic parameters
+                    // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
+                    //     It's used, but used for no reason as it is the initial definition
+                    //     (which is also valid cddl), but it would be fine as = instead of /=
+                    // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
+                    let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
+                    if rule.value.type_choices.len() == 1 {
+                        let choice = &rule.value.type_choices.first().unwrap();
+                        generate_type(&mut global, &rust_ident, &choice.type2, None);
+                    } else {
+                        generate_type_choices(&mut global, &rust_ident, &rule.value.type_choices, None);
+                    }
+                },
+                Rule::Group{ rule, .. } => {
+                    // Freely defined group - no need to generate anything outside of group module
+                    match &rule.entry {
+                        GroupEntry::InlineGroup{ .. } => (),// already handled above
+                        x => panic!("Group rule with non-inline group? {:?}", x),
+                    }
+                },
+            }
         }
     }
     match std::fs::remove_dir_all("export/src") {
@@ -2175,11 +2221,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // TODO: this cannot accurately predict if cddl definitions are out of order
-    // e.g. foo = [bar], bar = ...
-    // with bar not having supported serialization which will also result in code
-    // that does not compile as it will try to generate Foo::deserialize() when
-    // Bar::deserialize() does not exist
     global.print_structs_without_deserialize();
 
     Ok(())
