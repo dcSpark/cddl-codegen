@@ -44,6 +44,10 @@ enum FixedValue {
     // UTF byte types not supported
 }
 
+fn convert_to_alphanumeric(input: &str) -> String {
+    input.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
+}
+
 impl FixedValue {
     fn for_variant(&self) -> VariantIdent {
         match self {
@@ -55,7 +59,7 @@ impl FixedValue {
             FixedValue::Int(i) => VariantIdent::new_custom(format!("U{}", i)),
             FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
             //FixedValue::Float(f) => format!("F{}", f),
-            FixedValue::Text(s) => VariantIdent::new_custom(convert_to_camel_case(&s)),
+            FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
         }
     }
 }
@@ -527,6 +531,13 @@ impl GlobalScope {
         ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
         ser_embedded_impl.push_fn(ser_embedded_func);
         push_exposed_struct(self, s, s_impl, ser_impl, ser_embedded_impl);
+        // deserialize
+        let mut deser_impl = codegen::Impl::new(&name.to_string());
+        deser_impl.impl_trait("Deserialize");
+        let mut deser_func = make_deserialization_function("deserialize");
+        deser_func.line(format!("Ok(Self({}::deserialize(raw)?))", enum_name));
+        deser_impl.push_fn(deser_func);
+        self.serialize_scope().push_impl(deser_impl);
     }
 
     // generate array type ie [Foo] generates Foos if not already created
@@ -742,13 +753,13 @@ impl GlobalScope {
                     FixedValue::Uint(x) => {
                         body.line(&format!("let {}_value = raw.unsigned_integer()?;", var_name));
                         let mut compare_block = Block::new(&format!("if {}_value != {}", var_name, x));
-                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint({}_value), expected: Key::Uint({})}}.into());", var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint({}_value), expected: Key::Uint({}) }}.into());", var_name, x));
                         body.push_block(compare_block);
                     },
                     FixedValue::Text(x) => {
                         body.line(&format!("let {}_value = raw.text()?;", var_name));
                         let mut compare_block = Block::new(&format!("if {}_value != \"{}\"", var_name, x));
-                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\"))}}.into());", var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", var_name, x));
                         body.push_block(compare_block);
                     },
                     _ => unimplemented!(),
@@ -785,7 +796,7 @@ impl GlobalScope {
                     let mut is_some_check = Block::new(&format!("let {} = match cbor_type()?", is_some_check_var));
                     let mut special_block = Block::new("CBORType::Special =>");
                     special_block.line("let special = raw.special()?;");
-                    special_block.line("raw.seek(std::io::SeekFrom(-1));");
+                    special_block.line("raw.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();");
                     let mut special_match = Block::new("match special()");
                     // TODO: we need to check that we don't have null / null somewhere
                     special_match.line("CBORSpecial::Null => false,");
@@ -1382,7 +1393,7 @@ fn make_err_annotate_block(annotation: &str, before: &str, after: &str) -> Block
 }
 
 fn make_deser_loop(len_var: &str, len_expr: &str) -> Block {
-    Block::new(&format!("while match len {{ cbor_event::Len::Len(n) => {} < n as usize, cbor_event::Len::Indefinite => true, }}", len_expr))
+    Block::new(&format!("while match {} {{ cbor_event::Len::Len(n) => {} < n as usize, cbor_event::Len::Indefinite => true, }}", len_var, len_expr))
 }
 
 fn make_deser_loop_break_check() -> Block {
@@ -1883,7 +1894,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
     }
 }
 
-// rep is Optional - None means we just serialize raw, ie for tpye choices
+// rep is Optional - None means we just serialize raw, ie for type choices
 struct EnumVariant {
     name: VariantIdent,
     rust_type: RustType,
@@ -1906,12 +1917,17 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
     let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
     let mut ser_array_embedded_match_block = Block::new("match self");
+    let mut deser_impl = codegen::Impl::new(&enum_name.to_string());
+    deser_impl.impl_trait("Deserialize");
+    let mut deser_func = make_deserialization_function("deserialize");
+    deser_func.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
     for variant in variants.iter() {
         if variant.rust_type.is_fixed_value() {
             e.push_variant(codegen::Variant::new(&format!("{}", variant.name)));
         } else {
             e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant.rust_type.for_member())));
         }
+        // serialize
         if variant.serialize_as_embedded_group {
             ser_array_embedded_match_block.line(&format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
         } else {
@@ -1930,17 +1946,44 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
                 ser_array_embedded_match_block.push_block(case_block);
             //}
         }
+        // deserialize
+        // TODO: don't backtrack if variants begin with non-overlapping cbor types
+        // TODO: how to detect when a greedy match won't work? (ie choice with choices in a choice possibly)
+        // TODO: figure out how to handle embedded group stuff
+        if !variant.serialize_as_embedded_group {
+            let mut variant_deser = Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+            if variant.rust_type.is_fixed_value() {
+                global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "", "", &mut variant_deser);
+                variant_deser.line("Ok(())");
+            } else {
+                global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "Ok(", ")", &mut variant_deser);
+            }
+            variant_deser.after(")(raw)");
+            deser_func.push_block(variant_deser);
+            // can't chain blocks so we just put them one after the other
+            let mut return_if_deserialized = Block::new("");
+            if variant.rust_type.is_fixed_value() {
+                return_if_deserialized.line(format!("Ok(()) => return Ok({}::{}),", enum_name, variant.name));
+            } else {
+                return_if_deserialized.line(format!("Ok(variant) => return Ok({}::{}(variant)),", enum_name, variant.name));
+            }
+            return_if_deserialized.line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
+            return_if_deserialized.after(";");
+            deser_func.push_block(return_if_deserialized);
+        }
     }
     ser_func_embedded.push_block(ser_array_embedded_match_block);
     ser_embedded_impl.push_fn(ser_func_embedded);
+    deser_func.line(format!("Err(DeserializeError::new(\"{}\", DeserializeFailure::NoVariantMatched.into()))", enum_name));
+    deser_impl.push_fn(deser_func);
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
     global.scope()
         .push_enum(e);
     global.serialize_scope()
         .push_impl(ser_impl)
-        .push_impl(ser_embedded_impl);
-    global.dont_generate_deserialize(enum_name, String::from("Type choices not supported"))
+        .push_impl(ser_embedded_impl)
+        .push_impl(deser_impl);
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -1984,7 +2027,7 @@ fn make_serialization_function(name: &str) -> codegen::Function {
 fn make_deserialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f
-        .generic("R: BufRead")
+        .generic("R: BufRead + Seek")
         .ret("Result<Self, DeserializeError>")
         .arg("raw", "&mut Deserializer<R>");
     f
@@ -2130,7 +2173,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("supported.cddl").unwrap();
+    let cddl_in = std::fs::read_to_string("test.cddl").unwrap();
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
     //println!("CDDL file: {}", cddl);
     let mut global = GlobalScope::new();
@@ -2149,7 +2192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // does not work.
         global.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
         global.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
-        global.scope().import("std::io", "{BufRead, Write}");
+        global.scope().import("std::io", "{BufRead, Seek, Write}");
         global.scope().import("wasm_bindgen::prelude", "*");
         global.scope().import("prelude", "*");
         global.scope().raw("use cbor_event::Type as CBORType;");
@@ -2157,6 +2200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         global.scope().raw("mod prelude;");
         global.scope().raw("mod serialization;");
         global.serialize_scope().import("super", "*");
+        global.serialize_scope().import("std::io", "{Seek, SeekFrom}");
         // Need to know beforehand which are plain groups so we can serialize them properly
         // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
         for cddl_rule in &cddl.rules {
