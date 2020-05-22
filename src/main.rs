@@ -19,7 +19,7 @@ enum Representation {
     Map,
 }
 
-fn cbor_type_code_str(cbor_type: CBORType) -> &'static str {
+fn _cbor_type_code_str(cbor_type: CBORType) -> &'static str {
     match cbor_type {
         CBORType::UnsignedInteger => "CBORType::UnsignedInteger",
         CBORType::NegativeInteger => "CBORType::NegativeInteger",
@@ -311,7 +311,7 @@ impl RustType {
                 FixedValue::Bool(_) => CBORType::Special,
             }],
             RustType::Primitive(p) => vec![p.cbor_type()],
-            RustType::Rust(ident) => {
+            RustType::Rust(_ident) => {
                 //panic!("TODO: store first cbor tag somewhere")
                 vec![CBORType::Array, CBORType::Map]
             },
@@ -328,7 +328,7 @@ impl RustType {
         }
     }
 
-    fn cbor_special_type(&self) -> Option<CBORSpecial> {
+    fn _cbor_special_type(&self) -> Option<CBORSpecial> {
         unimplemented!()
     }
 
@@ -656,7 +656,7 @@ impl GlobalScope {
     }
 
     // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
-    fn generate_serialize(&mut self, rust_type: &RustType, mut expr: String, body: &mut dyn CodeBlock, is_end: bool) {
+    fn generate_serialize(&mut self, rust_type: &RustType, expr: &str, body: &mut dyn CodeBlock, is_end: bool) {
         body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         let line_ender = if is_end {
             ""
@@ -722,7 +722,7 @@ impl GlobalScope {
                 // TODO: do this in one line without a block if possible somehow.
                 //       see other comment in generate_enum()
                 let mut some_block = Block::new("Some(x) =>");
-                self.generate_serialize(ty, String::from("x"), &mut some_block, true);
+                self.generate_serialize(ty, "x", &mut some_block, true);
                 some_block.after(",");
                 opt_block.push_block(some_block);
                 opt_block.line(&format!("None => serializer.write_special(CBORSpecial::Null),"));
@@ -734,8 +734,8 @@ impl GlobalScope {
             RustType::Map(_key, _value) => {
                 // body.line("serializer.write_map(cbor_event::Len::Indefinite)?;");
                 // let mut table_loop = Block::new(&format!("for (key, value) in {}.iter()", expr));
-                // self.generate_serialize(&key_type, String::from("key"), &mut table_loop, false);
-                // self.generate_serialize(&value_type, String::from("value"), &mut table_loop, false);
+                // self.generate_serialize(&key_type, "key", &mut table_loop, false);
+                // self.generate_serialize(&value_type, "value", &mut table_loop, false);
                 // body.push_block(table_loop);
                 // body.line(&format!("serializer.write_special(CBORSpecial::Break){}", line_ender));
                 body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
@@ -1271,23 +1271,22 @@ fn create_exposed_group(global: &GlobalScope, ident: &RustIdent) -> (codegen::St
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
     let mut group_impl = codegen::Impl::new(name);
-    // unwrap should be fine here as we'd only be dealing with memory errors
+    // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
+    // wasm_bindgen right now can't export traits, so we export this functionality
+    // as a non-trait function.
     group_impl
         .new_fn("to_bytes")
         .ret("Vec<u8>")
         .arg_ref_self()
         .vis("pub")
-        .line("let mut buf = Serializer::new_vec();")
-        .line("self.serialize(&mut buf).unwrap();")
-        .line("buf.finalize()");
+        .line("ToBytes::to_bytes(self)");
     if global.deserialize_generated(ident) {
         group_impl
             .new_fn("from_bytes")
             .ret(format!("Result<{}, JsValue>", name))
             .arg("data", "Vec<u8>")
             .vis("pub")
-            .line("let mut raw = Deserializer::from(std::io::Cursor::new(data));")
-            .line("Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))");
+            .line("FromBytes::from_bytes(data)");
     }
     (s, group_impl)
 }
@@ -1476,8 +1475,8 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     // serialize
     let mut ser_map = make_serialization_function("serialize_as_embedded_group");
     let mut ser_loop = Block::new("for (key, value) in &self.0");
-    global.generate_serialize(&key_type, String::from("key"), &mut ser_loop, false);
-    global.generate_serialize(&value_type, String::from("value"), &mut ser_loop, false);
+    global.generate_serialize(&key_type, "key", &mut ser_loop, false);
+    global.generate_serialize(&value_type, "value", &mut ser_loop, false);
     ser_map.push_block(ser_loop);
     ser_map.line("Ok(serializer)");
     ser_embedded_impl.push_fn(ser_map);
@@ -1597,11 +1596,11 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     for (field_name, field_type, optional_field, _group_entry) in &fields {
                         if *optional_field {
                             let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
-                            global.generate_serialize(&field_type, String::from("field"), &mut optional_array_ser_block, false);
+                            global.generate_serialize(&field_type, "field", &mut optional_array_ser_block, false);
                             ser_func.push_block(optional_array_ser_block);
                             global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
                         } else {
-                            global.generate_serialize(&field_type, format!("self.{}", field_name), &mut ser_func, false);
+                            global.generate_serialize(&field_type, &format!("self.{}", field_name), &mut ser_func, false);
                             if field_type.is_fixed_value() {
                                 // don't set anything, only verify data
                                 if ANNOTATE_FIELDS {
@@ -1717,7 +1716,7 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
                         };
                         // and serialize value
-                        global.generate_serialize(&field_type, data_name, map_ser_block, false);
+                        global.generate_serialize(&field_type, &data_name, map_ser_block, false);
                         if *optional_field {
                             ser_func.push_block(optional_map_ser_block);
                         }
@@ -1973,7 +1972,7 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
             //          but we'd just want to inline the single one inside of a line...
             //if variant.rust_type.is_serialize_multiline() {
                 let mut case_block = Block::new(&format!("{}::{}{} =>", enum_name, variant.name, capture));
-                global.generate_serialize(&variant.rust_type, String::from("x"), &mut case_block, true);
+                global.generate_serialize(&variant.rust_type, "x", &mut case_block, true);
                 case_block.after(",");
                 ser_array_embedded_match_block.push_block(case_block);
             //}
@@ -2086,7 +2085,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
     if let Some(tag) = tag {
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
-    global.generate_serialize(&field_type, String::from("self.0"), &mut ser_func, true);
+    global.generate_serialize(&field_type, "self.0", &mut ser_func, true);
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize");
     let mut deser_impl = codegen::Impl::new(&type_name.to_string());
@@ -2163,7 +2162,7 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
             let cddl_ident = CDDLIdent::new(ident.to_string());
             let generate_binary_wrapper = match ident.to_string().as_ref() {
                 "bytes" | "bstr" => true,
-                ident => if let RustType::Primitive(Primitive::Bytes) = global.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
+                _ident => if let RustType::Primitive(Primitive::Bytes) = global.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
                     true
                 } else {
                     false
