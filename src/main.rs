@@ -349,7 +349,9 @@ struct GlobalScope {
     global_scope: codegen::Scope,
     serialize_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
-    plain_groups: BTreeMap<RustIdent, Group>,
+    // Some(group) = directly defined in .cddl
+    // None = indirectly generated due to a group choice
+    plain_groups: BTreeMap<RustIdent, Option<Group>>,
     type_aliases: BTreeMap::<AliasIdent, RustType>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
@@ -452,7 +454,7 @@ impl GlobalScope {
         &mut self.serialize_scope
     }
 
-    fn mark_plain_group(&mut self, name: RustIdent, group: Group) {
+    fn mark_plain_group(&mut self, name: RustIdent, group: Option<Group>) {
         self.plain_groups.insert(name, group);
     }
 
@@ -463,9 +465,19 @@ impl GlobalScope {
 
     fn plain_group_fields(&self, name: &RustIdent) -> Option<Vec<GroupEntry>> {
         match self.plain_groups.get(name) {
-            Some(group) => {
-                assert_eq!(group.group_choices.len(), 1, "can only get fields of plain group without choices");
-                Some(group.group_choices.first().unwrap().group_entries.iter().map(|(e, _)| e.clone()).collect())
+            Some(plain_group) => match plain_group {
+                // Defined in .cddl directly so we have a cddl::Group associated to it
+                Some(cddl_group) => {
+                    assert_eq!(cddl_group.group_choices.len(), 1, "can only get fields of plain group without choices");
+                    Some(cddl_group.group_choices.first().unwrap().group_entries.iter().map(|(e, _)| e.clone()).collect())
+                },
+                // A plain group indirectly generated from a group choice.
+                // This None is not a problem right now as we only call this function in order to get the fields
+                // in the case of when a group choice has a single plain group entry, in order to avoid
+                // generating an unneccessary wrapper indirect plain group.
+                // If in the future we need to find out the fields of this too, we would have to store
+                // that information about indirectly generated groups as well.
+                None => None,
             },
             None => None,
         }
@@ -474,11 +486,13 @@ impl GlobalScope {
     // If it is a plain group, enerates a wrapper group if one wasn't before
     fn generate_if_plain_group(&mut self, name: RustIdent, rep: Representation) {
         // to get around borrow checker borrowing self mutably + immutably
-        if let Some(group) = self.plain_groups.get(&name).map(|g| (*g).clone()) {
-            if self.already_generated.insert(name.clone()) {
-                // TODO: implement ability to have both an array and a map representation
-                //       if someone ever needs that
-                codegen_group(self, &group, &name, rep, None);
+        if let Some(plain_group) = self.plain_groups.get(&name).map(|g| (*g).clone()) {
+            if let Some(cddl_group) = plain_group {
+                if self.already_generated.insert(name.clone()) {
+                    // TODO: implement ability to have both an array and a map representation
+                    //       if someone ever needs that
+                    codegen_group(self, &cddl_group, &name, rep, None);
+                }
             }
         }
     }
@@ -496,7 +510,7 @@ impl GlobalScope {
     fn generate_type_choices_from_variants(&mut self, name: &RustIdent, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
-        generate_enum(self, &enum_name, &variants, None);
+        generate_enum(self, &enum_name, &variants, None, true);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(self, name);
@@ -586,7 +600,7 @@ impl GlobalScope {
                 deser_body.line("let len = raw.array()?;");
                 let mut deser_loop = make_deser_loop("len", "arr.len()");
                 deser_loop.push_block(make_deser_loop_break_check());
-                self.generate_deserialize(&element_type, array_type_name, "arr.push(", ");", &mut deser_loop);
+                self.generate_deserialize(&element_type, array_type_name, "arr.push(", ");", false, &mut deser_loop);
                 deser_body.push_block(deser_loop);
                 if ANNOTATE_FIELDS {
                     error_annotator.line("Ok(())");
@@ -735,7 +749,8 @@ impl GlobalScope {
     // * {}{<value>}{} - for last-expression eval in blocks
     // * etc
     // var_name is passed in for use in creating unique identifiers for temporaries
-    fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, before: &str, after: &str, body: &mut dyn CodeBlock) {
+    // if force_non_embedded always deserialize as the outer wrapper, not as the embedded plain group when the Rust ident is for a plain group
+    fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, before: &str, after: &str, force_non_embedded: bool, body: &mut dyn CodeBlock) {
         body.line(&format!("println!(\"deserializing {}\");", var_name));
         match rust_type {
             RustType::Fixed(f) => {
@@ -781,7 +796,7 @@ impl GlobalScope {
             RustType::Tagged(tag, ty) => {
                 let mut tag_check = Block::new(&format!("{}match raw.tag()?", before));
                 let mut deser_block = Block::new(&format!("{} =>", tag));
-                self.generate_deserialize(ty, var_name, "", "", &mut deser_block);
+                self.generate_deserialize(ty, var_name, "", "", force_non_embedded, &mut deser_block);
                 deser_block.after(",");
                 tag_check.push_block(deser_block);
                 tag_check.line(&format!("tag => return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),", tag));
@@ -817,11 +832,11 @@ impl GlobalScope {
                 };
                 let mut deser_block = Block::new(&format!("{}match {}", before, if_label));
                 let mut some_block = Block::new("true =>");
-                self.generate_deserialize(ty, var_name, "Some(", ")", &mut some_block);
+                self.generate_deserialize(ty, var_name, "Some(", ")", force_non_embedded, &mut some_block);
                 some_block.after(",");
                 deser_block.push_block(some_block);
                 let mut none_block = Block::new("false =>");
-                self.generate_deserialize(&RustType::Fixed(FixedValue::Null), var_name, "", "", &mut none_block);
+                self.generate_deserialize(&RustType::Fixed(FixedValue::Null), var_name, "", "", force_non_embedded, &mut none_block);
                 none_block.line("None");
                 deser_block.after(after);
                 deser_block.push_block(none_block);
@@ -833,7 +848,7 @@ impl GlobalScope {
                     body.line("let len = raw.array()?;");
                     let mut deser_loop = make_deser_loop("len", "arr.len()");
                     deser_loop.push_block(make_deser_loop_break_check());
-                    self.generate_deserialize(ty, var_name, "arr.push(", ");", &mut deser_loop);
+                    self.generate_deserialize(ty, var_name, "arr.push(", ");", force_non_embedded, &mut deser_loop);
                     body.push_block(deser_loop);
                     body.line(&format!("{}arr{}", before, after));
                 } else {
@@ -883,7 +898,7 @@ impl GlobalScope {
         }
     }
 
-    fn reset_except_not_deserialized(&mut self, last_time: &mut Option<usize>) -> bool {
+    fn reset_except_not_deserialized_and_plain_groups(&mut self, last_time: &mut Option<usize>) -> bool {
         let repeat = match last_time {
             Some(n) => *n != self.no_deser_reasons.len(),
             None => true,
@@ -1407,8 +1422,8 @@ fn make_deser_loop_break_check() -> Block {
 fn make_table_deser_loop(global: &mut GlobalScope, key_type: &RustType, value_type: &RustType, len_var: &str, table_var: &str) -> Block {
     let mut deser_loop = make_deser_loop(len_var, &format!("{}.len()", table_var));
     deser_loop.push_block(make_deser_loop_break_check());
-    global.generate_deserialize(key_type, "key", "let key = ", ";", &mut deser_loop);
-    global.generate_deserialize(value_type, "value", "let value = ", ";", &mut deser_loop);
+    global.generate_deserialize(key_type, "key", "let key = ", ";", false, &mut deser_loop);
+    global.generate_deserialize(value_type, "value", "let value = ", ";", false, &mut deser_loop);
     let mut dup_check = Block::new(&format!("if {}.insert(key.clone(), value).is_some()", table_var));
     let dup_key_error_key = match key_type {
         RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
@@ -1591,20 +1606,20 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                                 // don't set anything, only verify data
                                 if ANNOTATE_FIELDS {
                                     let mut err_deser = make_err_annotate_block(field_name, "", "?;");
-                                    global.generate_deserialize(&field_type, field_name, "", "", &mut err_deser);
+                                    global.generate_deserialize(&field_type, field_name, "", "", false, &mut err_deser);
                                     // this block needs to evaluate to a Result even though it has no value
                                     err_deser.line("Ok(())");
                                     deser_func.push_block(err_deser);
                                 } else {
-                                    global.generate_deserialize(&field_type, field_name, "", "", &mut deser_func);
+                                    global.generate_deserialize(&field_type, field_name, "", "", false, &mut deser_func);
                                 }
                             } else {
                                 if ANNOTATE_FIELDS {
                                     let mut err_deser = make_err_annotate_block(field_name, &format!("let {} = ", field_name), "?;");
-                                    global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                                    global.generate_deserialize(&field_type, field_name, "Ok(", ")", false, &mut err_deser);
                                     deser_func.push_block(err_deser);
                                 } else {
-                                    global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", &mut deser_func);
+                                    global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", false, &mut deser_func);
                                 }
                             }
                             if !field_type.is_fixed_value() {
@@ -1671,11 +1686,11 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             // only does verification and sets the field_present bool to do error checking later
                             if ANNOTATE_FIELDS {
                                 let mut err_deser = make_err_annotate_block(field_name, &format!("{}_present = ", field_name), "?;");
-                                global.generate_deserialize(&field_type, field_name, "", "", &mut err_deser);
+                                global.generate_deserialize(&field_type, field_name, "", "", false, &mut err_deser);
                                 err_deser.line("Ok(true)");
                                 deser_block.push_block(err_deser);
                             } else {
-                                global.generate_deserialize(&field_type, field_name, "", "", &mut deser_block);
+                                global.generate_deserialize(&field_type, field_name, "", "", false, &mut deser_block);
                                 deser_block.line(&format!("{}_present = true;", field_name));
                             }
                         } else {
@@ -1684,10 +1699,10 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                             deser_block.push_block(dup_check);
                             if ANNOTATE_FIELDS {
                                 let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
-                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", &mut err_deser);
+                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", false, &mut err_deser);
                                 deser_block.push_block(err_deser);
                             } else {
-                                global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", &mut deser_block);
+                                global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", false, &mut deser_block);
                             }
                         }
                         match &key {
@@ -1798,16 +1813,19 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
             if group_choice.group_entries.len() == 1 {
                 let group_entry = &group_choice.group_entries.first().unwrap().0;
                 let ty = group_entry_to_type(global, group_entry);
-                if let RustType::Rust(ident) = &ty {
+                let serialize_as_embedded = if let RustType::Rust(ident) = &ty {
                     // we might need to generate it if not used elsewhere
                     global.generate_if_plain_group(ident.clone(), rep);
-                }
+                    global.is_plain_group(ident)
+                } else {
+                    false
+                };
                 let variant_ident = convert_to_camel_case(&match group_entry_to_raw_field_name(group_entry) {
                     Some(name) => name,
                     None => append_number_if_duplicate(&mut variants_names_used, ty.for_variant().to_string()),
                 });
                 let variant_ident = VariantIdent::new_custom(variant_ident);
-                EnumVariant::new(variant_ident, ty, global.is_plain_group(&name))
+                EnumVariant::new(variant_ident, ty, serialize_as_embedded)
                 // None => {
                 //     // TODO: Weird case, group choice with only one fixed-value field.
                 //     // What should we do here? In the future we could make this a
@@ -1821,12 +1839,13 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
             } else {
                 // General case, GroupN type identifiers and generate group choice since it's inlined here
                 let variant_name = RustIdent::new(CDDLIdent::new(format!("{}{}", name, i)));
+                global.mark_plain_group(variant_name.clone(), None);
                 // TODO: Should we generate these within their own namespace?
                 codegen_group_choice(global, group_choice, &variant_name, rep, None);
-                EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), false)
+                EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), true)
             }
         }).collect();
-        generate_enum(global, &enum_name, &variants, Some(rep));
+        generate_enum(global, &enum_name, &variants, Some(rep), false);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(global, name);
@@ -1889,8 +1908,14 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
         let mut ser_embedded_func = make_serialization_function("serialize_as_embedded_group");
         ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
         ser_embedded_impl.push_fn(ser_embedded_func);
-        global.dont_generate_deserialize(name, String::from("Group choices not supported"));
         push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+        // deserialize
+        let mut deser_impl = codegen::Impl::new(&name.to_string());
+        deser_impl.impl_trait("Deserialize");
+        let mut deser_func = make_deserialization_function("deserialize");
+        deser_func.line(format!("Ok(Self({}::deserialize(raw)?))", enum_name));
+        deser_impl.push_fn(deser_func);
+        global.serialize_scope().push_impl(deser_impl);
     }
 }
 
@@ -1911,15 +1936,22 @@ impl EnumVariant {
     }
 }
 
-fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
+// if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
+// This is useful for type choices which don't have any enclosing array/map tags, and thus don't benefit from exposing a
+// deserialize_as_embedded_group as the behavior would be identical.
+fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>, generate_deserialize_directly: bool) {
     let mut e = codegen::Enum::new(&enum_name.to_string());
     add_struct_derives(&mut e);
     let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
     let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
     let mut ser_array_embedded_match_block = Block::new("match self");
-    let mut deser_impl = codegen::Impl::new(&enum_name.to_string());
-    deser_impl.impl_trait("Deserialize");
-    let mut deser_func = make_deserialization_function("deserialize");
+    let mut deser_func = if generate_deserialize_directly {
+        make_deserialization_function("deserialize")
+    } else {
+        let mut embedded_func = make_deserialization_function("deserialize_as_embedded_group");
+        embedded_func.arg("len", "cbor_event::Len");
+        embedded_func
+    };
     deser_func.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
     for variant in variants.iter() {
         if variant.rust_type.is_fixed_value() {
@@ -1949,41 +1981,51 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
         // deserialize
         // TODO: don't backtrack if variants begin with non-overlapping cbor types
         // TODO: how to detect when a greedy match won't work? (ie choice with choices in a choice possibly)
-        // TODO: figure out how to handle embedded group stuff
-        if !variant.serialize_as_embedded_group {
-            let mut variant_deser = Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
-            if variant.rust_type.is_fixed_value() {
-                global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "", "", &mut variant_deser);
-                variant_deser.line("Ok(())");
-            } else {
-                global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "Ok(", ")", &mut variant_deser);
-            }
-            variant_deser.after(")(raw)");
-            deser_func.push_block(variant_deser);
-            // can't chain blocks so we just put them one after the other
-            let mut return_if_deserialized = Block::new("");
-            if variant.rust_type.is_fixed_value() {
-                return_if_deserialized.line(format!("Ok(()) => return Ok({}::{}),", enum_name, variant.name));
-            } else {
-                return_if_deserialized.line(format!("Ok(variant) => return Ok({}::{}(variant)),", enum_name, variant.name));
-            }
-            return_if_deserialized.line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
-            return_if_deserialized.after(";");
-            deser_func.push_block(return_if_deserialized);
+        let mut variant_deser = Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+        if variant.rust_type.is_fixed_value() {
+            global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "", "", generate_deserialize_directly, &mut variant_deser);
+            variant_deser.line("Ok(())");
+        } else {
+            global.generate_deserialize(&variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "Ok(", ")", generate_deserialize_directly, &mut variant_deser);
         }
+        variant_deser.after(")(raw)");
+        deser_func.push_block(variant_deser);
+        // can't chain blocks so we just put them one after the other
+        let mut return_if_deserialized = Block::new("");
+        if variant.rust_type.is_fixed_value() {
+            return_if_deserialized.line(format!("Ok(()) => return Ok({}::{}),", enum_name, variant.name));
+        } else {
+            return_if_deserialized.line(format!("Ok(variant) => return Ok({}::{}(variant)),", enum_name, variant.name));
+        }
+        return_if_deserialized.line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
+        return_if_deserialized.after(";");
+        deser_func.push_block(return_if_deserialized);
     }
     ser_func_embedded.push_block(ser_array_embedded_match_block);
     ser_embedded_impl.push_fn(ser_func_embedded);
     deser_func.line(format!("Err(DeserializeError::new(\"{}\", DeserializeFailure::NoVariantMatched.into()))", enum_name));
-    deser_impl.push_fn(deser_func);
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
-    global.scope()
+    global
+        .scope()
         .push_enum(e);
-    global.serialize_scope()
+    global
+        .serialize_scope()
         .push_impl(ser_impl)
-        .push_impl(ser_embedded_impl)
-        .push_impl(deser_impl);
+        .push_impl(ser_embedded_impl);
+    if generate_deserialize_directly {
+        let mut deser_impl = codegen::Impl::new(&enum_name.to_string());
+        deser_impl.impl_trait("Deserialize");
+        deser_impl.push_fn(deser_func);
+        global.serialize_scope().push_impl(deser_impl);
+    } else {
+        let (deser_impl, mut deser_embedded_impl) = create_deserialize_impls(enum_name, rep, None);
+        deser_embedded_impl.push_fn(deser_func);
+        global
+            .serialize_scope()
+            .push_impl(deser_impl)
+            .push_impl(deser_embedded_impl);
+    }
 }
 
 fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
@@ -2055,7 +2097,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
         tag_check.line(&format!("return Err(DeserializeError::new(\"{}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}));", type_name, tag));
         deser_func.push_block(tag_check);
     }
-    global.generate_deserialize(field_type, "", "Ok(Self(", "))", &mut deser_func);
+    global.generate_deserialize(field_type, "", "Ok(Self(", "))", false, &mut deser_func);
     deser_impl.push_fn(deser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -2184,7 +2226,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We should probably construct some dependency graph instead of doing this.
     let mut not_deserialized = None;
     let mut pass_count = 0;
-    while global.reset_except_not_deserialized(&mut not_deserialized) {
+    // Need to know beforehand which are plain groups so we can serialize them properly
+    // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
+    for cddl_rule in &cddl.rules {
+        if let Rule::Group{ rule, .. } = cddl_rule {
+            // Freely defined group - no need to generate anything outside of group module
+            match &rule.entry {
+                GroupEntry::InlineGroup{ group, .. } => {
+                    global.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), Some(group.clone()));
+                },
+                x => panic!("Group rule with non-inline group? {:?}", x),
+            }
+        }
+    }
+    while global.reset_except_not_deserialized_and_plain_groups(&mut not_deserialized) {
         println!("Pass #{}", pass_count);
         pass_count += 1;
         // Can't generate groups of imports with codegen::Import so we just output this as raw text
@@ -2201,19 +2256,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         global.scope().raw("mod serialization;");
         global.serialize_scope().import("super", "*");
         global.serialize_scope().import("std::io", "{Seek, SeekFrom}");
-        // Need to know beforehand which are plain groups so we can serialize them properly
-        // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
-        for cddl_rule in &cddl.rules {
-            if let Rule::Group{ rule, .. } = cddl_rule {
-                // Freely defined group - no need to generate anything outside of group module
-                match &rule.entry {
-                    GroupEntry::InlineGroup{ group, .. } => {
-                        global.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), group.clone());
-                    },
-                    x => panic!("Group rule with non-inline group? {:?}", x),
-                }
-            }
-        }
         for cddl_rule in &cddl.rules {
             println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
             match cddl_rule {
