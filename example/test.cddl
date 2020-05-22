@@ -1,0 +1,32 @@
+hash = bytes
+
+foo = [uint, text, bytes]
+
+tagged_text = #6.42(text)
+
+opt_text = tagged_text / null
+
+foo2 = #6.23([uint, opt_text])
+
+bar = {
+	foo: #6.1337(foo),
+	? derp: uint,
+	1 : uint / null,
+	? 5: text,
+	five: 5,
+}
+
+plain = (d: #6.23(uint), e: tagged_text)
+outer = [a: uint, b: plain, c: "some text"]
+
+table = { * uint => text }
+
+table_arr_members = {
+	tab: { * text => text },
+	arr: [*uint],
+	arr2: [*foo],
+}
+
+type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint])
+
+group_choice = [ foo // 0, x: uint // plain ]
