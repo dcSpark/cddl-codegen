@@ -130,6 +130,29 @@ pub trait DeserializeEmbeddedGroup {
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
+pub trait ToBytes {
+    fn to_bytes(&self) -> Vec<u8>;
+}
+
+impl<T: cbor_event::se::Serialize> ToBytes for T {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Serializer::new_vec();
+        self.serialize(&mut buf).unwrap();
+        buf.finalize()
+    }
+}
+
+pub trait FromBytes {
+    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> where Self: Sized;
+}
+
+impl<T: Deserialize + Sized> FromBytes for T {
+    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> {
+        let mut raw = Deserializer::from(std::io::Cursor::new(data));
+        Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+}
+
 // CBOR has int = int / nint
 #[wasm_bindgen]
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
