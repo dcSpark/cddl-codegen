@@ -657,7 +657,7 @@ impl GlobalScope {
 
     // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
     fn generate_serialize(&mut self, rust_type: &RustType, expr: &str, body: &mut dyn CodeBlock, is_end: bool) {
-        body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
+        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         let line_ender = if is_end {
             ""
         } else {
@@ -751,7 +751,7 @@ impl GlobalScope {
     // var_name is passed in for use in creating unique identifiers for temporaries
     // if force_non_embedded always deserialize as the outer wrapper, not as the embedded plain group when the Rust ident is for a plain group
     fn generate_deserialize(&mut self, rust_type: &RustType, var_name: &str, before: &str, after: &str, force_non_embedded: bool, body: &mut dyn CodeBlock) {
-        body.line(&format!("println!(\"deserializing {}\");", var_name));
+        //body.line(&format!("println!(\"deserializing {}\");", var_name));
         match rust_type {
             RustType::Fixed(f) => {
                 // we don't evaluate to any values here, just verify
@@ -1741,7 +1741,12 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     type_match.push_block(text_match);
                     let mut special_match = Block::new("CBORType::Special => match len");
                     special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),");
-                    special_match.line("cbor_event::Len::Indefinite => break,");
+                    // this will need to change if we support Special values as keys (e.g. true / false)
+                    let mut break_check = Block::new("cbor_event::Len::Indefinite => match raw.special()?");
+                    break_check.line("CBORSpecial::Break => break,");
+                    break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+                    break_check.after(",");
+                    special_match.push_block(break_check);
                     special_match.after(",");
                     type_match.push_block(special_match);
                     type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
