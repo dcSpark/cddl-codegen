@@ -1743,8 +1743,9 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
                     special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),");
                     // this will need to change if we support Special values as keys (e.g. true / false)
                     let mut break_check = Block::new("cbor_event::Len::Indefinite => match raw.special()?");
-                    break_check.line("other => return Err(DeserializeFailure::EndingBreakMissing.into()),");
                     break_check.line("CBORSpecial::Break => break,");
+                    break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+                    break_check.after(",");
                     special_match.push_block(break_check);
                     special_match.after(",");
                     type_match.push_block(special_match);
