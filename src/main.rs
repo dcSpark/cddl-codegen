@@ -13,7 +13,7 @@ use either::{Either};
 //       and works with From<cbor_event:Error> only
 const ANNOTATE_FIELDS: bool = true;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum Representation {
     Array,
     Map,
@@ -343,6 +343,212 @@ impl RustType {
             RustType::Map(_, _) => false,
         }
     }
+
+    fn expanded_field_count(&self, global: &GlobalScope) -> Option<usize> {
+        match self {
+            RustType::Optional(ty) => match ty.expanded_field_count(global) {
+                Some(1) => Some(1),
+                // differing sizes when Null vs Some
+                _ => None,
+            },
+            // TODO: instead of returning None when ident doesn't exist, throw error.
+            // Once we split up parsing and codegen this shouldn't happen but with our current multi-pass
+            // approach we might have out of order struct references which would break here without it
+            // but on the final pass (the one we export) this should't be an issue
+            RustType::Rust(ident) => if global.is_plain_group(ident) {
+                global.rust_structs.get(&ident)?.fixed_field_count(global)
+            } else {
+                Some(1)
+            },
+            _ => Some(1),
+        }
+    }
+
+    // See comment in RustStruct::definite_info(), this is the same, returns a string expression
+    // which evaluates to the length when possible, or None if not.
+    // self_expr is an expresison that evaluates to this RustType (e.g. member, etc) at the point where
+    // the return of this function will be used.
+    fn definite_info(&self, self_expr: &str, global: &GlobalScope) -> Option<String> {
+        match self.expanded_field_count(global) {
+            Some(count) => Some(count.to_string()),
+            None => match self {
+                RustType::Optional(ty) => Some(format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.definite_info("x", global)?)),
+                RustType::Rust(ident) => if global.is_plain_group(ident) {
+                    match global.rust_structs.get(&ident) {
+                        Some(rs) => rs.definite_info(global),
+                        // when we split up parsing from codegen instead of multi-passing this should be an error
+                        None => None,
+                    }
+                } else {
+                    Some(String::from("1"))
+                },
+                _ => Some(String::from("1")),
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RustField {
+    name: String,
+    rust_type: RustType,
+    optional: bool,
+    // None for array fields, Some for map fields. FixedValue for (de)serialization for map keys
+    key: Option<FixedValue>,
+}
+
+impl RustField {
+    fn new(name: String, rust_type: RustType, optional: bool, key: Option<FixedValue>) -> Self {
+        Self {
+            name,
+            rust_type,
+            optional,
+            key,
+        }
+    }
+}
+
+// TODO: It would be nice to separate parsing the CDDL lib structs and code generation entirely.
+// We would just need to construct these structs (+ maybe the array/table wrappre types) separately and pass these into codegen.
+// This would also give us more access to this info without reparsing which could simplify code in some places.
+// It would also remove the need for multiple passes over the CDDL to sort out dependencies between structs,
+// which could also pave the way for multi-file CDDL supprt.
+#[derive(Clone, Debug)]
+enum RustStruct {
+    Record(RustRecord),
+    Table {
+        ident: RustIdent,
+        domain: RustType,
+        range: RustType,
+    },
+    Array {
+        ident: RustIdent,
+        element_type: RustType,
+    },
+}
+
+impl RustStruct {
+    fn new_table(ident: RustIdent, domain: RustType, range: RustType) -> Self {
+        Self::Table {
+            ident,
+            domain,
+            range,
+        }
+    }
+
+    fn new_array(ident: RustIdent, element_type: RustType) -> Self {
+        Self::Array {
+            ident,
+            element_type,
+        }
+    }
+
+    fn ident(&self) -> &RustIdent {
+        match self {
+            Self::Record(record) => &record.ident,
+            Self::Table{ ident, .. } => ident,
+            Self::Array{ ident, .. } => ident,
+        }
+    }
+    
+    // Some(count) if it always has the same number of fields (ie no optional fields), None otherwise
+    fn fixed_field_count(&self, global: &GlobalScope) -> Option<usize> {
+        match self {
+            Self::Record(record) => record.fixed_field_count(global),
+            Self::Table{ .. } => None,
+            Self::Array{ .. } => None,
+        }
+    }
+
+    // Even if fixed_field_count() == None, this will try and return an expression for
+    // a definite length, e.g. with optional field checks in the expression
+    fn definite_info(&self, global: &GlobalScope) -> Option<String> {
+        match self {
+            Self::Record(record) => record.definite_info(global),
+            Self::Table{ .. } => Some(String::from("self.0.len() as u64")),
+            Self::Array{ .. } => Some(String::from("self.0.len() as u64")),
+        }
+    }
+}
+
+// Regular struct with fields and such
+#[derive(Clone, Debug)]
+struct RustRecord {
+    ident: RustIdent,
+    rep: Representation,
+    fields: Vec<RustField>
+}
+
+impl RustRecord {
+    fn new_record_from_group_choice(global: &mut GlobalScope, ident: RustIdent, rep: Representation, group_choice: &GroupChoice) -> Self {
+        let mut generated_fields = BTreeMap::<String, u32>::new();
+        let fields = group_choice.group_entries.iter().enumerate().map(
+            |(index, (group_entry, _has_comma))| {
+                let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
+                // does not exist for fixed values importantly
+                let field_type = group_entry_to_type(global, group_entry);
+                if let RustType::Rust(ident) = &field_type {
+                    global.generate_if_plain_group(ident.clone(), rep);
+                }
+                let optional_field = group_entry_optional(group_entry);
+                let key = match rep {
+                    Representation::Map => Some(group_entry_to_key(group_entry).expect("map fields need keys")),
+                    Representation::Array => None,
+                };
+                RustField::new(field_name, field_type, optional_field, key)
+            }
+        ).collect();
+        Self {
+            ident,
+            rep,
+            fields,
+        }
+    }
+
+    fn fixed_field_count(&self, global: &GlobalScope) -> Option<usize> {
+        let mut count = 0;
+        for field in &self.fields {
+            if field.optional {
+                return None;
+            }
+            count += field.rust_type.expanded_field_count(global)?;
+        }
+        Some(count)
+    }
+
+    fn definite_info(&self, global: &GlobalScope) -> Option<String> {
+        match self.fixed_field_count(global) {
+            Some(count) => Some(count.to_string()),
+            None => {
+                let mut fixed_field_count = 0;
+                let mut conditional_field_expr = String::new();
+                for field in &self.fields {
+                    if field.optional {
+                        if !conditional_field_expr.is_empty() {
+                            conditional_field_expr.push_str(" + ");
+                        }
+                        conditional_field_expr.push_str(&format!("match &self.{} {{ Some(x) => {}, None => 0 }}", field.name, field.rust_type.definite_info("x", global)?));
+                    } else {
+                        match field.rust_type.expanded_field_count(global) {
+                            Some(field_expanded_count) => fixed_field_count += field_expanded_count,
+                            None => {
+                                if !conditional_field_expr.is_empty() {
+                                    conditional_field_expr.push_str(" + ");
+                                }
+                                let field_len_expr = field.rust_type.definite_info(&format!("self.{}", field.name), global)?;
+                                conditional_field_expr.push_str(&field_len_expr);
+                            },
+                        };
+                    }
+                }
+                if conditional_field_expr.is_empty() || fixed_field_count != 0 {
+                    Some(format!("{} + {}", fixed_field_count.to_string(), conditional_field_expr))
+                } else {
+                    Some(conditional_field_expr)
+                }
+            }
+        }
+    }
 }
 
 struct GlobalScope {
@@ -354,6 +560,7 @@ struct GlobalScope {
     plain_groups: BTreeMap<RustIdent, Option<Group>>,
     type_aliases: BTreeMap::<AliasIdent, RustType>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
+    rust_structs: BTreeMap<RustIdent, RustStruct>,
 }
 
 impl GlobalScope {
@@ -365,6 +572,7 @@ impl GlobalScope {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
             no_deser_reasons: BTreeMap::new(),
+            rust_structs: BTreeMap::new(),
         }
     }
 
@@ -454,6 +662,10 @@ impl GlobalScope {
         &mut self.serialize_scope
     }
 
+    fn register_rust_struct(&mut self, rust_struct: RustStruct) {
+        self.rust_structs.insert(rust_struct.ident().clone(), rust_struct);
+    }
+
     fn mark_plain_group(&mut self, name: RustIdent, group: Option<Group>) {
         self.plain_groups.insert(name, group);
     }
@@ -514,7 +726,7 @@ impl GlobalScope {
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(self, name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, None, tag);
+        let (mut ser_func, mut ser_impl) = create_serialize_impl(name, None, tag, None);
         s
             .vis("pub")
             .tuple_field(&enum_name.to_string());
@@ -541,10 +753,9 @@ impl GlobalScope {
             s_impl.push_fn(new_func);
         }
         // serialize
-        let mut ser_embedded_func = make_serialization_function("serialize_as_embedded_group");
-        ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
-        ser_embedded_impl.push_fn(ser_embedded_func);
-        push_exposed_struct(self, s, s_impl, ser_impl, ser_embedded_impl);
+        ser_func.line("self.0.serialize(serializer)");
+        ser_impl.push_fn(ser_func);
+        push_exposed_struct(self, s, s_impl, ser_impl, None);
         // deserialize
         let mut deser_impl = codegen::Impl::new(&name.to_string());
         deser_impl.impl_trait("Deserialize");
@@ -640,6 +851,7 @@ impl GlobalScope {
                 .line("self.0.push(elem);");
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_impl(array_impl);
+            self.register_rust_struct(RustStruct::new_array(array_type, element_type.clone()));
         }
         RustType::Array(Box::new(element_type))
     }
@@ -1291,9 +1503,33 @@ fn create_exposed_group(global: &GlobalScope, ident: &RustIdent) -> (codegen::St
     (s, group_impl)
 }
 
-// The serialize impls calls the embedded serialize impl, but the embedded one is
-// empty and must be implemented yourself.
-fn create_serialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
+// Alway creates directly just Serialize impl. Shortcut for create_serialize_impls when
+// we know we won't need the SerializeEmbeddedGroup impl.
+// See comments for create_serialize_impls for usage.
+fn create_serialize_impl(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>, definite_len: Option<String>) -> (codegen::Function, codegen::Impl) {
+    match create_serialize_impls(ident, rep, tag, definite_len, false) {
+        (ser_func, ser_impl, None) => (ser_func, ser_impl),
+        (_ser_func, _ser_impl, Some(_embedded_impl)) => unreachable!(),
+    }
+}
+
+// If definite_len is provided, it will use that expression as the definite length.
+// Otherwise indefinite will be used and the user should remember to write a Special::Break at the end.
+// Returns (serialize, Serialize, Some(SerializeEmbeddedGroup)) impls for structs that require embedded, in which case
+// the serialize calls the embedded serialize and you implement the embedded serialize
+// Otherwise returns (serialize Serialize, None) impls and you implement the serialize.
+// In both cases the serialize function should be pushed to the Serialize impl.
+// In the first case (need embedded ie plain group) the caller should create and push their
+// own serialize_as_embedded_group to the SerializeEmbeddedGroup impl which will be called
+// from within serialize(), and serialize() should not be expanded upon, just pushed.
+// In the second case (no embedded), only the array/map tag + length are written and the user will
+// want to write the rest of serialize() after that.
+fn create_serialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>, definite_len: Option<String>, generate_serialize_embedded: bool) -> (codegen::Function, codegen::Impl, Option<codegen::Impl>) {
+    if generate_serialize_embedded {
+        // This is not necessarily a problem but we should investigate this case to ensure we're not calling
+        // (de)serialize_as_embedded without (de)serializing the tag
+        assert_eq!(tag, None);
+    }
     let name = &ident.to_string();
     let mut ser_impl = codegen::Impl::new(name);
     ser_impl.impl_trait("cbor_event::se::Serialize");
@@ -1301,30 +1537,51 @@ fn create_serialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: O
     if let Some(tag) = tag {
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
-    // TODO: indefinite or definite encoding?
+    // TODO: do definite length encoding for optional fields too
     if let Some (rep) = rep {
-        match rep {
-            Representation::Array => ser_func.line("serializer.write_array(cbor_event::Len::Indefinite)?;"),
-            Representation::Map => ser_func.line("serializer.write_map(cbor_event::Len::Indefinite)?;"),
+        let cbor_len_str = match &definite_len {
+            Some(fixed_field_count) => format!("cbor_event::Len::Len({})", fixed_field_count),
+            None => String::from("cbor_event::Len::Indefinite"),
         };
-        ser_func.line("self.serialize_as_embedded_group(serializer)?;");
-        ser_func.line("serializer.write_special(CBORSpecial::Break)");
+        match rep {
+            Representation::Array => ser_func.line(format!("serializer.write_array({})?;", cbor_len_str)),
+            Representation::Map => ser_func.line(format!("serializer.write_map({})?;", cbor_len_str)),
+        };
+        if generate_serialize_embedded {
+            match definite_len {
+                Some(_) => ser_func.line("self.serialize_as_embedded_group(serializer)"),
+                None => {
+                    ser_func.line("self.serialize_as_embedded_group(serializer)?;");
+                    ser_func.line("serializer.write_special(CBORSpecial::Break)")
+                },
+            };
+        }
     } else {
-        ser_func.line("self.serialize_as_embedded_group(serializer)");
+        // not array or map, generate serialize directly
+        if generate_serialize_embedded {
+            ser_func.line("self.serialize_as_embedded_group(serializer)");
+        }
     }
-    ser_impl.push_fn(ser_func);
-    let mut ser_embedded_impl = codegen::Impl::new(name);
-    ser_embedded_impl.impl_trait("SerializeEmbeddedGroup");
-    (ser_impl, ser_embedded_impl)
+    if generate_serialize_embedded {
+        let mut ser_embedded_impl = codegen::Impl::new(name);
+        ser_embedded_impl.impl_trait("SerializeEmbeddedGroup");
+        (ser_func, ser_impl, Some(ser_embedded_impl))
+    } else {
+        (ser_func, ser_impl, None)
+    }
 }
 
-// The serialize impls calls the embedded serialize impl, but the embedded one is
-// empty and must be implemented yourself.
+// The Deserialize impl is complete and calls the DeserializeEmbeddedGroup impl,
+// but the DeserializeEmbeddedGroup one is empty and must be implemented yourself
+// by pushing a deserialize_as_embedded_group function to it.
+// TODO: maybe refactor this like create_alL_serialize_impls() so that it only generates
+//       DeserializeEmbeddedGroup when needed? (e.g. for plain groups)
+//       It works fine as-is but produces bloated code
 fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag: Option<usize>) -> (codegen::Impl, codegen::Impl) {
     let name = &ident.to_string();
     let mut deser_impl = codegen::Impl::new(name);
     // TODO: add config param to decide if we want to use our deserialize
-    // or theirs using Error::Cusom(String) + DeserializeError::to_string()
+    //       or theirs using Error::Cusom(String) + DeserializeError::to_string()
     //deser_impl.impl_trait("cbor_event::de::Deserialize");
     deser_impl.impl_trait("Deserialize");
     let mut deser_func = make_deserialization_function("deserialize");
@@ -1386,7 +1643,7 @@ fn push_exposed_struct(
     s: codegen::Struct,
     s_impl: codegen::Impl,
     ser_impl: codegen::Impl,
-    ser_embedded_impl: codegen::Impl,
+    ser_embedded_impl: Option<codegen::Impl>,
 ) {
     global.scope()
         .raw("#[wasm_bindgen]")
@@ -1394,8 +1651,10 @@ fn push_exposed_struct(
         .raw("#[wasm_bindgen]")
         .push_impl(s_impl);
     global.serialize_scope()
-        .push_impl(ser_impl)
-        .push_impl(ser_embedded_impl);
+        .push_impl(ser_impl);
+    if let Some(s) = ser_embedded_impl {
+        global.serialize_scope().push_impl(s);
+    }
 }
 
 // We need to execute field deserialization inside a closure in order to capture and annotate with the field name
@@ -1442,7 +1701,7 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let (mut s, mut s_impl) = create_exposed_group(global, name);
-    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(Representation::Map), tag);
+    let (mut ser_func, mut ser_impl) = create_serialize_impl(name, Some(Representation::Map), tag, Some(String::from("self.0.len() as u64")));
     s.vis("pub");
     s.tuple_field(format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
     // new
@@ -1473,14 +1732,13 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
                 value_type.from_wasm_boundary("value")));
     s_impl.push_fn(insert_func);
     // serialize
-    let mut ser_map = make_serialization_function("serialize_as_embedded_group");
     let mut ser_loop = Block::new("for (key, value) in &self.0");
     global.generate_serialize(&key_type, "key", &mut ser_loop, false);
     global.generate_serialize(&value_type, "value", &mut ser_loop, false);
-    ser_map.push_block(ser_loop);
-    ser_map.line("Ok(serializer)");
-    ser_embedded_impl.push_fn(ser_map);
-    push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+    ser_func.push_block(ser_loop);
+    ser_func.line("Ok(serializer)");
+    ser_impl.push_fn(ser_func);
+    push_exposed_struct(global, s, s_impl, ser_impl, None);
     // deserialize
     if !global.deserialize_generated_for_type(&key_type) {
         global.dont_generate_deserialize(name, format!("key type {} doesn't support deserialize", key_type.for_member()));
@@ -1516,6 +1774,273 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     }
 }
 
+fn codegen_struct(global: &mut GlobalScope, name: &RustIdent, tag: Option<usize>, rust_struct: &RustRecord) {
+    let (mut s, mut s_impl) = create_exposed_group(global, name);
+    let (mut ser_func, mut ser_impl, mut ser_embedded_impl) =
+        create_serialize_impls(
+            name,
+            Some(rust_struct.rep),
+            tag,
+            rust_struct.definite_info(global),
+            global.is_plain_group(name));
+    let (deser_impl, mut deser_embedded_impl) = create_deserialize_impls(name, Some(rust_struct.rep), tag);
+    s.vis("pub");
+
+    // Generate struct + fields + constructor
+    let mut new_func = codegen::Function::new("new");
+    new_func
+        .ret("Self")
+        .vis("pub");
+    let mut new_func_block = Block::new("Self");
+    for field in &rust_struct.fields {
+        if !global.deserialize_generated_for_type(&field.rust_type) {
+            global.dont_generate_deserialize(name, format!("field {}: {} couldn't generate serialize", field.name, field.rust_type.for_member()));
+        }
+        // Unsupported types so far are fixed values, only have fields for these.
+        if !field.rust_type.is_fixed_value() {
+            if field.optional {
+                // field
+                s.field(&field.name, format!("Option<{}>", field.rust_type.for_member()));
+                // new
+                new_func_block.line(format!("{}: None,", field.name));
+                // setter
+                let mut setter = codegen::Function::new(&format!("set_{}", field.name));
+                setter
+                    .arg_mut_self()
+                    .arg(&field.name, &field.rust_type.for_wasm())
+                    .vis("pub")
+                    .line(format!("self.{} = Some({})", field.name, field.name));
+                s_impl.push_fn(setter);
+            } else {
+                // field
+                s.field(&field.name, field.rust_type.for_member());
+                // new
+                new_func.arg(&field.name, field.rust_type.for_wasm());
+                new_func_block.line(format!("{}: {},", field.name, field.rust_type.from_wasm_boundary(&field.name)));
+                // do we want setters here later for mandatory types covered by new?
+            }
+        }
+    }
+    new_func.push_block(new_func_block);
+    s_impl.push_fn(new_func);
+
+    // Generate serialization
+    let mut ser_func = match ser_embedded_impl {
+        Some(_) => {
+            ser_impl.push_fn(ser_func);
+            make_serialization_function("serialize_as_embedded_group")
+        },
+        None => ser_func,
+    };
+    let mut deser_func = make_deserialization_function("deserialize_as_embedded_group");
+    deser_func.arg("len", "cbor_event::Len");
+    match rust_struct.rep {
+        Representation::Array => {
+            let mut deser_ret = format!("Ok({}::new(", name);
+            let mut first_param = true;
+            for field in &rust_struct.fields {
+                if field.optional {
+                    let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field.name));
+                    global.generate_serialize(&field.rust_type, "field", &mut optional_array_ser_block, false);
+                    ser_func.push_block(optional_array_ser_block);
+                    global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field.name, field.rust_type.for_member()));
+                } else {
+                    global.generate_serialize(&field.rust_type, &format!("self.{}", field.name), &mut ser_func, false);
+                    if field.rust_type.is_fixed_value() {
+                        // don't set anything, only verify data
+                        if ANNOTATE_FIELDS {
+                            let mut err_deser = make_err_annotate_block(&field.name, "", "?;");
+                            global.generate_deserialize(&field.rust_type, &field.name, "", "", false, &mut err_deser);
+                            // this block needs to evaluate to a Result even though it has no value
+                            err_deser.line("Ok(())");
+                            deser_func.push_block(err_deser);
+                        } else {
+                            global.generate_deserialize(&field.rust_type, &field.name, "", "", false, &mut deser_func);
+                        }
+                    } else {
+                        if ANNOTATE_FIELDS {
+                            let mut err_deser = make_err_annotate_block(&field.name, &format!("let {} = ", field.name), "?;");
+                            global.generate_deserialize(&field.rust_type, &field.name, "Ok(", ")", false, &mut err_deser);
+                            deser_func.push_block(err_deser);
+                        } else {
+                            global.generate_deserialize(&field.rust_type, &field.name, &format!("let {} = ", field.name), ";", false, &mut deser_func);
+                        }
+                    }
+                    if !field.rust_type.is_fixed_value() {
+                        if first_param {
+                            first_param = false;
+                        } else {
+                            deser_ret.push_str(", ");
+                        }
+                        deser_ret.push_str(&field.name);
+                    }
+                }
+            }
+            // length checked inside of deserialize() - it causes problems for plain groups nested
+            // in other groups otherwise
+            deser_ret.push_str("))");
+            deser_func.line(deser_ret);
+        },
+        Representation::Map => {
+            let mut uint_field_deserializers = Vec::new();
+            let mut text_field_deserializers = Vec::new();
+            for field in &rust_struct.fields {
+                // to support maps with plain groups inside is very difficult as we cannot guarantee
+                // the order of fields so foo = {a, b, bar}, bar = (c, d) could have the order ben
+                // {a, d, c, b}, {c, a, b, d}, etc which doesn't fit with the nature of deserialize_as_embedded_group
+                // A possible solution would be to take all fields into one big map, either in generation to begin with,
+                // or just for deserialization then constructing at the end with locals like a, b, bar_c, bar_d.
+                if let RustType::Rust(ident) = &field.rust_type {
+                    if global.is_plain_group(&ident) {
+                        global.dont_generate_deserialize(name, format!("Map with plain group field {}: {}", field.name, field.rust_type.for_member()));
+                    }
+                }
+                if field.rust_type.is_fixed_value() {
+                    deser_func.line(&format!("let mut {}_present = false;", field.name));
+                } else {
+                    deser_func.line(format!("let mut {} = None;", field.name));
+                }
+                let mut optional_map_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field.name));
+                let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if field.optional {
+                    (String::from("field"), &mut optional_map_ser_block)
+                } else {
+                    (format!("self.{}", field.name), &mut ser_func)
+                };
+
+                // serialize key
+                let key = field.key.clone().unwrap();
+                let mut deser_block = match &key {
+                    FixedValue::Uint(x) => Block::new(&format!("{} => ", x)),
+                    FixedValue::Text(x) => Block::new(&format!("\"{}\" => ", x)),
+                    _ => panic!("unsupported map key type for {}.{}: {:?}", name, field.name, key),
+                };
+                deser_block.after(",");
+                let key_in_rust = match &key {
+                    FixedValue::Uint(x) => format!("Key::Uint({})", x),
+                    FixedValue::Text(x) => format!("Key::Str(\"{}\".into())", x),
+                    _ => unimplemented!(),
+                };
+                if field.rust_type.is_fixed_value() {
+                    let mut dup_check = Block::new(&format!("if {}_present", field.name));
+                    dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
+                    deser_block.push_block(dup_check);
+                    // only does verification and sets the field_present bool to do error checking later
+                    if ANNOTATE_FIELDS {
+                        let mut err_deser = make_err_annotate_block(&field.name, &format!("{}_present = ", field.name), "?;");
+                        global.generate_deserialize(&field.rust_type, &field.name, "", "", false, &mut err_deser);
+                        err_deser.line("Ok(true)");
+                        deser_block.push_block(err_deser);
+                    } else {
+                        global.generate_deserialize(&field.rust_type, &field.name, "", "", false, &mut deser_block);
+                        deser_block.line(&format!("{}_present = true;", field.name));
+                    }
+                } else {
+                    let mut dup_check = Block::new(&format!("if {}.is_some()", field.name));
+                    dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
+                    deser_block.push_block(dup_check);
+                    if ANNOTATE_FIELDS {
+                        let mut err_deser = make_err_annotate_block(&field.name, &format!("{} = Some(", field.name), "?);");
+                        global.generate_deserialize(&field.rust_type, &field.name, "Ok(", ")", false, &mut err_deser);
+                        deser_block.push_block(err_deser);
+                    } else {
+                        global.generate_deserialize(&field.rust_type, &field.name, &format!("{} = Some(", field.name), ");", false, &mut deser_block);
+                    }
+                }
+                match &key {
+                    FixedValue::Uint(x) => {
+                        map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
+                        uint_field_deserializers.push(deser_block);
+                    },
+                    FixedValue::Text(x) => {
+                        map_ser_block.line(&format!("serializer.write_text(\"{}\")?;", x));
+                        text_field_deserializers.push(deser_block);
+                    },
+                    _ => panic!("unsupported map key type for {}.{}: {:?}", name, field.name, key),
+                };
+                // and serialize value
+                global.generate_serialize(&field.rust_type, &data_name, map_ser_block, false);
+                if field.optional {
+                    ser_func.push_block(optional_map_ser_block);
+                }
+            }
+            // needs to be in one line rather than a block because Block::after() only takes a string
+            deser_func.line("let mut read = 0;");
+            let mut deser_loop = make_deser_loop("len", "read");
+            let mut type_match = Block::new("match raw.cbor_type()?");
+            let mut uint_match = Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer()?");
+            for case in uint_field_deserializers {
+                uint_match.push_block(case);
+            }
+            uint_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()),");
+            uint_match.after(",");
+            type_match.push_block(uint_match);
+            let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
+            for case in text_field_deserializers {
+                text_match.push_block(case);
+            }
+            text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
+            text_match.after(",");
+            type_match.push_block(text_match);
+            let mut special_match = Block::new("CBORType::Special => match len");
+            special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),");
+            // this will need to change if we support Special values as keys (e.g. true / false)
+            let mut break_check = Block::new("cbor_event::Len::Indefinite => match raw.special()?");
+            break_check.line("CBORSpecial::Break => break,");
+            break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+            break_check.after(",");
+            special_match.push_block(break_check);
+            special_match.after(",");
+            type_match.push_block(special_match);
+            type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
+            deser_loop.push_block(type_match);
+            deser_loop.line("read += 1;");
+            deser_func.push_block(deser_loop);
+            let mut ctor_block = Block::new("Ok(Self");
+            // make sure the field is present, and unwrap the Option<T>
+            for field in &rust_struct.fields {
+                if !field.optional {
+                    let key = match &field.key {
+                        Some(FixedValue::Uint(x)) => format!("Key::Uint({})", x),
+                        Some(FixedValue::Text(x)) => format!("Key::Str(String::from(\"{}\"))", x),
+                        None => unreachable!(),
+                        _ => unimplemented!(),
+                    };
+                    if field.rust_type.is_fixed_value() {
+                        let mut mandatory_field_check = Block::new(&format!("if !{}_present", field.name));
+                        mandatory_field_check.line(format!("return Err(DeserializeFailure::MandatoryFieldMissing({}).into());", key));
+                        deser_func.push_block(mandatory_field_check);
+                    } else {
+                        let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field.name, field.name));
+                        mandatory_field_check.line("Some(x) => x,");
+                        
+                        mandatory_field_check.line(format!("None => return Err(DeserializeFailure::MandatoryFieldMissing({}).into()),", key));
+                        mandatory_field_check.after(";");
+                        deser_func.push_block(mandatory_field_check);
+                    }
+                }
+                if !field.rust_type.is_fixed_value() {
+                    ctor_block.line(format!("{},", field.name));
+                }
+            }
+            ctor_block.after(")");
+            deser_func.push_block(ctor_block);
+        },
+    };
+    ser_func.line("Ok(serializer)");
+    match &mut ser_embedded_impl {
+        Some(ser_embedded_impl) => ser_embedded_impl.push_fn(ser_func),
+        None => ser_impl.push_fn(ser_func),
+    };
+    deser_embedded_impl.push_fn(deser_func);
+    push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+    // TODO: generic deserialize (might need backtracking)
+    if global.deserialize_generated(name) {
+        global.serialize_scope()
+            .push_impl(deser_impl)
+            .push_impl(deser_embedded_impl);
+    }
+}
+
 fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>) {
     let table_types = table_domain_range(group_choice, rep);
     match table_types {
@@ -1523,277 +2048,16 @@ fn codegen_group_choice(global: &mut GlobalScope, group_choice: &GroupChoice, na
         Some((domain, range)) => {
             let key_type = rust_type_from_type2(global, domain);
             let value_type = rust_type(global, range);
+            global.register_rust_struct(RustStruct::new_table(name.clone(), key_type.clone(), value_type.clone()));
             codegen_table_type(global, name, key_type, value_type, tag);
         },
         // Heterogenous map (or array!) with defined key/value pairs in the cddl like a struct
         None => {
-            // Construct all field data here since we iterate over it multiple times and having
-            // it in one huge loop was extremely unreadable
-            let (mut s, mut s_impl) = create_exposed_group(global, name);
-            let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
-            let (deser_impl, mut deser_embedded_impl) = create_deserialize_impls(name, Some(rep), tag);
-            s.vis("pub");
-            let mut generated_fields = BTreeMap::<String, u32>::new();
-            let fields: Vec<(String, RustType, bool, &GroupEntry)> = group_choice.group_entries.iter().enumerate().map(
-                |(index, (group_entry, _has_comma))| {
-                    let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
-                    // does not exist for fixed values importantly
-                    let field_type = group_entry_to_type(global, group_entry);
-                    if let RustType::Rust(ident) = &field_type {
-                        global.generate_if_plain_group(ident.clone(), rep);
-                    }
-                    let optional_field = group_entry_optional(group_entry);
-                    (field_name, field_type, optional_field, group_entry)
-                }
-            ).collect();
-
-            // Generate struct + fields + constructor
-            let mut new_func = codegen::Function::new("new");
-            new_func
-                .ret("Self")
-                .vis("pub");
-            let mut new_func_block = Block::new("Self");
-            for (field_name, field_type, optional_field, _group_entry) in &fields {
-                if !global.deserialize_generated_for_type(field_type) {
-                    global.dont_generate_deserialize(name, format!("field {}: {} couldn't generate serialize", field_name, field_type.for_member()));
-                }
-                // Unsupported types so far are fixed values, only have fields for these.
-                if !field_type.is_fixed_value() {
-                    if *optional_field {
-                        // field
-                        s.field(field_name, format!("Option<{}>", field_type.for_member()));
-                        // new
-                        new_func_block.line(format!("{}: None,", field_name));
-                        // setter
-                        let mut setter = codegen::Function::new(&format!("set_{}", field_name));
-                        setter
-                            .arg_mut_self()
-                            .arg(&field_name, &field_type.for_wasm())
-                            .vis("pub")
-                            .line(format!("self.{} = Some({})", field_name, field_name));
-                        s_impl.push_fn(setter);
-                    } else {
-                        // field
-                        s.field(field_name, field_type.for_member());
-                        // new
-                        new_func.arg(&field_name, field_type.for_wasm());
-                        new_func_block.line(format!("{}: {},", field_name, field_type.from_wasm_boundary(field_name)));
-                        // do we want setters here later for mandatory types covered by new?
-                    }
-                }
-            }
-            new_func.push_block(new_func_block);
-            s_impl.push_fn(new_func);
-
-            // Generate serialization
-            let mut ser_func = make_serialization_function("serialize_as_embedded_group");
-            let mut deser_func = make_deserialization_function("deserialize_as_embedded_group");
-            deser_func.arg("len", "cbor_event::Len");
-            match rep {
-                Representation::Array => {
-                    let mut deser_ret = format!("Ok({}::new(", name);
-                    let mut first_param = true;
-                    for (field_name, field_type, optional_field, _group_entry) in &fields {
-                        if *optional_field {
-                            let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
-                            global.generate_serialize(&field_type, "field", &mut optional_array_ser_block, false);
-                            ser_func.push_block(optional_array_ser_block);
-                            global.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field_name, field_type.for_member()));
-                        } else {
-                            global.generate_serialize(&field_type, &format!("self.{}", field_name), &mut ser_func, false);
-                            if field_type.is_fixed_value() {
-                                // don't set anything, only verify data
-                                if ANNOTATE_FIELDS {
-                                    let mut err_deser = make_err_annotate_block(field_name, "", "?;");
-                                    global.generate_deserialize(&field_type, field_name, "", "", false, &mut err_deser);
-                                    // this block needs to evaluate to a Result even though it has no value
-                                    err_deser.line("Ok(())");
-                                    deser_func.push_block(err_deser);
-                                } else {
-                                    global.generate_deserialize(&field_type, field_name, "", "", false, &mut deser_func);
-                                }
-                            } else {
-                                if ANNOTATE_FIELDS {
-                                    let mut err_deser = make_err_annotate_block(field_name, &format!("let {} = ", field_name), "?;");
-                                    global.generate_deserialize(&field_type, field_name, "Ok(", ")", false, &mut err_deser);
-                                    deser_func.push_block(err_deser);
-                                } else {
-                                    global.generate_deserialize(&field_type, field_name, &format!("let {} = ", field_name), ";", false, &mut deser_func);
-                                }
-                            }
-                            if !field_type.is_fixed_value() {
-                                if first_param {
-                                    first_param = false;
-                                } else {
-                                    deser_ret.push_str(", ");
-                                }
-                                deser_ret.push_str(field_name);
-                            }
-                        }
-                    }
-                    // length checked inside of deserialize() - it causes problems for plain groups nested
-                    // in other groups otherwise
-                    deser_ret.push_str("))");
-                    deser_func.line(deser_ret);
-                },
-                Representation::Map => {
-                    let mut uint_field_deserializers = Vec::new();
-                    let mut text_field_deserializers = Vec::new();
-                    for (field_name, field_type, optional_field, group_entry) in &fields {
-                        // to support maps with plain groups inside is very difficult as we cannot guarantee
-                        // the order of fields so foo = {a, b, bar}, bar = (c, d) could have the order ben
-                        // {a, d, c, b}, {c, a, b, d}, etc which doesn't fit with the nature of deserialize_as_embedded_group
-                        // A possible solution would be to take all fields into one big map, either in generation to begin with,
-                        // or just for deserialization then constructing at the end with locals like a, b, bar_c, bar_d.
-                        if let RustType::Rust(ident) = field_type {
-                            if global.is_plain_group(ident) {
-                                global.dont_generate_deserialize(name, format!("Map with plain group field {}: {}", field_name, field_type.for_member()));
-                            }
-                        }
-                        if field_type.is_fixed_value() {
-                            deser_func.line(&format!("let mut {}_present = false;", field_name));
-                        } else {
-                            deser_func.line(format!("let mut {} = None;", field_name));
-                        }
-                        let mut optional_map_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field_name));
-                        let (data_name, map_ser_block): (String, &mut dyn CodeBlock) = if *optional_field {
-                            (String::from("field"), &mut optional_map_ser_block)
-                        } else {
-                            (format!("self.{}", field_name), &mut ser_func)
-                        };
-
-                        // serialize key
-                        let key = match group_entry_to_key(group_entry) {
-                            Some(key) => key,
-                            None => panic!("no key for field {}.{}, cannot generate as map", name, field_name),
-                        };
-                        let mut deser_block = match &key {
-                            FixedValue::Uint(x) => Block::new(&format!("{} => ", x)),
-                            FixedValue::Text(x) => Block::new(&format!("\"{}\" => ", x)),
-                            _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
-                        };
-                        deser_block.after(",");
-                        let key_in_rust = match &key {
-                            FixedValue::Uint(x) => format!("Key::Uint({})", x),
-                            FixedValue::Text(x) => format!("Key::Str(\"{}\".into())", x),
-                            _ => unimplemented!(),
-                        };
-                        if field_type.is_fixed_value() {
-                            let mut dup_check = Block::new(&format!("if {}_present", field_name));
-                            dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
-                            deser_block.push_block(dup_check);
-                            // only does verification and sets the field_present bool to do error checking later
-                            if ANNOTATE_FIELDS {
-                                let mut err_deser = make_err_annotate_block(field_name, &format!("{}_present = ", field_name), "?;");
-                                global.generate_deserialize(&field_type, field_name, "", "", false, &mut err_deser);
-                                err_deser.line("Ok(true)");
-                                deser_block.push_block(err_deser);
-                            } else {
-                                global.generate_deserialize(&field_type, field_name, "", "", false, &mut deser_block);
-                                deser_block.line(&format!("{}_present = true;", field_name));
-                            }
-                        } else {
-                            let mut dup_check = Block::new(&format!("if {}.is_some()", field_name));
-                            dup_check.line(&format!("return Err(DeserializeFailure::DuplicateKey({}).into());", key_in_rust));
-                            deser_block.push_block(dup_check);
-                            if ANNOTATE_FIELDS {
-                                let mut err_deser = make_err_annotate_block(field_name, &format!("{} = Some(", field_name), "?);");
-                                global.generate_deserialize(&field_type, field_name, "Ok(", ")", false, &mut err_deser);
-                                deser_block.push_block(err_deser);
-                            } else {
-                                global.generate_deserialize(&field_type, field_name, &format!("{} = Some(", field_name), ");", false, &mut deser_block);
-                            }
-                        }
-                        match &key {
-                            FixedValue::Uint(x) => {
-                                map_ser_block.line(&format!("serializer.write_unsigned_integer({})?;", x));
-                                uint_field_deserializers.push(deser_block);
-                            },
-                            FixedValue::Text(x) => {
-                                map_ser_block.line(&format!("serializer.write_text(\"{}\")?;", x));
-                                text_field_deserializers.push(deser_block);
-                            },
-                            _ => panic!("unsupported map key type for {}.{}: {:?}", name, field_name, key),
-                        };
-                        // and serialize value
-                        global.generate_serialize(&field_type, &data_name, map_ser_block, false);
-                        if *optional_field {
-                            ser_func.push_block(optional_map_ser_block);
-                        }
-                    }
-                    // needs to be in one line rather than a block because Block::after() only takes a string
-                    deser_func.line("let mut read = 0;");
-                    let mut deser_loop = make_deser_loop("len", "read");
-                    let mut type_match = Block::new("match raw.cbor_type()?");
-                    let mut uint_match = Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer()?");
-                    for case in uint_field_deserializers {
-                        uint_match.push_block(case);
-                    }
-                    uint_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()),");
-                    uint_match.after(",");
-                    type_match.push_block(uint_match);
-                    let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
-                    for case in text_field_deserializers {
-                        text_match.push_block(case);
-                    }
-                    text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
-                    text_match.after(",");
-                    type_match.push_block(text_match);
-                    let mut special_match = Block::new("CBORType::Special => match len");
-                    special_match.line("cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),");
-                    // this will need to change if we support Special values as keys (e.g. true / false)
-                    let mut break_check = Block::new("cbor_event::Len::Indefinite => match raw.special()?");
-                    break_check.line("CBORSpecial::Break => break,");
-                    break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
-                    break_check.after(",");
-                    special_match.push_block(break_check);
-                    special_match.after(",");
-                    type_match.push_block(special_match);
-                    type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
-                    deser_loop.push_block(type_match);
-                    deser_loop.line("read += 1;");
-                    deser_func.push_block(deser_loop);
-                    let mut ctor_block = Block::new("Ok(Self");
-                    // make sure the field is present, and unwrap the Option<T>
-                    for (field_name, field_type, optional_field, group_entry) in &fields {
-                        if !*optional_field {
-                            // unwrap since error case handled in match above
-                            let key = match group_entry_to_key(group_entry).unwrap() {
-                                FixedValue::Uint(x) => format!("Key::Uint({})", x),
-                                FixedValue::Text(x) => format!("Key::Str(String::from(\"{}\"))", x),
-                                _ => unimplemented!(),
-                            };
-                            if field_type.is_fixed_value() {
-                                let mut mandatory_field_check = Block::new(&format!("if !{}_present", field_name));
-                                mandatory_field_check.line(format!("return Err(DeserializeFailure::MandatoryFieldMissing({}).into());", key));
-                                deser_func.push_block(mandatory_field_check);
-                            } else {
-                                let mut mandatory_field_check = Block::new(&format!("let {} = match {}", field_name, field_name));
-                                mandatory_field_check.line("Some(x) => x,");
-                                
-                                mandatory_field_check.line(format!("None => return Err(DeserializeFailure::MandatoryFieldMissing({}).into()),", key));
-                                mandatory_field_check.after(";");
-                                deser_func.push_block(mandatory_field_check);
-                            }
-                        }
-                        if !field_type.is_fixed_value() {
-                            ctor_block.line(format!("{},", field_name));
-                        }
-                    }
-                    ctor_block.after(")");
-                    deser_func.push_block(ctor_block);
-                },
-            };
-            ser_func.line("Ok(serializer)");
-            ser_embedded_impl.push_fn(ser_func);
-            deser_embedded_impl.push_fn(deser_func);
-            push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
-            // TODO: generic deserialize (might need backtracking)
-            if global.deserialize_generated(name) {
-                global.serialize_scope()
-                    .push_impl(deser_impl)
-                    .push_impl(deser_embedded_impl);
-            }
+            let rust_struct = RustRecord::new_record_from_group_choice(global, name.clone(), rep, group_choice);
+            // We need to store this in GlobalScope so we can refer from one struct to another.
+            // TODO: split up cddl lib's parsing from codegen so we don't need multiple passes among other reasons
+            global.register_rust_struct(RustStruct::Record(rust_struct.clone()));
+            codegen_struct(global, name, tag, &rust_struct);
         }
     }
 }
@@ -1806,6 +2070,11 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
 
+        // TODO: We don't support generating SerializeEmbeddedGroup for group choices which is necessary for plain groups
+        // It would not be as trivial to add as we do the outer group's array/map tag writing inside the variant match
+        // to avoid having to always generate SerializeEmbeddedGroup when not necessary.
+        assert!(!global.is_plain_group(name));
+        
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
         let mut variants_names_used = BTreeMap::<String, u32>::new();
@@ -1853,7 +2122,6 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(global, name);
-        let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(name, Some(rep), tag);
         s
             .vis("pub")
             .tuple_field(&enum_name.to_string());
@@ -1909,10 +2177,15 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
             s_impl.push_fn(new_func);
         }
         // serialize
-        let mut ser_embedded_func = make_serialization_function("serialize_as_embedded_group");
-        ser_embedded_func.line("self.0.serialize_as_embedded_group(serializer)");
-        ser_embedded_impl.push_fn(ser_embedded_func);
-        push_exposed_struct(global, s, s_impl, ser_impl, ser_embedded_impl);
+        let mut ser_impl = codegen::Impl::new(&name.to_string());
+        ser_impl.impl_trait("cbor_event::se::Serialize");
+        let mut ser_func = make_serialization_function("serialize");
+        if let Some(tag) = tag {
+            ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
+        }
+        ser_func.line("self.0.serialize(serializer)");
+        ser_impl.push_fn(ser_func);
+        push_exposed_struct(global, s, s_impl, ser_impl, None);
         // deserialize
         let mut deser_impl = codegen::Impl::new(&name.to_string());
         deser_impl.impl_trait("Deserialize");
@@ -1945,10 +2218,14 @@ impl EnumVariant {
 // deserialize_as_embedded_group as the behavior would be identical.
 fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>, generate_deserialize_directly: bool) {
     let mut e = codegen::Enum::new(&enum_name.to_string());
+    // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
+    // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
+    // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
     add_struct_derives(&mut e);
-    let (ser_impl, mut ser_embedded_impl) = create_serialize_impls(enum_name, rep, None);
-    let mut ser_func_embedded = make_serialization_function("serialize_as_embedded_group");
-    let mut ser_array_embedded_match_block = Block::new("match self");
+    let mut ser_impl = codegen::Impl::new(&enum_name.to_string());
+    ser_impl.impl_trait("cbor_event::se::Serialize");
+    let mut ser_func = make_serialization_function("serialize");
+    let mut ser_array_match_block = Block::new("match self");
     let mut deser_func = if generate_deserialize_directly {
         make_deserialization_function("deserialize")
     } else {
@@ -1965,21 +2242,39 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
         }
         // serialize
         if variant.serialize_as_embedded_group {
-            ser_array_embedded_match_block.line(&format!("{}::{}(x) => x.serialize_as_embedded_group(serializer),", enum_name, variant.name));
+            ser_array_match_block.line(&format!("{}::{}(x) => x.serialize(serializer),", enum_name, variant.name));
         } else {
             let capture = if variant.rust_type.is_fixed_value() {
                 ""
             } else {
                 "(x)"
             };
-            // TODO: only generate a block if the serialize is more than 1 line
-            // Problem: generate_serialize() works in terms of line() and push_block()
-            //          but we'd just want to inline the single one inside of a line...
             //if variant.rust_type.is_serialize_multiline() {
                 let mut case_block = Block::new(&format!("{}::{}{} =>", enum_name, variant.name, capture));
-                global.generate_serialize(&variant.rust_type, "x", &mut case_block, true);
+                let write_break = match rep {
+                    Some(r) => {
+                        let (len_str, indefinite) = match variant.rust_type.expanded_field_count(global) {
+                            Some(n) => (format!("cbor_event::Len::Len({})", n), false),
+                            None => (String::from("cbor_event::Len::Indefinite"), true),
+                        };
+                        let func_str = match r {
+                            Representation::Array => "write_array",
+                            Representation::Map => "write_map",
+                        };
+                        case_block.line(format!("serializer.{}({})?;", func_str, len_str));
+                        indefinite
+                    },
+                    None => false,
+                };
+                // TODO: only generate a block if the serialize is more than 1 line
+                // Problem: generate_serialize() works in terms of line() and push_block()
+                //          but we'd just want to inline the single one inside of a line...
+                global.generate_serialize(&variant.rust_type, "x", &mut case_block, !write_break);
+                if write_break {
+                    case_block.line("serializer.write_special(CBORSpecial::Break)");
+                }
                 case_block.after(",");
-                ser_array_embedded_match_block.push_block(case_block);
+                ser_array_match_block.push_block(case_block);
             //}
         }
         // deserialize
@@ -2005,8 +2300,8 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
         return_if_deserialized.after(";");
         deser_func.push_block(return_if_deserialized);
     }
-    ser_func_embedded.push_block(ser_array_embedded_match_block);
-    ser_embedded_impl.push_fn(ser_func_embedded);
+    ser_func.push_block(ser_array_match_block);
+    ser_impl.push_fn(ser_func);
     deser_func.line(format!("Err(DeserializeError::new(\"{}\", DeserializeFailure::NoVariantMatched.into()))", enum_name));
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
@@ -2015,8 +2310,7 @@ fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec
         .push_enum(e);
     global
         .serialize_scope()
-        .push_impl(ser_impl)
-        .push_impl(ser_embedded_impl);
+        .push_impl(ser_impl);
     if generate_deserialize_directly {
         let mut deser_impl = codegen::Impl::new(&enum_name.to_string());
         deser_impl.impl_trait("Deserialize");
@@ -2308,6 +2602,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n\nAliases:");
         for (alias_name, alias_type) in global.type_aliases.iter() {
             println!("{:?} -> {:?}", alias_name, alias_type);
+        }
+    }
+
+    if !global.rust_structs.is_empty() {
+        println!("\n\nRustStructs:");
+        for (ident, rust_struct) in global.rust_structs.iter() {
+            println!("{} -> {:?}\n", ident, rust_struct);
         }
     }
 
