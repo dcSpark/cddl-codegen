@@ -12,6 +12,7 @@ use either::{Either};
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 const ANNOTATE_FIELDS: bool = true;
+const BINARY_WRAPPERS: bool = true;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Representation {
@@ -199,13 +200,22 @@ mod idents {
             AliasIdent::Rust(ident)
         }
     }
+
+    impl std::fmt::Display for AliasIdent {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                AliasIdent::Reserved(name) => write!(f, "{}", name),
+                AliasIdent::Rust(ident) => ident.fmt(f),
+            }
+        }
+    }
 }
 use idents::*;
 
 #[derive(Clone, Debug)]
 enum RustType {
     Fixed(FixedValue),
-    // Primitive type that can be passed to/from wasm - TODO: make this an enum so we can get type guarantees on it
+    // Primitive type that can be passed to/from wasm
     Primitive(Primitive),
     // Rust-defined type that cannot be put in arrays/etc
     Rust(RustIdent),
@@ -217,6 +227,8 @@ enum RustType {
     Optional(Box<RustType>),
     // TODO: table type to support inlined defined table-type groups as fields
     Map(Box<RustType>, Box<RustType>),
+    // Alias for another type
+    Alias(AliasIdent, Box<RustType>),
 
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
@@ -231,10 +243,28 @@ impl RustType {
             RustType::Fixed(_) => false,
             RustType::Primitive(_) => true,
             RustType::Rust(_) => false,
-            RustType::Array(ty) => ty.directly_wasm_exposable(),
+            // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
+            RustType::Array(ty) => {
+                let inner = match &**ty {
+                    RustType::Alias(_ident, ty) => ty,
+                    RustType::Optional(ty) => ty,
+                    RustType::Tagged(_tag, ty) => ty,
+                    ty => ty,
+                };
+                match inner {
+                    RustType::Primitive(p) => match p {
+                        // Bytes is already implemented as Vec<u8> so we can't nest it
+                        Primitive::Bytes => false,
+                        _ => true,
+                    },
+                    RustType::Array(_) => false,
+                    _ => ty.directly_wasm_exposable(),
+                }
+            },
             RustType::Tagged(_tag, ty) => ty.directly_wasm_exposable(),
             RustType::Optional(ty) => ty.directly_wasm_exposable(),
             RustType::Map(_, _) => false,
+            RustType::Alias(_ident, ty) => ty.directly_wasm_exposable(),
         }
     }
 
@@ -242,40 +272,61 @@ impl RustType {
         match self {
             RustType::Fixed(_) => true,
             RustType::Tagged(_tag, ty) => ty.is_fixed_value(),
+            RustType::Alias(_ident, ty) => ty.is_fixed_value(),
             _ => false,
         }
     }
 
     fn name_as_array(&self) -> String {
-        if self.directly_wasm_exposable() {
-            format!("Vec<{}>", self.for_wasm())
+        if RustType::Array(Box::new(self.clone())).directly_wasm_exposable() {
+            format!("Vec<{}>", self.for_member())
         } else {
-            format!("{}s", self.for_wasm())
+            format!("{}s", self.for_member())
         }
     }
 
-    // TODO: should we unify this and for_member() in to_string()? (they were different previously) will we need the distinction for other types?
-    fn for_wasm(&self) -> String {
-        match self {
+    fn for_wasm_param(&self) -> String {
+        let x = match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
-            RustType::Primitive(s) => s.to_string(),
-            RustType::Rust(s) => s.to_string(),
-            RustType::Array(ty) => ty.name_as_array(),
-            RustType::Tagged(_tag, ty) => ty.for_wasm(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm()),
-            RustType::Map(k, v) => format!("Map{}To{}", k.for_wasm(), v.for_wasm()),
-        }
+            RustType::Primitive(p) => p.to_string(),
+            RustType::Rust(ident) => format!("&{}", ident),
+            RustType::Array(ty) => if self.directly_wasm_exposable() {
+                ty.name_as_array()
+            } else {
+                format!("&{}", ty.name_as_array())
+            },
+            RustType::Tagged(_tag, ty) => ty.for_wasm_param(),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
+            RustType::Map(_k, _v) => format!("&{}", self.for_member()),
+            RustType::Alias(ident, ty) => match &**ty {
+                RustType::Rust(_) => format!("&{}", ident),
+                _ => ident.to_string(),
+            }
+        };
+        println!("for_wasm_param({:?}) = {}", self, x);
+        x
+    }
+
+    fn for_wasm_return(&self) -> String {
+        self.for_member()
     }
 
     fn for_member(&self) -> String {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
-            RustType::Primitive(s) => s.to_string(),
-            RustType::Rust(s) => s.to_string(),
+            RustType::Primitive(p) => p.to_string(),
+            RustType::Rust(ident) => ident.to_string(),
             RustType::Array(ty) => ty.name_as_array(),
             RustType::Tagged(_tag, ty) => ty.for_member(),
             RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
             RustType::Map(k, v) => format!("Map{}To{}", k.for_member(), v.for_member()),
+            RustType::Alias(ident, ty) => match ident {
+                // we don't generate type aliases for reserved types, just transform
+                // them into rust equivalents, so we can't and shouldn't use their alias here.
+                AliasIdent::Reserved(_) => ty.for_member(),
+                // but other aliases are generated and should be used.
+                AliasIdent::Rust(_) => ident.to_string(),
+            },
         }
     }
 
@@ -289,13 +340,25 @@ impl RustType {
             // TODO: should we not end up in this situation and just insert a Null fixed value instead?
             RustType::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.for_variant())),
             RustType::Map(k, v) => VariantIdent::new_custom(format!("Map{}To{}", k.for_variant(), v.for_variant())),
+            RustType::Alias(ident, _ty) => match ident {
+                AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
+                AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
+            },
         }
     }
-
-    // TODO: should we get rid of from_wasm_boundary() entirely, or will it be useful for things that aren't tagged types?        
+     
     fn from_wasm_boundary(&self, expr: &str) -> String {
         match self {
-            //RustType::Tagged(tag, ty) => format!("TaggedData::<{}>::new({}, {})", ty.for_member(), expr, tag),
+            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary(expr),
+            RustType::Rust(_ident) => format!("{}.clone()", expr),
+            RustType::Alias(_ident, ty) => ty.from_wasm_boundary(expr),
+            RustType::Optional(ty) => ty.from_wasm_boundary(expr),
+            RustType::Array(ty) => if self.directly_wasm_exposable() {
+                ty.from_wasm_boundary(expr)
+            } else {
+                format!("{}.clone()", expr)
+            },
+            RustType::Map(_k, _v) => format!("{}.clone()", expr),
             _ => expr.to_owned(),
         }
     }
@@ -324,7 +387,8 @@ impl RustType {
                     inner_types.push(CBORType::Special);
                 }
                 inner_types
-            }
+            },
+            RustType::Alias(_ident, ty) => ty.cbor_types(),
         }
     }
 
@@ -341,6 +405,7 @@ impl RustType {
             RustType::Tagged(_, _) => true,
             RustType::Optional(_) => false,
             RustType::Map(_, _) => false,
+            RustType::Alias(_ident, ty) => ty._is_serialize_multiline(),
         }
     }
 
@@ -360,6 +425,7 @@ impl RustType {
             } else {
                 Some(1)
             },
+            RustType::Alias(_ident, ty) => ty.expanded_field_count(global),
             _ => Some(1),
         }
     }
@@ -382,6 +448,7 @@ impl RustType {
                 } else {
                     Some(String::from("1"))
                 },
+                RustType::Alias(_ident, ty) => ty.definite_info(self_expr, global),
                 _ => Some(String::from("1")),
             }
         }
@@ -579,78 +646,90 @@ impl GlobalScope {
     fn aliases() -> BTreeMap<idents::AliasIdent, RustType> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
         let mut aliases = BTreeMap::<AliasIdent, RustType>::new();
+        let mut insert_alias = |name: &str, rust_type: RustType| {
+            let ident = AliasIdent::new(CDDLIdent::new(name));
+            aliases.insert(ident.clone(), rust_type);
+        };
         // TODO: use u64/i64 later when you figure out the BigInt issues from wasm
-        aliases.insert(AliasIdent::new(CDDLIdent::new("uint")), RustType::Primitive(Primitive::U32));
+        insert_alias("uint", RustType::Primitive(Primitive::U32));
         // Not sure on this one, I think they can be bigger than i64 can fit
         // but the cbor_event serialization takes the argument as an i64
-        aliases.insert(AliasIdent::new(CDDLIdent::new("nint")), RustType::Primitive(Primitive::I32));
-        aliases.insert(AliasIdent::new(CDDLIdent::new("bool")), RustType::Primitive(Primitive::Bool));
+        insert_alias("nint", RustType::Primitive(Primitive::I32));
+        insert_alias("bool", RustType::Primitive(Primitive::Bool));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
         //"int" => "i64",
         let string_type = RustType::Primitive(Primitive::Str);
-        aliases.insert(AliasIdent::new(CDDLIdent::new("tstr")), string_type.clone());
-        aliases.insert(AliasIdent::new(CDDLIdent::new("text")), string_type);
-        // TODO: Is this right to have it be Vec<u8>?
-        // the serialization library for bytes takes type [u8]
-        // so we'll have to put some logic in there I guess?
-        // it might be necessary to put a wrapper type..
-        aliases.insert(AliasIdent::new(CDDLIdent::new("bstr")), RustType::Primitive(Primitive::Bytes));
-        aliases.insert(AliasIdent::new(CDDLIdent::new("bytes")), RustType::Primitive(Primitive::Bytes));
+        insert_alias("tstr", string_type.clone());
+        insert_alias("text", string_type);
+        insert_alias("bstr", RustType::Primitive(Primitive::Bytes));
+        insert_alias("bytes", RustType::Primitive(Primitive::Bytes));
         let null_type = RustType::Fixed(FixedValue::Null);
-        aliases.insert(AliasIdent::new(CDDLIdent::new("null")), null_type.clone());
-        aliases.insert(AliasIdent::new(CDDLIdent::new("nil")), null_type);
-        aliases.insert(AliasIdent::new(CDDLIdent::new("true")), RustType::Fixed(FixedValue::Bool(true)));
-        aliases.insert(AliasIdent::new(CDDLIdent::new("false")), RustType::Fixed(FixedValue::Bool(false)));
+        insert_alias("null", null_type.clone());
+        insert_alias("nil", null_type);
+        insert_alias("true", RustType::Fixed(FixedValue::Bool(true)));
+        insert_alias("false", RustType::Fixed(FixedValue::Bool(false)));
         // What about bingint/other stuff in the standard prelude?
         aliases
     }
 
     fn new_type(&self, raw: &CDDLIdent) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
-        let resolved = self.apply_type_aliases(&alias_ident);
-        // if we're not literally bytes/bstr, and instead an alias for it
-        // we would have generated a named wrapper object so we should
-        // refer to that instead
-        if !is_identifier_reserved(&raw.to_string()) {
-            if let RustType::Primitive(Primitive::Bytes) = &resolved {
-                return RustType::Rust(RustIdent::new(raw.clone()));
+        let resolved = match self.apply_type_aliases(&alias_ident) {
+            Some(ty) => match alias_ident {
+                AliasIdent::Reserved(_) => ty,
+                AliasIdent::Rust(_) => RustType::Alias(alias_ident.clone(), Box::new(ty))
+            },
+            None => RustType::Rust(RustIdent::new(raw.clone())),
+        };
+        let resolved_inner = match &resolved {
+            RustType::Alias(_, ty) => ty,
+            ty => ty,
+        };
+        if BINARY_WRAPPERS {
+            // if we're not literally bytes/bstr, and instead an alias for it
+            // we would have generated a named wrapper object so we should
+            // refer to that instead
+            if !is_identifier_reserved(&raw.to_string()) {
+                if let RustType::Primitive(Primitive::Bytes) = resolved_inner {
+                    return RustType::Rust(RustIdent::new(raw.clone()));
+                }
             }
         }
         // this would interfere with map/array loop code generation unless we
-        // specially handle this case since you wouldn't know whether you hit a break
+        // specifically handle this case since you wouldn't know whether you hit a break
         // or are reading a key here, unless we check, but then you'd need to store the
         // non-break special value once read
-        if let RustType::Array(ty) = &resolved {
+        if let RustType::Array(ty) = resolved_inner {
             assert!(!ty.cbor_types().contains(&CBORType::Special));
         }
-        if let RustType::Map(key_type, _val_type) = &resolved {
+        if let RustType::Map(key_type, _val_type) = resolved_inner {
             assert!(!key_type.cbor_types().contains(&CBORType::Special));
         }
         resolved
     }
 
-    fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> RustType {
+    fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some(alias) => match alias {
-                RustType::Rust(id) => self.apply_type_aliases(&AliasIdent::from(id.clone())),
-                x => x.clone(),
-            },
+            Some(alias) => Some(alias.clone()),
             None => match alias_ident {
-                AliasIdent::Rust(rust_ident) => RustType::Rust(rust_ident.clone()),
+                AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => panic!("Reserved ident {} didn't define type alias", reserved),
             },
         }
     }
 
     fn generate_type_alias(&mut self, alias: RustIdent, base_type: RustType) {
-        self.global_scope.raw(format!("type {} = {};", alias, base_type.for_member()).as_ref());
-        self.apply_type_alias_without_codegen(alias, base_type);
+        self.global_scope.raw(&format!("type {} = {};", alias, base_type.for_member()));
+        self.generate_type_alias_without_codegen(alias, base_type);
     }
 
-    fn apply_type_alias_without_codegen(&mut self, alias: RustIdent, base_type: RustType) {
+    fn generate_type_alias_without_codegen(&mut self, alias: RustIdent, base_type: RustType) {
+        if let RustType::Alias(_ident, _ty) = &base_type {
+            panic!("generate_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
+        }
         self.type_aliases.insert(alias.into(), base_type);
     }
 
@@ -747,8 +826,8 @@ impl GlobalScope {
                     x => x,
                 };
                 new_func
-                    .arg(&arg_name, &variant.rust_type.for_wasm())
-                    .line(format!("Self({}::{}({}))", enum_name, variant.name, arg_name));
+                    .arg(&arg_name, &variant.rust_type.for_wasm_param())
+                    .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary(arg_name)));
             }
             s_impl.push_fn(new_func);
         }
@@ -767,13 +846,13 @@ impl GlobalScope {
 
     // generate array type ie [Foo] generates Foos if not already created
     fn generate_array_type(&mut self, element_type: RustType, array_type_name: &str) -> RustType {
-        if element_type.directly_wasm_exposable() {
-            return RustType::Array(Box::new(element_type));
+        let raw_arr_type = RustType::Array(Box::new(element_type.clone()));
+        if raw_arr_type.directly_wasm_exposable() {
+            return raw_arr_type;
         }
         if let RustType::Rust(name) = &element_type {
             self.generate_if_plain_group(name.clone(), Representation::Array);
         }
-        let element_type_wasm = element_type.for_wasm();
         let element_type_rust = element_type.for_member();
         let array_type = RustIdent::new(CDDLIdent::new(array_type_name));
         if self.already_generated.insert(array_type.clone()) {
@@ -791,7 +870,7 @@ impl GlobalScope {
             let mut ser_func = make_serialization_function("serialize");
             ser_func.line("serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;");
             let mut loop_block = Block::new("for element in &self.0");
-            loop_block.line("element.serialize(serializer)?;");
+            self.generate_serialize(&element_type, "element", &mut loop_block, false);
             ser_func.push_block(loop_block);
             ser_func.line("Ok(serializer)");
             ser_impl.push_fn(ser_func);
@@ -839,7 +918,7 @@ impl GlobalScope {
             array_impl
                 .new_fn("get")
                 .vis("pub")
-                .ret(&element_type_wasm)
+                .ret(&element_type.for_wasm_return())
                 .arg_ref_self()
                 .arg("index", "usize")
                 .line("self.0[index].clone()");
@@ -847,8 +926,8 @@ impl GlobalScope {
                 .new_fn("add")
                 .vis("pub")
                 .arg_mut_self()
-                .arg("elem", element_type_wasm)
-                .line("self.0.push(elem);");
+                .arg("elem", element_type.for_wasm_param())
+                .line(format!("self.0.push({});", element_type.from_wasm_boundary("elem")));
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_impl(array_impl);
             self.register_rust_struct(RustStruct::new_array(array_type, element_type.clone()));
@@ -913,10 +992,10 @@ impl GlobalScope {
                 }
             },
             RustType::Array(ty) => {
-                if ty.directly_wasm_exposable() {
+                if rust_type.directly_wasm_exposable() {
                     body.line(&format!("serializer.write_array(cbor_event::Len::Len({}.len() as u64))?;", expr));
                     let mut loop_block = Block::new(&format!("for element in {}.iter()", expr));
-                    loop_block.line("element.serialize(serializer)?;");
+                    self.generate_serialize(ty, "element", &mut loop_block, false);
                     body.push_block(loop_block);
                     if is_end {
                         body.line("Ok(serializer)");
@@ -951,7 +1030,8 @@ impl GlobalScope {
                 // body.push_block(table_loop);
                 // body.line(&format!("serializer.write_special(CBORSpecial::Break){}", line_ender));
                 body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
-            }
+            },
+            RustType::Alias(_ident, ty) => self.generate_serialize(ty, expr, body, is_end),
         };
     }
 
@@ -1055,7 +1135,7 @@ impl GlobalScope {
                 body.push_block(deser_block);
             },
             RustType::Array(ty) => {
-                if ty.directly_wasm_exposable() {
+                if rust_type.directly_wasm_exposable() {
                     body.line("let mut arr = Vec::new();");
                     body.line("let len = raw.array()?;");
                     let mut deser_loop = make_deser_loop("len", "arr.len()");
@@ -1078,6 +1158,7 @@ impl GlobalScope {
                 // so instead we just generate this:
                 body.line(&format!("{}{}::deserialize(raw)?{}", before, rust_type.for_member(), after));
             },
+            RustType::Alias(_ident, ty) => self.generate_deserialize(ty, var_name, before, after, force_non_embedded, body),
         }
     }
 
@@ -1094,6 +1175,7 @@ impl GlobalScope {
             RustType::Map(k, v) => self.deserialize_generated_for_type(k) && self.deserialize_generated_for_type(v),
             RustType::Tagged(_tag, ty) => self.deserialize_generated_for_type(ty),
             RustType::Optional(ty) => self.deserialize_generated_for_type(ty),
+            RustType::Alias(_ident, ty) => self.deserialize_generated_for_type(ty),
         }
     }
 
@@ -1119,7 +1201,8 @@ impl GlobalScope {
             self.global_scope = codegen::Scope::new();
             self.serialize_scope = codegen::Scope::new();
             self.already_generated.clear();
-            self.type_aliases = Self::aliases();
+            // don't delete these to let out-of-order type aliases work
+            //self.type_aliases = Self::aliases();
             // keep empty ones so we can know it's not generated
             for (_ident, reasons) in self.no_deser_reasons.iter_mut() {
                 reasons.clear();
@@ -1340,9 +1423,8 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
     }
 }
 
-// Returns None if this is a fixed value that we should not be storing
 fn rust_type_from_type2(global: &mut GlobalScope, type2: &Type2) -> RustType {
-    // generic args not in shelley.cddl
+    // TODO: generics
     // TODO: socket plugs (used in hash type)
     match type2 {
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
@@ -1722,9 +1804,9 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
     insert_func
         .vis("pub")
         .arg_mut_self()
-        .arg("key", key_type.for_wasm())
-        .arg("value", value_type.for_wasm())
-        .ret(format!("Option<{}>", value_type.for_wasm()))
+        .arg("key", key_type.for_wasm_param())
+        .arg("value", value_type.for_wasm_param())
+        .ret(format!("Option<{}>", value_type.for_wasm_return()))
         .line(
             format!(
                 "self.0.insert({}, {})",
@@ -1807,15 +1889,15 @@ fn codegen_struct(global: &mut GlobalScope, name: &RustIdent, tag: Option<usize>
                 let mut setter = codegen::Function::new(&format!("set_{}", field.name));
                 setter
                     .arg_mut_self()
-                    .arg(&field.name, &field.rust_type.for_wasm())
+                    .arg(&field.name, &field.rust_type.for_wasm_param())
                     .vis("pub")
-                    .line(format!("self.{} = Some({})", field.name, field.name));
+                    .line(format!("self.{} = Some({})", field.name, field.rust_type.from_wasm_boundary(&field.name)));
                 s_impl.push_fn(setter);
             } else {
                 // field
                 s.field(&field.name, field.rust_type.for_member());
                 // new
-                new_func.arg(&field.name, field.rust_type.for_wasm());
+                new_func.arg(&field.name, field.rust_type.for_wasm_param());
                 new_func_block.line(format!("{}: {},", field.name, field.rust_type.from_wasm_boundary(&field.name)));
                 // do we want setters here later for mandatory types covered by new?
             }
@@ -1836,8 +1918,7 @@ fn codegen_struct(global: &mut GlobalScope, name: &RustIdent, tag: Option<usize>
     deser_func.arg("len", "cbor_event::Len");
     match rust_struct.rep {
         Representation::Array => {
-            let mut deser_ret = format!("Ok({}::new(", name);
-            let mut first_param = true;
+            let mut deser_ret = Block::new(&format!("Ok({}", name));
             for field in &rust_struct.fields {
                 if field.optional {
                     let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field.name));
@@ -1867,19 +1948,14 @@ fn codegen_struct(global: &mut GlobalScope, name: &RustIdent, tag: Option<usize>
                         }
                     }
                     if !field.rust_type.is_fixed_value() {
-                        if first_param {
-                            first_param = false;
-                        } else {
-                            deser_ret.push_str(", ");
-                        }
-                        deser_ret.push_str(&field.name);
+                        deser_ret.line(&format!("{},", field.name));
                     }
                 }
             }
             // length checked inside of deserialize() - it causes problems for plain groups nested
             // in other groups otherwise
-            deser_ret.push_str("))");
-            deser_func.line(deser_ret);
+            deser_ret.after(")");
+            deser_func.push_block(deser_ret);
         },
         Representation::Map => {
             let mut uint_field_deserializers = Vec::new();
@@ -2155,7 +2231,9 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
                             } else {
                                 output_comma = true;
                             }
-                            new_func.arg(&field_name, rust_type.for_wasm());
+                            new_func.arg(&field_name, rust_type.for_wasm_param());
+                            // We don't use rust_type.from_wasm_boundary() here as we're delegating to the
+                            // wasm-exposed variant.name::new() function
                             ctor.push_str(&field_name);
                         }
                     }
@@ -2168,8 +2246,8 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
                 let rust_type = group_entry_to_type(global, group_entry);
                 if !group_entry_optional(group_entry) && !rust_type.is_fixed_value() {
                     new_func
-                        .arg(&field_name, rust_type.for_wasm())
-                        .line(format!("Self({}::{}({}))", enum_name, variant.name, field_name));
+                        .arg(&field_name, rust_type.for_wasm_param())
+                        .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary(&field_name)));
                 } else {
                     new_func.line(format!("Self({}::{})", enum_name, variant.name));
                 }
@@ -2400,7 +2478,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
     let mut new_func = codegen::Function::new("new");
     new_func
         .ret("Self")
-        .arg("data", field_type.for_wasm())
+        .arg("data", field_type.for_wasm_param())
         .vis("pub");
     new_func.line(format!("Self({})", field_type.from_wasm_boundary("data")));
     s_impl.push_fn(new_func);
@@ -2459,9 +2537,9 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
             // Perhaps we could change the cddl and have some specific tag like "BINARY_FORMAT"
             // to generate this?
             let cddl_ident = CDDLIdent::new(ident.to_string());
-            let generate_binary_wrapper = match ident.to_string().as_ref() {
+            let generate_binary_wrapper = BINARY_WRAPPERS && match ident.to_string().as_ref() {
                 "bytes" | "bstr" => true,
-                _ident => if let RustType::Primitive(Primitive::Bytes) = global.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
+                _ident => if let Some(RustType::Primitive(Primitive::Bytes)) = global.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
                     true
                 } else {
                     false
@@ -2470,9 +2548,13 @@ fn generate_type(global: &mut GlobalScope, type_name: &RustIdent, type2: &Type2,
             if generate_binary_wrapper {
                 let field_type = RustType::Primitive(Primitive::Bytes);
                 generate_wrapper_struct(global, type_name, &field_type, None);
-                global.apply_type_alias_without_codegen(type_name.to_owned(), field_type);
+                global.generate_type_alias_without_codegen(type_name.to_owned(), field_type);
             } else {
-                global.generate_type_alias(type_name.to_owned(), global.new_type(&cddl_ident));
+                let concrete_type = match global.new_type(&cddl_ident) {
+                    RustType::Alias(_ident, ty) => *ty,
+                    ty => ty,
+                };
+                global.generate_type_alias(type_name.to_owned(), concrete_type);
             }
         },
         Type2::Map{ group, .. } => {
@@ -2537,7 +2619,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    while global.reset_except_not_deserialized_and_plain_groups(&mut not_deserialized) {
+    // TODO: handle out-of-order definition properly instead of just mandating at least two passes.
+    // If we separate codegen and parsing this would probably be a lot easier too.
+    // This is probably hiding some other issues too.
+    while pass_count < 2 || global.reset_except_not_deserialized_and_plain_groups(&mut not_deserialized) {
         println!("Pass #{}", pass_count);
         pass_count += 1;
         // Can't generate groups of imports with codegen::Import so we just output this as raw text
