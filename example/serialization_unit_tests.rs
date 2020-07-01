@@ -47,17 +47,17 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None));
+        deser_test(Bar::new(&Foo::new(436, String::from("jfkdf"), vec![6, 4]), None));
     }
 
     #[test]
     fn plain() {
-        deser_test(Plain::new(7576, TaggedText::new(String::from("wiorurri34h"))));
+        deser_test(Plain::new(7576, &TaggedText::new(String::from("wiorurri34h"))));
     }
 
     #[test]
     fn outer() {
-        deser_test(Outer::new(2143254, Plain::new(7576, TaggedText::new(String::from("wiorurri34h")))));
+        deser_test(Outer::new(2143254, &Plain::new(7576, &TaggedText::new(String::from("wiorurri34h")))));
     }
 
     #[test]
@@ -75,9 +75,9 @@ mod tests {
         tab.insert(String::from("dfdsg3r4"), String::from("2k2j343"));
         tab.insert(String::from("A76sdf"), String::from("!!fjdj"));
         let mut foos = Foos::new();
-        foos.add(Foo::new(0, String::from("Zero"), vec![]));
-        foos.add(Foo::new(2, String::from("Two"), vec![2, 2]));
-        deser_test(TableArrMembers::new(tab, vec![0, 1, 2, 3, 4, 5], foos));
+        foos.add(&Foo::new(0, String::from("Zero"), vec![]));
+        foos.add(&Foo::new(2, String::from("Two"), vec![2, 2]));
+        deser_test(TableArrMembers::new(&tab, vec![0, 1, 2, 3, 4, 5], &foos));
     }
 
     #[test]
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn group_choice_foo() {
-        deser_test(GroupChoice::new_foo(Foo::new(0, String::new(), vec![])));
+        deser_test(GroupChoice::new_foo(&Foo::new(0, String::new(), vec![])));
     }
 
     #[test]
@@ -122,6 +122,6 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(GroupChoice::new_plain(Plain::new(354545, TaggedText::new(String::from("fdsfdsfdg")))));
+        deser_test(GroupChoice::new_plain(&Plain::new(354545, &TaggedText::new(String::from("fdsfdsfdg")))));
     }
 }
