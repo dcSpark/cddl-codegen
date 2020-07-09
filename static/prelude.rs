@@ -155,7 +155,7 @@ impl<T: Deserialize + Sized> FromBytes for T {
 
 // CBOR has int = int / nint
 #[wasm_bindgen]
-#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Int(i128);
 
 #[wasm_bindgen]
@@ -178,4 +178,15 @@ impl cbor_event::se::Serialize for Int {
         }
     }
 }
-// TODO: deserialize
+
+impl Deserialize for Int {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self(raw.unsigned_integer()? as i128)),
+                cbor_event::Type::NegativeInteger => Ok(Self(-raw.negative_integer()? as i128)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })().map_err(|e| e.annotate("Int"))
+    }
+}

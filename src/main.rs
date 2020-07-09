@@ -13,6 +13,7 @@ use either::{Either};
 //       and works with From<cbor_event:Error> only
 const ANNOTATE_FIELDS: bool = true;
 const BINARY_WRAPPERS: bool = true;
+const GENERATE_TO_FROM_BYTES: bool = false;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Representation {
@@ -144,7 +145,7 @@ mod idents {
         // this should not be created directly, but instead via GlobalScope::new_type()
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
-            assert!(!super::is_identifier_reserved(&cddl_ident.0));
+            assert!(cddl_ident.0 == "int" || !super::is_identifier_reserved(&cddl_ident.0));
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
@@ -187,7 +188,7 @@ mod idents {
 
     impl AliasIdent {
         pub fn new(ident: CDDLIdent) -> Self {
-            if super::is_identifier_reserved(&ident.0) {
+            if ident.0 != "int" && super::is_identifier_reserved(&ident.0) {
                 AliasIdent::Reserved(ident.0)
             } else {
                 AliasIdent::Rust(RustIdent::new(ident))
@@ -346,20 +347,38 @@ impl RustType {
             },
         }
     }
-     
-    fn from_wasm_boundary(&self, expr: &str) -> String {
+
+    // for parameters from wasm that take ownership (via cloning here)
+    fn from_wasm_boundary_clone(&self, expr: &str) -> String {
         match self {
-            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary(expr),
+            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary_clone(expr),
             RustType::Rust(_ident) => format!("{}.clone()", expr),
-            RustType::Alias(_ident, ty) => ty.from_wasm_boundary(expr),
-            RustType::Optional(ty) => ty.from_wasm_boundary(expr),
+            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr),
+            RustType::Optional(ty) => ty.from_wasm_boundary_clone(expr),
             RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.from_wasm_boundary(expr)
+                ty.from_wasm_boundary_clone(expr)
             } else {
                 format!("{}.clone()", expr)
             },
             RustType::Map(_k, _v) => format!("{}.clone()", expr),
             _ => expr.to_owned(),
+        }
+    }
+
+    // for non-owning parameters from wasm
+    fn from_wasm_boundary_ref(&self, expr: &str) -> String {
+        match self {
+            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary_ref(expr),
+            RustType::Rust(_ident) => expr.to_owned(),
+            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_ref(expr),
+            RustType::Optional(ty) => ty.from_wasm_boundary_ref(expr),
+            RustType::Array(ty) => if self.directly_wasm_exposable() {
+                ty.from_wasm_boundary_ref(expr)
+            } else {
+                expr.to_owned()
+            },
+            RustType::Map(_k, _v) => expr.to_owned(),
+            _ => format!("&{}", expr),
         }
     }
 
@@ -716,7 +735,12 @@ impl GlobalScope {
             Some(alias) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
-                AliasIdent::Reserved(reserved) => panic!("Reserved ident {} didn't define type alias", reserved),
+                AliasIdent::Reserved(reserved) => if reserved == "int" {
+                    // We define an Int rust struct in prelude.rs
+                    None
+                } else {
+                    panic!("Reserved ident {} didn't define type alias", reserved)
+                },
             },
         }
     }
@@ -801,7 +825,8 @@ impl GlobalScope {
     fn generate_type_choices_from_variants(&mut self, name: &RustIdent, variants: &Vec<EnumVariant>, tag: Option<usize>) {
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
-        generate_enum(self, &enum_name, &variants, None, true);
+        let kind_name = RustIdent::new(CDDLIdent::new(format!("{}Kind", name)));
+        generate_enum(self, &enum_name, &kind_name, &variants, None, true);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(self, name);
@@ -827,13 +852,15 @@ impl GlobalScope {
                 };
                 new_func
                     .arg(&arg_name, &variant.rust_type.for_wasm_param())
-                    .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary(arg_name)));
+                    .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary_clone(arg_name)));
             }
             s_impl.push_fn(new_func);
         }
         // serialize
         ser_func.line("self.0.serialize(serializer)");
         ser_impl.push_fn(ser_func);
+        // enum-getters
+        add_enum_getters(&mut s_impl, &enum_name, &kind_name, &variants);
         push_exposed_struct(self, s, s_impl, ser_impl, None);
         // deserialize
         let mut deser_impl = codegen::Impl::new(&name.to_string());
@@ -927,7 +954,7 @@ impl GlobalScope {
                 .vis("pub")
                 .arg_mut_self()
                 .arg("elem", element_type.for_wasm_param())
-                .line(format!("self.0.push({});", element_type.from_wasm_boundary("elem")));
+                .line(format!("self.0.push({});", element_type.from_wasm_boundary_clone("elem")));
             self.global_scope.raw("#[wasm_bindgen]");
             self.global_scope.push_impl(array_impl);
             self.register_rust_struct(RustStruct::new_array(array_type, element_type.clone()));
@@ -1568,19 +1595,21 @@ fn create_exposed_group(global: &GlobalScope, ident: &RustIdent) -> (codegen::St
     // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
-    group_impl
-        .new_fn("to_bytes")
-        .ret("Vec<u8>")
-        .arg_ref_self()
-        .vis("pub")
-        .line("ToBytes::to_bytes(self)");
-    if global.deserialize_generated(ident) {
+    if GENERATE_TO_FROM_BYTES {
         group_impl
-            .new_fn("from_bytes")
-            .ret(format!("Result<{}, JsValue>", name))
-            .arg("data", "Vec<u8>")
+            .new_fn("to_bytes")
+            .ret("Vec<u8>")
+            .arg_ref_self()
             .vis("pub")
-            .line("FromBytes::from_bytes(data)");
+            .line("ToBytes::to_bytes(self)");
+        if global.deserialize_generated(ident) {
+            group_impl
+                .new_fn("from_bytes")
+                .ret(format!("Result<{}, JsValue>", name))
+                .arg("data", "Vec<u8>")
+                .vis("pub")
+                .line("FromBytes::from_bytes(data)");
+        }
     }
     (s, group_impl)
 }
@@ -1810,9 +1839,18 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
         .line(
             format!(
                 "self.0.insert({}, {})",
-                key_type.from_wasm_boundary("key"),
-                value_type.from_wasm_boundary("value")));
+                key_type.from_wasm_boundary_clone("key"),
+                value_type.from_wasm_boundary_clone("value")));
     s_impl.push_fn(insert_func);
+    // get
+    let mut getter = codegen::Function::new("get");
+    getter
+        .arg_ref_self()
+        .arg("key", key_type.for_wasm_param())
+        .ret(format!("Option<{}>", value_type.for_wasm_return()))
+        .vis("pub")
+        .line(format!("self.0.get({}).map(|v| v.clone())", key_type.from_wasm_boundary_ref("key")));
+    s_impl.push_fn(getter);
     // serialize
     let mut ser_loop = Block::new("for (key, value) in &self.0");
     global.generate_serialize(&key_type, "key", &mut ser_loop, false);
@@ -1891,15 +1929,31 @@ fn codegen_struct(global: &mut GlobalScope, name: &RustIdent, tag: Option<usize>
                     .arg_mut_self()
                     .arg(&field.name, &field.rust_type.for_wasm_param())
                     .vis("pub")
-                    .line(format!("self.{} = Some({})", field.name, field.rust_type.from_wasm_boundary(&field.name)));
+                    .line(format!("self.{} = Some({})", field.name, field.rust_type.from_wasm_boundary_clone(&field.name)));
                 s_impl.push_fn(setter);
+                // getter
+                let mut getter = codegen::Function::new(&field.name);
+                getter
+                    .arg_ref_self()
+                    .ret(format!("Option<{}>", field.rust_type.for_wasm_return()))
+                    .vis("pub")
+                    .line(format!("self.{}.clone()", field.name));
+                s_impl.push_fn(getter);
             } else {
                 // field
                 s.field(&field.name, field.rust_type.for_member());
                 // new
                 new_func.arg(&field.name, field.rust_type.for_wasm_param());
-                new_func_block.line(format!("{}: {},", field.name, field.rust_type.from_wasm_boundary(&field.name)));
+                new_func_block.line(format!("{}: {},", field.name, field.rust_type.from_wasm_boundary_clone(&field.name)));
                 // do we want setters here later for mandatory types covered by new?
+                // getter
+                let mut getter = codegen::Function::new(&field.name);
+                getter
+                    .arg_ref_self()
+                    .ret(field.rust_type.for_wasm_return())
+                    .vis("pub")
+                    .line(format!("self.{}.clone()", field.name));
+                s_impl.push_fn(getter);
             }
         }
     }
@@ -2153,6 +2207,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
         
         // Handle group with choices by generating an enum then generating a group for every choice
         let enum_name = RustIdent::new(CDDLIdent::new(format!("{}Enum", name)));
+        let kind_name = RustIdent::new(CDDLIdent::new(format!("{}Kind", name)));
         let mut variants_names_used = BTreeMap::<String, u32>::new();
         let variants: Vec<EnumVariant> = group.group_choices.iter().enumerate().map(|(i, group_choice)| {
             // If we're a 1-element we should just wrap that type in the variant rather than
@@ -2194,7 +2249,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
                 EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), true)
             }
         }).collect();
-        generate_enum(global, &enum_name, &variants, Some(rep), false);
+        generate_enum(global, &enum_name, &kind_name, &variants, Some(rep), false);
 
         // Now generate a wrapper object that we will expose to wasm around this
         let (mut s, mut s_impl) = create_exposed_group(global, name);
@@ -2232,7 +2287,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
                                 output_comma = true;
                             }
                             new_func.arg(&field_name, rust_type.for_wasm_param());
-                            // We don't use rust_type.from_wasm_boundary() here as we're delegating to the
+                            // We don't use rust_type.from_wasm_boundary_*() here as we're delegating to the
                             // wasm-exposed variant.name::new() function
                             ctor.push_str(&field_name);
                         }
@@ -2247,7 +2302,7 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
                 if !group_entry_optional(group_entry) && !rust_type.is_fixed_value() {
                     new_func
                         .arg(&field_name, rust_type.for_wasm_param())
-                        .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary(&field_name)));
+                        .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary_clone(&field_name)));
                 } else {
                     new_func.line(format!("Self({}::{})", enum_name, variant.name));
                 }
@@ -2263,6 +2318,8 @@ fn codegen_group(global: &mut GlobalScope, group: &Group, name: &RustIdent, rep:
         }
         ser_func.line("self.0.serialize(serializer)");
         ser_impl.push_fn(ser_func);
+        // enum-getters
+        add_enum_getters(&mut s_impl, &enum_name, &kind_name, &variants);
         push_exposed_struct(global, s, s_impl, ser_impl, None);
         // deserialize
         let mut deser_impl = codegen::Impl::new(&name.to_string());
@@ -2291,10 +2348,59 @@ impl EnumVariant {
     }
 }
 
+fn add_enum_getters(s_impl: &mut codegen::Impl, enum_name: &RustIdent, kind_name: &RustIdent, variants: &Vec<EnumVariant>) {
+    // kind() getter
+    let mut get_kind = codegen::Function::new("kind");
+    get_kind
+        .arg_ref_self()
+        .vis("pub")
+        .ret(&kind_name.to_string());
+    let mut get_kind_match = codegen::Block::new("match &self.0");
+    for variant in variants.iter() {
+        if variant.rust_type.is_fixed_value() {
+            get_kind_match.line(format!("{}::{} => {}::{},", enum_name, variant.name, kind_name, variant.name));
+        } else {
+            get_kind_match.line(format!("{}::{}(_) => {}::{},", enum_name, variant.name, kind_name, variant.name));
+        }
+    }
+    get_kind.push_block(get_kind_match);
+    s_impl.push_fn(get_kind);
+    // as_{variant} conversions (returns None -> undefined when not the type)
+    for variant in variants.iter() {
+        if !variant.rust_type.is_fixed_value() {
+            let mut as_variant = codegen::Function::new(&format!("as_{}", &convert_to_snake_case(&variant.name.to_string())));
+            as_variant
+                .arg_ref_self()
+                .vis("pub")
+                .ret(&format!("Option<{}>", variant.rust_type.for_wasm_return()));
+            let mut variant_match = codegen::Block::new("match &self.0");
+            variant_match.line(format!("{}::{}(x) => Some(x.clone()),", enum_name, variant.name));
+            variant_match.line("_ => None,");
+            as_variant.push_block(variant_match);
+            s_impl.push_fn(as_variant);
+        }
+    }
+}
+
 // if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
-// This is useful for type choices which don't have any enclosing array/map tags, and thus don't benefit from exposing a
+// This is useful for type choicecs which don't have any enclosing array/map tags, and thus don't benefit from exposing a
 // deserialize_as_embedded_group as the behavior would be identical.
-fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>, generate_deserialize_directly: bool) {
+// enum_name is for the rust enum containing all the data that is not exposed to wasm
+// kind_name is for a int-only enum that just represents which type enum_name is
+fn generate_enum(global: &mut GlobalScope, enum_name: &RustIdent, kind_name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>, generate_deserialize_directly: bool) {
+    // also create a wasm-exposed enum just to distinguish the type
+    let mut kind = codegen::Enum::new(&kind_name.to_string());
+    kind.vis("pub");
+    add_struct_derives(&mut kind);
+    for variant in variants.iter() {
+        kind.new_variant(&variant.name.to_string());
+    }
+    global
+        .scope()
+        .raw("#[wasm_bindgen]")
+        .push_enum(kind);
+
+    // rust enum containing the data
     let mut e = codegen::Enum::new(&enum_name.to_string());
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
@@ -2480,7 +2586,7 @@ fn generate_wrapper_struct(global: &mut GlobalScope, type_name: &RustIdent, fiel
         .ret("Self")
         .arg("data", field_type.for_wasm_param())
         .vis("pub");
-    new_func.line(format!("Self({})", field_type.from_wasm_boundary("data")));
+    new_func.line(format!("Self({})", field_type.from_wasm_boundary_clone("data")));
     s_impl.push_fn(new_func);
     global
         .scope()
