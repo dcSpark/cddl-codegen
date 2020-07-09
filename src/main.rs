@@ -144,7 +144,7 @@ mod idents {
         // this should not be created directly, but instead via GlobalScope::new_type()
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
-            assert!(!super::is_identifier_reserved(&cddl_ident.0));
+            assert!(cddl_ident.0 == "int" || !super::is_identifier_reserved(&cddl_ident.0));
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
@@ -187,7 +187,7 @@ mod idents {
 
     impl AliasIdent {
         pub fn new(ident: CDDLIdent) -> Self {
-            if super::is_identifier_reserved(&ident.0) {
+            if ident.0 != "int" && super::is_identifier_reserved(&ident.0) {
                 AliasIdent::Reserved(ident.0)
             } else {
                 AliasIdent::Rust(RustIdent::new(ident))
@@ -716,7 +716,12 @@ impl GlobalScope {
             Some(alias) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
-                AliasIdent::Reserved(reserved) => panic!("Reserved ident {} didn't define type alias", reserved),
+                AliasIdent::Reserved(reserved) => if reserved == "int" {
+                    // We define an Int rust struct in prelude.rs
+                    None
+                } else {
+                    panic!("Reserved ident {} didn't define type alias", reserved)
+                },
             },
         }
     }

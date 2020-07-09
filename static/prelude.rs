@@ -155,7 +155,7 @@ impl<T: Deserialize + Sized> FromBytes for T {
 
 // CBOR has int = int / nint
 #[wasm_bindgen]
-#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Int(i128);
 
 #[wasm_bindgen]
