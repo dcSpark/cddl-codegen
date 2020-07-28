@@ -1,4 +1,4 @@
-# Experimental proof of concept for generating rust code for CBOR serialization from CDDL specs.
+# Experimental library for generating rust code for CBOR serialization from CDDL specs.
 
 ### Purpose ###
 
@@ -32,9 +32,14 @@ There is also a `prelude.rs` for helper code used by both (errors, traits, etc).
 * Serialization for all supported types.
 * Deserialization for almost all supported types (see limitations section).
 
-It should be noted that for our purposes when we encounter a type that is an alias or transitively an alias for binary bytes, we always create a wrapper type for it, as in our use cases those should not be mixed and are crypto keys, hashes, and so on.
+We generate getters for all fields, and setters for optional fields. Mandatory fields are set via the generated constructor. All wasm-facing functions are set to take references for non-primitives and clone when needed. Returns are also cloned. This helps make usage from wasm more memory safe.
 
 Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Name: text }` gets converted into `struct FooBar { field_name: String }`
+
+There are several arguments that are set at the top of `main.rs` to configure code generation:
+* `ANNOTATE_FIELDS` - Annotates errors with locational context if set. On by default.
+* `BINARY_WRAPPERS` - When we encounter a type that is an alias or transitively an alias for binary bytes, we create a wrapper type for it, as in some use cases those should not be mixed and are crypto keys, hashes, and so on. Otherwise generates a type alias. On by default.
+* `GENERATE_TO_FROM_BYTES` - Generates `to_bytes()` and `from_bytes()` usable from wasm in addition to the `Serialize` and `Deserialize` traits. Off by default.
 
 #### Heterogeneous Arrays
 
@@ -59,7 +64,6 @@ Any field that is `T / null` is transformed as a special case into `Option<T>` r
 
 ### Limitations
 
-* No accessor functions (easily added but we don't need them yet as the focus is constructing CBOR not deserializing)
 * Does not support optional group `[(...)]` or `{(...)}` syntax - must use `[...]` for `{...}` for groups
 * Ignores occurrence specifiers: `*`, `+` or `n*m`
 * No support for sockets
@@ -71,4 +75,5 @@ Any field that is `T / null` is transformed as a special case into `Option<T>` r
 * Deserialization not supported for maps with nested plain groups - `foo = (uint, uint), bar = { foo, text }` due to maps not being ordered.
 * Deserialization not supported for optional types inside of arrays - `foo = [uint, ?uint, uint, text, ?text, text, uint]` because it could require a combinatorial backtrack for ambiguous examples like this.
 * Cannot read multi-file CDDL definitions. Only reads from `input.cddl` right now.
-* No CLI arguments to configure the codegen yet.
+* No CLI arguments to configure the codegen yet - use the constants at top of `main.rs`.
+* Does not validate finite array length in deserialization.
