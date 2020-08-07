@@ -1851,6 +1851,19 @@ fn codegen_table_type(global: &mut GlobalScope, name: &RustIdent, key_type: Rust
         .vis("pub")
         .line(format!("self.0.get({}).map(|v| v.clone())", key_type.from_wasm_boundary_ref("key")));
     s_impl.push_fn(getter);
+    // keys
+    global.generate_array_type(key_type.clone(), &key_type.name_as_array());
+    let mut keys = codegen::Function::new("keys");
+    keys
+        .arg_ref_self()
+        .ret(key_type.name_as_array())
+        .vis("pub");
+    if key_type.directly_wasm_exposable() {
+        keys.line(format!("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>()", key_type.for_member()));
+    } else {
+        keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>())", key_type.name_as_array(), key_type.for_member()));
+    }
+    s_impl.push_fn(keys);
     // serialize
     let mut ser_loop = Block::new("for (key, value) in &self.0");
     global.generate_serialize(&key_type, "key", &mut ser_loop, false);
