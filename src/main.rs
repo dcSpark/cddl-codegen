@@ -13,7 +13,8 @@ use either::{Either};
 //       and works with From<cbor_event:Error> only
 const ANNOTATE_FIELDS: bool = true;
 const BINARY_WRAPPERS: bool = true;
-const GENERATE_TO_FROM_BYTES: bool = false;
+const GENERATE_TO_FROM_BYTES: bool = true;
+const USE_EXTENDED_PRELUDE: bool = true;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Representation {
@@ -69,8 +70,16 @@ impl FixedValue {
 #[derive(Clone, Debug)]
 enum Primitive {
     Bool,
+    // u32 in our cddl
     U32,
+    // i32 in our cddl
     I32,
+    // uint - also u64 in our cddl
+    U64,
+    // i64 in our cddl
+    I64,
+    // nint
+    N64,
     Str,
     Bytes,
 }
@@ -82,6 +91,10 @@ impl Primitive {
             Primitive::Bool => "bool",
             Primitive::U32 => "u32",
             Primitive::I32 => "i32",
+            Primitive::U64 => "u64",
+            Primitive::I64 => "i64",
+            // TODO: this should ideally by a u64 but the cbor_event lib takes i64 anyway so we don't get that extra precision
+            Primitive::N64 => "i64",
             Primitive::Str => "String",
             Primitive::Bytes => "Vec<u8>",
         })
@@ -92,25 +105,33 @@ impl Primitive {
             Primitive::Bool => "Bool",
             Primitive::U32 => "U32",
             Primitive::I32 => "I32",
+            Primitive::U64 => "U64",
+            Primitive::I64 => "I64",
+            Primitive::N64 => "N64",
             Primitive::Str => "Text",
             Primitive::Bytes => "Bytes",
         })
     }
 
-    fn cbor_type(&self) -> CBORType {
+    fn cbor_types(&self) -> Vec<CBORType> {
         match self {
-            Primitive::Bool => CBORType::Special,
-            Primitive::U32 => CBORType::UnsignedInteger,
-            Primitive::I32 => CBORType::NegativeInteger,
-            Primitive::Str => CBORType::Text,
-            Primitive::Bytes => CBORType::Bytes,
+            Primitive::Bool => vec![CBORType::Special],
+            Primitive::U32 => vec![CBORType::UnsignedInteger],
+            Primitive::I32 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
+            Primitive::U64 => vec![CBORType::UnsignedInteger],
+            Primitive::I64 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
+            Primitive::N64 => vec![CBORType::NegativeInteger],
+            Primitive::Str => vec![CBORType::Text],
+            Primitive::Bytes => vec![CBORType::Bytes],
         }
     }
 }
 
 mod idents {
     // to resolve ambiguities between raw (from CDDL) and already-formatted
-    // for things like type aliases, etc, we use this wrapper struct for both
+    // for things like type aliases, etc, we use these wrapper structs
+
+    // raw unchanged cddl identifier
     #[derive(Clone, Debug)]
     pub struct CDDLIdent(String);
 
@@ -138,6 +159,7 @@ mod idents {
         }
     }
 
+    // formatted code-generation identifier exactly as how it would be in the rust code
     #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
     pub struct RustIdent(String);
 
@@ -145,7 +167,9 @@ mod idents {
         // this should not be created directly, but instead via GlobalScope::new_type()
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
-            assert!(cddl_ident.0 == "int" || !super::is_identifier_reserved(&cddl_ident.0));
+            // int is special here since it refers to our own rust struct, not a primitive
+            println!("{}", cddl_ident.0);
+            assert!(cddl_ident.0 == "int" || super::is_identifier_user_defined(&cddl_ident.0));
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
@@ -156,6 +180,7 @@ mod idents {
         }
     }
 
+    // identifier for enum (group/type choice) variants
     pub enum VariantIdent {
         Custom(String),
         RustStruct(RustIdent),
@@ -180,18 +205,21 @@ mod idents {
         }
     }
 
+    // identifier referring to a type alias
     #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
     pub enum AliasIdent {
+        // type definition defined in the cddl standard prelude
         Reserved(String),
+        // user-made type alias
         Rust(RustIdent),
     }
 
     impl AliasIdent {
         pub fn new(ident: CDDLIdent) -> Self {
-            if ident.0 != "int" && super::is_identifier_reserved(&ident.0) {
-                AliasIdent::Reserved(ident.0)
-            } else {
+            if ident.0 == "int" || super::is_identifier_user_defined(&ident.0) {
                 AliasIdent::Rust(RustIdent::new(ident))
+            } else {
+                AliasIdent::Reserved(ident.0)
             }
         }
     }
@@ -392,7 +420,7 @@ impl RustType {
                 FixedValue::Null => CBORType::Special,
                 FixedValue::Bool(_) => CBORType::Special,
             }],
-            RustType::Primitive(p) => vec![p.cbor_type()],
+            RustType::Primitive(p) => p.cbor_types(),
             RustType::Rust(_ident) => {
                 //panic!("TODO: store first cbor tag somewhere")
                 vec![CBORType::Array, CBORType::Map]
@@ -669,11 +697,15 @@ impl GlobalScope {
             let ident = AliasIdent::new(CDDLIdent::new(name));
             aliases.insert(ident.clone(), rust_type);
         };
-        // TODO: use u64/i64 later when you figure out the BigInt issues from wasm
-        insert_alias("uint", RustType::Primitive(Primitive::U32));
-        // Not sure on this one, I think they can be bigger than i64 can fit
-        // but the cbor_event serialization takes the argument as an i64
-        insert_alias("nint", RustType::Primitive(Primitive::I32));
+        insert_alias("uint", RustType::Primitive(Primitive::U64));
+        insert_alias("nint", RustType::Primitive(Primitive::N64));
+        if USE_EXTENDED_PRELUDE {
+            // We also provide non-standard 32-bit variants for ease of use from wasm
+            insert_alias("u32", RustType::Primitive(Primitive::U32));
+            insert_alias("i32", RustType::Primitive(Primitive::I32));
+            insert_alias("u64", RustType::Primitive(Primitive::U64));
+            insert_alias("i64", RustType::Primitive(Primitive::I64));
+        }
         insert_alias("bool", RustType::Primitive(Primitive::Bool));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
@@ -1341,6 +1373,21 @@ fn is_identifier_reserved(name: &str) -> bool {
     }
 }
 
+// as we also support our own identifiers for selecting integer precision, we need this too
+fn is_identifier_in_our_prelude(name: &str) -> bool {
+    match name {
+        "u32" |
+        "i32" |
+        "u64" |
+        "i64" => true,
+        _ => false,
+    }
+}
+
+fn is_identifier_user_defined(name: &str) -> bool {
+    !is_identifier_reserved(name) && (!USE_EXTENDED_PRELUDE || !is_identifier_in_our_prelude(name))
+}
+
 fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: String) -> String {
     let entry = used_names.entry(name.clone()).or_default();
     *entry += 1;
@@ -1424,7 +1471,7 @@ fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated
                 type_to_field_name(&ge.entry_type).unwrap_or_else(|| format!("index_{}", index))
             }
         },
-        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match is_identifier_reserved(&name.to_string()) {
+        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match !is_identifier_user_defined(&name.to_string()) {
             true => format!("index_{}", index),
             false => name.to_string(),
         },
@@ -1442,7 +1489,7 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
             Some(MemberKey::Bareword{ ident, .. } ) => Some(ident.to_string()),
             _ => None,
         },
-        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match is_identifier_reserved(&name.to_string()) {
+        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match !is_identifier_user_defined(&name.to_string()) {
             true => None,
             false => Some(name.to_string()),
         },
@@ -1795,7 +1842,8 @@ fn make_table_deser_loop(global: &mut GlobalScope, key_type: &RustType, value_ty
     global.generate_deserialize(value_type, "value", "let value = ", ";", false, &mut deser_loop);
     let mut dup_check = Block::new(&format!("if {}.insert(key.clone(), value).is_some()", table_var));
     let dup_key_error_key = match key_type {
-        RustType::Primitive(Primitive::U32) => "Key::Uint(key.into())",
+        RustType::Primitive(Primitive::U32) |
+        RustType::Primitive(Primitive::U64) => "Key::Uint(key.into())",
         RustType::Primitive(Primitive::Str) => "Key::Str(key)",
         // TODO: make a generic one then store serialized CBOR?
         _ => "Key::Str(String::from(\"some complicated/unsupported type\"))",
