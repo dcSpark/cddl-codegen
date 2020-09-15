@@ -1039,6 +1039,18 @@ impl GlobalScope {
                 Primitive::Str => {
                     body.line(&format!("serializer.write_text(&{}){}", expr, line_ender));
                 },
+                Primitive::I32 |
+                Primitive::I64 => {
+                    let mut pos = Block::new(&format!("if *{} >= 0", expr));
+                    pos.line(format!("serializer.write_unsigned_integer(*{} as u64){}", expr, line_ender));
+                    body.push_block(pos);
+                    let mut neg = Block::new("else");
+                    neg.line(format!("serializer.write_negative_integer(*{} as i64){}", expr, line_ender));
+                    body.push_block(neg);
+                },
+                Primitive::N64 => {
+                    body.line(&format!("serializer.write_negative_integer(*{}){}", expr, line_ender));
+                },
                 _ => {
                     body.line(&format!("{}.serialize(serializer){}", expr, line_ender));
                 },
@@ -1134,6 +1146,17 @@ impl GlobalScope {
             RustType::Primitive(p) => match p {
                 Primitive::Bytes => {
                     body.line(&format!("{}raw.bytes()?{}", before, after));
+                },
+                Primitive::I32 |
+                Primitive::I64 => {
+                    let mut sign = Block::new(&format!("{}match raw.unsigned_integer()", before));
+                    sign.line(format!("Ok(x) => x as {},", p.to_string()));
+                    sign.line(format!("Err(_) => raw.negative_integer()? as {},", p.to_string()));
+                    sign.after(after);
+                    body.push_block(sign);
+                },
+                Primitive::N64 => {
+                    body.line(&format!("{}raw.negative_integer(){}", before, after));
                 },
                 _ => {
                     body.line(&format!("{}{}::deserialize(raw)?{}", before, p.to_string(), after));
