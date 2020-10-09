@@ -71,9 +71,9 @@ mod tests {
 
     #[test]
     fn table_arr_members() {
-        let mut tab = MapStringToString::new();
-        tab.insert(String::from("dfdsg3r4"), String::from("2k2j343"));
-        tab.insert(String::from("A76sdf"), String::from("!!fjdj"));
+        let mut tab = Mapu64ToString::new();
+        tab.insert(43266556, String::from("2k2j343"));
+        tab.insert(213543254546565, String::from("!!fjdj"));
         let mut foos = Foos::new();
         foos.add(&Foo::new(0, String::from("Zero"), vec![]));
         foos.add(&Foo::new(2, String::from("Two"), vec![2, 2]));
@@ -92,7 +92,7 @@ mod tests {
     
     #[test]
     fn type_choice_uint() {
-        deser_test(TypeChoice::new_u32(53435364));
+        deser_test(TypeChoice::new_u64(53435364));
     }
 
     #[test]
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn type_choice_tagged_arr() {
-        deser_test(TypeChoice::new_arr_u32(vec![1, 2, 3, 4]));
+        deser_test(TypeChoice::new_arr_u64(vec![1, 2, 3, 4]));
     }
 
     #[test]
