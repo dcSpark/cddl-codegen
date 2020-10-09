@@ -21,6 +21,7 @@ impl std::fmt::Display for Key {
 pub enum DeserializeFailure {
     BreakInDefiniteLen,
     CBOR(cbor_event::Error),
+    DefiniteLenMismatch(u64, Option<u64>),
     DuplicateKey(Key),
     EndingBreakMissing,
     ExpectedNull,
@@ -70,6 +71,13 @@ impl std::fmt::Display for DeserializeError {
         match &self.failure {
             DeserializeFailure::BreakInDefiniteLen => write!(f, "Encountered CBOR Break while reading definite length sequence"),
             DeserializeFailure::CBOR(e) => e.fmt(f),
+            DeserializeFailure::DefiniteLenMismatch(found, expected) => {
+                write!(f, "Definite length mismatch: found {}", found)?;
+                if let Some(expected_elems) = expected {
+                    write!(f, ", expected: {}", expected_elems)?;
+                }
+                Ok(())
+            },
             DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
@@ -122,10 +130,10 @@ impl<T: cbor_event::de::Deserialize> Deserialize for T {
     }
 }
 
-// should we ne passing len by mut ref? or how do we keep track of finite length issues?
 pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead + Seek>(
         raw: &mut Deserializer<R>,
+        read_len: &mut CBORReadLen,
         len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
@@ -188,5 +196,48 @@ impl Deserialize for Int {
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })().map_err(|e| e.annotate("Int"))
+    }
+}
+
+pub struct CBORReadLen {
+    deser_len: cbor_event::Len,
+    read: u64,
+}
+
+impl CBORReadLen {
+    pub fn new(len: cbor_event::Len) -> Self {
+        Self {
+            deser_len: len,
+            read: 0,
+        }
+    }
+
+    // Marks {n} values as being read, and if we go past the available definite length
+    // given by the CBOR, we return an error.
+    pub fn read_elems(&mut self, count: usize) -> Result<(), DeserializeFailure> {
+        match self.deser_len {
+            cbor_event::Len::Len(n) => {
+                self.read += count as u64;
+                if self.read > n {
+                    Err(DeserializeFailure::DefiniteLenMismatch(n, None))
+                } else {
+                    Ok(())
+                }
+            },
+            cbor_event::Len::Indefinite => Ok(()),
+        }
+    }
+
+    pub fn finish(&self) -> Result<(), DeserializeFailure> {
+        match self.deser_len {
+            cbor_event::Len::Len(n) => {
+                if self.read == n {
+                    Ok(())
+                } else {
+                    Err(DeserializeFailure::DefiniteLenMismatch(n, Some(self.read)))
+                }
+            },
+            cbor_event::Len::Indefinite => Ok(()),
+        }
     }
 }
