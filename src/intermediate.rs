@@ -21,7 +21,8 @@ pub struct IntermediateTypes {
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group>>,
-    type_aliases: BTreeMap<AliasIdent, RustType>,
+    // (Type, whether to generate a rust type alias statement)
+    type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
 }
 
@@ -34,7 +35,7 @@ impl IntermediateTypes {
         }
     }
 
-    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, RustType> {
+    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool)> {
         &self.type_aliases
     }
 
@@ -42,12 +43,12 @@ impl IntermediateTypes {
         &self.rust_structs
     }
 
-    fn aliases() -> BTreeMap<idents::AliasIdent, RustType> {
+    fn aliases() -> BTreeMap<idents::AliasIdent, (RustType, bool)> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
-        let mut aliases = BTreeMap::<AliasIdent, RustType>::new();
+        let mut aliases = BTreeMap::<AliasIdent, (RustType, bool)>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident.clone(), rust_type);
+            aliases.insert(ident.clone(), (rust_type, false));
         };
         insert_alias("uint", RustType::Primitive(Primitive::U64));
         insert_alias("nint", RustType::Primitive(Primitive::N64));
@@ -116,7 +117,7 @@ impl IntermediateTypes {
     pub fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some(alias) => Some(alias.clone()),
+            Some((alias, _)) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => if reserved == "int" {
@@ -133,10 +134,7 @@ impl IntermediateTypes {
         if let RustType::Alias(_ident, _ty) = &base_type {
             panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
         }
-        self.type_aliases.insert(alias.into(), base_type);
-        if generate_rust_alias {
-            // TODO: use these to print off aliases that need a rust type A = B; definition
-        }
+        self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias));
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {

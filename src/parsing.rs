@@ -62,6 +62,9 @@ pub fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_
 pub fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>) {
     match type2 {
         Type2::Typename{ ident, .. } => {
+            // Note: this handles bool constants too, since we apply the type aliases and they resolve
+            // and there's no Type2::BooleanValue
+            let cddl_ident = CDDLIdent::new(ident.to_string());
             // This should be controlled in a better way - maybe we can annotate the cddl
             // to specify whether or not we want to simply to a typedef to Vec<u8> for bytes
             // or whether we want to do what we are doing here and creating a custom type.
@@ -70,7 +73,6 @@ pub fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &
             // want to expand upon the code later on.
             // Perhaps we could change the cddl and have some specific tag like "BINARY_FORMAT"
             // to generate this?
-            let cddl_ident = CDDLIdent::new(ident.to_string());
             let generate_binary_wrapper = BINARY_WRAPPERS && match ident.to_string().as_ref() {
                 "bytes" | "bstr" => true,
                 _ident => if let Some(RustType::Primitive(Primitive::Bytes)) = types.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
@@ -122,8 +124,18 @@ pub fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &
                 }
             };
         },
+        // Note: bool constants are handled via Type2::Typename
+        Type2::IntValue{ value, .. } => {
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Int(*value)), true);
+        },
+        Type2::UintValue{ value, .. } => {
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Uint(*value)), true);
+        },
+        Type2::TextValue{ value, .. } => {
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.clone())), true);
+        },
         x => {
-            println!("\nignored typename {} -> {:?}\n", type_name, x);
+            panic!("\nignored typename {} -> {:?}\n", type_name, x);
         },
     }
 }
