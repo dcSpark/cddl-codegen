@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cmd::{
     ANNOTATE_FIELDS,
-    BINARY_WRAPPERS,
     GENERATE_TO_FROM_BYTES,
 };
 use crate::intermediate::{
@@ -45,18 +44,31 @@ impl GenerationScope {
     }
 
     pub fn generate(&mut self, types: &IntermediateTypes) {
-        for (alias, base_type) in types.type_aliases() {
+        for (alias, (base_type, gen_type_alias)) in types.type_aliases() {
             // only generate user-defined ones
             if let AliasIdent::Rust(ident) = alias {
                 // also make sure not to generate it if we instead generated a binary wrapper type
-                if let Some(_rust_struct) = types.rust_struct(ident) {
-                    assert!(BINARY_WRAPPERS);
-                    assert_eq!(*base_type, RustType::Primitive(Primitive::Bytes));
-                    // TODO: verify rust_struct is a binary wrapper
-                } else {
-                    // TODO: implement fixed values
-                    if !base_type.is_fixed_value() {
-                        self.global_scope.raw(&format!("type {} = {};", ident, base_type.for_member()));
+                if *gen_type_alias {
+                    if let RustType::Fixed(constant) = base_type {
+                        // wasm-bindgen doesn't support const or static vars so we must do a function
+                        let (ty, val) = match constant {
+                            FixedValue::Null => panic!("null constants not supported"),
+                            FixedValue::Bool(b) => ("bool", b.to_string()),
+                            FixedValue::Int(i) => ("i32", i.to_string()),
+                            FixedValue::Uint(u) => ("u32", u.to_string()),
+                            FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
+                        };
+                        self
+                            .scope()
+                            .raw("#[wasm_bindgen]")
+                            .new_fn(&convert_to_snake_case(&ident.to_string()))
+                            .vis("pub")
+                            .ret(ty)
+                            .line(val);
+                    } else {
+                        self
+                            .scope()
+                            .raw(&format!("type {} = {};", ident, base_type.for_member()));
                     }
                 }
             }
