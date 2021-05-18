@@ -27,7 +27,33 @@ use crate::utils::{
     is_identifier_user_defined,
 };
 
-pub fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>) {
+pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
+    match cddl_rule {
+        cddl::ast::Rule::Type{ rule, .. } => {
+            // (1) does not handle optional generic parameters
+            // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
+            //     It's used, but used for no reason as it is the initial definition
+            //     (which is also valid cddl), but it would be fine as = instead of /=
+            // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
+            let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
+            if rule.value.type_choices.len() == 1 {
+                let choice = &rule.value.type_choices.first().unwrap();
+                parse_type(types, &rust_ident, &choice.type2, None);
+            } else {
+                parse_type_choices(types, &rust_ident, &rule.value.type_choices, None);
+            }
+        },
+        cddl::ast::Rule::Group{ rule, .. } => {
+            // Freely defined group - no need to generate anything outside of group module
+            match &rule.entry {
+                cddl::ast::GroupEntry::InlineGroup{ .. } => (),// already handled in main.rs
+                x => panic!("Group rule with non-inline group? {:?}", x),
+            }
+        },
+    }
+}
+
+fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>) {
     let optional_inner_type = if type_choices.len() == 2 {
         let a = &type_choices[0].type2;
         let b = &type_choices[1].type2;
@@ -59,7 +85,7 @@ pub fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_
     }
 }
 
-pub fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>) {
+fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>) {
     match type2 {
         Type2::Typename{ ident, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
@@ -116,7 +142,10 @@ pub fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &
                         x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
                     } {
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag),
-                        Either::Right(ident) => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, types.new_type(&CDDLIdent::new(ident.to_string())))),
+                        Either::Right(ident) => {
+                            let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
+                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type))
+                        },
                     };
                 },
                 _ => {

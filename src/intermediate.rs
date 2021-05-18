@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
 
@@ -7,6 +7,7 @@ use crate::cmd::{
     USE_EXTENDED_PRELUDE,
 };
 use crate::utils::{
+    cddl_prelude,
     convert_to_camel_case,
     is_identifier_reserved,
     is_identifier_user_defined,
@@ -24,6 +25,7 @@ pub struct IntermediateTypes {
     // (Type, whether to generate a rust type alias statement)
     type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
+    prelude_to_emit: BTreeSet<String>,
 }
 
 impl IntermediateTypes {
@@ -32,6 +34,7 @@ impl IntermediateTypes {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
             rust_structs: BTreeMap::new(),
+            prelude_to_emit: BTreeSet::new(),
         }
     }
 
@@ -78,7 +81,10 @@ impl IntermediateTypes {
         aliases
     }
 
-    pub fn new_type(&self, raw: &CDDLIdent) -> RustType {
+    // note: this is mut so that apply_type_aliases() can mark which reserved idents
+    // are in the CDDL prelude so we don't generate code for all of them, potentially
+    // bloating generated code a bit
+    pub fn new_type(&mut self, raw: &CDDLIdent) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
         let resolved = match self.apply_type_aliases(&alias_ident) {
             Some(ty) => match alias_ident {
@@ -114,7 +120,8 @@ impl IntermediateTypes {
         resolved
     }
 
-    pub fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> Option<RustType> {
+    // see new_type() for why this is mut
+    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
             Some((alias, _)) => Some(alias.clone()),
@@ -124,7 +131,10 @@ impl IntermediateTypes {
                     // We define an Int rust struct in prelude.rs
                     None
                 } else {
-                    panic!("Reserved ident {} didn't define type alias", reserved)
+                    // we auto-include only the parts of the cddl prelude necessary (and supported)
+                    cddl_prelude(reserved).expect(&format!("Reserved ident {} not a part of cddl_prelude?", reserved));
+                    self.emit_prelude(reserved.clone());
+                    Some(RustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))))
                 },
             },
         }
@@ -227,6 +237,20 @@ impl IntermediateTypes {
             for (ident, rust_struct) in self.rust_structs.iter() {
                 println!("{} -> {:?}\n", ident, rust_struct);
             }
+        }
+    }
+
+    fn emit_prelude(&mut self, cddl_name: String) {
+        // we just emit this directly into this scope.
+        // due to some referencing others this is the quickest way
+        // to support it.
+        // TODO: we might want to custom-write some of these to make them
+        // easier to use instead of directly parsing
+        if self.prelude_to_emit.insert(cddl_name.clone()) {
+            let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
+            let cddl = cddl::parser::cddl_from_str(&def).unwrap();
+            assert_eq!(cddl.rules.len(), 1);
+            crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
         }
     }
 }
@@ -371,7 +395,11 @@ mod idents {
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
             println!("{}", cddl_ident.0);
-            assert!(cddl_ident.0 == "int" || super::is_identifier_user_defined(&cddl_ident.0));
+            assert!(
+                cddl_ident.0 == "int" ||
+                super::cddl_prelude(&cddl_ident.0).is_some() ||
+                super::is_identifier_user_defined(&cddl_ident.0)
+            );
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
