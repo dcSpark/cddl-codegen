@@ -10,7 +10,7 @@ use intermediate::{
     IntermediateTypes,
     RustIdent,
 };
-use parsing::{parse_type, parse_type_choices};
+use parsing::{parse_rule};
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,29 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gen_scope.serialize_scope().import("std::io", "{Seek, SeekFrom}");
         for cddl_rule in &cddl.rules {
             println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
-            match cddl_rule {
-                cddl::ast::Rule::Type{ rule, .. } => {
-                    // (1) does not handle optional generic parameters
-                    // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
-                    //     It's used, but used for no reason as it is the initial definition
-                    //     (which is also valid cddl), but it would be fine as = instead of /=
-                    // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
-                    let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
-                    if rule.value.type_choices.len() == 1 {
-                        let choice = &rule.value.type_choices.first().unwrap();
-                        parse_type(&mut types, &rust_ident, &choice.type2, None);
-                    } else {
-                        parse_type_choices(&mut types, &rust_ident, &rule.value.type_choices, None);
-                    }
-                },
-                cddl::ast::Rule::Group{ rule, .. } => {
-                    // Freely defined group - no need to generate anything outside of group module
-                    match &rule.entry {
-                        cddl::ast::GroupEntry::InlineGroup{ .. } => (),// already handled above
-                        x => panic!("Group rule with non-inline group? {:?}", x),
-                    }
-                },
-            }
+            parse_rule(&mut types, cddl_rule);
         }
         gen_scope.generate(&types);
     }
