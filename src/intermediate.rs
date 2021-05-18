@@ -487,9 +487,18 @@ impl RustType {
                 };
                 match inner {
                     RustType::Primitive(p) => match p {
+                        // converts to js number which is supported as Vec<T>
+                        Primitive::Bool |
+                        Primitive::I32 |
+                        Primitive::U32 => true,
+                        // since we generate these as BigNum/Int wrappers we can't nest them
+                        Primitive::I64 |
+                        Primitive::N64 |
+                        Primitive::U64 => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
-                        _ => true,
+                        // Vec<String> is not supported by wasm-bindgen
+                        Primitive::Str => false,
                     },
                     RustType::Array(_) => false,
                     _ => ty.directly_wasm_exposable(),
