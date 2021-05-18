@@ -927,15 +927,16 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .line(format!("self.0.get({}).map(|v| v.clone())", key_type.from_wasm_boundary_ref("key")));
     s_impl.push_fn(getter);
     // keys
+    let keys_type = RustType::Array(Box::new(key_type.clone()));
     let mut keys = codegen::Function::new("keys");
     keys
         .arg_ref_self()
-        .ret(key_type.name_as_array())
+        .ret(keys_type.for_wasm_return())
         .vis("pub");
-    if key_type.directly_wasm_exposable() {
-        keys.line(format!("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>()", key_type.for_member()));
+    if keys_type.directly_wasm_exposable() {
+        keys.line("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>()");
     } else {
-        keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>())", key_type.name_as_array(), key_type.for_member()));
+        keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())", keys_type.for_wasm_return()));
     }
     s_impl.push_fn(keys);
     // serialize
