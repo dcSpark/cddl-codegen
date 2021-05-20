@@ -14,9 +14,8 @@ use parsing::{parse_rule};
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("test.cddl").expect("input.cddl file not present or could not be opened");
+    let cddl_in = std::fs::read_to_string("input.cddl").expect("input.cddl file not present or could not be opened");
     let cddl = cddl::parser::cddl_from_str(&cddl_in)?;
-    //println!("CDDL file: {}", cddl);
     let mut types = IntermediateTypes::new();
     let mut gen_scope = GenerationScope::new();
     // TODO: this is a quick hack to get around out-of-order declarations in the cddl file
@@ -63,6 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
             parse_rule(&mut types, cddl_rule);
         }
+        types.finalize();
         gen_scope.generate(&types);
     }
     match std::fs::remove_dir_all("export/src") {

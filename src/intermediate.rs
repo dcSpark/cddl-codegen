@@ -26,6 +26,8 @@ pub struct IntermediateTypes {
     type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
+    generic_defs: BTreeMap<RustIdent, GenericDef>,
+    generic_instances: BTreeMap<RustIdent, GenericInstance>,
 }
 
 impl IntermediateTypes {
@@ -35,6 +37,8 @@ impl IntermediateTypes {
             type_aliases: Self::aliases(),
             rust_structs: BTreeMap::new(),
             prelude_to_emit: BTreeSet::new(),
+            generic_defs: BTreeMap::new(),
+            generic_instances: BTreeMap::new(),
         }
     }
 
@@ -179,6 +183,26 @@ impl IntermediateTypes {
         RustType::Array(Box::new(element_type))
     }
 
+    pub fn register_generic_def(&mut self, def: GenericDef) {
+        let ident = def.orig.ident().clone();
+        self.generic_defs.insert(ident, def);
+    }
+
+    pub fn register_generic_instance(&mut self, instance: GenericInstance) {
+        let ident = instance.instance_ident.clone();
+        self.generic_instances.insert(ident, instance);
+    }
+
+    // call this after all types have been registered
+    pub fn finalize(&mut self) {
+        // resolve generics
+        // resolve then register in 2 phases to get around borrow checker
+        let resolved_generics = self.generic_instances.values().map(|instance| instance.resolve(self)).collect::<Vec<_>>();
+        for resolved_instance in resolved_generics {
+            self.register_rust_struct(resolved_instance);
+        }
+    }
+
     // see self.plain_groups comments
     pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group>) {
         self.plain_groups.insert(ident, group);
@@ -201,7 +225,8 @@ impl IntermediateTypes {
                     assert_eq!(found_rep, Some(rep));
                 } else {
                     // you can't tag plain groups hence the None
-                    crate::parsing::parse_group(self, &group, ident, rep, None);
+                    // we also don't support generics in plain groups hence the other None
+                    crate::parsing::parse_group(self, &group, ident, rep, None, None);
                 }
             } else {
                 // If plain_group is None, then this wasn't defined in .cddl but instead
@@ -229,6 +254,20 @@ impl IntermediateTypes {
             println!("\n\nAliases:");
             for (alias_name, alias_type) in self.type_aliases.iter() {
                 println!("{:?} -> {:?}", alias_name, alias_type);
+            }
+        }
+
+        if !self.generic_defs.is_empty() {
+            println!("\n\nGeneric Definitions:");
+            for (ident, def) in self.generic_defs.iter() {
+                println!("{} -> {:?}", ident, def);
+            }
+        }
+
+        if !self.generic_instances.is_empty() {
+            println!("\n\nGeneric Instances:");
+            for (ident, def) in self.generic_instances.iter() {
+                println!("{} -> {:?}", ident, def);
             }
         }
     
@@ -1039,5 +1078,95 @@ impl RustRecord {
             Some(fixed_count) => RustStructCBORLen::Fixed(fixed_count),
             None => RustStructCBORLen::OptionalFields(self.expanded_mandatory_field_count(types)),
         }
+    }
+}
+
+// definition of a generic type e.g. foo<T, U> = [x: T, y: U]
+#[derive(Debug)]
+pub struct GenericDef {
+    generic_params: Vec<RustIdent>,
+    orig: RustStruct,
+}
+
+impl GenericDef {
+    pub fn new(generic_params: Vec<RustIdent>, orig: RustStruct) -> Self {
+        Self {
+            generic_params,
+            orig,
+        }
+    }
+}
+
+// invocation of a generic definition e.g. foo = bar<text>
+#[derive(Debug)]
+pub struct GenericInstance {
+    instance_ident: RustIdent,
+    generic_ident: RustIdent,
+    generic_args: Vec<RustType>,
+}
+
+impl GenericInstance {
+    pub fn new(instance_ident: RustIdent, generic_ident: RustIdent, generic_args: Vec<RustType>) -> Self {
+        Self {
+            instance_ident,
+            generic_ident,
+            generic_args,
+        }
+    }
+
+    // TODO: should we rename fields / variant names after-the-fact?
+    // (for the cases where the name came from the original generic param)
+    pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
+        let def = match types.generic_defs.get(&self.generic_ident) {
+            Some(def) => def,
+            None => panic!(format!("Generic instance used on {} without definition", self.generic_ident)),
+        };
+        assert_eq!(def.generic_params.len(), self.generic_args.len());
+        let resolved_args = def
+            .generic_params
+            .iter()
+            .zip(self.generic_args.iter())
+            .collect::<BTreeMap::<&RustIdent, &RustType>>();
+        let mut instance = def.orig.clone();
+        instance.ident = self.instance_ident.clone();
+        
+        match &mut instance.variant {
+            RustStructType::Record(record) => {
+                for field in record.fields.iter_mut() {
+                    field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
+                }
+            },
+            RustStructType::Table{ domain, range } => {
+                *domain = Self::resolve_type(&resolved_args, domain);
+                *range = Self::resolve_type(&resolved_args, range);
+            },
+            RustStructType::Array{ element_type } => {
+                *element_type = Self::resolve_type(&resolved_args, element_type);
+            },
+            RustStructType::TypeChoice{ variants } => {
+                for variant in variants.iter_mut() {
+                    variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
+                }
+            },
+            RustStructType::GroupChoice{ .. } => {
+                // for variant in variants.mut_iter() {
+                //     variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
+                // }
+                todo!("we might need to recursively resolve on these");
+            },
+            RustStructType::Wrapper(_wrapped) => {
+                todo!("should we look this up in types to resolve?");
+            },
+        };
+        instance
+    }
+
+    fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
+        if let RustType::Rust(ident) = orig {
+            if let Some(resolved_type) = args.get(ident) {
+                return (*resolved_type).clone();
+            }
+        }
+        orig.clone()
     }
 }
