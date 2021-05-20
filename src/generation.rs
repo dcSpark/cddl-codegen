@@ -449,7 +449,7 @@ impl GenerationScope {
         generate_enum(self, types, &enum_name, &kind_name, &variants, None, true);
 
         // Now generate a wrapper object that we will expose to wasm around this
-        let (mut s, mut s_impl) = create_exposed_group(self, name);
+        let (mut s, mut s_impl) = create_empty_exposed_struct(self, name);
         let (mut ser_func, mut ser_impl) = create_serialize_impl(name, None, tag, None);
         s
             .vis("pub")
@@ -616,7 +616,7 @@ impl DataType for codegen::Enum {
     }
 }
 
-fn create_exposed_group(gen_scope: &GenerationScope, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
+fn create_empty_exposed_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
@@ -886,7 +886,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     let (mut ser_func, mut ser_impl) = create_serialize_impl(name, Some(Representation::Map), tag, Some(String::from("self.0.len() as u64")));
     s.vis("pub");
     s.tuple_field(format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
@@ -983,7 +983,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
 }
 
 fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, name: &RustIdent, tag: Option<usize>, rust_struct: &RustRecord) {
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     s.vis("pub");
 
     // Generate struct + fields + constructor
@@ -1323,7 +1323,7 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
     generate_enum(gen_scope, types, &enum_name, &kind_name, &variants, Some(rep), false);
 
     // Now generate a wrapper object that we will expose to wasm around this
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     s
         .vis("pub")
         .tuple_field(&enum_name.to_string());
@@ -1599,7 +1599,7 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
 }
 
 fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>) {
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, type_name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, type_name);
     s
         .vis("pub")
         .tuple_field(field_type.for_member());

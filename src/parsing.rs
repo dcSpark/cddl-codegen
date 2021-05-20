@@ -10,6 +10,8 @@ use crate::intermediate::{
     CDDLIdent,
     EnumVariant,
     FixedValue,
+    GenericDef,
+    GenericInstance,
     IntermediateTypes,
     Primitive,
     Representation,
@@ -30,20 +32,24 @@ use crate::utils::{
 pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
     match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
-            // (1) does not handle optional generic parameters
-            // (2) is_type_choice_alternate ignored since shelley.cddl doesn't need it
+            // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
             //     It's used, but used for no reason as it is the initial definition
             //     (which is also valid cddl), but it would be fine as = instead of /=
-            // (3) ignores control operators - only used in shelley spec to limit string length for application metadata
+            // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
             let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
+            let generic_params = rule
+                .generic_param
+                .as_ref()
+                .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.to_string()))).collect::<Vec<_>>());
             if rule.value.type_choices.len() == 1 {
                 let choice = &rule.value.type_choices.first().unwrap();
-                parse_type(types, &rust_ident, &choice.type2, None);
+                parse_type(types, &rust_ident, &choice.type2, None, generic_params);
             } else {
-                parse_type_choices(types, &rust_ident, &rule.value.type_choices, None);
+                parse_type_choices(types, &rust_ident, &rule.value.type_choices, None, generic_params);
             }
         },
         cddl::ast::Rule::Group{ rule, .. } => {
+            assert_eq!(rule.generic_param, None, "{}: Generics not supported on plain groups", rule.name);
             // Freely defined group - no need to generate anything outside of group module
             match &rule.entry {
                 cddl::ast::GroupEntry::InlineGroup{ .. } => (),// already handled in main.rs
@@ -53,7 +59,7 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
     }
 }
 
-fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>) {
+fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let optional_inner_type = if type_choices.len() == 2 {
         let a = &type_choices[0].type2;
         let b = &type_choices[1].type2;
@@ -68,6 +74,11 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
         None
     };
     if let Some(inner_type2) = optional_inner_type {
+        if generic_params.is_some() {
+            // the current generic support relies on having a RustStruct to swap out the types with
+            // but that won't happen witn untagged T / null types since we generate an alias instead
+            todo!("support foo<T> = T / null");
+        }
         let inner_rust_type = rust_type_from_type2(types, inner_type2);
         match tag {
             // only want to create a wrapper if we NEED to - so that we can keep the tag information
@@ -81,13 +92,17 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
         };
     } else {
         let variants = create_variants_from_type_choices(types, type_choices);
-        types.register_rust_struct(RustStruct::new_type_choice(name.clone(), tag, variants));
+        let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants);
+        match generic_params {
+            Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
+            None => types.register_rust_struct(rust_struct),
+        };
     }
 }
 
-fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>) {
+fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     match type2 {
-        Type2::Typename{ ident, .. } => {
+        Type2::Typename{ ident, generic_arg, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
@@ -116,16 +131,35 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type
                     RustType::Alias(_ident, ty) => *ty,
                     ty => ty,
                 };
-                types.register_type_alias(type_name.clone(), concrete_type, true);
+                match &generic_params {
+                    Some(_params) => {
+                        // this should be the only situation where you need this as otherwise the params would be unbound
+                        todo!("generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>");
+                        // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
+                    },
+                    None => {
+                        match generic_arg {
+                            Some(arg) => {
+                                // This is for named generic instances such as:
+                                // foo = bar<text>
+                                let generic_args = arg.args.iter().map(|a| rust_type_from_type2(types, &a.type2)).collect();
+                                types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
+                            },
+                            None => {
+                                types.register_type_alias(type_name.clone(), concrete_type, true);
+                            }
+                        }
+                    }
+                }
             }
         },
         Type2::Map{ group, .. } => {
-            parse_group(types, group, type_name, Representation::Map, outer_tag);
+            parse_group(types, group, type_name, Representation::Map, outer_tag, generic_params);
         },
         Type2::Array{ group, .. } => {
             // TODO: We could potentially generate an array-wrapper type around this
             // possibly based on the occurency specifier.
-            parse_group(types, group, type_name, Representation::Array, outer_tag);
+            parse_group(types, group, type_name, Representation::Array, outer_tag, generic_params);
         },
         Type2::TaggedData{ tag, t, .. } => {
             if let Some(_) = outer_tag {
@@ -141,7 +175,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type
                         Type2::Array{ group, .. } => Either::Left(group),
                         x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
                     } {
-                        Either::Left(_group) => parse_type(types, type_name, inner_type, *tag),
+                        Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
                             types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type))
@@ -149,7 +183,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type
                     };
                 },
                 _ => {
-                    parse_type_choices(types, type_name, &t.type_choices, *tag);
+                    parse_type_choices(types, type_name, &t.type_choices, *tag, generic_params);
                 }
             };
         },
@@ -307,14 +341,31 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
 }
 
 fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustType {
-    // TODO: generics
     // TODO: socket plugs (used in hash type)
     match type2 {
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
         Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
         Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.clone())),
-        Type2::Typename{ ident, .. } => types.new_type(&CDDLIdent::new(&ident.ident)),
+        Type2::Typename{ ident, generic_arg, .. } => {
+            let cddl_ident = CDDLIdent::new(&ident.ident);
+            match generic_arg {
+                Some(args) => {
+                    // This is for anonymous instances (i.e. members) such as:
+                    // foo = [a: bar<text, bool>]
+                    // so to be able to expose it to wasm, we create a new generic instance
+                    // under the name bar_string_bool in this case.
+                    let generic_args = args.args.iter().map(|a| rust_type_from_type2(types, &a.type2)).collect::<Vec<_>>();
+                    let args_name = generic_args.iter().map(|t| t.for_variant().to_string()).collect::<Vec<String>>().join("_");
+                    let instance_cddl_ident = CDDLIdent::new(format!("{}_{}", cddl_ident, args_name));
+                    let instance_ident = RustIdent::new(instance_cddl_ident.clone());
+                    let generic_ident = RustIdent::new(cddl_ident);
+                    types.register_generic_instance(GenericInstance::new(instance_ident, generic_ident, generic_args));
+                    types.new_type(&instance_cddl_ident)
+                },
+                None => types.new_type(&cddl_ident),
+            }
+        },
         Type2::Array{ group, .. } => {
             // TODO: support for group choices in arrays?
             let element_type = match group.group_choices.len() {
@@ -419,7 +470,17 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
 fn group_entry_to_type(types: &mut IntermediateTypes, entry: &GroupEntry) -> RustType {
     let ret = match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, &ge.entry_type),
-        GroupEntry::TypeGroupname{ ge, .. } => types.new_type(&CDDLIdent::new(ge.name.to_string())),
+        GroupEntry::TypeGroupname{ ge, .. } => {
+            if ge.generic_arg.is_some() {
+                // I am not sure how we end up with this kind of generic args since definitional ones
+                // and member ones are created elsewhere. I thought that if you had a field like
+                // foo: bar<uint> it would be here but it turns out it's in the ValueMemberKey
+                // variant instead.
+                todo!("If you run into this please create a github issue and include the .cddl that caused it");
+            }
+            let cddl_ident = CDDLIdent::new(ge.name.to_string());
+            types.new_type(&cddl_ident)
+        },
         GroupEntry::InlineGroup{ .. } => panic!("inline group entries are not implemented"),
     };
     //println!("group_entry_to_typename({:?}) = {:?}\n", entry, ret);
@@ -473,29 +534,36 @@ fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representa
     }
 }
 
-fn parse_group_choice(types: &mut IntermediateTypes, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>) {
+fn parse_group_choice(types: &mut IntermediateTypes, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let table_types = table_domain_range(group_choice, rep);
-    match table_types {
+    let rust_struct = match table_types {
         // Table map - homogenous key/value types
         Some((domain, range)) => {
             let key_type = rust_type_from_type2(types, domain);
             let value_type = rust_type(types, range);
-            types.register_rust_struct(RustStruct::new_table(name.clone(), tag, key_type, value_type));
+            RustStruct::new_table(name.clone(), tag, key_type, value_type)
         },
         // Heterogenous map (or array!) with defined key/value pairs in the cddl like a struct
         None => {
             let record = parse_record_from_group_choice(types, rep, group_choice);
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
-            types.register_rust_struct(RustStruct::new_record(name.clone(), tag, record));
+            RustStruct::new_record(name.clone(), tag, record)
         }
-    }
+    };
+    match generic_params {
+        Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
+        None => types.register_rust_struct(rust_struct),
+    };
 }
 
-pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIdent, rep: Representation, tag: Option<usize>) {
+pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
-        parse_group_choice(types, group.group_choices.first().unwrap(), name, rep, tag);
+        parse_group_choice(types, group.group_choices.first().unwrap(), name, rep, tag, generic_params);
     } else {
+        if generic_params.is_some() {
+            todo!("{}: generic group choices not supported", name);
+        }
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
 
@@ -542,7 +610,7 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
                 let variant_name = RustIdent::new(CDDLIdent::new(format!("{}{}", name, i)));
                 types.mark_plain_group(variant_name.clone(), None);
                 // TODO: Should we generate these within their own namespace?
-                parse_group_choice(types, group_choice, &variant_name, rep, None);
+                parse_group_choice(types, group_choice, &variant_name, rep, None, generic_params.clone());
                 EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), true)
             }
         }).collect();
