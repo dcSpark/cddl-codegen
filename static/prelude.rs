@@ -31,6 +31,11 @@ pub enum DeserializeFailure {
     },
     MandatoryFieldMissing(Key),
     NoVariantMatched,
+    RangeCheck{
+        found: usize,
+        min: Option<isize>,
+        max: Option<isize>,
+    },
     TagMismatch{
         found: u64,
         expected: u64,
@@ -84,6 +89,12 @@ impl std::fmt::Display for DeserializeError {
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
             DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
+            DeserializeFailure::RangeCheck{ found, min, max } => match (min, max) {
+                (Some(min), Some(max)) => write!(f, "{} not in range {} - {}", found, min, max),
+                (Some(min), None) => write!(f, "{} not at least {}", found, min),
+                (None, Some(max)) => write!(f, "{} not at most {}", found, max),
+                (None, None) => write!(f, "invalid range (no min nor max specified)"),
+            },
             DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
             DeserializeFailure::UnexpectedKeyType(ty) => write!(f, "Found unexpected key of CBOR type {:?}", ty),

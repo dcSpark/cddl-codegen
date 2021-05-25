@@ -91,8 +91,8 @@ impl GenerationScope {
                 RustStructType::GroupChoice { variants, rep } => {
                     codegen_group_choices(self, types, rust_ident, variants, *rep, rust_struct.tag())
                 },
-                RustStructType::Wrapper(wrapped) => {
-                    generate_wrapper_struct(self, types, rust_ident, wrapped, rust_struct.tag());
+                RustStructType::Wrapper{ wrapped, min_max } => {
+                    generate_wrapper_struct(self, types, rust_ident, wrapped, rust_struct.tag(), *min_max);
                 },
             }
         }
@@ -1598,7 +1598,7 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     f
 }
 
-fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>) {
+fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>, min_max: Option<(Option<isize>, Option<isize>)>) {
     let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, type_name);
     s
         .vis("pub")
@@ -1625,7 +1625,48 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
             unimplemented!("TODO: make len/read_len variables of appropriate sizes so the generated code compiles");
         }
     }
-    gen_scope.generate_deserialize(types, field_type, "", "Ok(Self(", "))", false, false, &mut deser_func);
+    if let Some((min, max)) = min_max {
+        gen_scope.generate_deserialize(types, field_type, "", "let wrapped = ", ";", false, false, &mut deser_func);
+        let against = match field_type {
+            RustType::Primitive(p) => match p {
+                Primitive::Bytes |
+                Primitive::Str => "wrapped.len()",
+                Primitive::Bool |
+                Primitive::U32 |
+                Primitive::U64 |
+                Primitive::I32 |
+                Primitive::I64 |
+                Primitive::N64 => "wrapped",
+            },
+            _ => unimplemented!(),
+        };
+        let mut check = match (min, max) {
+            (Some(min), Some(max)) => if min == max {
+                Block::new(&format!("if {} != {}", against, min))
+            } else {
+                Block::new(&format!("if {} < {} || {} > {}", against, min, against, max))
+            },
+            (Some(min), None) => Block::new(&format!("if {} < {}", against, min)),
+            (None, Some(max)) => Block::new(&format!("if {} > {}", against, max)),
+            (None, None) => panic!("How did we end up with a range requirement of (None, None)? Entire thing should've been None then"),
+        };
+        check.line(format!(
+            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {}, min: {}, max: {} }}));",
+            type_name,
+            against,
+            match min {
+                Some(min) => format!("Some({})", min),
+                None => String::from("None")
+            },
+            match max {
+                Some(max) => format!("Some({})", max),
+                None => String::from("None")
+            }));
+        deser_func.push_block(check);
+        deser_func.line("Ok(Self(wrapped))");
+    } else {
+        gen_scope.generate_deserialize(types, field_type, "", "Ok(Self(", "))", false, false, &mut deser_func);
+    }
     deser_impl.push_fn(deser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
