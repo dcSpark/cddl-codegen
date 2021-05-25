@@ -2,9 +2,6 @@ use cddl::ast::*;
 use either::{Either};
 use std::collections::{BTreeMap};
 
-use crate::cmd::{
-    BINARY_WRAPPERS,
-};
 use crate::intermediate::{
     AliasIdent,
     CDDLIdent,
@@ -43,7 +40,7 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
                 .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.to_string()))).collect::<Vec<_>>());
             if rule.value.type_choices.len() == 1 {
                 let choice = &rule.value.type_choices.first().unwrap();
-                parse_type(types, &rust_ident, &choice.type2, None, generic_params);
+                parse_type(types, &rust_ident, choice, None, generic_params);
             } else {
                 parse_type_choices(types, &rust_ident, &rule.value.type_choices, None, generic_params);
             }
@@ -83,7 +80,7 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
         match tag {
             // only want to create a wrapper if we NEED to - so that we can keep the tag information
             Some(_) => {
-                types.register_rust_struct(RustStruct::new_wrapper(name.clone(), tag, RustType::Optional(Box::new(inner_rust_type))));
+                types.register_rust_struct(RustStruct::new_wrapper(name.clone(), tag, RustType::Optional(Box::new(inner_rust_type)), None));
             },
             // otherwise a simple typedef of type $name = Option<$inner_rust_type>; works better
             None => {
@@ -100,31 +97,77 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
     }
 }
 
-fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type2, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn type2_to_number_literal(type2: &Type2) -> isize {
     match type2 {
+        Type2::UintValue{ value, .. } => *value as isize,
+        Type2::IntValue{ value, .. } => *value,
+        _ => panic!("Value specified: {:?} must be a number literal to be used here", type2),
+    }
+}
+
+fn parse_range_operator(range: &(RangeCtlOp, Type2)) -> (Option<isize>, Option<isize>) {
+    //todo: read up on other range control operators in CDDL RFC
+    match range.0 {
+        RangeCtlOp::RangeOp{ .. } => panic!("Range Op only expected as 2nd type in range control operator"),
+        RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
+            ".default" |
+            ".cbor" |
+            ".cborseq" |
+            ".within" |
+            ".and" => todo!("control operator {} not supported", ctrl),
+            ".eq" => (Some(type2_to_number_literal(&range.1)), Some(type2_to_number_literal(&range.1))),
+            // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
+            //       which might be necessary once we support other control operators anyway
+            ".ne" => (Some(type2_to_number_literal(&range.1) + 1), Some(type2_to_number_literal(&range.1) - 1)),
+            ".le" => (None, Some(type2_to_number_literal(&range.1))),
+            ".lt" => (None, Some(type2_to_number_literal(&range.1) - 1)),
+            ".ge" => (Some(type2_to_number_literal(&range.1)), None),
+            ".gt" => (Some(type2_to_number_literal(&range.1) + 1), None),
+            ".size" => match &range.1 {
+                Type2::UintValue{ value, .. } => (Some(*value as isize), Some(*value as isize)),
+                Type2::IntValue{ value, .. } => (Some(*value), Some(*value)),
+                Type2::ParenthesizedType{ pt, .. } => {
+                    assert_eq!(pt.type_choices.len(), 1);
+                    let inner_type = pt.type_choices.first().unwrap();
+                    let min = match inner_type.type2 {
+                        Type2::UintValue{ value, .. } => Some(value as isize),
+                        Type2::IntValue{ value, .. } => Some(value),
+                        _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+                    };
+                    let max = match &inner_type.operator {
+                        Some((inner_range, inner_type_operator_t2)) => match inner_range {
+                            RangeCtlOp::RangeOp{ is_inclusive, ..} => {
+                                let value = match inner_type_operator_t2 {
+                                    Type2::UintValue{ value, .. } => *value as isize,
+                                    Type2::IntValue{ value, ..} => *value,
+                                    _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+                                };
+                                Some(if *is_inclusive { value } else { value + 1 })
+                            },
+                            RangeCtlOp::CtlOp{ .. } => panic!(""),
+                        },
+                        None => min,
+                    };
+                    (min, max)
+                },
+                _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+            },
+            _ => panic!("Unknown (not seen in RFC-8610) range control operator: {}", ctrl),
+        }
+    }
+}
+
+fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type1, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+    let min_max = type1.operator.as_ref().map(parse_range_operator);
+    match &type1.type2 {
         Type2::Typename{ ident, generic_arg, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
-            // This should be controlled in a better way - maybe we can annotate the cddl
-            // to specify whether or not we want to simply to a typedef to Vec<u8> for bytes
-            // or whether we want to do what we are doing here and creating a custom type.
-            // This is more specific to our own use-case since the binary types via type alises
-            // in the shelley.cddl spec are things that should have their own type and we would
-            // want to expand upon the code later on.
-            // Perhaps we could change the cddl and have some specific tag like "BINARY_FORMAT"
-            // to generate this?
-            let generate_binary_wrapper = BINARY_WRAPPERS && match ident.to_string().as_ref() {
-                "bytes" | "bstr" => true,
-                _ident => if let Some(RustType::Primitive(Primitive::Bytes)) = types.apply_type_aliases(&AliasIdent::new(cddl_ident.clone())) {
-                    true
-                } else {
-                    false
-                },
-            };
-            if generate_binary_wrapper {
+            if min_max.is_some() {
+                assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
                 let field_type = RustType::Primitive(Primitive::Bytes);
-                types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone()));
+                types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone(), min_max));
                 types.register_type_alias(type_name.clone(), field_type, false);
             } else {
                 let concrete_type = match types.new_type(&cddl_ident) {
@@ -168,8 +211,8 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type
             tag.expect("not sure what empty tag here would mean - unsupported");
             match t.type_choices.len() {
                 1 => {
-                    let inner_type = &t.type_choices.first().unwrap().type2;
-                    match match inner_type {
+                    let inner_type = &t.type_choices.first().unwrap();
+                    match match &inner_type.type2 {
                         Type2::Typename{ ident, .. } => Either::Right(ident),
                         Type2::Map{ group, .. } => Either::Left(group),
                         Type2::Array{ group, .. } => Either::Left(group),
@@ -178,7 +221,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type2: &Type
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
-                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type))
+                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, min_max))
                         },
                     };
                 },

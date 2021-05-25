@@ -881,7 +881,10 @@ pub enum RustStructType {
         variants: Vec<EnumVariant>,
         rep: Representation,
     },
-    Wrapper(RustType),
+    Wrapper{
+        wrapped: RustType,
+        min_max: Option<(Option<isize>, Option<isize>)>,
+    }
 }
 
 impl RustStruct {
@@ -935,11 +938,14 @@ impl RustStruct {
         }
     }
 
-    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType) -> Self {
+    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<isize>, Option<isize>)>) -> Self {
         Self {
             ident,
             tag,
-            variant: RustStructType::Wrapper(wrapped_type),
+            variant: RustStructType::Wrapper {
+                wrapped: wrapped_type,
+                min_max
+            },
         }
     }
 
@@ -969,7 +975,7 @@ impl RustStruct {
             //RustStructType::TypeChoice { .. } => None,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -984,7 +990,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => None,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -999,7 +1005,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => 0,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -1011,7 +1017,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => RustStructCBORLen::Dynamic,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 }
@@ -1154,7 +1160,7 @@ impl GenericInstance {
                 // }
                 todo!("we might need to recursively resolve on these");
             },
-            RustStructType::Wrapper(_wrapped) => {
+            RustStructType::Wrapper{ .. } => {
                 todo!("should we look this up in types to resolve?");
             },
         };
