@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
 
@@ -7,6 +7,7 @@ use crate::cmd::{
     USE_EXTENDED_PRELUDE,
 };
 use crate::utils::{
+    cddl_prelude,
     convert_to_camel_case,
     is_identifier_reserved,
     is_identifier_user_defined,
@@ -21,8 +22,12 @@ pub struct IntermediateTypes {
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group>>,
-    type_aliases: BTreeMap<AliasIdent, RustType>,
+    // (Type, whether to generate a rust type alias statement)
+    type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
+    prelude_to_emit: BTreeSet<String>,
+    generic_defs: BTreeMap<RustIdent, GenericDef>,
+    generic_instances: BTreeMap<RustIdent, GenericInstance>,
 }
 
 impl IntermediateTypes {
@@ -31,10 +36,13 @@ impl IntermediateTypes {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
             rust_structs: BTreeMap::new(),
+            prelude_to_emit: BTreeSet::new(),
+            generic_defs: BTreeMap::new(),
+            generic_instances: BTreeMap::new(),
         }
     }
 
-    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, RustType> {
+    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool)> {
         &self.type_aliases
     }
 
@@ -42,12 +50,12 @@ impl IntermediateTypes {
         &self.rust_structs
     }
 
-    fn aliases() -> BTreeMap<idents::AliasIdent, RustType> {
+    fn aliases() -> BTreeMap<idents::AliasIdent, (RustType, bool)> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
-        let mut aliases = BTreeMap::<AliasIdent, RustType>::new();
+        let mut aliases = BTreeMap::<AliasIdent, (RustType, bool)>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident.clone(), rust_type);
+            aliases.insert(ident.clone(), (rust_type, false));
         };
         insert_alias("uint", RustType::Primitive(Primitive::U64));
         insert_alias("nint", RustType::Primitive(Primitive::N64));
@@ -77,7 +85,10 @@ impl IntermediateTypes {
         aliases
     }
 
-    pub fn new_type(&self, raw: &CDDLIdent) -> RustType {
+    // note: this is mut so that apply_type_aliases() can mark which reserved idents
+    // are in the CDDL prelude so we don't generate code for all of them, potentially
+    // bloating generated code a bit
+    pub fn new_type(&mut self, raw: &CDDLIdent) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
         let resolved = match self.apply_type_aliases(&alias_ident) {
             Some(ty) => match alias_ident {
@@ -113,17 +124,21 @@ impl IntermediateTypes {
         resolved
     }
 
-    pub fn apply_type_aliases(&self, alias_ident: &AliasIdent) -> Option<RustType> {
+    // see new_type() for why this is mut
+    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some(alias) => Some(alias.clone()),
+            Some((alias, _)) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => if reserved == "int" {
                     // We define an Int rust struct in prelude.rs
                     None
                 } else {
-                    panic!("Reserved ident {} didn't define type alias", reserved)
+                    // we auto-include only the parts of the cddl prelude necessary (and supported)
+                    cddl_prelude(reserved).expect(&format!("Reserved ident {} not a part of cddl_prelude?", reserved));
+                    self.emit_prelude(reserved.clone());
+                    Some(RustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))))
                 },
             },
         }
@@ -133,10 +148,7 @@ impl IntermediateTypes {
         if let RustType::Alias(_ident, _ty) = &base_type {
             panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
         }
-        self.type_aliases.insert(alias.into(), base_type);
-        if generate_rust_alias {
-            // TODO: use these to print off aliases that need a rust type A = B; definition
-        }
+        self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias));
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {
@@ -171,6 +183,26 @@ impl IntermediateTypes {
         RustType::Array(Box::new(element_type))
     }
 
+    pub fn register_generic_def(&mut self, def: GenericDef) {
+        let ident = def.orig.ident().clone();
+        self.generic_defs.insert(ident, def);
+    }
+
+    pub fn register_generic_instance(&mut self, instance: GenericInstance) {
+        let ident = instance.instance_ident.clone();
+        self.generic_instances.insert(ident, instance);
+    }
+
+    // call this after all types have been registered
+    pub fn finalize(&mut self) {
+        // resolve generics
+        // resolve then register in 2 phases to get around borrow checker
+        let resolved_generics = self.generic_instances.values().map(|instance| instance.resolve(self)).collect::<Vec<_>>();
+        for resolved_instance in resolved_generics {
+            self.register_rust_struct(resolved_instance);
+        }
+    }
+
     // see self.plain_groups comments
     pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group>) {
         self.plain_groups.insert(ident, group);
@@ -193,7 +225,8 @@ impl IntermediateTypes {
                     assert_eq!(found_rep, Some(rep));
                 } else {
                     // you can't tag plain groups hence the None
-                    crate::parsing::parse_group(self, &group, ident, rep, None);
+                    // we also don't support generics in plain groups hence the other None
+                    crate::parsing::parse_group(self, &group, ident, rep, None, None);
                 }
             } else {
                 // If plain_group is None, then this wasn't defined in .cddl but instead
@@ -223,12 +256,40 @@ impl IntermediateTypes {
                 println!("{:?} -> {:?}", alias_name, alias_type);
             }
         }
+
+        if !self.generic_defs.is_empty() {
+            println!("\n\nGeneric Definitions:");
+            for (ident, def) in self.generic_defs.iter() {
+                println!("{} -> {:?}", ident, def);
+            }
+        }
+
+        if !self.generic_instances.is_empty() {
+            println!("\n\nGeneric Instances:");
+            for (ident, def) in self.generic_instances.iter() {
+                println!("{} -> {:?}", ident, def);
+            }
+        }
     
         if !self.rust_structs.is_empty() {
             println!("\n\nRustStructs:");
             for (ident, rust_struct) in self.rust_structs.iter() {
                 println!("{} -> {:?}\n", ident, rust_struct);
             }
+        }
+    }
+
+    fn emit_prelude(&mut self, cddl_name: String) {
+        // we just emit this directly into this scope.
+        // due to some referencing others this is the quickest way
+        // to support it.
+        // TODO: we might want to custom-write some of these to make them
+        // easier to use instead of directly parsing
+        if self.prelude_to_emit.insert(cddl_name.clone()) {
+            let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
+            let cddl = cddl::parser::cddl_from_str(&def).unwrap();
+            assert_eq!(cddl.rules.len(), 1);
+            crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
         }
     }
 }
@@ -373,7 +434,11 @@ mod idents {
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
             println!("{}", cddl_ident.0);
-            assert!(cddl_ident.0 == "int" || super::is_identifier_user_defined(&cddl_ident.0));
+            assert!(
+                cddl_ident.0 == "int" ||
+                super::cddl_prelude(&cddl_ident.0).is_some() ||
+                super::is_identifier_user_defined(&cddl_ident.0)
+            );
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
@@ -489,9 +554,18 @@ impl RustType {
                 };
                 match inner {
                     RustType::Primitive(p) => match p {
+                        // converts to js number which is supported as Vec<T>
+                        Primitive::Bool |
+                        Primitive::I32 |
+                        Primitive::U32 => true,
+                        // since we generate these as BigNum/Int wrappers we can't nest them
+                        Primitive::I64 |
+                        Primitive::N64 |
+                        Primitive::U64 => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
-                        _ => true,
+                        // Vec<String> is not supported by wasm-bindgen
+                        Primitive::Str => false,
                     },
                     RustType::Array(_) => false,
                     _ => ty.directly_wasm_exposable(),
@@ -807,7 +881,10 @@ pub enum RustStructType {
         variants: Vec<EnumVariant>,
         rep: Representation,
     },
-    Wrapper(RustType),
+    Wrapper{
+        wrapped: RustType,
+        min_max: Option<(Option<isize>, Option<isize>)>,
+    }
 }
 
 impl RustStruct {
@@ -861,11 +938,14 @@ impl RustStruct {
         }
     }
 
-    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType) -> Self {
+    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<isize>, Option<isize>)>) -> Self {
         Self {
             ident,
             tag,
-            variant: RustStructType::Wrapper(wrapped_type),
+            variant: RustStructType::Wrapper {
+                wrapped: wrapped_type,
+                min_max
+            },
         }
     }
 
@@ -895,7 +975,7 @@ impl RustStruct {
             //RustStructType::TypeChoice { .. } => None,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -910,7 +990,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => None,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -925,7 +1005,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => 0,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 
@@ -937,7 +1017,7 @@ impl RustStruct {
             //RustStructType::TypeChoice{ .. } => RustStructCBORLen::Dynamic,
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper(_wrapped) => unreachable!("wrapper types don't use length"),
+            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
         }
     }
 }
@@ -1004,5 +1084,95 @@ impl RustRecord {
             Some(fixed_count) => RustStructCBORLen::Fixed(fixed_count),
             None => RustStructCBORLen::OptionalFields(self.expanded_mandatory_field_count(types)),
         }
+    }
+}
+
+// definition of a generic type e.g. foo<T, U> = [x: T, y: U]
+#[derive(Debug)]
+pub struct GenericDef {
+    generic_params: Vec<RustIdent>,
+    orig: RustStruct,
+}
+
+impl GenericDef {
+    pub fn new(generic_params: Vec<RustIdent>, orig: RustStruct) -> Self {
+        Self {
+            generic_params,
+            orig,
+        }
+    }
+}
+
+// invocation of a generic definition e.g. foo = bar<text>
+#[derive(Debug)]
+pub struct GenericInstance {
+    instance_ident: RustIdent,
+    generic_ident: RustIdent,
+    generic_args: Vec<RustType>,
+}
+
+impl GenericInstance {
+    pub fn new(instance_ident: RustIdent, generic_ident: RustIdent, generic_args: Vec<RustType>) -> Self {
+        Self {
+            instance_ident,
+            generic_ident,
+            generic_args,
+        }
+    }
+
+    // TODO: should we rename fields / variant names after-the-fact?
+    // (for the cases where the name came from the original generic param)
+    pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
+        let def = match types.generic_defs.get(&self.generic_ident) {
+            Some(def) => def,
+            None => panic!(format!("Generic instance used on {} without definition", self.generic_ident)),
+        };
+        assert_eq!(def.generic_params.len(), self.generic_args.len());
+        let resolved_args = def
+            .generic_params
+            .iter()
+            .zip(self.generic_args.iter())
+            .collect::<BTreeMap::<&RustIdent, &RustType>>();
+        let mut instance = def.orig.clone();
+        instance.ident = self.instance_ident.clone();
+        
+        match &mut instance.variant {
+            RustStructType::Record(record) => {
+                for field in record.fields.iter_mut() {
+                    field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
+                }
+            },
+            RustStructType::Table{ domain, range } => {
+                *domain = Self::resolve_type(&resolved_args, domain);
+                *range = Self::resolve_type(&resolved_args, range);
+            },
+            RustStructType::Array{ element_type } => {
+                *element_type = Self::resolve_type(&resolved_args, element_type);
+            },
+            RustStructType::TypeChoice{ variants } => {
+                for variant in variants.iter_mut() {
+                    variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
+                }
+            },
+            RustStructType::GroupChoice{ .. } => {
+                // for variant in variants.mut_iter() {
+                //     variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
+                // }
+                todo!("we might need to recursively resolve on these");
+            },
+            RustStructType::Wrapper{ .. } => {
+                todo!("should we look this up in types to resolve?");
+            },
+        };
+        instance
+    }
+
+    fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
+        if let RustType::Rust(ident) = orig {
+            if let Some(resolved_type) = args.get(ident) {
+                return (*resolved_type).clone();
+            }
+        }
+        orig.clone()
     }
 }

@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cmd::{
     ANNOTATE_FIELDS,
-    BINARY_WRAPPERS,
     GENERATE_TO_FROM_BYTES,
 };
 use crate::intermediate::{
@@ -45,18 +44,31 @@ impl GenerationScope {
     }
 
     pub fn generate(&mut self, types: &IntermediateTypes) {
-        for (alias, base_type) in types.type_aliases() {
+        for (alias, (base_type, gen_type_alias)) in types.type_aliases() {
             // only generate user-defined ones
             if let AliasIdent::Rust(ident) = alias {
                 // also make sure not to generate it if we instead generated a binary wrapper type
-                if let Some(_rust_struct) = types.rust_struct(ident) {
-                    assert!(BINARY_WRAPPERS);
-                    assert_eq!(*base_type, RustType::Primitive(Primitive::Bytes));
-                    // TODO: verify rust_struct is a binary wrapper
-                } else {
-                    // TODO: implement fixed values
-                    if !base_type.is_fixed_value() {
-                        self.global_scope.raw(&format!("type {} = {};", ident, base_type.for_member()));
+                if *gen_type_alias {
+                    if let RustType::Fixed(constant) = base_type {
+                        // wasm-bindgen doesn't support const or static vars so we must do a function
+                        let (ty, val) = match constant {
+                            FixedValue::Null => panic!("null constants not supported"),
+                            FixedValue::Bool(b) => ("bool", b.to_string()),
+                            FixedValue::Int(i) => ("i32", i.to_string()),
+                            FixedValue::Uint(u) => ("u32", u.to_string()),
+                            FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
+                        };
+                        self
+                            .scope()
+                            .raw("#[wasm_bindgen]")
+                            .new_fn(&convert_to_snake_case(&ident.to_string()))
+                            .vis("pub")
+                            .ret(ty)
+                            .line(val);
+                    } else {
+                        self
+                            .scope()
+                            .raw(&format!("type {} = {};", ident, base_type.for_member()));
                     }
                 }
             }
@@ -79,8 +91,8 @@ impl GenerationScope {
                 RustStructType::GroupChoice { variants, rep } => {
                     codegen_group_choices(self, types, rust_ident, variants, *rep, rust_struct.tag())
                 },
-                RustStructType::Wrapper(wrapped) => {
-                    generate_wrapper_struct(self, types, rust_ident, wrapped, rust_struct.tag());
+                RustStructType::Wrapper{ wrapped, min_max } => {
+                    generate_wrapper_struct(self, types, rust_ident, wrapped, rust_struct.tag(), *min_max);
                 },
             }
         }
@@ -437,7 +449,7 @@ impl GenerationScope {
         generate_enum(self, types, &enum_name, &kind_name, &variants, None, true);
 
         // Now generate a wrapper object that we will expose to wasm around this
-        let (mut s, mut s_impl) = create_exposed_group(self, name);
+        let (mut s, mut s_impl) = create_empty_exposed_struct(self, name);
         let (mut ser_func, mut ser_impl) = create_serialize_impl(name, None, tag, None);
         s
             .vis("pub")
@@ -604,7 +616,7 @@ impl DataType for codegen::Enum {
     }
 }
 
-fn create_exposed_group(gen_scope: &GenerationScope, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
+fn create_empty_exposed_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     add_struct_derives(&mut s);
@@ -874,7 +886,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     let (mut ser_func, mut ser_impl) = create_serialize_impl(name, Some(Representation::Map), tag, Some(String::from("self.0.len() as u64")));
     s.vis("pub");
     s.tuple_field(format!("std::collections::BTreeMap<{}, {}>", key_type.for_member(), value_type.for_member()));
@@ -915,15 +927,16 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .line(format!("self.0.get({}).map(|v| v.clone())", key_type.from_wasm_boundary_ref("key")));
     s_impl.push_fn(getter);
     // keys
+    let keys_type = RustType::Array(Box::new(key_type.clone()));
     let mut keys = codegen::Function::new("keys");
     keys
         .arg_ref_self()
-        .ret(key_type.name_as_array())
+        .ret(keys_type.for_wasm_return())
         .vis("pub");
-    if key_type.directly_wasm_exposable() {
-        keys.line(format!("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>()", key_type.for_member()));
+    if keys_type.directly_wasm_exposable() {
+        keys.line("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>()");
     } else {
-        keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<{}>>())", key_type.name_as_array(), key_type.for_member()));
+        keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())", keys_type.for_wasm_return()));
     }
     s_impl.push_fn(keys);
     // serialize
@@ -970,7 +983,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
 }
 
 fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, name: &RustIdent, tag: Option<usize>, rust_struct: &RustRecord) {
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     s.vis("pub");
 
     // Generate struct + fields + constructor
@@ -1310,7 +1323,7 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
     generate_enum(gen_scope, types, &enum_name, &kind_name, &variants, Some(rep), false);
 
     // Now generate a wrapper object that we will expose to wasm around this
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, name);
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, name);
     s
         .vis("pub")
         .tuple_field(&enum_name.to_string());
@@ -1585,8 +1598,8 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     f
 }
 
-fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>) {
-    let (mut s, mut s_impl) = create_exposed_group(gen_scope, type_name);
+fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>, min_max: Option<(Option<isize>, Option<isize>)>) {
+    let (mut s, mut s_impl) = create_empty_exposed_struct(gen_scope, type_name);
     s
         .vis("pub")
         .tuple_field(field_type.for_member());
@@ -1612,7 +1625,48 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
             unimplemented!("TODO: make len/read_len variables of appropriate sizes so the generated code compiles");
         }
     }
-    gen_scope.generate_deserialize(types, field_type, "", "Ok(Self(", "))", false, false, &mut deser_func);
+    if let Some((min, max)) = min_max {
+        gen_scope.generate_deserialize(types, field_type, "", "let wrapped = ", ";", false, false, &mut deser_func);
+        let against = match field_type {
+            RustType::Primitive(p) => match p {
+                Primitive::Bytes |
+                Primitive::Str => "wrapped.len()",
+                Primitive::Bool |
+                Primitive::U32 |
+                Primitive::U64 |
+                Primitive::I32 |
+                Primitive::I64 |
+                Primitive::N64 => "wrapped",
+            },
+            _ => unimplemented!(),
+        };
+        let mut check = match (min, max) {
+            (Some(min), Some(max)) => if min == max {
+                Block::new(&format!("if {} != {}", against, min))
+            } else {
+                Block::new(&format!("if {} < {} || {} > {}", against, min, against, max))
+            },
+            (Some(min), None) => Block::new(&format!("if {} < {}", against, min)),
+            (None, Some(max)) => Block::new(&format!("if {} > {}", against, max)),
+            (None, None) => panic!("How did we end up with a range requirement of (None, None)? Entire thing should've been None then"),
+        };
+        check.line(format!(
+            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {}, min: {}, max: {} }}));",
+            type_name,
+            against,
+            match min {
+                Some(min) => format!("Some({})", min),
+                None => String::from("None")
+            },
+            match max {
+                Some(max) => format!("Some({})", max),
+                None => String::from("None")
+            }));
+        deser_func.push_block(check);
+        deser_func.line("Ok(Self(wrapped))");
+    } else {
+        gen_scope.generate_deserialize(types, field_type, "", "Ok(Self(", "))", false, false, &mut deser_func);
+    }
     deser_impl.push_fn(deser_func);
     let mut new_func = codegen::Function::new("new");
     new_func
