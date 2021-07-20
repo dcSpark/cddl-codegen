@@ -12,7 +12,7 @@ To run, execute `cargo run` from within this directory, and it will read `input.
 
 Generates a `/export/` folder with wasm-compilable rust code (including Cargo.toml, etc) which can then be compiled with `wasm-pack build`.
 The `lib.rs` contains all wasm-exposable code that clients of the generated code can use, and `serialization.rs` contians internal implementations for serialization/deserialization.
-All structs have a `new(...)` constructor as well as a `to_bytes()`, and all supported ones have a `from_bytes()` exposed within their `lib.rs` impls that call these which (de)serialize to/from byte buffers the CBOR structure.
+All structs have a `new(...)` constructor as well as a `to_bytes()` (with `GENERATE_TO_FROM_BYTES` enabled), and all supported ones have a `from_bytes()` exposed within their `lib.rs` impls that call these which (de)serialize to/from byte buffers the CBOR structure.
 The constructor will contain all mandatory fields as arguments, whereas optional parameters will have a `set_*` function generated.
 There is also a `prelude.rs` for helper code used by both (errors, traits, etc).
 
@@ -31,6 +31,9 @@ There is also a `prelude.rs` for helper code used by both (errors, traits, etc).
 * Type choices - `foo = uint / tstr`
 * Serialization for all supported types.
 * Deserialization for almost all supported types (see limitations section).
+* CDDL Generics - `foo<T> = [T]`, `bar = foo<uint>`
+* Length bounds - `foo = bytes .size (0..32)`
+* Support for the CDDL standard prelude (using raw CDDL from the RFC) - `biguint`, etc
 
 We generate getters for all fields, and setters for optional fields. Mandatory fields are set via the generated constructor. All wasm-facing functions are set to take references for non-primitives and clone when needed. Returns are also cloned. This helps make usage from wasm more memory safe.
 
@@ -38,7 +41,7 @@ Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Nam
 
 There are several arguments that are set at the top of `main.rs` to configure code generation:
 * `ANNOTATE_FIELDS` - Annotates errors with locational context if set. On by default.
-* `BINARY_WRAPPERS` - When we encounter a type that is an alias or transitively an alias for binary bytes, we create a wrapper type for it, as in some use cases those should not be mixed and are crypto keys, hashes, and so on. Otherwise generates a type alias. On by default.
+* `USE_EXTENDED_PRELUDE` - Whether to use our extended prelude (`u64`, `i32`, etc)
 * `GENERATE_TO_FROM_BYTES` - Generates `to_bytes()` and `from_bytes()` usable from wasm in addition to the `Serialize` and `Deserialize` traits. Off by default.
 
 #### Heterogeneous Arrays
@@ -69,7 +72,6 @@ Any field that is `T / null` is transformed as a special case into `Option<T>` r
 * No support for sockets
 * No inlined heterogeneous maps as fields - `foo = ( x: { y: uint, z: uint } )`, but is fine for `bar = { y: uint, z: uint }` then `foo = ( x: bar )`.
 * No inlined heterogeneous arrays as fields - `foo: [uint]` is fine but `foo: [uint, tstr]` is not.
-* CDDL generics not supported - just edit the cddl to inline it yourself for now.
 * Keys in struct-type maps are limited to `uint` and text. Other types are not found anywhere in `shelley.cddl`.
 * Optional fixed-value fields not properly supported - `(? foo: 5)`
 * Deserialization not supported for maps with nested plain groups - `foo = (uint, uint), bar = { foo, text }` due to maps not being ordered.
