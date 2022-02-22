@@ -13,7 +13,7 @@ use crate::utils::{
     is_identifier_user_defined,
 };
 
-pub struct IntermediateTypes {
+pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
     // This is since in order to generate plain groups we must have a representation, which isn't
     // known at group definition. It is later fixed when the plain group is referenced somewhere
@@ -21,7 +21,7 @@ pub struct IntermediateTypes {
     // delayed until the point where it is referenced via self.set_rep_if_plain_group(rep)
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
-    plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group>>,
+    plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group<'a>>>,
     // (Type, whether to generate a rust type alias statement)
     type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
@@ -30,7 +30,7 @@ pub struct IntermediateTypes {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
 }
 
-impl IntermediateTypes {
+impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
         Self {
             plain_groups: BTreeMap::new(),
@@ -204,7 +204,7 @@ impl IntermediateTypes {
     }
 
     // see self.plain_groups comments
-    pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group>) {
+    pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group<'a>>) {
         self.plain_groups.insert(ident, group);
     }
 
@@ -287,7 +287,8 @@ impl IntermediateTypes {
         // easier to use instead of directly parsing
         if self.prelude_to_emit.insert(cddl_name.clone()) {
             let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
-            let cddl = cddl::parser::cddl_from_str(&def).unwrap();
+            let mut lexer = cddl::lexer::lexer_from_str(&def);
+            let cddl = cddl::parser::cddl_from_str(&mut lexer, &def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
             crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
         }
@@ -1125,7 +1126,7 @@ impl GenericInstance {
     pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
         let def = match types.generic_defs.get(&self.generic_ident) {
             Some(def) => def,
-            None => panic!(format!("Generic instance used on {} without definition", self.generic_ident)),
+            None => panic!("Generic instance used on {} without definition", self.generic_ident),
         };
         assert_eq!(def.generic_params.len(), self.generic_args.len());
         let resolved_args = def
