@@ -482,7 +482,7 @@ impl GenerationScope {
         ser_impl.push_fn(ser_func);
         // enum-getters
         add_enum_getters(&mut s_impl, &enum_name, &kind_name, &variants);
-        push_exposed_struct(self, s, s_impl, ser_impl, None);
+        push_exposed_struct(self, &enum_name, s, s_impl, ser_impl, None);
         // deserialize
         let mut deser_impl = codegen::Impl::new(&name.to_string());
         deser_impl.impl_trait("Deserialize");
@@ -825,14 +825,20 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
 
 fn push_exposed_struct(
     gen_scope: &mut GenerationScope,
+    name: &RustIdent,
     s: codegen::Struct,
     s_impl: codegen::Impl,
     ser_impl: codegen::Impl,
     ser_embedded_impl: Option<codegen::Impl>,
 ) {
-    gen_scope.scope()
+    gen_scope
+        .scope()
         .raw("#[wasm_bindgen]")
-        .push_struct(s)
+        .push_struct(s);
+
+    //gen_scope.scope().raw(&format!("to_from_bytes!({});", name))
+    gen_scope
+        .scope()
         .raw("#[wasm_bindgen]")
         .push_impl(s_impl);
     gen_scope.serialize_scope()
@@ -946,7 +952,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     ser_func.push_block(ser_loop);
     ser_func.line("Ok(serializer)");
     ser_impl.push_fn(ser_func);
-    push_exposed_struct(gen_scope, s, s_impl, ser_impl, None);
+    push_exposed_struct(gen_scope, name, s, s_impl, ser_impl, None);
     // deserialize
     if !gen_scope.deserialize_generated_for_type(&key_type) {
         gen_scope.dont_generate_deserialize(name, format!("key type {} doesn't support deserialize", key_type.for_member()));
@@ -1307,7 +1313,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
             deser_impl.push_fn(deser_f);
         },
     };
-    push_exposed_struct(gen_scope, s, s_impl, ser_impl, ser_embedded_impl);
+    push_exposed_struct(gen_scope, name, s, s_impl, ser_impl, ser_embedded_impl);
     // TODO: generic deserialize (might need backtracking)
     if gen_scope.deserialize_generated(name) {
         gen_scope.serialize_scope().push_impl(deser_impl);
@@ -1403,7 +1409,7 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
     ser_impl.push_fn(ser_func);
     // enum-getters
     add_enum_getters(&mut s_impl, &enum_name, &kind_name, &variants);
-    push_exposed_struct(gen_scope, s, s_impl, ser_impl, None);
+    push_exposed_struct(gen_scope, name, s, s_impl, ser_impl, None);
     // deserialize
     let mut deser_impl = codegen::Impl::new(&name.to_string());
     deser_impl.impl_trait("Deserialize");
