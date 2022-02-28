@@ -4,3 +4,4 @@
 pub const ANNOTATE_FIELDS: bool = true;
 pub const GENERATE_TO_FROM_BYTES: bool = true;
 pub const USE_EXTENDED_PRELUDE: bool = true;
+pub const BINARY_WRAPPERS: bool = true;
