@@ -3,7 +3,6 @@ use either::{Either};
 use std::collections::{BTreeMap};
 
 use crate::intermediate::{
-    AliasIdent,
     CDDLIdent,
     EnumVariant,
     FixedValue,
@@ -35,9 +34,9 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
             // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
             let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
             let generic_params = rule
-                .generic_param
+                .generic_params
                 .as_ref()
-                .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.to_string()))).collect::<Vec<_>>());
+                .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.param.to_string()))).collect::<Vec<_>>());
             if rule.value.type_choices.len() == 1 {
                 let choice = &rule.value.type_choices.first().unwrap();
                 parse_type(types, &rust_ident, choice, None, generic_params);
@@ -46,7 +45,7 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
             }
         },
         cddl::ast::Rule::Group{ rule, .. } => {
-            assert_eq!(rule.generic_param, None, "{}: Generics not supported on plain groups", rule.name);
+            assert_eq!(rule.generic_params, None, "{}: Generics not supported on plain groups", rule.name);
             // Freely defined group - no need to generate anything outside of group module
             match &rule.entry {
                 cddl::ast::GroupEntry::InlineGroup{ .. } => (),// already handled in main.rs
@@ -56,10 +55,10 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
     }
 }
 
-fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<Type1>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<TypeChoice>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let optional_inner_type = if type_choices.len() == 2 {
-        let a = &type_choices[0].type2;
-        let b = &type_choices[1].type2;
+        let a = &type_choices[0].type1.type2;
+        let b = &type_choices[1].type1.type2;
         if type2_is_null(a) {
             Some(b)
         } else if type2_is_null(b) {
@@ -105,9 +104,9 @@ fn type2_to_number_literal(type2: &Type2) -> isize {
     }
 }
 
-fn parse_range_operator(range: &(RangeCtlOp, Type2)) -> (Option<isize>, Option<isize>) {
+fn parse_range_operator(operator: &Operator) -> (Option<isize>, Option<isize>) {
     //todo: read up on other range control operators in CDDL RFC
-    match range.0 {
+    match operator.operator {
         RangeCtlOp::RangeOp{ .. } => panic!("Range Op only expected as 2nd type in range control operator"),
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
             ".default" |
@@ -115,34 +114,34 @@ fn parse_range_operator(range: &(RangeCtlOp, Type2)) -> (Option<isize>, Option<i
             ".cborseq" |
             ".within" |
             ".and" => todo!("control operator {} not supported", ctrl),
-            ".eq" => (Some(type2_to_number_literal(&range.1)), Some(type2_to_number_literal(&range.1))),
+            ".eq" => (Some(type2_to_number_literal(&operator.type2)), Some(type2_to_number_literal(&operator.type2))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            ".ne" => (Some(type2_to_number_literal(&range.1) + 1), Some(type2_to_number_literal(&range.1) - 1)),
-            ".le" => (None, Some(type2_to_number_literal(&range.1))),
-            ".lt" => (None, Some(type2_to_number_literal(&range.1) - 1)),
-            ".ge" => (Some(type2_to_number_literal(&range.1)), None),
-            ".gt" => (Some(type2_to_number_literal(&range.1) + 1), None),
-            ".size" => match &range.1 {
+            ".ne" => (Some(type2_to_number_literal(&operator.type2) + 1), Some(type2_to_number_literal(&operator.type2) - 1)),
+            ".le" => (None, Some(type2_to_number_literal(&operator.type2))),
+            ".lt" => (None, Some(type2_to_number_literal(&operator.type2) - 1)),
+            ".ge" => (Some(type2_to_number_literal(&operator.type2)), None),
+            ".gt" => (Some(type2_to_number_literal(&operator.type2) + 1), None),
+            ".size" => match &operator.type2 {
                 Type2::UintValue{ value, .. } => (Some(*value as isize), Some(*value as isize)),
                 Type2::IntValue{ value, .. } => (Some(*value), Some(*value)),
                 Type2::ParenthesizedType{ pt, .. } => {
                     assert_eq!(pt.type_choices.len(), 1);
-                    let inner_type = pt.type_choices.first().unwrap();
+                    let inner_type = &pt.type_choices.first().unwrap().type1;
                     let min = match inner_type.type2 {
                         Type2::UintValue{ value, .. } => Some(value as isize),
                         Type2::IntValue{ value, .. } => Some(value),
-                        _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+                        _ => unimplemented!("unsupoorted type in range control operator: {:?}", operator),
                     };
                     let max = match &inner_type.operator {
-                        Some((inner_range, inner_type_operator_t2)) => match inner_range {
+                        Some(op) => match op.operator {
                             RangeCtlOp::RangeOp{ is_inclusive, ..} => {
-                                let value = match inner_type_operator_t2 {
-                                    Type2::UintValue{ value, .. } => *value as isize,
-                                    Type2::IntValue{ value, ..} => *value,
-                                    _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+                                let value = match op.type2 {
+                                    Type2::UintValue{ value, .. } => value as isize,
+                                    Type2::IntValue{ value, ..} => value,
+                                    _ => unimplemented!("unsupoorted type in range control operator: {:?}", operator),
                                 };
-                                Some(if *is_inclusive { value } else { value + 1 })
+                                Some(if is_inclusive { value } else { value + 1 })
                             },
                             RangeCtlOp::CtlOp{ .. } => panic!(""),
                         },
@@ -150,17 +149,18 @@ fn parse_range_operator(range: &(RangeCtlOp, Type2)) -> (Option<isize>, Option<i
                     };
                     (min, max)
                 },
-                _ => unimplemented!("unsupoorted type in range control operator: {:?}", range),
+                _ => unimplemented!("unsupoorted type in range control operator: {:?}", operator),
             },
             _ => panic!("Unknown (not seen in RFC-8610) range control operator: {}", ctrl),
         }
     }
 }
 
-fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type1, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice: &TypeChoice, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+    let type1 = &type_choice.type1;
     let min_max = type1.operator.as_ref().map(parse_range_operator);
     match &type1.type2 {
-        Type2::Typename{ ident, generic_arg, .. } => {
+        Type2::Typename{ ident, generic_args, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
@@ -181,11 +181,11 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type
                         // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
                     },
                     None => {
-                        match generic_arg {
+                        match generic_args {
                             Some(arg) => {
                                 // This is for named generic instances such as:
                                 // foo = bar<text>
-                                let generic_args = arg.args.iter().map(|a| rust_type_from_type2(types, &a.type2)).collect();
+                                let generic_args = arg.args.iter().map(|a| rust_type_from_type2(types, &a.arg.type2)).collect();
                                 types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
                             },
                             None => {
@@ -212,7 +212,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type
             match t.type_choices.len() {
                 1 => {
                     let inner_type = &t.type_choices.first().unwrap();
-                    match match &inner_type.type2 {
+                    match match &inner_type.type1.type2 {
                         Type2::Typename{ ident, .. } => Either::Right(ident),
                         Type2::Map{ group, .. } => Either::Left(group),
                         Type2::Array{ group, .. } => Either::Left(group),
@@ -238,7 +238,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type
             types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Uint(*value)), true);
         },
         Type2::TextValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.clone())), true);
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.to_string())), true);
         },
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -247,16 +247,16 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type1: &Type
 }
 
 // TODO: Also generates individual choices if required, ie for a / [foo] / c would generate Foos
-pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, type_choices: &Vec<Type1>) -> Vec<EnumVariant> {
+pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, type_choices: &Vec<TypeChoice>) -> Vec<EnumVariant> {
     let mut variant_names_used = BTreeMap::<String, u32>::new();
-    type_choices.iter().map(|type1| {
-        let rust_type = rust_type_from_type2(types, &type1.type2);
+    type_choices.iter().map(|choice| {
+        let rust_type = rust_type_from_type2(types, &choice.type1.type2);
         let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant().to_string());
         EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
     }).collect()
 }
 
-fn table_domain_range(group_choice: &GroupChoice, rep: Representation) -> Option<(&Type2, &Type)> {
+fn table_domain_range<'a>(group_choice: &'a GroupChoice<'a>, rep: Representation) -> Option<(&'a Type2<'a>, &'a Type<'a>)> {
     // Here we test if this is a struct vs a table.
     // struct: { x: int, y: int }, etc
     // table: { * int => tstr }, etc
@@ -295,7 +295,7 @@ fn type2_is_null(t2: &Type2) -> bool {
 fn type_to_field_name(t: &Type) -> Option<String> {
     let type2_to_field_name = |t2: &Type2| match t2 {
         Type2::Typename{ ident, .. } => Some(ident.to_string()),
-            Type2::TextValue { value, .. } => Some(value.clone()),
+            Type2::TextValue { value, .. } => Some(value.to_string()),
             Type2::Array { group, .. } => match group.group_choices.len() {
                 1 => {
                     let entries = &group.group_choices.first().unwrap().group_entries;
@@ -319,11 +319,11 @@ fn type_to_field_name(t: &Type) -> Option<String> {
             _ => None
     };
     match t.type_choices.len() {
-        1 => type2_to_field_name(&t.type_choices.first().unwrap().type2),
+        1 => type2_to_field_name(&t.type_choices.first().unwrap().type1.type2),
         2 => {
             // special case for T / null -> maps to Option<T> so field name should be same as just T
-            let a = &t.type_choices[0].type2;
-            let b = &t.type_choices[1].type2;
+            let a = &t.type_choices[0].type1.type2;
+            let b = &t.type_choices[1].type1.type2;
             if type2_is_null(a) {
                 type2_to_field_name(b)
             } else if type2_is_null(b) {
@@ -338,11 +338,21 @@ fn type_to_field_name(t: &Type) -> Option<String> {
     }
 }
 
+fn _field_name_from_comments<'a>(comments: &Option<Comments<'a>>) -> Option<String> {
+    comments
+        .as_ref()?
+        .0
+        .iter()
+        .find(|c| c.trim().starts_with("field:"))
+        .map(|c| c.trim()[6..].trim().to_owned())
+}
+
 // Attempts to use the style-converted type name as a field name, and if we have already
 // generated one, then we simply add numerals starting at 2, 3, 4...
 // If you wish to only check if there is an explicitly stated field name,
 // then use group_entry_to_raw_field_name()
 fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>) -> String {
+    //println!("group_entry_to_field_name() = {:#?}", entry);
     let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
             Some(member_key) => match member_key {
@@ -352,6 +362,7 @@ fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated
                     Type2::UintValue{ value, .. } => format!("key_{}", value),
                     _ => panic!("Encountered Type1 member key in multi-field map - not supported: {:?}", entry),
                 },
+                MemberKey::NonMemberKey{ .. } => panic!("Please open a github issue with repro steps"),
             },
             None => {
                 type_to_field_name(&ge.entry_type).unwrap_or_else(|| format!("index_{}", index))
@@ -389,16 +400,16 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
         Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
-        Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.clone())),
-        Type2::Typename{ ident, generic_arg, .. } => {
-            let cddl_ident = CDDLIdent::new(&ident.ident);
-            match generic_arg {
+        Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.to_string())),
+        Type2::Typename{ ident, generic_args, .. } => {
+            let cddl_ident = CDDLIdent::new(ident.ident);
+            match generic_args {
                 Some(args) => {
                     // This is for anonymous instances (i.e. members) such as:
                     // foo = [a: bar<text, bool>]
                     // so to be able to expose it to wasm, we create a new generic instance
                     // under the name bar_string_bool in this case.
-                    let generic_args = args.args.iter().map(|a| rust_type_from_type2(types, &a.type2)).collect::<Vec<_>>();
+                    let generic_args = args.args.iter().map(|a| rust_type_from_type2(types, &a.arg.type2)).collect::<Vec<_>>();
                     let args_name = generic_args.iter().map(|t| t.for_variant().to_string()).collect::<Vec<String>>().join("_");
                     let instance_cddl_ident = CDDLIdent::new(format!("{}_{}", cddl_ident, args_name));
                     let instance_ident = RustIdent::new(instance_cddl_ident.clone());
@@ -469,12 +480,12 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
 
 fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
     if t.type_choices.len() == 1 {
-        rust_type_from_type2(types, &t.type_choices.first().unwrap().type2)
+        rust_type_from_type2(types, &t.type_choices.first().unwrap().type1.type2)
     } else {
         if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
-            let a = &t.type_choices[0].type2;
-            let b = &t.type_choices[1].type2;
+            let a = &t.type_choices[0].type1.type2;
+            let b = &t.type_choices[1].type1.type2;
             if type2_is_null(a) {
                 return RustType::Optional(Box::new(rust_type_from_type2(types, b)));
             }
@@ -500,21 +511,25 @@ fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
 }
 
 fn group_entry_optional(entry: &GroupEntry) -> bool {
-    match match entry {
+    let occur = match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => &ge.occur,
         GroupEntry::TypeGroupname{ ge, .. } => &ge.occur,
         GroupEntry::InlineGroup{ .. } => panic!("inline group entries are not implemented"),
-    } {
-        Some(Occur::Optional(_)) => true,
-        _ => false,
-    }
+    };
+    occur
+        .as_ref()
+        .map(|o| match o.occur {
+            Occur::Optional(_) => true,
+            _ => false,
+        })
+        .unwrap_or(false)
 }
 
 fn group_entry_to_type(types: &mut IntermediateTypes, entry: &GroupEntry) -> RustType {
     let ret = match entry {
         GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, &ge.entry_type),
         GroupEntry::TypeGroupname{ ge, .. } => {
-            if ge.generic_arg.is_some() {
+            if ge.generic_args.is_some() {
                 // I am not sure how we end up with this kind of generic args since definitional ones
                 // and member ones are created elsewhere. I thought that if you had a field like
                 // foo: bar<uint> it would be here but it turns out it's in the ValueMemberKey
@@ -537,16 +552,17 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
                 MemberKey::Value{ value, .. } => match value {
                     cddl::token::Value::UINT(x) => Some(FixedValue::Uint(*x)),
                     cddl::token::Value::INT(x) => Some(FixedValue::Int(*x)),
-                    cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.clone())),
+                    cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.to_string())),
                     _ => panic!("unsupported map identifier(1): {:?}", value),
                 },
                 MemberKey::Bareword{ ident, .. } => Some(FixedValue::Text(ident.to_string())),
                 MemberKey::Type1{ t1, .. } => match &t1.type2 {
                     Type2::UintValue{ value, .. } => Some(FixedValue::Uint(*value)),
                     Type2::IntValue{ value, .. } => Some(FixedValue::Int(*value)),
-                    Type2::TextValue{ value, .. } => Some(FixedValue::Text(value.clone())),
+                    Type2::TextValue{ value, .. } => Some(FixedValue::Text(value.to_string())),
                     _ => panic!("unsupported map identifier(2): {:?}", entry),
                 },
+                MemberKey::NonMemberKey{ .. } => panic!("Please open a github issue with repro steps"),
             }
         },
         _ => None,
@@ -577,7 +593,7 @@ fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representa
     }
 }
 
-fn parse_group_choice(types: &mut IntermediateTypes, group_choice: &GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_group_choice<'a>(types: &mut IntermediateTypes, group_choice: &'a GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let table_types = table_domain_range(group_choice, rep);
     let rust_struct = match table_types {
         // Table map - homogenous key/value types
