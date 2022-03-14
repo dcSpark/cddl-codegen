@@ -1037,11 +1037,15 @@ impl RustRecord {
             if field.optional {
                 return None;
             }
-            count += field.rust_type.expanded_field_count(types)?;
+            count += match self.rep {
+                Representation::Array => field.rust_type.expanded_field_count(types)?,
+                Representation::Map => 1,
+            };
         }
         Some(count)
     }
 
+    // This is guaranteed 
     pub fn definite_info(&self, types: &IntermediateTypes) -> Option<String> {
         match self.fixed_field_count(types) {
             Some(count) => Some(count.to_string()),
@@ -1053,16 +1057,26 @@ impl RustRecord {
                         if !conditional_field_expr.is_empty() {
                             conditional_field_expr.push_str(" + ");
                         }
-                        conditional_field_expr.push_str(&format!("match &self.{} {{ Some(x) => {}, None => 0 }}", field.name, field.rust_type.definite_info("x", types)?));
+                        let (field_expr, field_contribution) = match self.rep {
+                            Representation::Array => ("x", field.rust_type.definite_info("x", types)?),
+                            // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
+                            Representation::Map => ("_", String::from("1")),
+                        };
+                        conditional_field_expr.push_str(&format!("match &self.{} {{ Some({}) => {}, None => 0 }}", field.name, field_expr, field_contribution));
                     } else {
-                        match field.rust_type.expanded_field_count(types) {
-                            Some(field_expanded_count) => fixed_field_count += field_expanded_count,
-                            None => {
-                                if !conditional_field_expr.is_empty() {
-                                    conditional_field_expr.push_str(" + ");
-                                }
-                                let field_len_expr = field.rust_type.definite_info(&format!("self.{}", field.name), types)?;
-                                conditional_field_expr.push_str(&field_len_expr);
+                        match self.rep {
+                            Representation::Array => match field.rust_type.expanded_field_count(types) {
+                                Some(field_expanded_count) => fixed_field_count += field_expanded_count,
+                                None => {
+                                    if !conditional_field_expr.is_empty() {
+                                        conditional_field_expr.push_str(" + ");
+                                    }
+                                    let field_len_expr = field.rust_type.definite_info(&format!("self.{}", field.name), types)?;
+                                    conditional_field_expr.push_str(&field_len_expr);
+                                },
+                            },
+                            Representation::Map => {
+                                fixed_field_count += 1;
                             },
                         };
                     }
