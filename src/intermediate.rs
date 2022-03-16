@@ -331,6 +331,18 @@ impl FixedValue {
             FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
         }
     }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = cbor_event::se::Serializer::new_vec();
+        match self {
+            FixedValue::Null => buf.write_special(cbor_event::Special::Null),
+            FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
+            FixedValue::Int(i) => buf.write_negative_integer(*i as i64),
+            FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
+            FixedValue::Text(s) => buf.write_text(s),
+        }.expect("Unable to serialize key for canonical ordering");
+        buf.finalize()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1099,6 +1111,21 @@ impl RustRecord {
             Some(fixed_count) => RustStructCBORLen::Fixed(fixed_count),
             None => RustStructCBORLen::OptionalFields(self.expanded_mandatory_field_count(types)),
         }
+    }
+
+    pub fn canonical_ordering<'a>(&'a self) -> Vec<(usize, &'a RustField)> {
+        let mut fields: Vec<(usize, &'a RustField)> = self.fields.iter().enumerate().collect();
+        if self.rep == Representation::Map {
+            fields.sort_by(|lhs, rhs| {
+                let lhs_bytes = lhs.1.key.as_ref().unwrap().to_bytes();
+                let rhs_bytes = rhs.1.key.as_ref().unwrap().to_bytes();
+                match lhs_bytes.len().cmp(&rhs_bytes.len()) {
+                    std::cmp::Ordering::Equal => lhs_bytes.cmp(&rhs_bytes),
+                    diff_ord => diff_ord,
+                }
+            });
+        }
+        fields
     }
 }
 
