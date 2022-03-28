@@ -50,7 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
         // does not work.
         gen_scope.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
-        gen_scope.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
+        if cmd::PRESERVE_ENCODINGS && cmd::CANONICAL_FORM {
+            gen_scope.scope().raw("use cbor_event::{self, de::Deserializer, se::Serializer};");
+        } else {
+            gen_scope.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
+        }
         gen_scope.scope().import("std::io", "{BufRead, Seek, Write}");
         gen_scope.scope().import("wasm_bindgen::prelude", "*");
         gen_scope.scope().import("prelude", "*");
@@ -75,7 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write("export/src/lib.rs", gen_scope.scope().to_string()).unwrap();
     std::fs::write("export/src/serialization.rs", gen_scope.serialize_scope().to_string()).unwrap();
     std::fs::copy("static/Cargo.toml", "export/Cargo.toml").unwrap();
-    std::fs::copy("static/prelude.rs", "export/src/prelude.rs").unwrap();
+    if cmd::PRESERVE_ENCODINGS && cmd::CANONICAL_FORM {
+        std::fs::copy("static/prelude_canonical.rs", "export/src/prelude.rs").unwrap();
+    } else {
+        std::fs::copy("static/prelude.rs", "export/src/prelude.rs").unwrap();
+    }
 
     types.print_info();
 
