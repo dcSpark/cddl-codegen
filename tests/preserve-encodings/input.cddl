@@ -1,0 +1,16 @@
+foo = [uint, text, bytes]
+
+bar = {
+	foo: #6.13(foo),
+	? derp: uint,
+	1 : uint / null,
+	? 5: text,
+	five: 5,
+}
+
+table = { * uint => text }
+
+table_arr_members = {
+	arr: [*u32],
+	arr2: [*foo],
+}
