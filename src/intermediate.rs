@@ -604,7 +604,7 @@ impl RustType {
         if RustType::Array(Box::new(self.clone())).directly_wasm_exposable() {
             format!("Vec<{}>", self.for_member())
         } else {
-            format!("{}s", self.for_member())
+            format!("{}s", self.for_variant())
         }
     }
 
