@@ -1,7 +1,7 @@
 use cbor_event::Type as CBORType;
 use std::collections::{BTreeMap};
 
-use crate::cmd::USE_EXTENDED_PRELUDE;
+use crate::cli::CLI_ARGS;
 
 pub fn _cbor_type_code_str(cbor_type: CBORType) -> &'static str {
     match cbor_type {
@@ -161,7 +161,7 @@ fn is_identifier_in_our_prelude(name: &str) -> bool {
 }
 
 pub fn is_identifier_user_defined(name: &str) -> bool {
-    !is_identifier_reserved(name) && (!USE_EXTENDED_PRELUDE || !is_identifier_in_our_prelude(name))
+    !is_identifier_reserved(name) && (!CLI_ARGS.extended_prelude || !is_identifier_in_our_prelude(name))
 }
 
 pub fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: String) -> String {
