@@ -2,10 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
 
-use crate::cmd::{
-    BINARY_WRAPPERS,
-    USE_EXTENDED_PRELUDE,
-};
+use crate::cli::CLI_ARGS;
 use crate::utils::{
     cddl_prelude,
     convert_to_camel_case,
@@ -59,7 +56,7 @@ impl<'a> IntermediateTypes<'a> {
         };
         insert_alias("uint", RustType::Primitive(Primitive::U64));
         insert_alias("nint", RustType::Primitive(Primitive::N64));
-        if USE_EXTENDED_PRELUDE {
+        if CLI_ARGS.extended_prelude {
             // We also provide non-standard 32-bit variants for ease of use from wasm
             insert_alias("u32", RustType::Primitive(Primitive::U32));
             insert_alias("i32", RustType::Primitive(Primitive::I32));
@@ -101,7 +98,7 @@ impl<'a> IntermediateTypes<'a> {
             RustType::Alias(_, ty) => ty,
             ty => ty,
         };
-        if BINARY_WRAPPERS {
+        if CLI_ARGS.binary_wrappers {
             // if we're not literally bytes/bstr, and instead an alias for it
             // we would have generated a named wrapper object so we should
             // refer to that instead
@@ -604,7 +601,7 @@ impl RustType {
         if RustType::Array(Box::new(self.clone())).directly_wasm_exposable() {
             format!("Vec<{}>", self.for_member())
         } else {
-            format!("{}s", self.for_member())
+            format!("{}s", self.for_variant())
         }
     }
 

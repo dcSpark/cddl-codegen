@@ -1,8 +1,10 @@
-pub (crate) mod cmd;
+pub (crate) mod cli;
 pub (crate) mod generation;
 pub (crate) mod intermediate;
 pub (crate) mod parsing;
 pub (crate) mod utils;
+#[cfg(test)]
+mod test;
 
 use generation::GenerationScope;
 use intermediate::{
@@ -12,9 +14,10 @@ use intermediate::{
 };
 use parsing::{parse_rule};
 
+use cli::CLI_ARGS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string("input.cddl").expect("input.cddl file not present or could not be opened");
+    let cddl_in = std::fs::read_to_string(CLI_ARGS.input.clone()).expect("input.cddl file not present or could not be opened");
     let mut lexer = cddl::lexer::lexer_from_str(&cddl_in);
     let cddl = cddl::parser::cddl_from_str(&mut lexer, &cddl_in, true)?;
     // println!("{:#?}", cddl);
@@ -50,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
         // does not work.
         gen_scope.scope().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
-        if cmd::PRESERVE_ENCODINGS && cmd::CANONICAL_FORM {
+        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
             gen_scope.scope().raw("use cbor_event::{self, de::Deserializer, se::Serializer};");
         } else {
             gen_scope.scope().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
@@ -75,14 +78,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(()) => (),
         Err(_) => (),
     };
-    std::fs::create_dir_all("export/src").unwrap();
-    std::fs::write("export/src/lib.rs", gen_scope.scope().to_string()).unwrap();
-    std::fs::write("export/src/serialization.rs", gen_scope.serialize_scope().to_string()).unwrap();
-    std::fs::copy("static/Cargo.toml", "export/Cargo.toml").unwrap();
-    if cmd::PRESERVE_ENCODINGS && cmd::CANONICAL_FORM {
-        std::fs::copy("static/prelude_canonical.rs", "export/src/prelude.rs").unwrap();
+    std::fs::create_dir_all(CLI_ARGS.output.join("src")).unwrap();
+    std::fs::write(CLI_ARGS.output.join("src/lib.rs"), gen_scope.scope().to_string()).unwrap();
+    std::fs::write(CLI_ARGS.output.join("src/serialization.rs"), gen_scope.serialize_scope().to_string()).unwrap();
+    std::fs::copy("static/Cargo.toml", CLI_ARGS.output.join("Cargo.toml")).unwrap();
+    if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+        std::fs::copy("static/prelude_canonical.rs", CLI_ARGS.output.join("src/prelude.rs")).unwrap();
     } else {
-        std::fs::copy("static/prelude.rs", "export/src/prelude.rs").unwrap();
+        std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("src/prelude.rs")).unwrap();
     }
 
     types.print_info();
