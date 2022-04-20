@@ -1,6 +1,6 @@
 use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
 use std::io::{BufRead, Seek, Write};
-use wasm_bindgen::prelude::*;
+//use wasm_bindgen::prelude::*;
 
 #[derive(Debug)]
 pub enum Key {
@@ -162,22 +162,22 @@ impl<T: cbor_event::se::Serialize> ToBytes for T {
 }
 
 pub trait FromBytes {
-    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> where Self: Sized;
+    fn from_bytes(data: Vec<u8>) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
 impl<T: Deserialize + Sized> FromBytes for T {
-    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> {
+    fn from_bytes(data: Vec<u8>) -> Result<Self, DeserializeError> {
         let mut raw = Deserializer::from(std::io::Cursor::new(data));
-        Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))
+        Self::deserialize(&mut raw)
     }
 }
 
 // CBOR has int = int / nint
-#[wasm_bindgen]
+//#[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Int(i128);
 
-#[wasm_bindgen]
+//#[wasm_bindgen]
 impl Int {
     pub fn new(x: u64) -> Self {
         Self(x as i128)
