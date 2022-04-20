@@ -24,7 +24,7 @@ fn run_test(dir: &str, options: &[&str]) {
     let mut lib_rs = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
-        .open(test_path.join("export/src/lib.rs"))
+        .open(test_path.join("export/core/src/lib.rs"))
         .unwrap();
     let deser_test_rs = std::fs::read_to_string(std::path::PathBuf::from_str("tests").unwrap().join("deser_test")).unwrap();
     lib_rs.write("\n\n".as_bytes()).unwrap();
@@ -36,7 +36,7 @@ fn run_test(dir: &str, options: &[&str]) {
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
         .arg("test")
-        .current_dir(test_path.join("export"))
+        .current_dir(test_path.join("export/core"))
         .output()
         .unwrap();
     if !cargo_test.status.success() {
@@ -59,4 +59,9 @@ fn preserve_encodings() {
 #[test]
 fn canonical() {
     run_test("canonical", &["--preserve-encodings=true", "--canonical-form=true"]);
+}
+
+#[test]
+fn rust_wasm_split() {
+    run_test("rust-wasm-split", &[]);
 }

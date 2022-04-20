@@ -441,7 +441,8 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
             };
-            let array_wrapper_name = element_type.name_as_array();
+            
+            let array_wrapper_name = element_type.name_as_wasm_array();
             types.create_and_register_array_type(element_type, &array_wrapper_name)
         },
         Type2::Map { group, .. } => {
@@ -458,7 +459,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
                             // defined as part of another type if we're in this level of parsing.
                             // We also can't have plain groups unlike arrays, so don't try and generate those
                             // for general map types we can though but not for tables
-                            let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_member(), value_type.for_member())));
+                            let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_wasm_member(), value_type.for_wasm_member())));
                             types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
                             RustType::Map(Box::new(key_type), Box::new(value_type))
                         },
