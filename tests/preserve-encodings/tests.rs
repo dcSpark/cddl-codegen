@@ -27,14 +27,14 @@ mod tests {
 
     #[test]
     fn struct_map() {
-        let mut bar = Bar::new(&Foo::new(9, String::from("abc"), vec![6, 4]), None);
+        let mut bar = Bar::new(Foo::new(9, String::from("abc"), vec![6, 4]), None);
         // quick test without key 5
         deser_test(&bar);
         bar.definite_encoding = false;
         deser_test(&bar);
         bar.definite_encoding = true;
         // full test with key 5 (but without key "derp")
-        bar.set_key_5(String::from("text"));
+        bar.key_5 = Some("text".into());
         let definite_bytes = bar.to_bytes();
         bar.definite_encoding = false;
         deser_test(&bar);
@@ -76,36 +76,18 @@ mod tests {
     }
 
     #[test]
-    fn table() {
-        let mut orig = Table::new();
-        orig.insert(16, String::from("Sixteen"));
-        orig.insert(4, String::from("Four"));
-        orig.insert(8, String::from("Eight"));
-        deser_test(&orig);
-        orig.definite_encoding = false;
-        let expected_bytes = vec![
-            vec![MAP_INDEF],
-                vec![16u8],
-                    cbor_string("Sixteen"),
-                vec![0x04],
-                    cbor_string("Four"),
-                vec![0x08],
-                    cbor_string("Eight"),
-            vec![BREAK]
-        ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert_eq!(orig.to_bytes(), expected_bytes);
-        let deser: Table = from_bytes(expected_bytes).unwrap();
-        assert_eq!(orig, deser);
-    }
-
-    #[test]
     fn table_arr_members() {
-        let mut foos = Foos::new();
-        foos.add(&Foo::new(0, String::from("Zero"), vec![]));
-        let orig = TableArrMembers::new(vec![1, 3, 6], &foos);
+        let mut table = linked_hash_map::LinkedHashMap::new();
+        table.insert(0, "zero".into());
+        table.insert(32, "thirty two".into());
+        let orig = TableArrMembers::new(
+            vec![1, 3, 6],
+            vec![Foo::new(0, String::from("Zero"), vec![])],
+            table.clone(),
+        );
         deser_test(&orig);
         let expected = vec![
-            map_def(2),
+            map_def(3),
                 cbor_string("arr"),
                     arr_def(3),
                         vec![0x01, 0x03, 0x06],
@@ -115,6 +97,12 @@ mod tests {
                             vec![0x00],
                             cbor_string("Zero"),
                             vec![0x40],
+                cbor_string("table"),
+                    map_def(2),
+                        vec![0x00],
+                            cbor_string("zero"),
+                        vec![0x18, 0x20],
+                            cbor_string("thirty two"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         assert_eq!(orig.to_bytes(), expected);
         let indef_other_order = vec![
@@ -127,6 +115,13 @@ mod tests {
                             vec![0x40],
                         vec![BREAK],
                     vec![BREAK],
+                cbor_string("table"),
+                    vec![MAP_INDEF],
+                        vec![0x18, 0x20],
+                            cbor_string("thirty two"),
+                        vec![0x00],
+                            cbor_string("zero"),
+                    vec![BREAK],
                 cbor_string("arr"),
                     vec![ARR_INDEF],
                         vec![0x01, 0x03, 0x06],
@@ -136,23 +131,30 @@ mod tests {
         let mut other_order: TableArrMembers = from_bytes(indef_other_order.clone()).unwrap();
         assert_eq!(other_order.to_bytes(), indef_other_order);
         deser_test(&other_order);
+        
         assert_eq!(orig.orig_deser_order, None);
         assert_eq!(orig.definite_encoding, true);
         assert_eq!(orig.arr_definite_encoding, true);
-        assert_eq!(orig.arr2.definite_encoding, true);
-        assert_eq!(orig.arr2.elems[0].definite_encoding, true);
-        assert_eq!(other_order.orig_deser_order, Some(vec![1, 0]));
+        assert_eq!(orig.arr2_definite_encoding, true);
+        assert_eq!(orig.arr2[0].definite_encoding, true);
+        assert_eq!(orig.table_definite_encoding, true);
+
+        assert_eq!(other_order.orig_deser_order, Some(vec![1, 2, 0]));
         assert_eq!(other_order.definite_encoding, false);
         assert_eq!(other_order.arr_definite_encoding, false);
-        assert_eq!(other_order.arr2.definite_encoding, false);
-        assert_eq!(other_order.arr2.elems[0].definite_encoding, false);
+        assert_eq!(other_order.arr2_definite_encoding, false);
+        assert_eq!(other_order.arr2[0].definite_encoding, false);
+        assert_eq!(other_order.table_definite_encoding, false);
+        
         other_order.orig_deser_order = None;
         other_order.definite_encoding = true;
         other_order.arr_definite_encoding = true;
-        other_order.arr2.definite_encoding = true;
-        other_order.arr2.elems[0].definite_encoding = true;
+        other_order.arr2_definite_encoding = true;
+        other_order.arr2[0].definite_encoding = true;
+        other_order.table_definite_encoding = true;
+        other_order.table = table;
         assert_eq!(orig, other_order);
-        other_order.orig_deser_order = Some(vec![0, 1]);
+        other_order.orig_deser_order = Some(vec![0, 1, 2]);
         assert_eq!(orig.to_bytes(), other_order.to_bytes());
     }
 }

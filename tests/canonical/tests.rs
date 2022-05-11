@@ -73,64 +73,53 @@ mod tests {
     }
 
     #[test]
-    fn table() {
-        let non_canonical_bytes = vec![
-            vec![MAP_INDEF],
-                vec![16u8],
-                cbor_string("Sixteen"),
-                vec![0x04],
-                cbor_string("Four"),
-                vec![0x08],
-                cbor_string("Eight"),
-            vec![BREAK]
-        ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let table: Table = from_bytes(non_canonical_bytes.clone()).unwrap();
-        assert_eq!(table.to_bytes(false), non_canonical_bytes);
-        let canonical_bytes = vec![
-            map_def(3),
-                vec![0x04],
-                cbor_string("Four"),
-                vec![0x08],
-                cbor_string("Eight"),
-                vec![16u8],
-                cbor_string("Sixteen"),
-        ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert_eq!(table.to_bytes(true), canonical_bytes);
-        deser_test(&table, true);
-        deser_test(&table, false);
-    }
-
-    #[test]
     fn table_arr_members() {
         let non_canonical_bytes = vec![
             vec![MAP_INDEF],
                 cbor_string("arr2"),
-                vec![ARR_INDEF],
                     vec![ARR_INDEF],
-                        vec![0x00],
-                        cbor_string("Zero"),
-                        vec![0x40],
+                        vec![ARR_INDEF],
+                            vec![0x00],
+                            cbor_string("Zero"),
+                            vec![0x40],
+                        vec![BREAK],
                     vec![BREAK],
-                vec![BREAK],
+                cbor_string("table"),
+                    vec![MAP_INDEF],
+                        vec![16u8],
+                            cbor_string("Sixteen"),
+                        vec![0x04],
+                            cbor_string("Four"),
+                        vec![0x08],
+                            cbor_string("Eight"),
+                    vec![BREAK],
                 cbor_string("arr"),
-                vec![ARR_INDEF],
-                    vec![0x01, 0x03, 0x06],
-                vec![BREAK],
+                    vec![ARR_INDEF],
+                        vec![0x01, 0x03, 0x06],
+                    vec![BREAK],
             vec![BREAK],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         let table: TableArrMembers = from_bytes(non_canonical_bytes.clone()).unwrap();
         assert_eq!(table.to_bytes(false), non_canonical_bytes);
         let canonical_bytes = vec![
-            map_def(2),
+            map_def(3),
                 cbor_string("arr"),
-                arr_def(3),
-                    vec![0x01, 0x03, 0x06],
-                cbor_string("arr2"),
-                arr_def(1),
                     arr_def(3),
-                        vec![0x00],
-                        cbor_string("Zero"),
-                        vec![0x40],
+                        vec![0x01, 0x03, 0x06],
+                cbor_string("arr2"),
+                    arr_def(1),
+                        arr_def(3),
+                            vec![0x00],
+                            cbor_string("Zero"),
+                            vec![0x40],
+                cbor_string("table"),
+                    map_def(3),
+                        vec![0x04],
+                            cbor_string("Four"),
+                        vec![0x08],
+                            cbor_string("Eight"),
+                        vec![16u8],
+                            cbor_string("Sixteen"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         assert_eq!(table.to_bytes(true), canonical_bytes);
         deser_test(&table, true);
