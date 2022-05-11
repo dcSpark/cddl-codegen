@@ -66,15 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .rust()
             .raw("use cbor_event::Type as CBORType;")
             .raw("use cbor_event::Special as CBORSpecial;")
-            .raw("mod prelude;")
-            .raw("mod serialization;");
+            .raw("use serialization::*;")
+            .raw("pub mod prelude;")
+            .raw("pub mod serialization;");
         gen_scope.rust_serialize().import("super", "*");
         gen_scope.rust_serialize().import("std::io", "{Seek, SeekFrom}");
 
         // Wasm
         if CLI_ARGS.wasm {
             gen_scope.wasm().import("wasm_bindgen::prelude", "*");
-            //gen_scope.wasm().import("core", "*");
+            gen_scope.wasm().raw("mod prelude;");
         }
         for cddl_rule in &cddl.rules {
             println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
@@ -89,17 +90,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     std::fs::create_dir_all(CLI_ARGS.output.join("core/src")).unwrap();
     std::fs::write(CLI_ARGS.output.join("core/src/lib.rs"), gen_scope.rust().to_string()).unwrap();
-    std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), gen_scope.rust_serialize().to_string()).unwrap();
-    std::fs::copy("static/Cargo_rust.toml", CLI_ARGS.output.join("core/Cargo.toml")).unwrap();
-    
-    if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-        std::fs::copy("static/prelude_canonical.rs", CLI_ARGS.output.join("core/src/prelude.rs")).unwrap();
+    let serialize_prepend_dir = if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+        "static/serialize_canonical.rs"
     } else {
-        std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs")).unwrap();
-    }
+        "static/serialize_non_canonical.rs"
+    };
+    let mut serialize_contents = std::fs::read_to_string(serialize_prepend_dir).unwrap();
+    serialize_contents.push_str(&gen_scope.rust_serialize().to_string());
+    std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), serialize_contents).unwrap();
+    std::fs::copy("static/Cargo_rust.toml", CLI_ARGS.output.join("core/Cargo.toml")).unwrap();
+    std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs")).unwrap();
     if CLI_ARGS.wasm {
         std::fs::create_dir_all(CLI_ARGS.output.join("wasm/src")).unwrap();
         std::fs::write(CLI_ARGS.output.join("wasm/src/lib.rs"), gen_scope.wasm().to_string()).unwrap();
+        std::fs::copy("static/prelude_wasm.rs", CLI_ARGS.output.join("wasm/src/prelude.rs")).unwrap();
         std::fs::copy("static/Cargo_wasm.toml", CLI_ARGS.output.join("wasm/Cargo.toml")).unwrap();
     }
 
