@@ -3,6 +3,8 @@ use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
 
 use crate::cli::CLI_ARGS;
+// TODO: move all of these generation specifics into generation.rs
+use crate::generation::table_type;
 use crate::utils::{
     cddl_prelude,
     convert_to_camel_case,
@@ -19,12 +21,13 @@ pub struct IntermediateTypes<'a> {
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group<'a>>>,
-    // (Type, whether to generate a rust type alias statement)
-    type_aliases: BTreeMap<AliasIdent, (RustType, bool)>,
+    // (Type, whether to generate a rust type alias statement, whether to generate it for wasm)
+    type_aliases: BTreeMap<AliasIdent, (RustType, bool, bool)>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
     generic_defs: BTreeMap<RustIdent, GenericDef>,
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
+    news_can_fail: BTreeSet<RustIdent>,
 }
 
 impl<'a> IntermediateTypes<'a> {
@@ -36,10 +39,11 @@ impl<'a> IntermediateTypes<'a> {
             prelude_to_emit: BTreeSet::new(),
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
+            news_can_fail: BTreeSet::new(),
         }
     }
 
-    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool)> {
+    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool, bool)> {
         &self.type_aliases
     }
 
@@ -47,12 +51,12 @@ impl<'a> IntermediateTypes<'a> {
         &self.rust_structs
     }
 
-    fn aliases() -> BTreeMap<idents::AliasIdent, (RustType, bool)> {
+    fn aliases() -> BTreeMap<idents::AliasIdent, (RustType, bool, bool)> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
-        let mut aliases = BTreeMap::<AliasIdent, (RustType, bool)>::new();
+        let mut aliases = BTreeMap::<AliasIdent, (RustType, bool, bool)>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident.clone(), (rust_type, false));
+            aliases.insert(ident.clone(), (rust_type, false, false));
         };
         insert_alias("uint", RustType::Primitive(Primitive::U64));
         insert_alias("nint", RustType::Primitive(Primitive::N64));
@@ -122,10 +126,10 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see new_type() for why this is mut
-    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
+    fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some((alias, _)) => Some(alias.clone()),
+            Some((alias, _, _)) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => if reserved == "int" {
@@ -141,11 +145,11 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    pub fn register_type_alias(&mut self, alias: RustIdent, base_type: RustType, generate_rust_alias: bool) {
+    pub fn register_type_alias(&mut self, alias: RustIdent, base_type: RustType, generate_rust_alias: bool, generate_wasm_alias: bool) {
         if let RustType::Alias(_ident, _ty) = &base_type {
             panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
         }
-        self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias));
+        self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias, generate_wasm_alias));
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {
@@ -154,14 +158,44 @@ impl<'a> IntermediateTypes<'a> {
 
     // this is called by register_table_type / register_array_type automatically
     pub fn register_rust_struct(&mut self, rust_struct: RustStruct) {
-        // we must provide the keys type to return
-        if let RustStructType::Table { domain, .. } = &rust_struct.variant {
-            self.create_and_register_array_type(domain.clone(), &domain.name_as_array());
+        match &rust_struct.variant {
+            RustStructType::Table { domain, range } => {
+                // we must provide the keys type to return
+                if CLI_ARGS.wasm {
+                    self.create_and_register_array_type(domain.clone(), &domain.name_as_wasm_array());
+                }
+                if rust_struct.tag.is_none() {
+                    self.register_type_alias(
+                        rust_struct.ident.clone(),
+                        RustType::Map(Box::new(domain.clone()), Box::new(range.clone())),
+                        true,
+                        false)
+                } else {
+                    unimplemented!("what to do here?");
+                }
+            },
+            RustStructType::Array { element_type } => {
+                if rust_struct.tag.is_none() {
+                    self.register_type_alias(
+                        rust_struct.ident.clone(),
+                        RustType::Array(Box::new(element_type.clone())),
+                        true,
+                        false)
+                } else {
+                    unimplemented!("what to do here?");
+                }
+            },
+            RustStructType::Wrapper { min_max: Some(_) , ..} => {
+                self.mark_new_can_fail(rust_struct.ident.clone());
+            },
+            _ => (),
         }
         self.rust_structs.insert(rust_struct.ident().clone(), rust_struct);
     }
 
     // creates a RustType for the array type - and if needed, registers a type to generate
+    // TODO: After the split we should be able to only register it directly
+    // and then examine those at generation-time and handle things ALWAYS as RustType::Array
     pub fn create_and_register_array_type(&mut self, element_type: RustType, array_type_name: &str) -> RustType {
         let raw_arr_type = RustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
@@ -237,6 +271,14 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn is_plain_group(&self, name: &RustIdent) -> bool {
         self.plain_groups.contains_key(name)
+    }
+
+    fn mark_new_can_fail(&mut self, name: RustIdent) {
+        self.news_can_fail.insert(name);
+    }
+
+    pub fn can_new_fail(&self, name: &RustIdent) -> bool {
+        self.news_can_fail.contains(name)
     }
 
     pub fn print_info(&self) {
@@ -549,6 +591,17 @@ pub enum RustType {
 }
 
 impl RustType {
+    pub fn resolve_aliases(self) -> Self {
+        match self {
+            RustType::Array(ty) => RustType::Array(Box::new(ty.resolve_aliases())),
+            RustType::Tagged(tag, ty) => RustType::Tagged(tag, Box::new(ty.resolve_aliases())),
+            RustType::Alias(_, ty) => *ty,
+            RustType::Map(key, value) => RustType::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
+            RustType::Optional(ty) => RustType::Optional(Box::new(ty.resolve_aliases())),
+            _ => self,
+        }
+    }
+
     pub fn directly_wasm_exposable(&self) -> bool {
         match self {
             RustType::Fixed(_) => false,
@@ -597,59 +650,124 @@ impl RustType {
         }
     }
 
-    pub fn name_as_array(&self) -> String {
+    pub fn name_as_wasm_array(&self) -> String {
         if RustType::Array(Box::new(self.clone())).directly_wasm_exposable() {
-            format!("Vec<{}>", self.for_member())
+            format!("Vec<{}>", self.for_wasm_member())
         } else {
             format!("{}s", self.for_variant())
         }
     }
 
+    pub fn name_as_rust_array(&self, from_wasm: bool) -> String {
+        format!("Vec<{}>", self.for_rust_member(from_wasm))
+    }
+
+    /// Function parameter TYPE that will be moved in
+    pub fn for_rust_move(&self) -> String {
+        self.for_rust_member(false)
+    }
+
+    /// Function parameter TYPE by-non-mut-reference for read-only
+    pub fn for_rust_read(&self) -> String {
+        match self {
+            RustType::Fixed(_) => panic!("should not expose Fixed type, only here for serialization: {:?}", self),
+            RustType::Primitive(p) => p.to_string(),
+            RustType::Rust(ident) => format!("&{}", ident),
+            RustType::Array(ty) => format!("&{}", ty.name_as_rust_array(false)),
+            RustType::Tagged(_tag, ty) => ty.for_rust_read(),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_rust_read()),
+            RustType::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
+            RustType::Alias(ident, ty) => match &**ty {
+                // TODO: ???
+                RustType::Rust(_) => format!("&{}", ident),
+                
+                _ => ident.to_string(),
+            },
+        }
+    }
+
+    /// Function parameter TYPE from wasm (i.e. ref for non-primitives, value for supported primitives)
     pub fn for_wasm_param(&self) -> String {
-        let x = match self {
+        match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
             RustType::Primitive(p) => p.to_string(),
             RustType::Rust(ident) => format!("&{}", ident),
             RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.name_as_array()
+                ty.name_as_wasm_array()
             } else {
-                format!("&{}", ty.name_as_array())
+                format!("&{}", ty.name_as_wasm_array())
             },
             RustType::Tagged(_tag, ty) => ty.for_wasm_param(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
-            RustType::Map(_k, _v) => format!("&{}", self.for_member()),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_param()),
+            RustType::Map(_k, _v) => format!("&{}", self.for_wasm_member()),
+            // it might not be worth generating this as alises are ignored by wasm-pack build, but
+            // that could change in the future so as long as it doens't cause issues we'll leave it
             RustType::Alias(ident, ty) => match &**ty {
                 RustType::Rust(_) => format!("&{}", ident),
                 _ => ident.to_string(),
             }
-        };
-        println!("for_wasm_param({:?}) = {}", self, x);
-        x
+        }
     }
 
+    /// Return TYPE for wasm
     pub fn for_wasm_return(&self) -> String {
-        self.for_member()
+        self.for_wasm_member()
     }
 
-    pub fn for_member(&self) -> String {
+    pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
+        RustIdent::new(CDDLIdent::new(format!("Map{}To{}", k.for_variant(), v.for_variant())))
+    }
+
+    pub fn name_for_rust_map(k: &RustType, v: &RustType, from_wasm: bool) -> String {
+        format!("{}<{}, {}>", table_type(), k.for_rust_member(from_wasm), v.for_rust_member(from_wasm))
+    }
+
+    /// If we were to store a value directly in a wasm-wrapper, this would be used.
+    pub fn for_wasm_member(&self) -> String {
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
             RustType::Primitive(p) => p.to_string(),
             RustType::Rust(ident) => ident.to_string(),
-            RustType::Array(ty) => ty.name_as_array(),
-            RustType::Tagged(_tag, ty) => ty.for_member(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_member()),
-            RustType::Map(k, v) => format!("Map{}To{}", k.for_member(), v.for_member()),
+            RustType::Array(ty) => ty.name_as_wasm_array(),
+            RustType::Tagged(_tag, ty) => ty.for_wasm_member(),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_member()),
+            RustType::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
             RustType::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_member(),
+                AliasIdent::Reserved(_) => ty.for_wasm_member(),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
         }
     }
 
+    /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
+    pub fn for_rust_member(&self, from_wasm: bool) -> String {
+        let core = if from_wasm {
+            "core::"
+        } else {
+            ""
+        };
+        match self {
+            RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
+            RustType::Primitive(p) => p.to_string(),
+            RustType::Rust(ident) => format!("{}{}", core, ident),
+            RustType::Array(ty) => ty.name_as_rust_array(from_wasm),
+            RustType::Tagged(_tag, ty) => ty.for_rust_member(from_wasm),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_rust_member(from_wasm)),
+            RustType::Map(k, v) => Self::name_for_rust_map(k, v, from_wasm),
+            RustType::Alias(ident, ty) => match ident {
+                // we don't generate type aliases for reserved types, just transform
+                // them into rust equivalents, so we can't and shouldn't use their alias here.
+                AliasIdent::Reserved(_) => ty.for_rust_member(from_wasm),
+                // but other aliases are generated and should be used.
+                AliasIdent::Rust(_) => ident.to_string(),
+            },
+        }
+    }
+
+    /// IDENTIFIER for an enum variant. (Use for_rust_member() for the )
     pub fn for_variant(&self) -> VariantIdent {
         match self {
             RustType::Fixed(f) => f.for_variant(),
@@ -659,7 +777,7 @@ impl RustType {
             RustType::Tagged(_tag, ty) => ty.for_variant(),
             // TODO: should we not end up in this situation and just insert a Null fixed value instead?
             RustType::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.for_variant())),
-            RustType::Map(k, v) => VariantIdent::new_custom(format!("Map{}To{}", k.for_variant(), v.for_variant())),
+            RustType::Map(k, v) => VariantIdent::new_custom(Self::name_for_wasm_map(k, v).to_string()),
             RustType::Alias(ident, _ty) => match ident {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
                 AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
@@ -667,24 +785,72 @@ impl RustType {
         }
     }
 
-    // for parameters from wasm that take ownership (via cloning here)
-    pub fn from_wasm_boundary_clone(&self, expr: &str) -> String {
+    /// for parameter TYPES from wasm that take ownership (via cloning here)
+    /// can_fail is for cases where checks (e.g. range checks) are done if there
+    /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
+    pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
+        assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
         match self {
-            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary_clone(expr),
-            RustType::Rust(_ident) => format!("{}.clone()", expr),
-            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr),
-            RustType::Optional(ty) => ty.from_wasm_boundary_clone(expr),
-            RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.from_wasm_boundary_clone(expr)
-            } else {
-                format!("{}.clone()", expr)
+            RustType::Tagged(_tag, ty) => {
+                let mut inner = ty.from_wasm_boundary_clone(expr, can_fail);
+                if can_fail {
+                    inner.push(ToWasmBoundaryOperations::TryInto);
+                } else {
+                    inner.push(ToWasmBoundaryOperations::Into);
+                }
+                inner
             },
-            RustType::Map(_k, _v) => format!("{}.clone()", expr),
-            _ => expr.to_owned(),
+            RustType::Rust(_ident) => vec![
+                ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                ToWasmBoundaryOperations::Into,
+            ],
+            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
+            RustType::Optional(ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
+            RustType::Array(ty) => if self.directly_wasm_exposable() {
+                ty.from_wasm_boundary_clone(expr, can_fail)
+            } else {
+                vec![
+                    ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                    ToWasmBoundaryOperations::Into,
+                ]
+            },
+            RustType::Map(_k, _v) => vec![
+                ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                ToWasmBoundaryOperations::Into,
+            ],
+            _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
         }
     }
 
-    // for non-owning parameters from wasm
+    fn from_wasm_boundary_clone_optional(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
+        assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
+        match self {
+            RustType::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
+            RustType::Tagged(_tag, ty) => {
+                let mut inner = ty.from_wasm_boundary_clone_optional(expr, can_fail);
+                if can_fail {
+                    inner.push(ToWasmBoundaryOperations::TryInto);
+                } else {
+                    inner.push(ToWasmBoundaryOperations::Into);
+                }
+                inner
+            },
+            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
+            RustType::Array(..) |
+            RustType::Rust(..) |
+            RustType::Map(..) => vec![
+                ToWasmBoundaryOperations::Code(expr.to_owned()),
+                if can_fail {
+                    ToWasmBoundaryOperations::MapTryInto
+                } else {
+                    ToWasmBoundaryOperations::MapInto
+                },
+            ],
+            _ => panic!("unsupported or unexpected"),
+        }
+    }
+
+    /// for non-owning parameter TYPES from wasm
     pub fn from_wasm_boundary_ref(&self, expr: &str) -> String {
         match self {
             RustType::Tagged(_tag, ty) => ty.from_wasm_boundary_ref(expr),
@@ -698,6 +864,71 @@ impl RustType {
             },
             RustType::Map(_k, _v) => expr.to_owned(),
             _ => format!("&{}", expr),
+        }
+    }
+
+    /// FROM rust TO wasm (with cloning/wrapping) (for arguments)
+    pub fn to_wasm_boundary(&self, expr: &str, is_ref: bool) -> String {
+        match self {
+            RustType::Fixed(_) => panic!("fixed types are a serialization detail"),
+            RustType::Primitive(_p) => if self.is_copy() {
+                if is_ref {
+                    format!("*{}", expr)
+                } else {
+                    expr.to_owned()
+                }
+            } else {
+                format!("{}.clone()", expr)
+            },
+            RustType::Tagged(_tag, ty) => ty.to_wasm_boundary(expr, is_ref),
+            RustType::Rust(_ident) => format!("{}.clone().into()", expr),
+            //RustType::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
+            //RustType::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
+            RustType::Array(ty) => format!("{}.clone().into()", expr),
+            RustType::Map(k, v) => format!("{}.clone().into()", expr),
+            RustType::Optional(ty) => ty.to_wasm_boundary_optional(expr, is_ref),
+            RustType::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
+        }
+    }
+
+    /// FROM rust TO wasm as Option<T>. This is separate as we can have optional fields
+    /// that act identical to RustType::Optional(ty)
+    pub fn to_wasm_boundary_optional(&self, expr: &str, is_ref: bool) -> String {
+        if self.directly_wasm_exposable() {
+            self.to_wasm_boundary(expr, is_ref)
+        } else {
+            format!("{}.clone().map(std::convert::Into::into)", expr)
+        }
+    }
+
+    // if it impements the Copy trait in rust
+    pub fn is_copy(&self) -> bool {
+        match self {
+            RustType::Fixed(_f) => unreachable!(),
+            RustType::Primitive(p) => match p {
+                Primitive::Bool |
+                Primitive::I32 |
+                Primitive::I64 |
+                Primitive::N64 |
+                Primitive::U32 |
+                Primitive::U64 => true,
+                Primitive::Str |
+                Primitive::Bytes => false,
+            },
+            RustType::Rust(_ident) => false,
+            RustType::Tagged(_tag, ty) => ty.is_copy(),
+            RustType::Array(_) => false,
+            RustType::Map(_k, _v) => false,
+            RustType::Optional(ty) => ty.is_copy(),
+            RustType::Alias(_ident, ty) => ty.is_copy(),
+        }
+    }
+
+    pub fn clone_if_not_copy(&self, expr: &str) -> String {
+        if self.is_copy() {
+            expr.to_owned()
+        } else {
+            format!("{}.clone()", expr)
         }
     }
 
@@ -810,6 +1041,103 @@ impl RustType {
             },
             RustType::Alias(_ident, ty) => ty.expanded_mandatory_field_count(types),
             _ => 1,
+        }
+    }
+
+    pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+        f(self);
+        match self {
+            RustType::Alias(_ident, ty) => ty.visit_types(types, f),
+            RustType::Array(ty) => ty.visit_types(types, f),
+            RustType::Fixed(..) => (),
+            RustType::Map(k, v) => {
+                k.visit_types(types, f);
+                v.visit_types(types, f);
+            },
+            RustType::Optional(ty) => ty.visit_types(types, f),
+            RustType::Primitive(..) => (),
+            RustType::Rust(ident) => types.rust_struct(ident).unwrap().visit_types(types, f),
+            RustType::Tagged(_tag, ty) => ty.visit_types(types, f),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ToWasmBoundaryOperations {
+    Code(String),
+    Into,
+    TryInto,
+    MapInto,
+    MapTryInto,
+}
+
+impl ToWasmBoundaryOperations {
+    /// Returns Some(NewOp) if self + next can be merged into a single step, otherwise None
+    fn merge(&self, next: &Self) -> Option<Self> {
+        match self {
+            Self::Code(_) => None,
+            Self::Into => match next {
+                Self::Code(_) => None,
+                next => Some(next.clone()),
+            },
+            Self::TryInto => match next {
+                Self::Code(_) => None,
+                Self::Into |
+                Self::TryInto => Some(Self::TryInto),
+                Self::MapInto |
+                Self::MapTryInto => Some(Self::MapTryInto),
+            },
+            Self::MapInto => match next {
+                Self::Code(_) => None,
+                Self::Into |
+                Self::MapInto => Some(Self::MapInto),
+                Self::TryInto |
+                Self::MapTryInto => Some(Self::MapTryInto),
+            },
+            Self::MapTryInto => match next {
+                Self::Code(_) => None,
+                _ => Some(Self::MapTryInto),
+            },
+        }
+    }
+
+    pub fn format(mut operations: impl Iterator<Item = Self>) -> String {
+        use std::fmt::Write;
+        let mut buf = String::new();
+        let mut current: Option<Self> = None;
+        while let Some(to_apply) = operations.next() {
+            match current {
+                Some(c) => {
+                    match c.merge(&to_apply) {
+                        Some(merged) => {
+                            current = Some(merged);
+                        },
+                        None => {
+                            write!(buf, "{}", c).unwrap();
+                            current = Some(to_apply);
+                        },
+                    }
+                },
+                None => {
+                    current = Some(to_apply);
+                },
+            }
+        }
+        if let Some(c) = current {
+            write!(buf, "{}", c).unwrap();
+        }
+        buf
+    }
+}
+
+impl std::fmt::Display for ToWasmBoundaryOperations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Code(code) => write!(f, "{}", code),
+            Self::Into => write!(f, ".into()"),
+            Self::TryInto => write!(f, ".try_into()"),
+            Self::MapInto => write!(f, ".map(Into::into)"),
+            Self::MapTryInto => write!(f, ".map(TryInto::try_into)"),
         }
     }
 }
@@ -1028,6 +1356,20 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
+        }
+    }
+
+    pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+        match &self.variant {
+            RustStructType::Array{ element_type } => element_type.visit_types(types, f),
+            RustStructType::GroupChoice{ variants, .. } |
+            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.visit_types(types, f)),
+            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.visit_types(types, f)),
+            RustStructType::Table{domain, range} => {
+                domain.visit_types(types, f);
+                range.visit_types(types, f);
+            },
+            RustStructType::Wrapper{ wrapped, .. } => wrapped.visit_types(types, f)
         }
     }
 }

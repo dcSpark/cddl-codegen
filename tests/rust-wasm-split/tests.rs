@@ -16,7 +16,7 @@ mod tests {
 
     #[test]
     fn foo2_some() {
-        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe").into())));
+        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe"))));
     }
 
     #[test]
@@ -31,25 +31,12 @@ mod tests {
 
     #[test]
     fn plain() {
-        deser_test(&Plain::new(7576, String::from("wiorurri34h").into()));
+        deser_test(&Plain::new(7576, TaggedText::new(String::from("wiorurri34h"))));
     }
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
-    }
-
-    #[test]
-    fn table_arr_members() {
-        let mut tab = std::collections::BTreeMap::new();
-        tab.insert(String::from("43266556"), String::from("2k2j343"));
-        tab.insert(String::from("213543254546565"), String::from("!!fjdj"));
-        let mut foos = vec![
-            Foo::new(0, String::from("Zero"), vec![]),
-            Foo::new(2, String::from("Two"), vec![2, 2]),
-        ];
-        let u64s = vec![0, 1, 2, 3, 4, 6];
-        deser_test(&TableArrMembers::new(tab, u64s, foos));
+        deser_test(&Outer::new(2143254, Plain::new(7576, TaggedText::new(String::from("wiorurri34h")))));
     }
 
     #[test]
@@ -78,8 +65,8 @@ mod tests {
     }
 
     #[test]
-    fn type_choice_tagged_arr() {
-        deser_test(&TypeChoice::ArrU64(vec![1, 2, 3, 4]));
+    fn type_choice_tagged_u64() {
+        deser_test(&TypeChoice::U64(5));
     }
 
     #[test]
@@ -94,6 +81,6 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg").into())));
+        deser_test(&GroupChoice::Plain(Plain::new(354545, TaggedText::new(String::from("fdsfdsfdg")))));
     }
 }

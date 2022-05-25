@@ -1,0 +1,31 @@
+foo = [uint, text, bytes]
+
+tagged_text = #6.42(text)
+
+opt_tagged_text = tagged_text / null
+
+opt_text = text / null
+
+foo2 = #6.23([uint, opt_text])
+; TODO: fix this up
+; alias resolving issue possibly as foo3::new_foo() is Alias(Option(RustIdent(opt_tagged_text)))
+; and not the Alias(Option(String)) it would be from wasm
+;foo3 = #6.23([uint, opt_tagged_text])
+
+bar = {
+	foo: foo,
+	;foo: #6.1337(foo),
+	? derp: uint,
+	1 : uint / null,
+	? 5: text,
+	five: 5,
+}
+
+plain = (d: #6.23(uint), e: tagged_text)
+outer = [a: uint, b: plain, c: "some text"]
+
+type_choice = 0 / "hello world" / text / bytes / #6.64(uint)
+
+group_choice = [ foo // 0, x: uint // plain ]
+
+tagged_type_choice = #6.23("string literal" / foo / uint)
