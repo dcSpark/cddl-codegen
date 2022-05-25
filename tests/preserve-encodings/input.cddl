@@ -13,4 +13,5 @@ table = { * uint => text }
 table_arr_members = {
 	arr: [*u32],
 	arr2: [*foo],
+	table: table,
 }

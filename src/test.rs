@@ -24,7 +24,7 @@ fn run_test(dir: &str, options: &[&str]) {
     let mut lib_rs = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
-        .open(test_path.join("export/src/lib.rs"))
+        .open(test_path.join("export/core/src/lib.rs"))
         .unwrap();
     let deser_test_rs = std::fs::read_to_string(std::path::PathBuf::from_str("tests").unwrap().join("deser_test")).unwrap();
     lib_rs.write("\n\n".as_bytes()).unwrap();
@@ -36,7 +36,7 @@ fn run_test(dir: &str, options: &[&str]) {
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
         .arg("test")
-        .current_dir(test_path.join("export"))
+        .current_dir(test_path.join("export/core"))
         .output()
         .unwrap();
     if !cargo_test.status.success() {
@@ -44,11 +44,41 @@ fn run_test(dir: &str, options: &[&str]) {
     }
     println!("test stdout:\n{}", String::from_utf8(cargo_test.stdout).unwrap());
     assert!(cargo_test.status.success());
+    let wasm_export_dir = test_path.join("export/wasm");
+    let wasm_test_dir = test_path.join("tests_wasm.rs");
+    if wasm_test_dir.exists() {
+        println!("   ------ testing (wasm) ------");
+        let cargo_test_wasm = std::process::Command::new("cargo")
+            .arg("test")
+            .current_dir(wasm_export_dir)
+            .output()
+            .unwrap();
+        if !cargo_test_wasm.status.success() {
+            eprintln!("test stderr:\n{}", String::from_utf8(cargo_test_wasm.stderr).unwrap());
+        }
+        println!("test stdout:\n{}", String::from_utf8(cargo_test_wasm.stdout).unwrap());
+        assert!(cargo_test_wasm.status.success());
+    } else if wasm_export_dir.exists() {
+        let cargo_build_wasm = std::process::Command::new("cargo")
+            .arg("build")    
+            .current_dir(wasm_export_dir)
+            .output()
+            .unwrap();
+        if !cargo_build_wasm.status.success() {
+            eprintln!("wasm build stderr:\n{}", String::from_utf8(cargo_build_wasm.stderr).unwrap());
+        }
+        assert!(cargo_build_wasm.status.success());
+    }
 }
 
 #[test]
-fn core() {
+fn core_with_wasm() {
     run_test("core", &[]);
+}
+
+#[test]
+fn core_no_wasm() {
+    run_test("core", &["--wasm=false"]);
 }
 
 #[test]
@@ -59,4 +89,9 @@ fn preserve_encodings() {
 #[test]
 fn canonical() {
     run_test("canonical", &["--preserve-encodings=true", "--canonical-form=true"]);
+}
+
+#[test]
+fn rust_wasm_split() {
+    run_test("rust-wasm-split", &[]);
 }

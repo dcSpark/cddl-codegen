@@ -1,6 +1,5 @@
 use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
 use std::io::{BufRead, Seek, Write};
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug)]
 pub enum Key {
@@ -120,14 +119,6 @@ impl From<cbor_event::Error> for DeserializeError {
     }
 }
 
-// we should probably just generate this directly at the top of serialization.rs
-pub trait SerializeEmbeddedGroup {
-    fn serialize_as_embedded_group<'a, W: Write + Sized>(
-        &self,
-        serializer: &'a mut Serializer<W>,
-    ) -> cbor_event::Result<&'a mut Serializer<W>>;
-}
-
 // same as cbor_event::de::Deserialize but with our DeserializeError
 pub trait Deserialize {
     fn deserialize<R: BufRead + Seek>(
@@ -149,51 +140,28 @@ pub trait DeserializeEmbeddedGroup {
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
-pub trait ToBytes {
-    fn to_bytes(&self) -> Vec<u8>;
-}
-
-impl<T: cbor_event::se::Serialize> ToBytes for T {
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Serializer::new_vec();
-        self.serialize(&mut buf).unwrap();
-        buf.finalize()
-    }
-}
-
 pub trait FromBytes {
-    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> where Self: Sized;
+    fn from_bytes(data: Vec<u8>) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
 impl<T: Deserialize + Sized> FromBytes for T {
-    fn from_bytes(data: Vec<u8>) -> Result<Self, JsValue> {
+    fn from_bytes(data: Vec<u8>) -> Result<Self, DeserializeError> {
         let mut raw = Deserializer::from(std::io::Cursor::new(data));
-        Self::deserialize(&mut raw).map_err(|e| JsValue::from_str(&e.to_string()))
+        Self::deserialize(&mut raw)
     }
 }
 
-// CBOR has int = int / nint
-#[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Int(i128);
-
-#[wasm_bindgen]
-impl Int {
-    pub fn new(x: u64) -> Self {
-        Self(x as i128)
-    }
-
-    pub fn new_negative(x: u64) -> Self {
-        Self(-(x as i128))
-    }
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
 }
 
 impl cbor_event::se::Serialize for Int {
     fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
-        if self.0 < 0 {
-            serializer.write_negative_integer((-self.0) as i64)
-        } else {
-            serializer.write_unsigned_integer(self.0 as u64)
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer.write_negative_integer(-(*x as i128) as i64),
         }
     }
 }
@@ -202,8 +170,8 @@ impl Deserialize for Int {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
-                cbor_event::Type::UnsignedInteger => Ok(Self(raw.unsigned_integer()? as i128)),
-                cbor_event::Type::NegativeInteger => Ok(Self(-raw.negative_integer()? as i128)),
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(-raw.negative_integer()? as u64)),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })().map_err(|e| e.annotate("Int"))

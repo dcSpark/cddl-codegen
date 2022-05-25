@@ -83,7 +83,7 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
             },
             // otherwise a simple typedef of type $name = Option<$inner_rust_type>; works better
             None => {
-                types.register_type_alias(name.clone(), RustType::Optional(Box::new(inner_rust_type)), true);
+                types.register_type_alias(name.clone(), RustType::Optional(Box::new(inner_rust_type)), true, true);
             },
         };
     } else {
@@ -168,7 +168,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                 assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
                 let field_type = RustType::Primitive(Primitive::Bytes);
                 types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone(), min_max));
-                types.register_type_alias(type_name.clone(), field_type, false);
+                types.register_type_alias(type_name.clone(), field_type, false, false);
             } else {
                 let concrete_type = match types.new_type(&cddl_ident) {
                     RustType::Alias(_ident, ty) => *ty,
@@ -189,7 +189,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                 types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
                             },
                             None => {
-                                types.register_type_alias(type_name.clone(), concrete_type, true);
+                                types.register_type_alias(type_name.clone(), concrete_type, true, true);
                             }
                         }
                     }
@@ -232,13 +232,13 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         },
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Int(*value)), true);
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Int(*value)), true, true);
         },
         Type2::UintValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Uint(*value)), true);
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Uint(*value)), true, true);
         },
         Type2::TextValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.to_string())), true);
+            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.to_string())), true, true);
         },
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -441,8 +441,10 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
             };
-            let array_wrapper_name = element_type.name_as_array();
-            types.create_and_register_array_type(element_type, &array_wrapper_name)
+            
+            //let array_wrapper_name = element_type.name_as_wasm_array();
+            //types.create_and_register_array_type(element_type, &array_wrapper_name)
+            RustType::Array(Box::new(element_type))
         },
         Type2::Map { group, .. } => {
             match group.group_choices.len() {
@@ -458,8 +460,8 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
                             // defined as part of another type if we're in this level of parsing.
                             // We also can't have plain groups unlike arrays, so don't try and generate those
                             // for general map types we can though but not for tables
-                            let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_member(), value_type.for_member())));
-                            types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
+                            //let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_wasm_member(), value_type.for_wasm_member())));
+                            //types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
                             RustType::Map(Box::new(key_type), Box::new(value_type))
                         },
                         None => unimplemented!("TODO: non-table types as types: {:?}", group),

@@ -1,4 +1,4 @@
-use clap::{ArgEnum, Parser};
+use clap::{Parser};
 use once_cell::sync::Lazy;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
@@ -37,6 +37,9 @@ pub struct Cli {
     /// Allows serialization to canonical CBOR. if preserve-encodings is enabled, this will be as a toggle on serialization functions
     #[clap(long, parse(try_from_str), default_value_t = false)]
     pub canonical_form: bool,
+
+    #[clap(long, parse(try_from_str), default_value_t = true)]
+    pub wasm: bool,
 }
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(|| Cli::parse());
