@@ -13,3 +13,7 @@ table_arr_members = {
 	arr2: [*foo],
 	table: { * uint => text },
 }
+
+data = { * #6.14(bytes) => { * uint => { * #6.9(uint) => [* #6.18([* text]) ] } } }
+
+deeply_nested = [ data: data ]

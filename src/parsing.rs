@@ -166,7 +166,11 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
             let cddl_ident = CDDLIdent::new(ident.to_string());
             if min_max.is_some() {
                 assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
-                let field_type = RustType::Primitive(Primitive::Bytes);
+                let field_type = match cddl_ident.to_string().as_str() {
+                    "tstr" | "text" => RustType::Primitive(Primitive::Str),
+                    "bstr" | "bytes" => RustType::Primitive(Primitive::Bytes),
+                    other => panic!("range control specifiers not supported for type: {}", other),
+                };
                 types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone(), min_max));
                 types.register_type_alias(type_name.clone(), field_type, false, false);
             } else {

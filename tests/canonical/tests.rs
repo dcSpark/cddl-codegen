@@ -226,4 +226,95 @@ mod tests {
         deser_test(&table, true);
         deser_test(&table, false);
     }
+
+    #[test]
+    fn deeply_nested() {
+        let canonical_bytes = vec![
+            arr_def(1),
+                map_def(2),
+                    cbor_tag(14),
+                            cbor_bytes_sz(vec![0xAA, 0xBB, 0xCC], StringLenSz::Len(Sz::Inline)),
+                                map_def(2),
+                                    cbor_int(3, Sz::Inline),
+                                        map_def(1),
+                                            cbor_tag(9),
+                                                cbor_int(2, Sz::Inline),
+                                                    arr_def(1),
+                                                        cbor_tag(18),
+                                                            arr_def(1),
+                                                                cbor_string("cbor"),
+                                    cbor_int(5, Sz::Inline),
+                                        map_def(0),
+                    cbor_tag(14),
+                        cbor_bytes_sz(vec![0xBA, 0xAD, 0xF0, 0x0D], StringLenSz::Len(Sz::Inline)),
+                            map_def(1),
+                                cbor_int(10, Sz::Inline),
+                                    map_def(1),
+                                        cbor_tag(9),
+                                            cbor_int(0, Sz::Inline),
+                                                arr_def(2),
+                                                    cbor_tag(18),
+                                                        arr_def(0),
+                                                    cbor_tag(18),
+                                                        arr_def(3),
+                                                            cbor_string("test"),
+                                                            cbor_string("XYZ"),
+                                                            cbor_string("ABC"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let str_3_encodings = vec![
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Len(Sz::Eight),
+            StringLenSz::Indefinite(vec![(1, Sz::Two), (2, Sz::Four)])
+        ];
+        let str_4_encodings = vec![
+            StringLenSz::Indefinite(vec![(4, Sz::Inline)]),
+            StringLenSz::Len(Sz::Two),
+            StringLenSz::Indefinite(vec![(1, Sz::Eight), (1, Sz::Inline), (1, Sz::Inline), (1, Sz::Two)]),
+        ];
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in def_encodings {
+            for (str_3, str_4) in str_3_encodings.iter().zip(str_4_encodings.iter()) {
+                let irregular_bytes = vec![
+                    arr_sz(1, def_enc),
+                        vec![MAP_INDEF],
+                            cbor_tag_sz(14, def_enc),
+                                cbor_bytes_sz(vec![0xBA, 0xAD, 0xF0, 0x0D], str_4.clone()),
+                                    map_sz(1, def_enc),
+                                        cbor_int(10, def_enc),
+                                            map_sz(1, def_enc),
+                                                cbor_tag_sz(9, def_enc),
+                                                    cbor_int(0, def_enc),
+                                                        arr_sz(2, def_enc),
+                                                            cbor_tag_sz(18, def_enc),
+                                                                arr_sz(0, def_enc),
+                                                            cbor_tag_sz(18, def_enc),
+                                                                vec![ARR_INDEF],
+                                                                    cbor_str_sz("test", str_4.clone()),
+                                                                    cbor_str_sz("XYZ", str_3.clone()),
+                                                                    cbor_str_sz("ABC", str_3.clone()),
+                                                                vec![BREAK],
+                            cbor_tag_sz(14, def_enc),
+                                cbor_bytes_sz(vec![0xAA, 0xBB, 0xCC], str_3.clone()),
+                                    vec![MAP_INDEF],
+                                        cbor_int(5, def_enc),
+                                            vec![MAP_INDEF],
+                                            vec![BREAK],
+                                        cbor_int(3, def_enc),
+                                            map_sz(1, def_enc),
+                                                cbor_tag_sz(9, def_enc),
+                                                    cbor_int(2, def_enc),
+                                                        vec![ARR_INDEF],
+                                                            cbor_tag_sz(18, def_enc),
+                                                                arr_sz(1, def_enc),
+                                                                    cbor_str_sz("cbor", str_4.clone()),
+                                                        vec![BREAK],
+                                    vec![BREAK],
+                        vec![BREAK],
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular = DeeplyNested::from_bytes(irregular_bytes.clone()).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_bytes(false));
+                assert_eq!(canonical_bytes, irregular.to_bytes(true));
+            }
+        }
+    }
 }
