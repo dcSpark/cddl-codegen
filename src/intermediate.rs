@@ -1062,10 +1062,17 @@ impl RustType {
             RustType::Optional(ty) => ty.visit_types(types, f),
             RustType::Primitive(..) => (),
             RustType::Rust(ident) => {
-                println!("IDENT: {}", ident);
                 types.rust_struct(ident).map(|t| t.visit_types(types, f));
             },
             RustType::Tagged(_tag, ty) => ty.visit_types(types, f),
+        }
+    }
+
+    pub fn strip_tags_and_aliases(&self) -> &Self {
+        match self {
+            RustType::Alias(_ident, ty) => ty,
+            RustType::Tagged(_tag, ty) => ty,
+            _ => self,
         }
     }
 }

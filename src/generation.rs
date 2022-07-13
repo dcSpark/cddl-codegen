@@ -140,7 +140,10 @@ impl GenerationScope {
                     codegen_group_choices(self, types, rust_ident, variants, *rep, rust_struct.tag())
                 },
                 RustStructType::Wrapper{ wrapped, min_max } => {
-                    generate_wrapper_struct(self, types, rust_ident, wrapped, rust_struct.tag(), *min_max);
+                    match rust_struct.tag() {
+                        Some(tag) => generate_wrapper_struct(self, types, rust_ident, &RustType::Tagged(tag, Box::new(wrapped.clone())), *min_max),
+                        None => generate_wrapper_struct(self, types, rust_ident, wrapped, *min_max),
+                    }
                 },
             }
         }
@@ -661,7 +664,7 @@ impl GenerationScope {
                     assert!(!types.is_plain_group(&*ty_ident));
                 }
                 if !elem_encs.is_empty() {
-                    let (elem_var_names_str, _elem_add_parens) = encoding_var_names_str(&elem_var_name, ty);
+                    let elem_var_names_str = encoding_var_names_str(&elem_var_name, ty);
                     self.generate_deserialize(types, ty, &elem_var_name, &format!("let {} = ", elem_var_names_str), ";", in_embedded, false, vec![], &mut deser_loop);
                     deser_loop
                         .line(format!("{}.push({});", arr_var_name, elem_var_name))
@@ -735,8 +738,8 @@ impl GenerationScope {
                     let mut deser_loop = make_deser_loop(&len_var, &format!("{}.len()", table_var));
                     deser_loop.push_block(make_deser_loop_break_check());
                     if CLI_ARGS.preserve_encodings {
-                        let (key_var_names_str, key_add_parens) = encoding_var_names_str(&key_var_name, key_type);
-                        let (value_var_names_str, value_add_parens) = encoding_var_names_str(&value_var_name, value_type);
+                        let key_var_names_str = encoding_var_names_str(&key_var_name, key_type);
+                        let value_var_names_str = encoding_var_names_str(&value_var_name, value_type);
                         self.generate_deserialize(types, key_type, &key_var_name, &format!("let {} = ", key_var_names_str), ";", false, false, vec![], &mut deser_loop);
                         self.generate_deserialize(types, value_type, &value_var_name, &format!("let {} = ", value_var_names_str), ";", false, false, vec![], &mut deser_loop);
                     } else {
@@ -1695,7 +1698,7 @@ fn encoding_fields(name: &str, ty: &RustType) -> Vec<EncodingField> {
     x
 }
 
-fn encoding_var_names_str(field_name: &str, rust_type: &RustType) -> (String, bool) {
+fn encoding_var_names_str(field_name: &str, rust_type: &RustType) -> String {
     assert!(CLI_ARGS.preserve_encodings);
     let resolved_rust_type = rust_type.clone().resolve_aliases();
     let mut var_names = if resolved_rust_type.is_fixed_value() {
@@ -1706,13 +1709,12 @@ fn encoding_var_names_str(field_name: &str, rust_type: &RustType) -> (String, bo
     for enc in encoding_fields(field_name, &resolved_rust_type).into_iter() {
         var_names.push(enc.field_name);
     }
-    let add_parens = var_names.len() > 1;
-    let var_names_str = if add_parens {
+    let var_names_str = if var_names.len() > 1 {
         format!("({})", var_names.join(", "))
     } else {
         var_names.join(", ")
     };
-    (var_names_str, add_parens)
+    var_names_str
 }
 
 fn tuple_str(strs: Vec<String>) -> String {
@@ -1909,7 +1911,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
                 } else {
                     gen_scope.generate_serialize(types, &field.rust_type, &format!("self.{}", field.name), false, &field.name, &mut ser_func, false, None, false);
                     if CLI_ARGS.preserve_encodings {
-                        let (var_names_str, add_parens) = encoding_var_names_str(&field.name, &field.rust_type);
+                        let var_names_str = encoding_var_names_str(&field.name, &field.rust_type);
                         if CLI_ARGS.annotate_fields {
                             let mut err_deser = make_err_annotate_block(&field.name, &format!("let {} = ", var_names_str), "?;");
                             gen_scope.generate_deserialize(types, &field.rust_type, &field.name, "Ok(", ")", in_embedded, false, vec![], &mut err_deser);
@@ -1960,7 +1962,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
             }
             if CLI_ARGS.preserve_encodings {
                 if tag.is_some() {
-                    deser_ret.line("tag_encoding,");
+                    deser_ret.line("tag_encoding: Some(tag_encoding),");
                 }
             }
             // length checked inside of deserialize() - it causes problems for plain groups nested
@@ -2036,7 +2038,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
                     deser_block.push_block(dup_check);
 
                     let temp_var_prefix = format!("tmp_{}", field.name);
-                    let (var_names_str, add_parens) = encoding_var_names_str(&temp_var_prefix, &field.rust_type);
+                    let var_names_str = encoding_var_names_str(&temp_var_prefix, &field.rust_type);
                     let needs_vars = !var_names_str.is_empty();
                     let (before, after) = if var_names_str.is_empty() {
                         ("".to_owned(), "?")
@@ -2631,13 +2633,9 @@ fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Op
 }
 
 // This is used mostly for when thing are tagged have specific ranges.
-fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, tag: Option<usize>, min_max: Option<(Option<isize>, Option<isize>)>) {
+fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, min_max: Option<(Option<isize>, Option<isize>)>) {
     if min_max.is_some() {
         assert!(types.can_new_fail(type_name));
-    }
-    if tag.is_some() {
-        // TODO: where would we store this?
-        assert!(!CLI_ARGS.preserve_encodings);
     }
     if CLI_ARGS.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, type_name, true);
@@ -2676,12 +2674,26 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
     // The tag is easy but the min/max size would require error types in any place that sets/modifies these in other structs.
     let (mut s, mut s_impl) = create_base_rust_struct(type_name);
-    s
-        .vis("pub")
-        .tuple_field(field_type.for_rust_member(false));
+    s.vis("pub");
+    let enc_fields = if CLI_ARGS.preserve_encodings {
+        s.field("inner", field_type.for_rust_member(false));
+        let enc_fields = encoding_fields("inner", &field_type.clone().resolve_aliases());
+        for field_enc in &enc_fields {
+            s.field(&field_enc.field_name, &field_enc.type_name);
+        }
+        Some(enc_fields)
+    } else {
+        s.tuple_field(field_type.for_rust_member(false));
+        None
+    };
     if field_type.is_copy() {
         s.derive("Copy");
     }
+    let (inner_var, self_var) = if CLI_ARGS.preserve_encodings {
+        ("inner", "self.inner")
+    } else {
+        ("0", "self.0")
+    };
     let mut get = codegen::Function::new("get");
     get
         .vis("pub")
@@ -2689,24 +2701,20 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
     if field_type.is_copy() {
         get
             .ret(field_type.for_rust_member(false))
-            .line(field_type.clone_if_not_copy("self.0"));
+            .line(field_type.clone_if_not_copy(self_var));
     } else {
         get
             .ret(format!("&{}", field_type.for_rust_member(false)))
-            .line("&self.0");
+            .line(format!("&{}", self_var));
     }
     s_impl.push_fn(get);
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = make_serialization_impl(&type_name.to_string());
-    if let Some(tag) = tag {
-        write_using_sz(&mut ser_func, "write_tag", "serializer", &format!("{}u64", tag), "?;", "inner_tag_encoding");
-    }
-    gen_scope.generate_serialize(types, &field_type, "self.0", false, &type_name.to_string(), &mut ser_func, true, None, false);
+    gen_scope.generate_serialize(types, &field_type, self_var, false, "inner", &mut ser_func, true, None, false);
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize");
     let mut deser_impl = codegen::Impl::new(&type_name.to_string());
     deser_impl.impl_trait("Deserialize");
-    generate_tag_check(&mut deser_func, type_name, tag);
     if let RustType::Rust(id) = field_type {
         if types.is_plain_group(id) {
             unimplemented!("TODO: make len/read_len variables of appropriate sizes so the generated code compiles");
@@ -2716,9 +2724,20 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
     new_func
         .arg("inner", field_type.for_rust_move())
         .vis("pub");
+    let var_names_str = if CLI_ARGS.preserve_encodings {
+        encoding_var_names_str("inner", &field_type)
+    } else {
+        "inner".to_owned()
+    };
     let from_impl = if let Some((min, max)) = min_max {
-        gen_scope.generate_deserialize(types, field_type, "", "let inner = ", ";", false, false, vec![], &mut deser_func);
-        let against = match field_type {
+        let (before, after) = if var_names_str.is_empty() {
+            ("".to_owned(), "")
+        } else {
+            (format!("let {} = ", var_names_str), ";")
+        };
+        gen_scope.generate_deserialize(types, field_type, "inner", &before, after, false, false, vec![], &mut deser_func);
+        
+        let against = match field_type.strip_tags_and_aliases() {
             RustType::Primitive(p) => match p {
                 Primitive::Bytes |
                 Primitive::Str => "inner.len()",
@@ -2735,7 +2754,24 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
             (Some(min), Some(max)) => if min == max {
                 Block::new(&format!("if {} != {}", against, min))
             } else {
-                Block::new(&format!("if {} < {} || {} > {}", against, min, against, max))
+                let non_negative = match field_type.strip_tags_and_aliases() {
+                    RustType::Primitive(p) => match p {
+                        Primitive::Bytes |
+                        Primitive::Str => true,
+                        Primitive::Bool |
+                        Primitive::U32 |
+                        Primitive::U64 => true,
+                        Primitive::I32 |
+                        Primitive::I64 |
+                        Primitive::N64 => false,
+                    },
+                    _ => unimplemented!(),
+                };
+                if min == 0 && non_negative {
+                    Block::new(&format!("if {} > {}", against, max))
+                } else {
+                    Block::new(&format!("if {} < {} || {} > {}", against, min, against, max))
+                }
             },
             (Some(min), None) => Block::new(&format!("if {} < {}", against, min)),
             (None, Some(max)) => Block::new(&format!("if {} > {}", against, max)),
@@ -2754,11 +2790,29 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                 None => String::from("None")
             }));
         deser_func.push_block(check.clone());
-        deser_func.line("Ok(Self(inner))");
         new_func
             .ret("Result<Self, DeserializeError>")
-            .push_block(check)
-            .line("Ok(Self(inner))");
+            .push_block(check);
+        if let Some(enc_fields) = &enc_fields {
+            let mut deser_ctor = codegen::Block::new("Ok(Self");
+            deser_ctor.line("inner,");
+            for field_enc in enc_fields {
+                deser_ctor.line(format!("{},", field_enc.field_name));
+            }
+            deser_ctor.after(")");
+            deser_func.push_block(deser_ctor);
+
+            let mut ctor_block = codegen::Block::new("Ok(Self");
+            ctor_block.line("inner,");
+            for field_enc in enc_fields {
+                ctor_block.line(format!("{}: {},", field_enc.field_name, field_enc.default_expr));
+            }
+            ctor_block.after(")");
+            new_func.push_block(ctor_block);
+        } else {
+            deser_func.line("Ok(Self(inner))");
+            new_func.line("Ok(Self(inner))");
+        }
         let mut try_from = codegen::Impl::new(&type_name.to_string());
         try_from
             .associate_type("Error", "DeserializeError")
@@ -2766,7 +2820,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
             .new_fn("try_from")
             .arg("inner", field_type.for_rust_member(false))
             .ret("Result<Self, Self::Error>")
-            .line(format!("{}::new({})", type_name, ToWasmBoundaryOperations::format(field_type.from_wasm_boundary_clone("inner", true).into_iter())));
+            .line(format!("{}::new({})", type_name, ToWasmBoundaryOperations::format(field_type.from_wasm_boundary_clone("inner", false).into_iter())));
         try_from
     } else {
         // let field_type_tagged = if let Some(t) = tag {
@@ -2775,10 +2829,34 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         //     field_type.clone()
         // };
         // gen_scope.generate_deserialize(types, &field_type_tagged, "inner", "Ok(Self(", "))", false, false, true, &mut deser_func);
-        gen_scope.generate_deserialize(types, &field_type, "inner", "Ok(Self(", "))", false, false, vec![], &mut deser_func);
-        new_func
-            .ret("Self")
-            .line("Self(inner)");
+        new_func.ret("Self");
+        if let Some(enc_fields) = &enc_fields {
+            let (before, after) = if var_names_str.is_empty() {
+                ("".to_owned(), "")
+            } else {
+                (format!("let {} = ", var_names_str), ";")
+            };
+            gen_scope.generate_deserialize(types, &field_type, "inner", &before, after, false, false, vec![], &mut deser_func);
+
+            let mut deser_ctor = codegen::Block::new("Ok(Self");
+            deser_ctor.line("inner,");
+            for field_enc in enc_fields {
+                deser_ctor.line(format!("{},", field_enc.field_name));
+            }
+            deser_ctor.after(")");
+            deser_func.push_block(deser_ctor);
+
+            let mut ctor_block = codegen::Block::new("Self");
+            ctor_block.line("inner,");
+            for field_enc in enc_fields {
+                ctor_block.line(format!("{}: {},", field_enc.field_name, field_enc.default_expr));
+            }
+            new_func.push_block(ctor_block);
+        } else {
+            gen_scope.generate_deserialize(types, &field_type, "inner", "Ok(Self(", "))", false, false, vec![], &mut deser_func);
+            new_func.line("Self(inner)");
+        }
+	    
         let mut from = codegen::Impl::new(&type_name.to_string());
         from
             .impl_trait(format!("From<{}>", field_type.for_rust_member(false)))
@@ -2796,7 +2874,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         .new_fn("from")
         .arg("wrapper", type_name.to_string())
         .ret("Self")
-        .line("wrapper.0");
+        .line(format!("wrapper.{}", inner_var));
     gen_scope
         .rust()
         .push_struct(s)

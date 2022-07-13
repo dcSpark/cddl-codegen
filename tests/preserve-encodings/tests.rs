@@ -18,8 +18,9 @@ mod tests {
         deser_test(&foo);
         let indefinite_bytes = foo.to_bytes();
         assert!(definite_bytes != indefinite_bytes);
-        assert_eq!(definite_bytes[0], 0x83u8);
-        assert_eq!(indefinite_bytes[0], ARR_INDEF);
+        assert_eq!(definite_bytes[0], 0xc6u8 + 11 - 6);
+        assert_eq!(definite_bytes[1], 0x83u8);
+        assert_eq!(indefinite_bytes[1], ARR_INDEF);
         assert_eq!(*indefinite_bytes.last().unwrap(), BREAK);
         // last bit of the the [1, 1, 1]
         assert_eq!(*definite_bytes.last().unwrap(), 1u8);
@@ -43,7 +44,7 @@ mod tests {
             vec![MAP_INDEF],
                 cbor_string("foo"),
                     cbor_tag(13),
-                    bar.foo.to_bytes(),
+                        bar.foo.to_bytes(),
                 vec![0x01u8],
                     vec![NULL],
                 vec![0x05u8],
@@ -61,7 +62,7 @@ mod tests {
                     cbor_string("text"),
                 cbor_string("foo"),
                     cbor_tag(13),
-                    bar.foo.to_bytes(),
+                        bar.foo.to_bytes(),
                 cbor_string("five"),
                     vec![0x05u8],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
@@ -160,10 +161,11 @@ mod tests {
                         vec![0x01, 0x03, 0x06],
                 cbor_string("arr2"),
                     arr_def(1),
-                        arr_def(3),
-                            vec![0x00],
-                            cbor_string("Zero"),
-                            vec![0x40],
+                        cbor_tag(11),
+                            arr_def(3),
+                                vec![0x00],
+                                cbor_string("Zero"),
+                                vec![0x40],
                 cbor_string("table"),
                     map_def(2),
                         vec![0x00],
@@ -176,11 +178,12 @@ mod tests {
             vec![MAP_INDEF],
                 cbor_string("arr2"),
                     vec![ARR_INDEF],
-                        vec![ARR_INDEF],
-                            vec![0x00],
-                            cbor_string("Zero"),
-                            vec![0x40],
-                        vec![BREAK],
+                        cbor_tag(11),
+                            vec![ARR_INDEF],
+                                vec![0x00],
+                                cbor_string("Zero"),
+                                vec![0x40],
+                            vec![BREAK],
                     vec![BREAK],
                 cbor_string("table"),
                     vec![MAP_INDEF],
@@ -281,5 +284,80 @@ mod tests {
                 assert_eq!(irregular_bytes, irregular.to_bytes());
             }
         }
+    }
+
+    #[test]
+    fn string64() {
+        let str_24_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Four),
+            StringLenSz::Indefinite(vec![(12, Sz::Two), (12, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Inline), (4, Sz::Inline), (20, Sz::Four), (0, Sz::Eight)]),
+        ];
+        for str_enc in str_24_encodings {
+            let irregular_bytes = cbor_str_sz("-*=[0123456789ABCDEF]=*-", str_enc);
+            let irregular = String64::from_bytes(irregular_bytes.clone()).unwrap();
+            assert_eq!(irregular_bytes, irregular.to_bytes());
+        }
+        let _ = String64::from_bytes(cbor_str_sz(&(0..64).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).unwrap();
+        assert!(String64::from_bytes(cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).is_err());
+    }
+
+    #[test]
+    fn tagged_text() {
+        let str_24_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Four),
+            StringLenSz::Indefinite(vec![(12, Sz::Two), (12, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Inline), (4, Sz::Inline), (20, Sz::Four), (0, Sz::Eight)]),
+        ];
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for str_enc in &str_24_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes = vec![
+                    cbor_tag_sz(9, *def_enc),
+                        cbor_str_sz("-*=[0123456789ABCDEF]=*-", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular = TaggedText::from_bytes(irregular_bytes.clone()).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn string1632() {
+        let str_24_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Four),
+            StringLenSz::Indefinite(vec![(12, Sz::Two), (12, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Inline), (4, Sz::Inline), (20, Sz::Four), (0, Sz::Eight)]),
+        ];
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for str_enc in &str_24_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes = vec![
+                    cbor_tag_sz(7, *def_enc),
+                        cbor_str_sz("-*=[0123456789ABCDEF]=*-", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular = String1632::from_bytes(irregular_bytes.clone()).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_bytes());
+            }
+        }
+        let _ = String1632::from_bytes(vec![
+            cbor_tag_sz(7, Sz::One),
+            cbor_str_sz(&(0..16).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::One)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>()).unwrap();
+        let _ = String1632::from_bytes(vec![
+            cbor_tag_sz(7, Sz::Two),
+            cbor_str_sz(&(0..32).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>()).unwrap();
+        assert!(String1632::from_bytes(vec![
+            cbor_tag_sz(7, Sz::Inline),
+            cbor_str_sz(&(0..15).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Inline)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
+        assert!(String1632::from_bytes(vec![
+            cbor_tag_sz(7, Sz::Eight),
+            cbor_str_sz(&(0..33).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Eight)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
     }
 }

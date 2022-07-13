@@ -77,7 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .raw("use serialization::*;")
             .raw("pub mod prelude;")
             .raw("pub mod serialization;")
-            .raw("use std::collections::BTreeMap;");
+            .raw("use std::collections::BTreeMap;")
+            .raw("use std::convert::{From, TryFrom};");
         if CLI_ARGS.preserve_encodings {
             gen_scope.rust().raw("use linked_hash_map::LinkedHashMap;");
         }
