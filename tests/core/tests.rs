@@ -10,6 +10,13 @@ mod tests {
     }
 
     #[test]
+    fn hash() {
+        let hash = Hash::new(vec![0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+        deser_test(&hash);
+        assert!(Hash::new(vec![0x00, 0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).is_err());
+    }
+
+    #[test]
     fn foo() {
         deser_test(&Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
     }
