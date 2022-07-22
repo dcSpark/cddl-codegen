@@ -1,0 +1,2 @@
+bar = bytes
+foo = bytes .cbor bar

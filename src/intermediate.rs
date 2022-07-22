@@ -186,8 +186,15 @@ impl<'a> IntermediateTypes<'a> {
                     unimplemented!("what to do here?");
                 }
             },
-            RustStructType::Wrapper { min_max: Some(_) , ..} => {
+            RustStructType::Wrapper { control: Some(ControlOperator::Range(_)) , ..} => {
                 self.mark_new_can_fail(rust_struct.ident.clone());
+            },
+            RustStructType::Wrapper { control: Some(ControlOperator::Control(_)) , ..} => {
+                self.mark_new_can_fail(rust_struct.ident.clone());
+                // match ctl {
+                //     RustType::Rust(ident) => self.mark_new_can_fail(ident.clone()),
+                //     _ => todo!(".cbor currently only supported for identifiers")
+                // }
             },
             _ => (),
         }
@@ -1218,6 +1225,12 @@ pub struct RustStruct {
 }
 
 #[derive(Clone, Debug)]
+pub enum ControlOperator {
+    Range((Option<isize>, Option<isize>)),
+    Control(RustType),
+}
+
+#[derive(Clone, Debug)]
 pub enum RustStructType {
     Record(RustRecord),
     Table {
@@ -1236,7 +1249,7 @@ pub enum RustStructType {
     },
     Wrapper{
         wrapped: RustType,
-        min_max: Option<(Option<isize>, Option<isize>)>,
+        control: Option<ControlOperator>,
     }
 }
 
@@ -1291,13 +1304,13 @@ impl RustStruct {
         }
     }
 
-    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<isize>, Option<isize>)>) -> Self {
+    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, control: Option<ControlOperator>) -> Self {
         Self {
             ident,
             tag,
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
-                min_max
+                control
             },
         }
     }
