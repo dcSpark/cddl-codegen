@@ -231,8 +231,8 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
-                            let min_max = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, op));
-                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, min_max))
+                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, op));
+                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, control))
                         },
                     };
                 },
@@ -493,9 +493,17 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2) -> RustTyp
     }
 }
 
+fn rust_type_or_control(types: &mut IntermediateTypes, type1: &Type1) -> RustType {
+    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, op));
+        match control {
+            Some(ControlOperator::Control(ctrl)) => ctrl,
+            _ => rust_type_from_type2(types, &type1.type2)
+        }
+}
+
 fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
     if t.type_choices.len() == 1 {
-        rust_type_from_type2(types, &t.type_choices.first().unwrap().type1.type2)
+        rust_type_or_control(types, &t.type_choices.first().unwrap().type1)
     } else {
         if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
@@ -599,6 +607,7 @@ fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representa
                 Representation::Map => Some(group_entry_to_key(group_entry).expect("map fields need keys")),
                 Representation::Array => None,
             };
+            // rust_type_or_control
             RustField::new(field_name, field_type, optional_field, key)
         }
     ).collect();

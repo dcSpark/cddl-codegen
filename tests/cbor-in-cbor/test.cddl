@@ -1,2 +1,7 @@
 bar = bytes
 foo = bytes .cbor bar
+
+baz = {
+      0 : bytes .cbor bar
+    ? 2 : bytes .cbor bar
+}
