@@ -95,3 +95,8 @@ fn canonical() {
 fn rust_wasm_split() {
     run_test("rust-wasm-split", &[]);
 }
+
+#[test]
+fn cbor_in_cbor() {
+    run_test("cbor-in-cbor", &[]);
+}
