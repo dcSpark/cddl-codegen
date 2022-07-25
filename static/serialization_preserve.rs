@@ -43,6 +43,14 @@ impl CBORReadLen {
     }
 }
 
+pub trait DeserializeEmbeddedGroup {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        read_len: &mut CBORReadLen,
+        len: cbor_event::LenSz,
+    ) -> Result<Self, DeserializeError> where Self: Sized;
+}
+
 #[inline]
 fn sz_max(sz: cbor_event::Sz) -> u64 {
     match sz {

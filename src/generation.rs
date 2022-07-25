@@ -25,6 +25,66 @@ use crate::utils::{
     convert_to_snake_case,
 };
 
+#[derive(Debug, Clone)]
+struct SerializeConfig<'a> {
+    expr: String,
+    expr_is_ref: bool,
+    var_name: String,
+    is_end: bool,
+    encoding_var_is_local: bool,
+    encoding_var_is_ref: bool,
+    serializer_name_overload: Option<(&'a str, bool)>,
+}
+
+impl<'a> SerializeConfig<'a> {
+    fn new<S: Into<String>, T: Into<String>>(expr: S, var_name: T) -> Self {
+        Self {
+            expr: expr.into(),
+            expr_is_ref: false,
+            var_name: var_name.into(),
+            is_end: false,
+            encoding_var_is_local: false,
+            encoding_var_is_ref: false,
+            serializer_name_overload: None,
+        }
+    }
+
+    fn expr<S: Into<String>>(mut self, expr: S) -> Self {
+        self.expr = expr.into();
+        self
+    }
+
+    fn var_name<S: Into<String>>(mut self, var_name: S) -> Self {
+        self.var_name = var_name.into();
+        self
+    }
+
+    fn expr_is_ref(mut self, is_ref: bool) -> Self {
+        self.expr_is_ref = is_ref;
+        self
+    }
+
+
+    fn is_end(mut self, is_end: bool) -> Self {
+        self.is_end = is_end;
+        self
+    }
+
+    fn encoding_var_is_local(mut self, is_local: bool) -> Self {
+        self.encoding_var_is_local = is_local;
+        self
+    }
+
+    fn encoding_var_is_ref(mut self, is_ref: bool) -> Self {
+        self.encoding_var_is_ref = is_ref;
+        self
+    }
+
+    fn serializer_name_overload(mut self, overload: (&'a str, bool)) -> Self {
+        self.serializer_name_overload = Some(overload);
+        self
+    }
+}
 
 pub struct GenerationScope {
     global_scope: codegen::Scope,
@@ -165,32 +225,38 @@ impl GenerationScope {
     // expr - the name of the variable where this is accessed, e.g. "self.foo" or "field" (e.g. for if let Some(field) = self.foo)
     // var_name - For use in generating *unique* identifiers from this. Must be unique within a type, e.g. field name: for the above it would be "foo" for both
     // serializer_name_overload will provide an overload instead of using "serializer". (name, is_local) - if is_local then &mut will be appended when needed.
-    fn generate_serialize(&mut self, types: &IntermediateTypes, rust_type: &RustType, expr: &str, expr_is_ref: bool, var_name: &str, body: &mut dyn CodeBlock, is_end: bool, serializer_name_overload: Option<(&str, bool)>, encoding_var_is_local: bool) {
+    fn generate_serialize(&mut self, types: &IntermediateTypes, rust_type: &RustType, body: &mut dyn CodeBlock, config: SerializeConfig) {
         //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
-        let line_ender = if is_end {
+        let line_ender = if config.is_end {
             ""
         } else {
             "?;"
         };
-        let expr_deref = if expr_is_ref {
-            format!("*{}", expr)
+        let expr_deref = if config.expr_is_ref {
+            format!("*{}", config.expr)
         } else {
-            expr.to_owned()
+            config.expr.to_owned()
         };
-        let expr_ref = if expr_is_ref {
-            expr.to_owned()
+        let expr_ref = if config.expr_is_ref {
+            config.expr.to_owned()
         } else {
-            format!("&{}", expr)
+            format!("&{}", config.expr)
         };
-        let (serializer_use, serializer_pass) = serializer_name_overload
+        let (serializer_use, serializer_pass) = config.serializer_name_overload
             .map(|(name, is_local)| if is_local { (name, format!("&mut {}", name)) } else { (name, name.to_owned()) })
             .unwrap_or(("serializer", "serializer".to_owned()));
-        let enc_var_prefix = if encoding_var_is_local {
+        let enc_var_prefix = if config.encoding_var_is_local {
             ""
         } else {
             "self."
         };
-        let encoding_var = format!("{}{}_encoding", enc_var_prefix, var_name);
+        let encoding_deref = if config.encoding_var_is_ref {
+            "*"
+        } else {
+            ""
+        };
+        let encoding_var = format!("{}{}_encoding", enc_var_prefix, config.var_name);
+        let encoding_var_deref = format!("{}{}", encoding_deref, encoding_var);
         match rust_type {
             RustType::Fixed(value) => match value {
                 FixedValue::Null => {
@@ -200,11 +266,11 @@ impl GenerationScope {
                     body.line(&format!("{}.write_special(CBORSpecial::Bool({})){}", serializer_use, b, line_ender));
                 },
                 FixedValue::Uint(u) => {
-                    write_using_sz(body, "write_unsigned_integer", serializer_use, &format!("{}u64", u), line_ender, &encoding_var);
+                    write_using_sz(body, "write_unsigned_integer", serializer_use, &format!("{}u64", u), line_ender, &encoding_var_deref);
                 },
                 // TODO: should this be Nint instead of Int? CDDL spec is Nint but cddl lib is Int
                 FixedValue::Int(i) => {
-                    write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), line_ender, &encoding_var);
+                    write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), line_ender, &encoding_var_deref);
                 },
                 FixedValue::Text(s) => {
                     write_string_sz(body, "write_text", serializer_use, &format!("\"{}\"", s), line_ender, &encoding_var);
@@ -215,68 +281,76 @@ impl GenerationScope {
                     body.line(&format!("{}.write_special(cbor_event::Special::Bool({})){}", serializer_use, expr_deref, line_ender));
                 },
                 Primitive::Bytes => {
-                    write_string_sz(body, "write_bytes", serializer_use, expr, line_ender, &encoding_var);
+                    write_string_sz(body, "write_bytes", serializer_use, &config.expr, line_ender, &encoding_var);
                 },
                 Primitive::Str => {
-                    write_string_sz(body, "write_text", serializer_use, expr, line_ender, &encoding_var);
+                    write_string_sz(body, "write_text", serializer_use, &config.expr, line_ender, &encoding_var);
                 },
                 Primitive::I32 |
                 Primitive::I64 => {
                     let mut pos = Block::new(&format!("if {} >= 0", expr_deref));
-                    write_using_sz(&mut pos, "write_unsigned_integer", serializer_use, &format!("{} as u64", expr_deref), line_ender, &encoding_var);
+                    write_using_sz(&mut pos, "write_unsigned_integer", serializer_use, &format!("{} as u64", expr_deref), line_ender, &encoding_var_deref);
                     body.push_block(pos);
                     let mut neg = Block::new("else");
-                    write_using_sz(&mut neg, "write_negative_integer", serializer_use, &format!("{} as i128", expr_deref), line_ender, &encoding_var);
+                    write_using_sz(&mut neg, "write_negative_integer", serializer_use, &format!("{} as i128", expr_deref), line_ender, &encoding_var_deref);
                     body.push_block(neg);
                 },
                 Primitive::U32 => {
-                    write_using_sz(body, "write_unsigned_integer", serializer_use, &format!("{} as u64", expr_deref), line_ender, &encoding_var);
+                    write_using_sz(body, "write_unsigned_integer", serializer_use, &format!("{} as u64", expr_deref), line_ender, &encoding_var_deref);
                 },
                 Primitive::U64 => {
-                    write_using_sz(body, "write_unsigned_integer", serializer_use, &expr_deref, line_ender, &encoding_var);
+                    write_using_sz(body, "write_unsigned_integer", serializer_use, &expr_deref, line_ender, &encoding_var_deref);
                 },
                 Primitive::N64 => {
-                    write_using_sz(body, "write_negative_integer", serializer_use, &expr_deref, line_ender, &encoding_var);
+                    write_using_sz(body, "write_negative_integer", serializer_use, &expr_deref, line_ender, &encoding_var_deref);
                 },
             },
             RustType::Rust(t) => {
                 if types.is_plain_group(t) {
-                    body.line(&format!("{}.serialize_as_embedded_group({}{}){}", expr, serializer_pass, canonical_param(), line_ender));
+                    body.line(&format!("{}.serialize_as_embedded_group({}{}){}", config.expr, serializer_pass, canonical_param(), line_ender));
                 } else {
-                    body.line(&format!("{}.serialize({}{}){}", expr, serializer_pass, canonical_param(), line_ender));
+                    body.line(&format!("{}.serialize({}{}){}", config.expr, serializer_pass, canonical_param(), line_ender));
                 }
             },
             RustType::Array(ty) => {
-                start_len(body, Representation::Array, serializer_use, &encoding_var, &format!("{}.len() as u64", expr));
-                let elem_var_name = format!("{}_elem", var_name);
+                start_len(body, Representation::Array, serializer_use, &encoding_var, &format!("{}.len() as u64", config.expr));
+                let elem_var_name = format!("{}_elem", config.var_name);
                 let elem_encs = if CLI_ARGS.preserve_encodings {
                     encoding_fields(&elem_var_name, &ty.clone().resolve_aliases())
                 } else {
                     vec![]
                 };
                 let mut loop_block = if !elem_encs.is_empty() {
-                    let mut block = Block::new(&format!("for (i, element) in {}.iter().enumerate()", expr));
+                    let mut block = Block::new(&format!("for (i, element) in {}.iter().enumerate()", config.expr));
                     block.line(format!(
                         "let {} = {}{}_elem_encodings.get(i).map(|e| e.clone()).unwrap_or_else(|| {});",
                         tuple_str(elem_encs.iter().map(|enc| enc.field_name.clone()).collect()),
                         enc_var_prefix,
-                        var_name,
+                        config.var_name,
                         tuple_str(elem_encs.iter().map(|enc| enc.default_expr.to_owned()).collect())));
                     block
                 } else {
-                    Block::new(&format!("for element in {}.iter()", expr))
+                    Block::new(&format!("for element in {}.iter()", config.expr))
                 };
-                self.generate_serialize(types, ty, "element", true, &elem_var_name, &mut loop_block, false, serializer_name_overload, true);
+                let elem_config = config
+                    .clone()
+                    .expr("element")
+                    .expr_is_ref(true)
+                    .var_name(elem_var_name.clone())
+                    .is_end(false)
+                    .encoding_var_is_local(true)
+                    .encoding_var_is_ref(false);
+                self.generate_serialize(types, ty, &mut loop_block, elem_config);
                 body.push_block(loop_block);
-                end_len(body, serializer_use, &encoding_var, is_end);
+                end_len(body, serializer_use, &encoding_var, config.is_end);
             },
             RustType::Map(key, value) => {
-                start_len(body, Representation::Map, serializer_use, &encoding_var, &format!("{}.len() as u64", expr));
+                start_len(body, Representation::Map, serializer_use, &encoding_var, &format!("{}.len() as u64", config.expr));
                 let ser_loop = if CLI_ARGS.preserve_encodings {
-                    let key_enc_fields = encoding_fields(&format!("{}_key", var_name), &key.clone().resolve_aliases());
-                    let value_enc_fields = encoding_fields(&format!("{}_value", var_name), &value.clone().resolve_aliases());
+                    let key_enc_fields = encoding_fields(&format!("{}_key", config.var_name), &key.clone().resolve_aliases());
+                    let value_enc_fields = encoding_fields(&format!("{}_value", config.var_name), &value.clone().resolve_aliases());
                     let mut ser_loop = if CLI_ARGS.canonical_form {
-                        let mut key_order = codegen::Block::new(&format!("let mut key_order = {}.iter().map(|(k, v)|", expr));
+                        let mut key_order = codegen::Block::new(&format!("let mut key_order = {}.iter().map(|(k, v)|", config.expr));
                         key_order
                             .line("let mut buf = cbor_event::se::Serializer::new_vec();");
                         if !key_enc_fields.is_empty() {
@@ -285,10 +359,16 @@ impl GenerationScope {
                                     "let {} = {}{}_key_encodings.get(k).map(|e| e.clone()).unwrap_or_else(|| {});",
                                     tuple_str(key_enc_fields.iter().map(|enc| enc.field_name.clone()).collect()),
                                     enc_var_prefix,
-                                    var_name,
+                                    config.var_name,
                                     tuple_str(key_enc_fields.iter().map(|enc| enc.default_expr.to_owned()).collect())));
                         }
-                        self.generate_serialize(types, key, "k", true, &format!("{}_key", var_name), &mut key_order, false, Some(("buf", true)), true);
+                        let key_config = SerializeConfig::new("k", format!("{}_key", config.var_name))
+                            .expr_is_ref(true)
+                            .is_end(false)
+                            .serializer_name_overload(("buf", true))
+                            .encoding_var_is_local(true)
+                            .encoding_var_is_ref(false);
+                        self.generate_serialize(types, key, &mut key_order, key_config);
                         key_order
                             .line("Ok((buf.finalize(), k, v))")
                             .after(").collect::<Result<Vec<(Vec<u8>, &_, &_)>, cbor_event::Error>>()?;");
@@ -306,20 +386,28 @@ impl GenerationScope {
                         body.push_block(key_order_if);
                 
                         let mut ser_loop = Block::new("for (key_bytes, key, value) in key_order");
-                        ser_loop.line("serializer.write_raw_bytes(&key_bytes)?;");
+                        ser_loop.line(format!("{}.write_raw_bytes(&key_bytes)?;", serializer_use));
                         ser_loop
                     } else {
-                        let mut ser_loop = Block::new(&format!("for (key, value) in {}.iter()", expr));
+                        let mut ser_loop = Block::new(&format!("for (key, value) in {}.iter()", config.expr));
                         if !key_enc_fields.is_empty() {
                             ser_loop.line(
                                 format!(
                                     "let {} = {}{}_key_encodings.get(key).map(|e| e.clone()).unwrap_or_else(|| {});",
                                     tuple_str(key_enc_fields.iter().map(|enc| enc.field_name.clone()).collect()),
                                     enc_var_prefix,
-                                    var_name,
+                                    config.var_name,
                                     tuple_str(key_enc_fields.iter().map(|enc| enc.default_expr.to_owned()).collect())));
                         }
-                        self.generate_serialize(types, key, "key", true, &format!("{}_key", var_name), &mut ser_loop, false, None, true);
+                        let key_config = config
+                            .clone()
+                            .expr("key")
+                            .expr_is_ref(true)
+                            .var_name(format!("{}_key", config.var_name))
+                            .is_end(false)
+                            .encoding_var_is_local(true)
+                            .encoding_var_is_ref(false);
+                        self.generate_serialize(types, key, &mut ser_loop, key_config);
                         ser_loop
                     };
                     if !value_enc_fields.is_empty() {
@@ -328,40 +416,64 @@ impl GenerationScope {
                                 "let {} = {}{}_value_encodings.get(key).map(|e| e.clone()).unwrap_or_else(|| {});",
                                 tuple_str(value_enc_fields.iter().map(|enc| enc.field_name.clone()).collect()),
                                 enc_var_prefix,
-                                var_name,
+                                config.var_name,
                                 tuple_str(value_enc_fields.iter().map(|enc| enc.default_expr.to_owned()).collect())));
                     }
-                    self.generate_serialize(types, value, "value", true, &format!("{}_value", var_name), &mut ser_loop, false, None, true);
+                    let value_config = config
+                            .clone()
+                            .expr("value")
+                            .expr_is_ref(true)
+                            .var_name(format!("{}_value", config.var_name))
+                            .is_end(false)
+                            .encoding_var_is_local(true)
+                            .encoding_var_is_ref(false);
+                    self.generate_serialize(types, value, &mut ser_loop, value_config);
                     ser_loop
                 } else {
-                    let mut ser_loop = Block::new(&format!("for (key, value) in {}.iter()", expr));
-                    
-                    self.generate_serialize(types, key, "key", true, &format!("{}_key", var_name), &mut ser_loop, false, None, true);
-                    self.generate_serialize(types, value, "value", true, &format!("{}_value", var_name), &mut ser_loop, false, None, true);
+                    let mut ser_loop = Block::new(&format!("for (key, value) in {}.iter()", config.expr));
+                    let key_config = config
+                            .clone()
+                            .expr("key")
+                            .expr_is_ref(true)
+                            .var_name(format!("{}_key", config.var_name))
+                            .is_end(false)
+                            .encoding_var_is_local(true)
+                            .encoding_var_is_ref(false);
+                    let value_config = key_config
+                        .clone()
+                        .expr("value")
+                        .var_name(format!("{}_value", config.var_name));
+                    self.generate_serialize(types, key, &mut ser_loop, key_config);
+                    self.generate_serialize(types, value, &mut ser_loop, value_config);
                     ser_loop
                 };
                 body.push_block(ser_loop);
-                end_len(body, serializer_use, &encoding_var, is_end);
+                end_len(body, serializer_use, &encoding_var, config.is_end);
             },
             RustType::Tagged(tag, ty) => {
-                write_using_sz(body, "write_tag", serializer_use, &format!("{}u64", tag), "?;", &format!("{}{}_tag_encoding", enc_var_prefix, var_name));
-                self.generate_serialize(types, ty, expr, expr_is_ref, var_name, body, is_end, serializer_name_overload, encoding_var_is_local);
+                write_using_sz(body, "write_tag", serializer_use, &format!("{}u64", tag), "?;", &format!("{}{}{}_tag_encoding", encoding_deref, enc_var_prefix, config.var_name));
+                self.generate_serialize(types, ty, body, config);
             },
             RustType::Optional(ty) => {
                 let mut opt_block = Block::new(&format!("match {}", expr_ref));
                 // TODO: do this in one line without a block if possible somehow.
                 //       see other comment in generate_enum()
                 let mut some_block = Block::new("Some(x) =>");
-                self.generate_serialize(types, ty, "x", true, var_name, &mut some_block, true, serializer_name_overload, encoding_var_is_local);
+                let opt_config = config
+                    .clone()
+                    .expr("x")
+                    .expr_is_ref(true)
+                    .is_end(true);
+                self.generate_serialize(types, ty, &mut some_block, opt_config);
                 some_block.after(",");
                 opt_block.push_block(some_block);
-                opt_block.line(&format!("None => serializer.write_special(CBORSpecial::Null),"));
-                if !is_end {
+                opt_block.line(&format!("None => {}.write_special(CBORSpecial::Null),", serializer_use));
+                if !config.is_end {
                     opt_block.after("?;");
                 }
                 body.push_block(opt_block);
             },
-            RustType::Alias(_ident, ty) => self.generate_serialize(types, ty, expr, expr_is_ref, var_name, body, is_end, serializer_name_overload, encoding_var_is_local),
+            RustType::Alias(_ident, ty) => self.generate_serialize(types, ty, body, config),
         };
     }
 
@@ -435,7 +547,7 @@ impl GenerationScope {
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", var_name, x));
                         body.push_block(compare_block);
                         if CLI_ARGS.preserve_encodings {
-                            final_exprs.push(format!("Some({}_encoding)", var_name));
+                            final_exprs.push(format!("StringEncoding::from({}_encoding)", var_name));
                             body.line(&format!("{}{}{}", before, final_expr(final_exprs, None), after));
                         }
                     },
@@ -852,6 +964,11 @@ impl GenerationScope {
             let mut wrapper = create_base_wasm_wrapper(self, name, true);
             // new
             for variant in variants.iter() {
+                let enc_fields = if CLI_ARGS.preserve_encodings {
+                    encoding_fields("x", &variant.rust_type.clone().resolve_aliases())
+                } else {
+                    vec![]
+                };
                 let variant_arg = convert_to_snake_case(&variant.name.to_string());
                 let mut new_func = codegen::Function::new(&format!("new_{}", variant_arg));
                 new_func.vis("pub");
@@ -864,8 +981,8 @@ impl GenerationScope {
                 } else {
                     new_func.ret("Self");
                 }
-                if variant.rust_type.is_fixed_value() {
-                    new_func.line(format!("Self(core::{}::{})", name, variant.name));
+                let mut ctor_fields = if variant.rust_type.is_fixed_value() {
+                    vec![]
                 } else {
                     // can't use (rust) reserved keywords as param: eg new_u32(u32: u32)
                     // TODO: do we need to cover any other (rust) reserved keywords?
@@ -874,14 +991,21 @@ impl GenerationScope {
                         "i8" | "i16" | "i32" | "i64" => "int",
                         x => x,
                     };
+                    new_func.arg(&arg_name, &variant.rust_type.for_wasm_param());
                     let from_wasm_expr = variant.rust_type.from_wasm_boundary_clone(arg_name, can_fail);
-                    new_func
-                        .arg(&arg_name, &variant.rust_type.for_wasm_param())
-                        .line(format!("Self(core::{}::{}({}))", name, variant.name, ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())));
+                    vec![ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())] 
+                };
+                for enc_field in enc_fields {
+                    ctor_fields.push(enc_field.default_expr.to_owned());
+                }
+                if ctor_fields.is_empty() {
+                    new_func.line(format!("Self(core::{}::{})", name, variant.name));
+                } else {
+                    new_func.line(format!("Self(core::{}::{}({}))", name, variant.name, ctor_fields.join(", ")));
                 }
                 wrapper.s_impl.push_fn(new_func);
             }
-            add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants);
+            add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, None);
             wrapper.push(self);
             //push_wasm_wrapper(self, name, s, s_impl);
         }
@@ -1491,7 +1615,6 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .line("self.0.len()");
     // insert
     let ret_modifier = if value_type.is_copy() {
-        // TODO: do we need to dereference it?
         ""
     } else if value_type.directly_wasm_exposable() {
         ".map(|v| v.clone())"
@@ -1520,7 +1643,10 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .arg("key", key_type.for_wasm_param())
         .ret(format!("Option<{}>", value_type.for_wasm_return()))
         .vis("pub")
-        .line(format!("self.0.get({}){}", key_type.from_wasm_boundary_ref("key"), ret_modifier));
+        .line(format!(
+            "self.0.get({}){}",
+            key_type.from_wasm_boundary_ref("key"),
+            if value_type.is_copy() { ".copied()" } else { ret_modifier }));
     wrapper.s_impl.push_fn(getter);
     // keys
     let keys_type = RustType::Array(Box::new(key_type.clone()));
@@ -1876,9 +2002,12 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
             }
             deser_impl.push_fn(deser_f);
             let mut f = make_deserialization_function("deserialize_as_embedded_group");
-            f
-                .arg("read_len", "&mut CBORReadLen")
-                .arg("len", "cbor_event::Len");
+            f.arg("read_len", "&mut CBORReadLen");
+            if CLI_ARGS.preserve_encodings {
+                f.arg("len", "cbor_event::LenSz");
+            } else {
+                f.arg("len", "cbor_event::Len");
+            }
             f
         },
         None => deser_f,
@@ -1905,11 +2034,19 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
             for field in record.fields.iter() {
                 if field.optional {
                     let mut optional_array_ser_block = Block::new(&format!("if let Some(field) = &self.{}", field.name));
-                    gen_scope.generate_serialize(types, &field.rust_type, "field", true, &field.name, &mut optional_array_ser_block, false, None, false);
+                    gen_scope.generate_serialize(
+                        types,
+                        &field.rust_type,
+                        &mut optional_array_ser_block,
+                        SerializeConfig::new("field", &field.name).expr_is_ref(true));
                     ser_func.push_block(optional_array_ser_block);
                     gen_scope.dont_generate_deserialize(name, format!("Array with optional field {}: {}", field.name, field.rust_type.for_rust_member(false)));
                 } else {
-                    gen_scope.generate_serialize(types, &field.rust_type, &format!("self.{}", field.name), false, &field.name, &mut ser_func, false, None, false);
+                    gen_scope.generate_serialize(
+                        types,
+                        &field.rust_type,
+                        &mut ser_func,
+                        SerializeConfig::new(format!("self.{}", field.name), &field.name));
                     if CLI_ARGS.preserve_encodings {
                         let var_names_str = encoding_var_names_str(&field.name, &field.rust_type);
                         if CLI_ARGS.annotate_fields {
@@ -2124,7 +2261,11 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
                 };
 
                 // serialize value
-                gen_scope.generate_serialize(types, &field.rust_type, &data_name, expr_is_ref, &field.name, &mut map_ser_content, false, None, false);
+                gen_scope.generate_serialize(
+                    types,
+                    &field.rust_type,
+                    &mut map_ser_content,
+                    SerializeConfig::new(&data_name, &field.name).expr_is_ref(expr_is_ref));
                 ser_content.push((field_index, field, map_ser_content));
             }
             if CLI_ARGS.preserve_encodings {
@@ -2364,7 +2505,7 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
                         // multi-field struct, so for convenience we let you pass the parameters directly here
                         // instead of having to separately construct the variant to pass in
                         _ => {
-                            let mut ctor = format!("Self(core::{}::{}(core::{}::new(", name, variant.name, variant.name);
+                            let mut ctor = format!("Self(core::{}::new_{}(", name, convert_to_snake_case(&variant.name.to_string()));
                             for field in ctor_fields {
                                 if output_comma {
                                     ctor.push_str(", ");
@@ -2375,30 +2516,34 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
                                 ctor.push_str(&ToWasmBoundaryOperations::format(field.rust_type.from_wasm_boundary_clone(&field.name, false).into_iter()));
                                 // ^ TODO: check types.can_new_fail(&field.name)
                             }
-                            ctor.push_str(")))");
+                            ctor.push_str("))");
                             new_func.line(ctor);
                         },
                     }
                 },
                 None => {
                     // just directly pass in the variant's type
-                    let field_name = variant.name.to_string();
-                    new_func
-                        .arg(&field_name, variant.rust_type.for_wasm_param())
-                        .line(format!("Self({}::{}({}))", name, variant.name, ToWasmBoundaryOperations::format(variant.rust_type.from_wasm_boundary_clone(&field_name, false).into_iter())));
-                    // ^ TODO: check types.can_new_fail(&field.name)
+                    if variant.rust_type.is_fixed_value() {
+                        new_func.line(format!("Self(core::{}::new_{}())", name, convert_to_snake_case(&variant.name.to_string())));
+                    } else {
+                        let field_name = variant.name.to_string();
+                        new_func
+                            .arg(&field_name, variant.rust_type.for_wasm_param())
+                            .line(format!("Self(core::{}::{}({}))", name, variant.name, ToWasmBoundaryOperations::format(variant.rust_type.from_wasm_boundary_clone(&field_name, false).into_iter())));
+                        // ^ TODO: check types.can_new_fail(&field.name)
+                    }
                 },
             }
             wrapper.s_impl.push_fn(new_func);
         }
         // enum-getters
-        add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants);
+        add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, Some(rep));
         //push_wasm_wrapper(gen_scope, name, s, s_impl);
         wrapper.push(gen_scope);
     }
 }
 
-fn add_wasm_enum_getters(s_impl: &mut codegen::Impl, name: &RustIdent, variants: &Vec<EnumVariant>) {
+fn add_wasm_enum_getters(s_impl: &mut codegen::Impl, name: &RustIdent, variants: &Vec<EnumVariant>, rep: Option<Representation>) {
     assert!(CLI_ARGS.wasm);
     // kind() getter
     let kind_name = format!("{}Kind", name);
@@ -2409,24 +2554,23 @@ fn add_wasm_enum_getters(s_impl: &mut codegen::Impl, name: &RustIdent, variants:
         .ret(&kind_name);
     let mut get_kind_match = codegen::Block::new("match &self.0");
     for variant in variants.iter() {
-        if variant.rust_type.is_fixed_value() {
-            get_kind_match.line(format!("core::{}::{} => {}::{},", name, variant.name, kind_name, variant.name));
-        } else {
-            get_kind_match.line(format!("core::{}::{}(_) => {}::{},", name, variant.name, kind_name, variant.name));
-        }
+        let (_enc_fields, _variant_types, _variant_vars, capture) = enum_variant_encoding_info(variant, "_x", rep);
+        get_kind_match.line(format!("core::{}::{}{} => {}::{},", name, variant.name, capture, kind_name, variant.name));
     }
     get_kind.push_block(get_kind_match);
     s_impl.push_fn(get_kind);
+
     // as_{variant} conversions (returns None -> undefined when not the type)
     for variant in variants.iter() {
         if !variant.rust_type.is_fixed_value() {
+            let (_enc_fields, _variant_types, _variant_vars, capture) = enum_variant_encoding_info(variant, "variant", rep);
             let mut as_variant = codegen::Function::new(&format!("as_{}", &convert_to_snake_case(&variant.name.to_string())));
             as_variant
                 .arg_ref_self()
                 .vis("pub")
                 .ret(&format!("Option<{}>", variant.rust_type.for_wasm_return()));
             let mut variant_match = codegen::Block::new("match &self.0");
-            variant_match.line(format!("core::{}::{}(variant) => Some({}),", name, variant.name, variant.rust_type.to_wasm_boundary("variant", true)));
+            variant_match.line(format!("core::{}::{}{} => Some({}),", name, variant.name, capture, variant.rust_type.to_wasm_boundary("variant", true)));
             variant_match.line("_ => None,");
             as_variant.push_block(variant_match);
             s_impl.push_fn(as_variant);
@@ -2450,6 +2594,37 @@ fn cbor_event_len_indef() -> &'static str {
     }
 }
 
+fn enum_variant_encoding_info(variant: &EnumVariant, name: &str, rep: Option<Representation>) -> (Vec<EncodingField>, Vec<String>, Vec<String>, String) {
+    let mut enc_fields = if CLI_ARGS.preserve_encodings {
+        encoding_fields(name, &variant.rust_type.clone().resolve_aliases())
+    } else {
+        vec![]
+    };
+    let (mut variant_types, mut variant_vars) = if variant.rust_type.is_fixed_value() {
+        (vec![], vec![])
+    } else {
+        (vec![variant.rust_type.for_rust_member(false)], vec![name.to_owned()])
+    };
+    if CLI_ARGS.preserve_encodings && rep.is_some() && !variant.serialize_as_embedded_group {
+        enc_fields.push(EncodingField {
+            field_name: "outer_len_encoding".to_owned(),
+            type_name: "LenEncoding".to_owned(),
+            default_expr: "LenEncoding::default()",
+            inner: Vec::new(),
+        });
+    }
+    for enc_field in &enc_fields {
+        variant_types.push(enc_field.type_name.clone());
+        variant_vars.push(enc_field.field_name.clone());
+    }
+    let capture = if variant_vars.is_empty() {
+        "".to_owned()
+    } else {
+        format!("({})", variant_vars.join(", "))
+    };
+    (enc_fields, variant_types, variant_vars, capture)
+}
+
 // if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
 // This is useful for type choicecs which don't have any enclosing array/map tags, and thus don't benefit from exposing a
 // deserialize_as_embedded_group as the behavior would be identical.
@@ -2471,6 +2646,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     // rust enum containing the data
     let mut e = codegen::Enum::new(&name.to_string());
     e.vis("pub");
+    let mut e_impl = codegen::Impl::new(name.to_string());
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
@@ -2478,7 +2654,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     let mut ser_impl = make_serialization_impl(&name.to_string());
     let mut ser_func = make_serialization_function("serialize");
     if let Some(tag) = tag {
-        // TODO: how to even store these?
+        // TODO: how to even store these? (maybe it could be a new field in every enum variant)
         assert!(!CLI_ARGS.preserve_encodings);
         ser_func.line(format!("serializer.write_tag({}u64)?;", tag));
     }
@@ -2502,27 +2678,109 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         deser_impl
     } else {
         // this handles the tag check too
-        let (deser_impl, _deser_embedded_impl) = create_deserialize_impls(name, rep, tag, len_info.clone(), false, None, deser_body);
+        let outer_encoding_var = if CLI_ARGS.preserve_encodings {
+            Some("outer_len_encoding")
+        } else {
+            None
+        };
+        let (deser_impl, _deser_embedded_impl) = create_deserialize_impls(name, rep, tag, len_info.clone(), false, outer_encoding_var, deser_body);
         deser_impl
     };
     deser_body.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
     for variant in variants.iter() {
-        if variant.rust_type.is_fixed_value() {
+        let (enc_fields, variant_types, variant_vars, capture) = enum_variant_encoding_info(&variant, "x", rep);
+        if variant_types.is_empty() {
             e.push_variant(codegen::Variant::new(&format!("{}", variant.name)));
         } else {
-            e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant.rust_type.for_rust_member(false))));
+            e.push_variant(codegen::Variant::new(&format!("{}({})", variant.name, variant_types.join(", "))));
         }
+        // new (particularly useful if we have encoding variables)
+        let mut new_func = codegen::Function::new(&format!("new_{}", convert_to_snake_case(&variant.name.to_string())));
+        new_func
+            .ret("Self")
+            .vis("pub");
+        let mut output_comma = false;
+        // We only want to generate Variant::new() calls when we created a special struct
+        // for the variant, which happens in the general case for multi-field group choices
+        let fields = match &variant.rust_type {
+            // we need to check for sanity here, as if we're referring to the ident
+            // it should at this stage be registered
+            RustType::Rust(ident) => match types.rust_struct(ident).unwrap().variant() {
+                RustStructType::Record(record) => Some(&record.fields),
+                _ => None,
+            },
+            RustType::Alias(_, _) => unimplemented!("TODO: do we need to handle aliases here?"),
+            _ => None,
+        };
+        let mut init_fields = match fields {
+            Some(fields) => {
+                let ctor_fields: Vec<&RustField> = fields.iter().filter(|f| !f.optional && !f.rust_type.is_fixed_value()).collect();
+                let mut ctor = format!("{}::new(", variant.name);
+                for field in ctor_fields {
+                    if output_comma {
+                        ctor.push_str(", ");
+                    } else {
+                        output_comma = true;
+                    }
+                    new_func.arg(&field.name, field.rust_type.for_rust_move());
+                    ctor.push_str(&field.name);
+                    // ^ TODO: check types.can_new_fail(&field.name)?
+                }
+                ctor.push_str(")");
+                vec![ctor]
+            },
+            None => {
+                if variant.rust_type.is_fixed_value() {
+                    vec![]
+                } else {
+                    // just directly pass in the variant's type
+                    let field_name = variant.name.to_string();
+                    new_func.arg(&field_name, variant.rust_type.for_rust_move());
+                    vec![field_name]
+                    // ^ TODO: check types.can_new_fail(&field.name)?
+                }
+            },
+        };
+        for enc_field in enc_fields.iter() {
+            init_fields.push(enc_field.default_expr.to_owned());
+        }
+        if init_fields.is_empty() {
+            new_func.line(format!("Self::{}", variant.name));
+        } else {
+            new_func.line(format!("Self::{}({})", variant.name, init_fields.join(", ")));
+        }
+        e_impl.push_fn(new_func);
+
         // serialize
         if variant.serialize_as_embedded_group {
+            assert_eq!(variant_vars.len(), 1);
+            // we use serialize() instead of serialize_as_embedded_group() to count as the outer array tag here
+            // to simplify things (the size logic is there already)
             ser_array_match_block.line(&format!("{}::{}(x) => x.serialize(serializer{}),", name, variant.name, canonical_param()));
         } else {
-            let capture = if variant.rust_type.is_fixed_value() {
-                ""
+            let mut case_block = Block::new(&format!("{}::{}{} =>", name, variant.name, capture));
+            if CLI_ARGS.preserve_encodings {
+                if let Some(r) = rep {
+                    // group choice
+                    let n = variant.rust_type.expanded_field_count(types)
+                        .expect("preserve-encodings=true not supported with varying-size group choice");
+                    start_len(&mut case_block, r, "serializer", "outer_len_encoding", &n.to_string());
+                    gen_scope.generate_serialize(
+                        types,
+                        &variant.rust_type,
+                        &mut case_block,
+                        SerializeConfig::new("x", "x").expr_is_ref(true).encoding_var_is_local(true).encoding_var_is_ref(true));
+                    end_len(&mut case_block, "serializer", "outer_len_encoding", false);
+                    case_block.line("Ok(serializer)");
+                } else {
+                    // type choice
+                    gen_scope.generate_serialize(
+                        types,
+                        &variant.rust_type,
+                        &mut case_block,
+                        SerializeConfig::new("x", "x").expr_is_ref(true).is_end(true).encoding_var_is_local(true).encoding_var_is_ref(true));
+                }
             } else {
-                "(x)"
-            };
-            //if variant.rust_type.is_serialize_multiline() {
-                let mut case_block = Block::new(&format!("{}::{}{} =>", name, variant.name, capture));
                 let write_break = match rep {
                     Some(r) => {
                         let (len_str, indefinite) = match variant.rust_type.expanded_field_count(types) {
@@ -2541,19 +2799,23 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
                 // TODO: only generate a block if the serialize is more than 1 line
                 // Problem: generate_serialize() works in terms of line() and push_block()
                 //          but we'd just want to inline the single one inside of a line...
-                gen_scope.generate_serialize(types, &variant.rust_type, "x", true, &variant.name.to_string(), &mut case_block, !write_break, None, false);
+                gen_scope.generate_serialize(
+                    types,
+                    &variant.rust_type,
+                    &mut case_block,
+                    SerializeConfig::new("x", "x").expr_is_ref(true).is_end(!write_break).encoding_var_is_local(true).encoding_var_is_local(true));
                 if write_break {
                     case_block.line("serializer.write_special(CBORSpecial::Break)");
                 }
-                case_block.after(",");
-                ser_array_match_block.push_block(case_block);
-            //}
+            }
+            case_block.after(",");
+            ser_array_match_block.push_block(case_block);
         }
         // deserialize
         // TODO: don't backtrack if variants begin with non-overlapping cbor types
         // TODO: how to detect when a greedy match won't work? (ie choice with choices in a choice possibly)
         let mut variant_deser = Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
-        if variant.rust_type.is_fixed_value() {
+        if variant_types.is_empty() {
             gen_scope.generate_deserialize(types, &variant.rust_type, &convert_to_snake_case(&variant.name.to_string()), "", "", false, false, vec![], &mut variant_deser);
             variant_deser.line("Ok(())");
         } else {
@@ -2563,10 +2825,11 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         deser_body.push_block(variant_deser);
         // can't chain blocks so we just put them one after the other
         let mut return_if_deserialized = Block::new("");
-        if variant.rust_type.is_fixed_value() {
+        if variant_types.is_empty() {
             return_if_deserialized.line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
         } else {
-            return_if_deserialized.line(format!("Ok(variant) => return Ok({}::{}(variant)),", name, variant.name));
+            let (_, _, _, capture_without_outer_len) = enum_variant_encoding_info(&variant, "x", None);
+            return_if_deserialized.line(format!("Ok({}) => return Ok({}::{}{}),",  capture_without_outer_len, name, variant.name, capture));
         }
         return_if_deserialized.line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
         return_if_deserialized.after(";");
@@ -2574,7 +2837,14 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     }
     ser_func.push_block(ser_array_match_block);
     ser_impl.push_fn(ser_func);
-    add_deserialize_final_len_check(deser_body, rep, len_info);
+    // TODO: we pass in a dummy Fixed to avoid the check since we don't support optional fields for plain groups
+    // which causes an issue with group choices of plain groups where if we generate_deserialize() with
+    // optional_field = true then we hit asserts (not supported) and
+    // optional_field = false causes this final check to fail since no elements were read
+    // A possible workaround for this could be to read it beforehand if possible but
+    // that gets complicated for optional fields inside those plain groups so we'll
+    // just avoid this check instead for this one case.
+    add_deserialize_final_len_check(deser_body, rep, RustStructCBORLen::Fixed(0));
     deser_body.line(&format!("Err(DeserializeError::new(\"{}\", DeserializeFailure::NoVariantMatched.into()))", name));
     if CLI_ARGS.annotate_fields {
         deser_func.push_block(error_annotator);
@@ -2584,7 +2854,8 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     // however, clients expanding upon the generated lib might find it of use to change.
     gen_scope
         .rust()
-        .push_enum(e);
+        .push_enum(e)
+        .push_impl(e_impl);
     gen_scope
         .rust_serialize()
         .push_impl(ser_impl)
@@ -2710,7 +2981,11 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
     s_impl.push_fn(get);
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_impl = make_serialization_impl(&type_name.to_string());
-    gen_scope.generate_serialize(types, &field_type, self_var, false, "inner", &mut ser_func, true, None, false);
+    gen_scope.generate_serialize(
+        types,
+        &field_type,
+        &mut ser_func,
+        SerializeConfig::new(self_var, "inner").is_end(true));
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize");
     let mut deser_impl = codegen::Impl::new(&type_name.to_string());
