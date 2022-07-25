@@ -133,14 +133,6 @@ impl<T: cbor_event::de::Deserialize> Deserialize for T {
     }
 }
 
-pub trait DeserializeEmbeddedGroup {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
-        read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
-    ) -> Result<Self, DeserializeError> where Self: Sized;
-}
-
 pub trait FromBytes {
     fn from_bytes(data: Vec<u8>) -> Result<Self, DeserializeError> where Self: Sized;
 }

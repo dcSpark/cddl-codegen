@@ -25,3 +25,9 @@ string64 = text .size (0..64)
 tagged_text = #6.9(text)
 
 string_16_32 = #6.7(text .size (16..32))
+
+type_choice = 0 / "hello world" / uint / text / #6.16([*uint])
+
+plain = (d: #6.13(uint), e: tagged_text)
+
+group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]

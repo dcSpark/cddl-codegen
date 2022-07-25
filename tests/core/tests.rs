@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn group_choice_foo() {
-        deser_test(&GroupChoice::Foo(Foo::new(0, String::new(), vec![])));
+        deser_test(&GroupChoice::new_foo(0, String::new(), vec![]));
     }
 
     #[test]

@@ -40,3 +40,11 @@ impl CBORReadLen {
       }
   }
 }
+
+pub trait DeserializeEmbeddedGroup {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        read_len: &mut CBORReadLen,
+        len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> where Self: Sized;
+}

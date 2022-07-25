@@ -92,8 +92,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .wasm()
                 .raw("mod prelude;")
                 .raw("use std::collections::BTreeMap;");
+                
             if CLI_ARGS.preserve_encodings {
-                gen_scope.wasm().raw("use linked_hash_map::LinkedHashMap;");
+                gen_scope
+                    .wasm()
+                    .raw("use linked_hash_map::LinkedHashMap;")
+                    .raw("use core::serialization::{LenEncoding, StringEncoding};");
             }
         }
         for cddl_rule in &cddl.rules {

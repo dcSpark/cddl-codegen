@@ -360,4 +360,94 @@ mod tests {
             cbor_str_sz(&(0..33).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Eight)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
     }
+
+    #[test]
+    fn type_choice() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_11_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_0 = cbor_int(0, *def_enc);
+                let irregular_bytes_hello_world = cbor_str_sz("hello world", str_enc.clone());
+                let irregular_bytes_uint = cbor_int(10, *def_enc);
+                let irregular_bytes_text = cbor_str_sz("abcdefghijk", str_enc.clone());
+                let irregular_bytes_tagged_arr = vec![
+                    cbor_tag_sz(16, *def_enc),
+                        arr_sz(2, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_int(3, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_0 = TypeChoice::from_bytes(irregular_bytes_0.clone()).unwrap();
+                assert_eq!(irregular_bytes_0, irregular_0.to_bytes());
+                let irregular_hello_world = TypeChoice::from_bytes(irregular_bytes_hello_world.clone()).unwrap();
+                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_bytes());
+                let irregular_uint = TypeChoice::from_bytes(irregular_bytes_uint.clone()).unwrap();
+                assert_eq!(irregular_bytes_uint, irregular_uint.to_bytes());
+                let irregular_text = TypeChoice::from_bytes(irregular_bytes_text.clone()).unwrap();
+                assert_eq!(irregular_bytes_text, irregular_text.to_bytes());
+                let irregular_tagged_arr = TypeChoice::from_bytes(irregular_bytes_tagged_arr.clone()).unwrap();
+                assert_eq!(irregular_bytes_tagged_arr, irregular_tagged_arr.to_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn group_choice() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_6_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (3, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (4, Sz::Four)]),
+        ];
+        for str_enc in &str_6_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_3 = vec![
+                    arr_sz(1, *def_enc),
+                        cbor_int(3, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_tagged_2 = vec![
+                    arr_sz(1, *def_enc),
+                        cbor_tag_sz(10, *def_enc),
+                            cbor_int(2, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_foo = vec![
+                    vec![ARR_INDEF],
+                        cbor_tag_sz(11, *def_enc),
+                            arr_sz(3, *def_enc),
+                                cbor_int(9, *def_enc),
+                                cbor_str_sz("potato", str_enc.clone()),
+                                cbor_bytes_sz(vec![0xF0, 0x0D, 0xF0, 0x0D, 0xF0, 0x0D], str_enc.clone()),
+                    vec![BREAK],
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_inlined = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(0, *def_enc),
+                        cbor_int(10, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_plain = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_tag_sz(13, *def_enc),
+                            cbor_int(17, *def_enc),
+                        cbor_tag_sz(9, *def_enc),
+                            cbor_str_sz("carrot", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_3 = GroupChoice::from_bytes(irregular_bytes_3.clone()).unwrap();
+                assert_eq!(irregular_bytes_3, irregular_3.to_bytes());
+                let irregular_tagged_2 = GroupChoice::from_bytes(irregular_bytes_tagged_2.clone()).unwrap();
+                assert_eq!(irregular_bytes_tagged_2, irregular_tagged_2.to_bytes());
+                let irregular_foo = GroupChoice::from_bytes(irregular_bytes_foo.clone()).unwrap();
+                assert_eq!(irregular_bytes_foo, irregular_foo.to_bytes());
+                let irregular_inlined = GroupChoice::from_bytes(irregular_bytes_inlined.clone()).unwrap();
+                assert_eq!(irregular_bytes_inlined, irregular_inlined.to_bytes());
+                let irregular_plain = GroupChoice::from_bytes(irregular_bytes_plain.clone()).unwrap();
+                assert_eq!(irregular_bytes_plain, irregular_plain.to_bytes());
+            }
+        }
+    }
 }
