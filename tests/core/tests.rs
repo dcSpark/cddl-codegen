@@ -10,6 +10,13 @@ mod tests {
     }
 
     #[test]
+    fn hash() {
+        let hash = Hash::new(vec![0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+        deser_test(&hash);
+        assert!(Hash::new(vec![0x00, 0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).is_err());
+    }
+
+    #[test]
     fn foo() {
         deser_test(&Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
     }
@@ -84,7 +91,7 @@ mod tests {
 
     #[test]
     fn group_choice_foo() {
-        deser_test(&GroupChoice::Foo(Foo::new(0, String::new(), vec![])));
+        deser_test(&GroupChoice::new_foo(0, String::new(), vec![]));
     }
 
     #[test]

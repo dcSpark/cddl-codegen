@@ -1,4 +1,4 @@
-foo = [uint, text, bytes]
+foo = #6.11([uint, text, bytes])
 
 bar = {
 	foo: #6.13(foo),
@@ -13,3 +13,19 @@ table_arr_members = {
 	arr2: [*foo],
 	table: { * uint => text },
 }
+
+data = { * #6.14(bytes) => { * uint => { * #6.9(uint) => [* #6.18([* text]) ] } } }
+
+deeply_nested = [ data: data ]
+
+string64 = text .size (0..64)
+
+tagged_text = #6.9(text)
+
+string32 = #6.7(text .size (16..32))
+
+type_choice = 0 / "hello world" / uint / text / #6.16([*uint])
+
+plain = (d: #6.13(uint), e: tagged_text)
+
+group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]

@@ -1,4 +1,4 @@
-hash = bytes
+hash = bytes .size (0..8)
 
 foo = [uint, text, bytes]
 

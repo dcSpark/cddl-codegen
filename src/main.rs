@@ -16,6 +16,14 @@ use parsing::{parse_rule};
 
 use cli::CLI_ARGS;
 
+fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
+    let mut buf = String::new();
+    for path in paths {
+        buf.push_str(&std::fs::read_to_string(path).map_err(|_| panic!("can't read: {}", path)).unwrap());
+    }
+    Ok(buf)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cddl_in = std::fs::read_to_string(CLI_ARGS.input.clone()).expect("input.cddl file not present or could not be opened");
     let mut lexer = cddl::lexer::lexer_from_str(&cddl_in);
@@ -68,14 +76,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .raw("use cbor_event::Special as CBORSpecial;")
             .raw("use serialization::*;")
             .raw("pub mod prelude;")
-            .raw("pub mod serialization;");
+            .raw("pub mod serialization;")
+            .raw("use std::collections::BTreeMap;")
+            .raw("use std::convert::{From, TryFrom};");
+        if CLI_ARGS.preserve_encodings {
+            gen_scope.rust().raw("use linked_hash_map::LinkedHashMap;");
+        }
         gen_scope.rust_serialize().import("super", "*");
         gen_scope.rust_serialize().import("std::io", "{Seek, SeekFrom}");
 
         // Wasm
         if CLI_ARGS.wasm {
             gen_scope.wasm().import("wasm_bindgen::prelude", "*");
-            gen_scope.wasm().raw("mod prelude;");
+            gen_scope
+                .wasm()
+                .raw("mod prelude;")
+                .raw("use std::collections::BTreeMap;");
+                
+            if CLI_ARGS.preserve_encodings {
+                gen_scope
+                    .wasm()
+                    .raw("use linked_hash_map::LinkedHashMap;")
+                    .raw("use core::serialization::{LenEncoding, StringEncoding};");
+            }
         }
         for cddl_rule in &cddl.rules {
             println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
@@ -88,23 +111,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(()) => (),
         Err(_) => (),
     };
-    std::fs::create_dir_all(CLI_ARGS.output.join("core/src")).unwrap();
-    std::fs::write(CLI_ARGS.output.join("core/src/lib.rs"), gen_scope.rust().to_string()).unwrap();
-    let serialize_prepend_dir = if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-        "static/serialize_canonical.rs"
+    std::fs::create_dir_all(CLI_ARGS.output.join("core/src"))?;
+    std::fs::write(CLI_ARGS.output.join("core/src/lib.rs"), gen_scope.rust().to_string())?;
+    let mut serialize_paths = vec!["static/serialization.rs"];
+    if CLI_ARGS.preserve_encodings {
+        serialize_paths.push("static/serialization_preserve.rs");
+        if CLI_ARGS.canonical_form {
+            serialize_paths.push("static/serialization_preserve_force_canonical.rs");
+        } else {
+            serialize_paths.push("static/serialization_preserve_non_force_canonical.rs");
+            serialize_paths.push("static/serialization_non_force_canonical.rs");
+        }
     } else {
-        "static/serialize_non_canonical.rs"
-    };
-    let mut serialize_contents = std::fs::read_to_string(serialize_prepend_dir).unwrap();
+        serialize_paths.push("static/serialization_non_preserve.rs");
+        serialize_paths.push("static/serialization_non_force_canonical.rs");
+    }
+    let mut serialize_contents = concat_files(serialize_paths)?;
     serialize_contents.push_str(&gen_scope.rust_serialize().to_string());
-    std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), serialize_contents).unwrap();
-    std::fs::copy("static/Cargo_rust.toml", CLI_ARGS.output.join("core/Cargo.toml")).unwrap();
-    std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs")).unwrap();
+    std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), serialize_contents)?;
+    std::fs::copy("static/Cargo_rust.toml", CLI_ARGS.output.join("core/Cargo.toml"))?;
+    std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs"))?;
     if CLI_ARGS.wasm {
-        std::fs::create_dir_all(CLI_ARGS.output.join("wasm/src")).unwrap();
-        std::fs::write(CLI_ARGS.output.join("wasm/src/lib.rs"), gen_scope.wasm().to_string()).unwrap();
-        std::fs::copy("static/prelude_wasm.rs", CLI_ARGS.output.join("wasm/src/prelude.rs")).unwrap();
-        std::fs::copy("static/Cargo_wasm.toml", CLI_ARGS.output.join("wasm/Cargo.toml")).unwrap();
+        std::fs::create_dir_all(CLI_ARGS.output.join("wasm/src"))?;
+        std::fs::write(CLI_ARGS.output.join("wasm/src/lib.rs"), gen_scope.wasm().to_string())?;
+        std::fs::copy("static/prelude_wasm.rs", CLI_ARGS.output.join("wasm/src/prelude.rs"))?;
+        std::fs::copy("static/Cargo_wasm.toml", CLI_ARGS.output.join("wasm/Cargo.toml"))?;
     }
 
     types.print_info();
