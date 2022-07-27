@@ -26,8 +26,8 @@ pub struct Cli {
     #[clap(long, parse(try_from_str), default_value_t = true)]
     pub extended_prelude: bool,
 
-    /// Generate byte string definitions as new rust types
-    #[clap(long, parse(try_from_str), default_value_t = true)]
+    /// Generate byte string definitions as new rust types (TODO: look into this or remove it)
+    #[clap(long, parse(try_from_str), default_value_t = false)]
     pub binary_wrappers: bool,
 
     /// Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering

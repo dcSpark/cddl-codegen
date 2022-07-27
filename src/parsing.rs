@@ -77,7 +77,7 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
         }
         let inner_rust_type = rust_type_from_type2(types, inner_type2);
         match tag {
-            // only want to create a wrapper if we NEED to - so that we can keep the tag information
+            // only want to create a wrapper if we NEED to - so that we can keep the tag information OR it has bounds
             Some(_) => {
                 types.register_rust_struct(RustStruct::new_wrapper(name.clone(), tag, RustType::Optional(Box::new(inner_rust_type)), None));
             },
@@ -158,17 +158,20 @@ fn parse_range_operator(operator: &Operator) -> (Option<isize>, Option<isize>) {
 
 fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice: &TypeChoice, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let type1 = &type_choice.type1;
-    let min_max = type1.operator.as_ref().map(parse_range_operator);
     match &type1.type2 {
         Type2::Typename{ ident, generic_args, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
+            let min_max = type1.operator.as_ref().map(parse_range_operator);
             if min_max.is_some() {
                 assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
-                let field_type = RustType::Primitive(Primitive::Bytes);
+                let field_type = match cddl_ident.to_string().as_str() {
+                    "tstr" | "text" => RustType::Primitive(Primitive::Str),
+                    "bstr" | "bytes" => RustType::Primitive(Primitive::Bytes),
+                    other => panic!("range control specifiers not supported for type: {}", other),
+                };
                 types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone(), min_max));
-                types.register_type_alias(type_name.clone(), field_type, false, false);
             } else {
                 let concrete_type = match types.new_type(&cddl_ident) {
                     RustType::Alias(_ident, ty) => *ty,
@@ -221,6 +224,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
+                            let min_max = inner_type.type1.operator.as_ref().map(parse_range_operator);
                             types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, min_max))
                         },
                     };
@@ -273,6 +277,8 @@ fn table_domain_range<'a>(group_choice: &'a GroupChoice<'a>, rep: Representation
                             // Does the range control operator matter?
                             return Some((&t1.type2, &ge.entry_type));
                         },
+                        // has a fixed value - this is just a 1-element struct
+                        Some(MemberKey::Value{ .. }) => return None,
                         _ => panic!("unsupported table map key (1): {:?}", ge),
                     }
                 },

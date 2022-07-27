@@ -12,6 +12,7 @@ use crate::utils::{
     is_identifier_user_defined,
 };
 
+#[derive(Debug)]
 pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
     // This is since in order to generate plain groups we must have a representation, which isn't
@@ -410,7 +411,7 @@ impl Primitive {
             Primitive::I32 => "i32",
             Primitive::U64 => "u64",
             Primitive::I64 => "i64",
-            // TODO: this should ideally by a u64 but the cbor_event lib takes i64 anyway so we don't get that extra precision
+            // TODO: this should ideally be a u64 but the cbor_event lib takes i64 anyway so we don't get that extra precision
             Primitive::N64 => "i64",
             Primitive::Str => "String",
             Primitive::Bytes => "Vec<u8>",
@@ -595,7 +596,7 @@ impl RustType {
         match self {
             RustType::Array(ty) => RustType::Array(Box::new(ty.resolve_aliases())),
             RustType::Tagged(tag, ty) => RustType::Tagged(tag, Box::new(ty.resolve_aliases())),
-            RustType::Alias(_, ty) => *ty,
+            RustType::Alias(_, ty) => ty.resolve_aliases(),
             RustType::Map(key, value) => RustType::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
             RustType::Optional(ty) => RustType::Optional(Box::new(ty.resolve_aliases())),
             _ => self,
@@ -789,7 +790,7 @@ impl RustType {
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
     pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
-        assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
+        //assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
         match self {
             RustType::Tagged(_tag, ty) => {
                 let mut inner = ty.from_wasm_boundary_clone(expr, can_fail);
@@ -1035,7 +1036,11 @@ impl RustType {
             },
             RustType::Rust(ident) => if types.is_plain_group(ident) {
                 println!("ident: {}", ident);
-                types.rust_structs.get(&ident).unwrap().expanded_mandatory_field_count(types)
+                match types.rust_structs.get(&ident) {
+                    Some(x) => x.expanded_mandatory_field_count(types),
+                    None => panic!("could not find ident: {}", ident),
+                }
+                //types.rust_structs.get(&ident).unwrap().expanded_mandatory_field_count(types)
             } else {
                 1
             },
@@ -1056,8 +1061,18 @@ impl RustType {
             },
             RustType::Optional(ty) => ty.visit_types(types, f),
             RustType::Primitive(..) => (),
-            RustType::Rust(ident) => types.rust_struct(ident).unwrap().visit_types(types, f),
+            RustType::Rust(ident) => {
+                types.rust_struct(ident).map(|t| t.visit_types(types, f));
+            },
             RustType::Tagged(_tag, ty) => ty.visit_types(types, f),
+        }
+    }
+
+    pub fn strip_tags_and_aliases(&self) -> &Self {
+        match self {
+            RustType::Alias(_ident, ty) => ty,
+            RustType::Tagged(_tag, ty) => ty,
+            _ => self,
         }
     }
 }

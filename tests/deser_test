@@ -3,6 +3,8 @@ static BREAK: u8 = 0xff;
 static ARR_INDEF: u8 = 0x9f;
 static MAP_INDEF: u8 = 0xbf;
 
+use cbor_event::{Sz, StringLenSz};
+
 // to work around JsValue error types (TODO: we should fix this in cddl-codegen)
 fn from_bytes<T: Deserialize + Sized>(data: Vec<u8>) -> Result<T, DeserializeError> {
     let mut raw = Deserializer::from(std::io::Cursor::new(data));
@@ -19,6 +21,18 @@ fn map_def(len: u8) -> Vec<u8> {
     vec![0xa0 + len]
 }
 
+fn arr_sz(len: u64, sz: Sz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    buf.write_array_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
+    buf.finalize()
+}
+
+fn map_sz(len: u64, sz: Sz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    buf.write_map_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
+    buf.finalize()
+}
+
 fn cbor_string(s: &str) -> Vec<u8> {
     // our keys are short so we don't handle bigger ones
     assert!(s.len() <= 0x17);
@@ -33,19 +47,47 @@ fn cbor_tag(t: u8) -> Vec<u8> {
     vec![0xc0u8 + t]
 }
 
+fn cbor_int(x: i128, sz: Sz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    if x >= 0 {
+        buf.write_unsigned_integer_sz(x as u64, sz).unwrap();
+    } else {
+        buf.write_negative_integer_sz(x, sz).unwrap();
+    }
+    buf.finalize()
+}
+
+fn cbor_tag_sz(tag: u64, sz: Sz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    buf.write_tag_sz(tag, sz).unwrap();
+    buf.finalize()
+}
+
+fn cbor_str_sz(s: &str, sz: StringLenSz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    buf.write_text_sz(s, sz).unwrap();
+    buf.finalize()
+}
+
+fn cbor_bytes_sz(bytes: Vec<u8>, sz: StringLenSz) -> Vec<u8> {
+    let mut buf = Serializer::new_vec();
+    buf.write_bytes_sz(bytes, sz).unwrap();
+    buf.finalize()
+}
+
 fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
     use cbor_event::Type;
     let mut raw = Deserializer::from(std::io::Cursor::new(vec));
     let mut lens = Vec::new();
-    let consume_elem = |lens: &mut Vec<cbor_event::Len>| {
+    let consume_elem = |lens: &mut Vec<cbor_event::LenSz>| {
         if let Some(len) = lens.last_mut() {
-            if let cbor_event::Len::Len(n) = len {
+            if let cbor_event::LenSz::Len(n, _) = len {
                 *n -= 1;
             }
         };
     };
-    let reduce_depth = |lens: &mut Vec<cbor_event::Len>| {
-        while let Some(cbor_event::Len::Len(0)) = lens.last() {
+    let reduce_depth = |lens: &mut Vec<cbor_event::LenSz>| {
+        while let Some(cbor_event::LenSz::Len(0, _)) = lens.last() {
             lens.pop();
             println!("{}}}", "\t".repeat(lens.len()));
         }
@@ -56,52 +98,59 @@ fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
         match raw.cbor_type() {
             Err(_) => break,
             Ok(Type::UnsignedInteger) => {
-                println!("UINT({})", raw.unsigned_integer().unwrap());
+                let (x, sz) = raw.unsigned_integer_sz().unwrap();
+                println!("UINT({}, {:?})", x, sz);
                 consume_elem(&mut lens);
                 reduce_depth(&mut lens);
             },
             Ok(Type::NegativeInteger) => {
-                println!("NINT({})", raw.negative_integer().unwrap());
+                let (x, sz) = raw.negative_integer_sz().unwrap();
+                println!("NINT({}, {:?})", x, sz);
                 consume_elem(&mut lens);
                 reduce_depth(&mut lens);
             },
             Ok(Type::Bytes) => {
-                println!("BYTES({:?})", raw.bytes().unwrap());
+                let (x, sz) = raw.bytes_sz().unwrap();
+                println!("BYTES({:?}, {:?})", x, sz);
                 consume_elem(&mut lens);
                 reduce_depth(&mut lens);
             },
             Ok(Type::Text) => {
-                println!("TEXT({})", raw.text().unwrap());
+                let (x, sz) = raw.text_sz().unwrap();
+                println!("TEXT(\"{}\", {:?})", x, sz);
                 consume_elem(&mut lens);
                 reduce_depth(&mut lens);
             },
             Ok(Type::Array) => {
-                let len = raw.array().unwrap();
+                let len = raw.array_sz().unwrap();
                 println!("ARRAY({:?}) {{", len);
                 consume_elem(&mut lens);
                 lens.push(len);
-                if let cbor_event::Len::Len(0) = len {
+                if let cbor_event::LenSz::Len(0, _sz) = len {
                     reduce_depth(&mut lens);
                 }
             },
             Ok(Type::Map) => {
-                let len = raw.map().unwrap();
+                let len = raw.map_sz().unwrap();
                 println!("MAP({:?}) {{", len);
                 consume_elem(&mut lens);
                 lens.push(match len {
-                    cbor_event::Len::Len(n) => cbor_event::Len::Len(2 * n),
-                    cbor_event::Len::Indefinite => cbor_event::Len::Indefinite,
+                    cbor_event::LenSz::Len(n, sz) => cbor_event::LenSz::Len(2 * n, sz),
+                    cbor_event::LenSz::Indefinite => cbor_event::LenSz::Indefinite,
                 });
-                if let cbor_event::Len::Len(0) = len {
+                if let cbor_event::LenSz::Len(0, _sz) = len {
                     reduce_depth(&mut lens);
                 }
             },
-            Ok(Type::Tag) => println!("TAG({})", raw.tag().unwrap()),
+            Ok(Type::Tag) => {
+                let (tag, sz) = raw.tag_sz().unwrap();
+                println!("TAG({}, {:?})", tag, sz);
+            },
             Ok(Type::Special) => {
                 let special = raw.special().unwrap();
                 println!("SPECIAL({:?})", special);
                 if special == cbor_event::Special::Break {
-                    if let Some(cbor_event::Len::Indefinite) = lens.last() {
+                    if let Some(cbor_event::LenSz::Indefinite) = lens.last() {
                         lens.pop();
                         reduce_depth(&mut lens);
                     } else {
