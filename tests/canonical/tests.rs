@@ -465,4 +465,46 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn cbor_in_cbor() {
+        let canonical_foo_bytes = vec![   
+            cbor_tag(11),
+                arr_def(3),
+                    cbor_int(5, Sz::Inline),
+                    cbor_string("???"),
+                    cbor_bytes_sz(vec![0xAB, 0xCD, 0xEF], StringLenSz::Len(Sz::Inline)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let canonical_bytes = vec![
+            arr_def(2),    
+                cbor_bytes_sz(canonical_foo_bytes, StringLenSz::Len(Sz::Inline)),
+                cbor_bytes_sz(cbor_int(5, Sz::Inline), StringLenSz::Len(Sz::Inline)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let str_3_encodings = vec![
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Len(Sz::Eight),
+            StringLenSz::Indefinite(vec![(2, Sz::One), (1, Sz::Four)])
+        ];
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in def_encodings.iter() {
+            for str_enc in str_3_encodings.iter() {
+                let irregular_foo_bytes = vec![
+                    cbor_tag_sz(11, *def_enc),
+                            arr_sz(3, *def_enc),
+                                cbor_int(5, *def_enc),
+                                cbor_str_sz("???", str_enc.clone()),
+                                cbor_bytes_sz(vec![0xAB, 0xCD, 0xEF], str_enc.clone())
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let foo_bytes_enc = StringLenSz::Indefinite(vec![(5, Sz::Inline), ((irregular_foo_bytes.len() - 5) as u64, Sz::Eight)]);
+                let irregular_bytes = vec![
+                    arr_sz(2, *def_enc),    
+                        cbor_bytes_sz(irregular_foo_bytes, foo_bytes_enc),
+                        cbor_bytes_sz(cbor_int(5, *def_enc), StringLenSz::Len(*def_enc)),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular = CborInCbor::from_bytes(irregular_bytes.clone()).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_bytes(false));
+                assert_eq!(canonical_bytes, irregular.to_bytes(true));
+            }
+        }
+    }
 }
