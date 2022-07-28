@@ -1,5 +1,3 @@
-use cbor_event::{Sz, LenSz, StringLenSz};
-
 pub struct CBORReadLen {
     deser_len: cbor_event::LenSz,
     read: u64,

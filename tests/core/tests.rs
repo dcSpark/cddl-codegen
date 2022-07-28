@@ -103,4 +103,9 @@ mod tests {
     fn group_choice_plain() {
         deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg").into())));
     }
+
+    #[test]
+    fn cbor_in_cbor() {
+        deser_test(&CborInCbor::new(Foo::new(0, String::new(), vec![]), 9))
+    }
 }

@@ -29,3 +29,8 @@ type_choice = 0 / "hello world" / uint / text / #6.16([*uint])
 plain = (d: #6.13(uint), e: tagged_text)
 
 group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]
+
+foo_bytes = bytes .cbor foo
+
+; since we don't generate code for definitions like the above (should we if no one refers to it?)
+cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]
