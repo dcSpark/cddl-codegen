@@ -3,8 +3,6 @@ static BREAK: u8 = 0xff;
 static ARR_INDEF: u8 = 0x9f;
 static MAP_INDEF: u8 = 0xbf;
 
-use cbor_event::{Sz, StringLenSz};
-
 // to work around JsValue error types (TODO: we should fix this in cddl-codegen)
 fn from_bytes<T: Deserialize + Sized>(data: Vec<u8>) -> Result<T, DeserializeError> {
     let mut raw = Deserializer::from(std::io::Cursor::new(data));
@@ -21,13 +19,13 @@ fn map_def(len: u8) -> Vec<u8> {
     vec![0xa0 + len]
 }
 
-fn arr_sz(len: u64, sz: Sz) -> Vec<u8> {
+fn arr_sz(len: u64, sz: cbor_event::Sz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     buf.write_array_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
     buf.finalize()
 }
 
-fn map_sz(len: u64, sz: Sz) -> Vec<u8> {
+fn map_sz(len: u64, sz: cbor_event::Sz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     buf.write_map_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
     buf.finalize()
@@ -47,7 +45,7 @@ fn cbor_tag(t: u8) -> Vec<u8> {
     vec![0xc0u8 + t]
 }
 
-fn cbor_int(x: i128, sz: Sz) -> Vec<u8> {
+fn cbor_int(x: i128, sz: cbor_event::Sz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     if x >= 0 {
         buf.write_unsigned_integer_sz(x as u64, sz).unwrap();
@@ -57,19 +55,19 @@ fn cbor_int(x: i128, sz: Sz) -> Vec<u8> {
     buf.finalize()
 }
 
-fn cbor_tag_sz(tag: u64, sz: Sz) -> Vec<u8> {
+fn cbor_tag_sz(tag: u64, sz: cbor_event::Sz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     buf.write_tag_sz(tag, sz).unwrap();
     buf.finalize()
 }
 
-fn cbor_str_sz(s: &str, sz: StringLenSz) -> Vec<u8> {
+fn cbor_str_sz(s: &str, sz: cbor_event::StringLenSz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     buf.write_text_sz(s, sz).unwrap();
     buf.finalize()
 }
 
-fn cbor_bytes_sz(bytes: Vec<u8>, sz: StringLenSz) -> Vec<u8> {
+fn cbor_bytes_sz(bytes: Vec<u8>, sz: cbor_event::StringLenSz) -> Vec<u8> {
     let mut buf = Serializer::new_vec();
     buf.write_bytes_sz(bytes, sz).unwrap();
     buf.finalize()

@@ -80,7 +80,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .raw("use std::collections::BTreeMap;")
             .raw("use std::convert::{From, TryFrom};");
         if CLI_ARGS.preserve_encodings {
-            gen_scope.rust().raw("use linked_hash_map::LinkedHashMap;");
+            gen_scope
+                .rust()
+                .raw("use linked_hash_map::LinkedHashMap;")
+                .raw("use cbor_event::{Sz, LenSz, StringLenSz};");
         }
         gen_scope.rust_serialize().import("super", "*");
         gen_scope.rust_serialize().import("std::io", "{Seek, SeekFrom}");

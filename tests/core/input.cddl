@@ -30,3 +30,8 @@ table_arr_members = {
 type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint])
 
 group_choice = [ foo // 0, x: uint // plain ]
+
+foo_bytes = bytes .cbor foo
+
+; since we don't generate code for definitions like the above (should we if no one refers to it?)
+cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]

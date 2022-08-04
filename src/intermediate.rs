@@ -127,7 +127,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see new_type() for why this is mut
-    fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
+    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
             Some((alias, _, _)) => Some(alias.clone()),
@@ -583,6 +583,8 @@ pub enum RustType {
     Map(Box<RustType>, Box<RustType>),
     // Alias for another type
     Alias(AliasIdent, Box<RustType>),
+    // bytes .cbor T in cddl, outside of serialization is semantically like T
+    CBORBytes(Box<RustType>),
 
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
@@ -599,6 +601,7 @@ impl RustType {
             RustType::Alias(_, ty) => ty.resolve_aliases(),
             RustType::Map(key, value) => RustType::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
             RustType::Optional(ty) => RustType::Optional(Box::new(ty.resolve_aliases())),
+            RustType::CBORBytes(ty) => RustType::CBORBytes(Box::new(ty.resolve_aliases())),
             _ => self,
         }
     }
@@ -639,6 +642,7 @@ impl RustType {
             RustType::Optional(ty) => ty.directly_wasm_exposable(),
             RustType::Map(_, _) => false,
             RustType::Alias(_ident, ty) => ty.directly_wasm_exposable(),
+            RustType::CBORBytes(ty) => ty.directly_wasm_exposable(),
         }
     }
 
@@ -647,6 +651,7 @@ impl RustType {
             RustType::Fixed(_) => true,
             RustType::Tagged(_tag, ty) => ty.is_fixed_value(),
             RustType::Alias(_ident, ty) => ty.is_fixed_value(),
+            RustType::CBORBytes(ty) => ty.is_fixed_value(),
             _ => false,
         }
     }
@@ -684,6 +689,7 @@ impl RustType {
                 
                 _ => ident.to_string(),
             },
+            RustType::CBORBytes(ty) => ty.for_rust_read(),
         }
     }
 
@@ -707,6 +713,7 @@ impl RustType {
                 RustType::Rust(_) => format!("&{}", ident),
                 _ => ident.to_string(),
             }
+            RustType::CBORBytes(ty) => ty.for_wasm_member(),
         }
     }
 
@@ -740,6 +747,7 @@ impl RustType {
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
+            RustType::CBORBytes(ty) => ty.for_wasm_member(),
         }
     }
 
@@ -765,6 +773,7 @@ impl RustType {
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
+            RustType::CBORBytes(ty) => ty.for_rust_member(from_wasm),
         }
     }
 
@@ -783,6 +792,7 @@ impl RustType {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
                 AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
             },
+            RustType::CBORBytes(ty) => VariantIdent::new_custom(format!("CBORBytes{}", ty.for_variant())),
         }
     }
 
@@ -819,6 +829,7 @@ impl RustType {
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
             ],
+            RustType::CBORBytes(ty) => ty.from_wasm_boundary_clone(expr, can_fail),
             _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
         }
     }
@@ -847,6 +858,7 @@ impl RustType {
                     ToWasmBoundaryOperations::MapInto
                 },
             ],
+            RustType::CBORBytes(ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
             _ => panic!("unsupported or unexpected"),
         }
     }
@@ -864,6 +876,7 @@ impl RustType {
                 expr.to_owned()
             },
             RustType::Map(_k, _v) => expr.to_owned(),
+            RustType::CBORBytes(ty) => ty.from_wasm_boundary_ref(expr),
             _ => format!("&{}", expr),
         }
     }
@@ -889,6 +902,7 @@ impl RustType {
             RustType::Map(k, v) => format!("{}.clone().into()", expr),
             RustType::Optional(ty) => ty.to_wasm_boundary_optional(expr, is_ref),
             RustType::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
+            RustType::CBORBytes(ty) => ty.to_wasm_boundary(expr, is_ref),
         }
     }
 
@@ -922,6 +936,7 @@ impl RustType {
             RustType::Map(_k, _v) => false,
             RustType::Optional(ty) => ty.is_copy(),
             RustType::Alias(_ident, ty) => ty.is_copy(),
+            RustType::CBORBytes(ty) => ty.is_copy(),
         }
     }
 
@@ -959,6 +974,7 @@ impl RustType {
                 inner_types
             },
             RustType::Alias(_ident, ty) => ty.cbor_types(),
+            RustType::CBORBytes(ty) => vec![CBORType::Bytes],
         }
     }
 
@@ -976,6 +992,7 @@ impl RustType {
             RustType::Optional(_) => false,
             RustType::Map(_, _) => false,
             RustType::Alias(_ident, ty) => ty._is_serialize_multiline(),
+            RustType::CBORBytes(ty) => true,
         }
     }
 
@@ -1065,12 +1082,32 @@ impl RustType {
                 types.rust_struct(ident).map(|t| t.visit_types(types, f));
             },
             RustType::Tagged(_tag, ty) => ty.visit_types(types, f),
+            RustType::CBORBytes(ty) => ty.visit_types(types, f),
         }
     }
 
-    pub fn strip_tags_and_aliases(&self) -> &Self {
+    // This applies ONLY to how it's used around the generated code OUTSIDE of serialization contexts
+    pub fn strip_to_semantical_type(&self) -> &Self {
         match self {
             RustType::Alias(_ident, ty) => ty,
+            RustType::Tagged(_tag, ty) => ty,
+            RustType::CBORBytes(ty) => ty,
+            _ => self,
+        }
+    }
+
+    // how things are handled in a CBOR/serialization context only
+    pub fn strip_to_serialization_type(&self) -> Self {
+        match self {
+            RustType::Alias(_ident, ty) => *ty.clone(),
+            RustType::CBORBytes(_ty) => RustType::Primitive(Primitive::Bytes),
+            _ => self.clone(),
+        }
+    }
+
+    pub fn strip_tag(&self) -> &Self {
+        match self {
+            RustType::Alias(_ident, ty) => ty.strip_tag(),
             RustType::Tagged(_tag, ty) => ty,
             _ => self,
         }
@@ -1297,7 +1334,7 @@ impl RustStruct {
             tag,
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
-                min_max
+                min_max,
             },
         }
     }
