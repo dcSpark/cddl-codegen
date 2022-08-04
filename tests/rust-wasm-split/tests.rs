@@ -31,12 +31,12 @@ mod tests {
 
     #[test]
     fn plain() {
-        deser_test(&Plain::new(7576, TaggedText::new(String::from("wiorurri34h"))));
+        deser_test(&Plain::new(7576, String::from("wiorurri34h")));
     }
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, TaggedText::new(String::from("wiorurri34h")))));
+        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h"))));
     }
 
     #[test]
@@ -81,6 +81,6 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, TaggedText::new(String::from("fdsfdsfdg")))));
+        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg"))));
     }
 }
