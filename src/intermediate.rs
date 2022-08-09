@@ -8,6 +8,7 @@ use crate::generation::table_type;
 use crate::utils::{
     cddl_prelude,
     convert_to_camel_case,
+    convert_to_snake_case,
     is_identifier_reserved,
     is_identifier_user_defined,
 };
@@ -1209,6 +1210,17 @@ impl EnumVariant {
             rust_type,
             serialize_as_embedded_group,
         }
+    }
+
+    pub fn name_as_var(&self) -> String {
+        let snake = convert_to_snake_case(&self.name.to_string());
+        // we can't use (rust) reserved keywords as param: eg new_u32(u32: u32)
+        // TODO: do we need to cover any other (rust) reserved keywords?
+        String::from(match snake.as_str() {
+            "u8" | "u16" | "u32" | "u64" => "uint",
+            "i8" | "i16" | "i32" | "i64" => "int",
+            x => x,
+        })
     }
 }
 

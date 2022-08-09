@@ -83,7 +83,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             gen_scope
                 .rust()
                 .raw("use linked_hash_map::LinkedHashMap;")
-                .raw("use cbor_event::{Sz, LenSz, StringLenSz};");
+                .raw("use cbor_event::{Sz, LenSz, StringLenSz};")
+                .raw("pub mod cbor_encodings;")
+                .raw("use cbor_encodings::*;");
+            gen_scope.cbor_encodings().raw("use super::*;");
         }
         gen_scope.rust_serialize().import("super", "*");
         gen_scope.rust_serialize().import("std::io", "{Seek, SeekFrom}");
@@ -131,14 +134,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut serialize_contents = concat_files(serialize_paths)?;
     serialize_contents.push_str(&gen_scope.rust_serialize().to_string());
+
     std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), serialize_contents)?;
     std::fs::copy("static/Cargo_rust.toml", CLI_ARGS.output.join("core/Cargo.toml"))?;
     std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs"))?;
+
     if CLI_ARGS.wasm {
         std::fs::create_dir_all(CLI_ARGS.output.join("wasm/src"))?;
         std::fs::write(CLI_ARGS.output.join("wasm/src/lib.rs"), gen_scope.wasm().to_string())?;
         std::fs::copy("static/prelude_wasm.rs", CLI_ARGS.output.join("wasm/src/prelude.rs"))?;
         std::fs::copy("static/Cargo_wasm.toml", CLI_ARGS.output.join("wasm/Cargo.toml"))?;
+    }
+
+    if CLI_ARGS.preserve_encodings {
+        std::fs::write(CLI_ARGS.output.join("core/src/cbor_encodings.rs"), gen_scope.cbor_encodings().to_string())?;
     }
 
     types.print_info();
