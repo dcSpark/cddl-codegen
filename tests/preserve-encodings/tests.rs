@@ -14,7 +14,9 @@ mod tests {
         let mut foo = Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);
         deser_test(&foo);
         let definite_bytes = foo.to_bytes();
-        foo.encoding = LenEncoding::Indefinite;
+        let mut encoding = FooEncoding::default();
+        encoding.len_encoding = LenEncoding::Indefinite;
+        foo.encodings = Some(encoding);
         deser_test(&foo);
         let indefinite_bytes = foo.to_bytes();
         assert!(definite_bytes != indefinite_bytes);
@@ -31,13 +33,17 @@ mod tests {
         let mut bar = Bar::new(Foo::new(9, String::from("abc"), vec![6, 4]), None);
         // quick test without key 5
         deser_test(&bar);
-        bar.encoding = LenEncoding::Indefinite;
+        let mut bar_encoding = BarEncoding::default();
+        bar_encoding.len_encoding = LenEncoding::Indefinite;
+        bar.encodings = Some(bar_encoding.clone());
         deser_test(&bar);
-        bar.encoding = LenEncoding::Definite(cbor_event::Sz::Inline);
+        bar_encoding.len_encoding = LenEncoding::Definite(cbor_event::Sz::Inline);
         // full test with key 5 (but without key "derp")
         bar.key_5 = Some("text".into());
+        bar.encodings = Some(bar_encoding.clone());
         let definite_bytes = bar.to_bytes();
-        bar.encoding = LenEncoding::Indefinite;
+        bar_encoding.len_encoding = LenEncoding::Indefinite;
+        bar.encodings = Some(bar_encoding);
         deser_test(&bar);
         let indefinite_bytes = bar.to_bytes();
         let default_indef_bytes = vec![
@@ -68,12 +74,9 @@ mod tests {
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         let mut bar_canonical: Bar = from_bytes(canonical_bytes.clone()).unwrap();
         deser_test(&bar_canonical);
-        assert_eq!(bar_canonical.encoding, LenEncoding::Canonical);
-        assert_eq!(Some(vec![2, 3, 0, 4]), bar_canonical.orig_deser_order);
+        assert_eq!(bar_canonical.encodings.as_ref().unwrap().len_encoding, LenEncoding::Canonical);
+        assert_eq!(bar_canonical.encodings.as_ref().unwrap().orig_deser_order, vec![2, 3, 0, 4]);
         // get rid of other info and it should be identical
-        bar_canonical.encoding = LenEncoding::Indefinite;
-        bar_canonical.orig_deser_order = None;
-        //assert_eq!(bar, bar_canonical);
         let str_3_encodings = vec![
             StringLenSz::Len(Sz::Inline),
             StringLenSz::Len(Sz::Eight),
@@ -202,30 +205,15 @@ mod tests {
         assert_eq!(other_order.to_bytes(), indef_other_order);
         deser_test(&other_order);
         
-        assert_eq!(orig.orig_deser_order, None);
-        assert_eq!(orig.encoding, LenEncoding::Canonical);
-        assert_eq!(orig.arr_encoding, LenEncoding::Canonical);
-        assert_eq!(orig.arr2_encoding, LenEncoding::Canonical);
-        assert_eq!(orig.arr2[0].encoding, LenEncoding::Canonical);
-        assert_eq!(orig.table_encoding, LenEncoding::Canonical);
+        assert_eq!(orig.encodings, None);
 
-        assert_eq!(other_order.orig_deser_order, Some(vec![1, 2, 0]));
-        assert_eq!(other_order.encoding, LenEncoding::Indefinite);
-        assert_eq!(other_order.arr_encoding, LenEncoding::Indefinite);
-        assert_eq!(other_order.arr2_encoding, LenEncoding::Indefinite);
-        assert_eq!(other_order.arr2[0].encoding, LenEncoding::Indefinite);
-        assert_eq!(other_order.table_encoding, LenEncoding::Indefinite);
-        
-        other_order.orig_deser_order = None;
-        other_order.encoding = LenEncoding::Canonical;
-        other_order.arr_encoding = LenEncoding::Canonical;
-        other_order.arr2_encoding = LenEncoding::Canonical;
-        other_order.arr2[0].encoding = LenEncoding::Canonical;
-        other_order.table_encoding = LenEncoding::Canonical;
-        other_order.table = table;
-        //assert_eq!(orig, other_order);
-        other_order.orig_deser_order = Some(vec![0, 1, 2]);
-        assert_eq!(orig.to_bytes(), other_order.to_bytes());
+        let other_order_encodings = other_order.encodings.unwrap();
+        assert_eq!(other_order_encodings.orig_deser_order, vec![1, 2, 0]);
+        assert_eq!(other_order_encodings.len_encoding, LenEncoding::Indefinite);
+        assert_eq!(other_order_encodings.arr_encoding, LenEncoding::Indefinite);
+        assert_eq!(other_order_encodings.arr2_encoding, LenEncoding::Indefinite);
+        assert_eq!(other_order.arr2[0].encodings.as_ref().unwrap().len_encoding, LenEncoding::Indefinite);
+        assert_eq!(other_order_encodings.table_encoding, LenEncoding::Indefinite);
     }
 
     #[test]
