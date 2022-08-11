@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn table_arr_members() {
         // a more complex test of these encodings is done in the canonical unit tests
-        let mut table = linked_hash_map::LinkedHashMap::new();
+        let mut table = OrderedHashMap::new();
         table.insert(0, "zero".into());
         table.insert(32, "thirty two".into());
         let orig = TableArrMembers::new(
@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(other_order.to_bytes(), indef_other_order);
         deser_test(&other_order);
         
-        assert_eq!(orig.encodings, None);
+        assert!(orig.encodings.is_none());
 
         let other_order_encodings = other_order.encodings.unwrap();
         assert_eq!(other_order_encodings.orig_deser_order, vec![1, 2, 0]);

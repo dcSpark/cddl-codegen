@@ -38,8 +38,17 @@ pub struct Cli {
     #[clap(long, parse(try_from_str), default_value_t = false)]
     pub canonical_form: bool,
 
+    /// Generates a wasm_bindgen crate for wasm bindings
     #[clap(long, parse(try_from_str), default_value_t = true)]
     pub wasm: bool,
+
+    /// Derives serde::Serialize/serde::Deserialize for types to allow to/from JSON
+    #[clap(long, parse(try_from_str), default_value_t = false)]
+    pub json_serde_derives: bool,
+
+    /// Tags types with sonSchema derives and generates a crate to export them
+    #[clap(long, parse(try_from_str), default_value_t = false)]
+    pub json_schema_export: bool,
 }
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(|| Cli::parse());

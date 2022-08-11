@@ -30,6 +30,7 @@ pub struct IntermediateTypes<'a> {
     generic_defs: BTreeMap<RustIdent, GenericDef>,
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
+    used_as_key: BTreeSet<RustIdent>,
 }
 
 impl<'a> IntermediateTypes<'a> {
@@ -42,6 +43,7 @@ impl<'a> IntermediateTypes<'a> {
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
             news_can_fail: BTreeSet::new(),
+            used_as_key: BTreeSet::new(),
         }
     }
 
@@ -234,6 +236,29 @@ impl<'a> IntermediateTypes<'a> {
         for resolved_instance in resolved_generics {
             self.register_rust_struct(resolved_instance);
         }
+        // recursively check all types used as keys or contained within a type used as a key
+        // this is so we only derive comparison or hash traits for those types
+        let mut used_as_key = BTreeSet::new();
+        fn mark_used_as_key(ty: &RustType, used_as_key: &mut BTreeSet<RustIdent>) {
+            if let RustType::Rust(ident) = ty {
+                println!("    {} marked as used in key", ident);
+                used_as_key.insert(ident.clone());
+            }
+        }
+        fn check_used_as_key<'a>(ty: &RustType, types: &IntermediateTypes<'a>, used_as_key: &mut BTreeSet<RustIdent>) {
+            if let RustType::Map(k, _v) = ty {
+                println!("found Map<{:?}, T>", k);
+                k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
+            }
+        }
+        for rust_struct in self.rust_structs().values() {
+            rust_struct.visit_types(self, &mut |ty| check_used_as_key(ty, self, &mut used_as_key));
+            if let RustStructType::Table{ domain, .. } = rust_struct.variant() {
+                println!("found {} = Table<{:?}, T>", rust_struct.ident(), domain);
+                domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+            }
+        }
+        self.used_as_key = used_as_key;
     }
 
     // see self.plain_groups comments
@@ -281,6 +306,10 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn can_new_fail(&self, name: &RustIdent) -> bool {
         self.news_can_fail.contains(name)
+    }
+
+    pub fn used_as_key(&self, name: &RustIdent) -> bool {
+        self.used_as_key.contains(name)
     }
 
     pub fn print_info(&self) {
@@ -772,7 +801,7 @@ impl RustType {
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_rust_member(from_wasm),
                 // but other aliases are generated and should be used.
-                AliasIdent::Rust(_) => ident.to_string(),
+                AliasIdent::Rust(_) => format!("{}{}", core, ident),
             },
             RustType::CBORBytes(ty) => ty.for_rust_member(from_wasm),
         }
