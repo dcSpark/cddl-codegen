@@ -241,20 +241,17 @@ impl<'a> IntermediateTypes<'a> {
         let mut used_as_key = BTreeSet::new();
         fn mark_used_as_key(ty: &RustType, used_as_key: &mut BTreeSet<RustIdent>) {
             if let RustType::Rust(ident) = ty {
-                println!("    {} marked as used in key", ident);
                 used_as_key.insert(ident.clone());
             }
         }
         fn check_used_as_key<'a>(ty: &RustType, types: &IntermediateTypes<'a>, used_as_key: &mut BTreeSet<RustIdent>) {
             if let RustType::Map(k, _v) = ty {
-                println!("found Map<{:?}, T>", k);
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, &mut |ty| check_used_as_key(ty, self, &mut used_as_key));
             if let RustStructType::Table{ domain, .. } = rust_struct.variant() {
-                println!("found {} = Table<{:?}, T>", rust_struct.ident(), domain);
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
             }
         }
