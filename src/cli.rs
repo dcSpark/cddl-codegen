@@ -19,7 +19,7 @@ pub struct Cli {
     pub annotate_fields: bool,
 
     /// Generate to_bytes() / from_bytes() methods on all types
-    #[clap(long, parse(try_from_str), default_value_t = false)]
+    #[clap(long, parse(try_from_str), default_value_t = true)]
     pub to_from_bytes_methods: bool,
 
     /// Use our own extended prelude with types like i32, u64, etc for more control than 'uint', etc
@@ -49,6 +49,10 @@ pub struct Cli {
     /// Tags types with sonSchema derives and generates a crate to export them
     #[clap(long, parse(try_from_str), default_value_t = false)]
     pub json_schema_export: bool,
+
+    /// Generates a npm package.json along with build scripts
+    #[clap(long, parse(try_from_str), default_value_t = false)]
+    pub package_json: bool,
 }
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(|| Cli::parse());

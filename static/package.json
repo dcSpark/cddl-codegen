@@ -1,0 +1,12 @@
+{
+  "name": "cddl-lib",
+  "version": "0.0.1",
+  "description": "cddl-codegen generated library",
+  "scripts": {
+    "rust:build-nodejs": "rimraf ./rust/wasm/pkg && cd rust/wasm; wasm-pack build --target=nodejs; wasm-pack pack",
+    "rust:build-browser": "rimraf ./rust/wasm/pkg && cd rust/wasm; wasm-pack build --target=browser; wasm-pack pack"
+  },
+  "devDependencies": {
+    "rimraf": "3.0.2"
+  }
+}

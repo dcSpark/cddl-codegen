@@ -1332,7 +1332,7 @@ impl WasmWrapper {
     }
 }
 
-fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> WasmWrapper {
+fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent, exists_in_rust: bool) -> WasmWrapper {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     s
@@ -1343,51 +1343,57 @@ fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> Wa
     // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
-    if CLI_ARGS.to_from_bytes_methods {
-        let mut to_bytes = codegen::Function::new("to_bytes");
-        to_bytes
-            .ret("Vec<u8>")
-            .arg_ref_self()
-            .vis("pub");
-        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+    if exists_in_rust {
+        if CLI_ARGS.to_from_bytes_methods {
+            let mut to_bytes = codegen::Function::new("to_bytes");
             to_bytes
-                .arg("force_canonical", "bool")
-                .line("ToBytes::to_bytes(self, force_canonical)");
-        } else {
-            to_bytes.line("ToBytes::to_bytes(self)");
+                .ret("Vec<u8>")
+                .arg_ref_self()
+                .vis("pub");
+            if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+                to_bytes
+                    .arg("force_canonical", "bool")
+                    .line("use core::serialization::ToBytes;")
+                    .line("ToBytes::to_bytes(&self.0, force_canonical)");
+            } else {
+                to_bytes
+                    .line("use core::serialization::ToBytes;")
+                    .line("ToBytes::to_bytes(&self.0)");
+            }
+            s_impl.push_fn(to_bytes);
+            if gen_scope.deserialize_generated(ident) {
+                s_impl
+                    .new_fn("from_bytes")
+                    .ret(format!("Result<{}, JsValue>", name))
+                    .arg("data", "Vec<u8>")
+                    .vis("pub")
+                    .line("use core::prelude::FromBytes;")
+                    .line("FromBytes::from_bytes(data).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {}\", e)))");
+            }
         }
-        s_impl.push_fn(to_bytes);
-        if gen_scope.deserialize_generated(ident) {
-            s_impl
-                .new_fn("from_bytes")
-                .ret(format!("Result<{}, JsValue>", name))
-                .arg("data", "Vec<u8>")
+        if CLI_ARGS.json_serde_derives {
+            let mut to_json = codegen::Function::new("to_json");
+            to_json
+                .ret("Result<String, JsValue>")
+                .arg_ref_self()
                 .vis("pub")
-                .line("FromBytes::from_bytes(data)");
+                .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
+            s_impl.push_fn(to_json);
+            let mut to_json_value = codegen::Function::new("to_json_value");
+            to_json_value
+                .ret("Result<JsValue, JsValue>")
+                .arg_ref_self()
+                .vis("pub")
+                .line("JsValue::from_serde(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
+            s_impl.push_fn(to_json_value);
+            s_impl
+                .new_fn("from_json")
+                .ret(format!("Result<{}, JsValue>", name))
+                .arg("json", "&str")
+                .vis("pub")
+                .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
+            
         }
-    }
-    if CLI_ARGS.json_serde_derives {
-        let mut to_json = codegen::Function::new("to_json");
-        to_json
-            .ret("Result<String, JsValue>")
-            .arg_ref_self()
-            .vis("pub")
-            .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
-        s_impl.push_fn(to_json);
-        let mut to_json_value = codegen::Function::new("to_json_value");
-        to_json_value
-            .ret("Result<JsValue, JsValue>")
-            .arg_ref_self()
-            .vis("pub")
-            .line("JsValue::from_serde(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
-        s_impl.push_fn(to_json_value);
-        s_impl
-            .new_fn("from_json")
-            .ret(format!("Result<{}, JsValue>", name))
-            .arg("json", "&str")
-            .vis("pub")
-            .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
-        
     }
     WasmWrapper {
         s,
@@ -1401,7 +1407,7 @@ fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> Wa
 /// this will include generating to/from traits automatically
 fn create_base_wasm_wrapper(gen_scope: &GenerationScope, ident: &RustIdent, default_structure: bool) -> WasmWrapper {
     assert!(CLI_ARGS.wasm);
-    let mut base = create_base_wasm_struct(gen_scope, ident);
+    let mut base = create_base_wasm_struct(gen_scope, ident, true);
     let name = &ident.to_string();
     if default_structure {
         let native_name = &format!("core::{}", name);
@@ -1698,7 +1704,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
-    let mut wrapper = create_base_wasm_struct(gen_scope, name);
+    let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
     let inner_type = RustType::name_for_rust_map(&key_type, &value_type, true);
     wrapper.s.tuple_field(&inner_type);
     // new
@@ -3469,8 +3475,7 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool) {
     if used_in_key {
         if CLI_ARGS.preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
-            // cate so we must sadly use a newline like this but it's fine sincere
-            // they're always done at root level so there are no indentation issues
+            // cate so we must sadly use a newline like this. codegen manages indentation
             data_type.derive(&format!("Derivative)]\n#[derivative({}", key_derives(false).join(", ")));
         } else {
             for key_derive in key_derives(false) {

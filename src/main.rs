@@ -116,14 +116,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         types.finalize();
         gen_scope.generate(&types);
     }
-    match std::fs::remove_dir_all("export/src") {
-        Ok(()) => (),
-        Err(_) => (),
+
+    // package.json / scripts
+    let rust_dir = if CLI_ARGS.package_json {
+        if CLI_ARGS.json_schema_export {
+            std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
+            std::fs::copy("static/run-json2ts.js", CLI_ARGS.output.join("scripts/run-json2ts.js"))?;
+            std::fs::copy("static/json-ts-types.js", CLI_ARGS.output.join("scripts/json-ts-types.js"))?;
+            std::fs::copy("static/package_json_schemas.json", CLI_ARGS.output.join("package.json"))?;
+        } else {
+            std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
+        }
+        CLI_ARGS.output.join("rust")
+    } else {
+        CLI_ARGS.output.clone()
     };
 
     // lib.rs
-    std::fs::create_dir_all(CLI_ARGS.output.join("core/src"))?;
-    std::fs::write(CLI_ARGS.output.join("core/src/lib.rs"), gen_scope.rust().to_string())?;
+    std::fs::create_dir_all(rust_dir.join("core/src"))?;
+    std::fs::write(rust_dir.join("core/src/lib.rs"), gen_scope.rust().to_string())?;
     // serialiation.rs
     let mut serialize_paths = vec!["static/serialization.rs"];
     if CLI_ARGS.preserve_encodings {
@@ -140,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut serialize_contents = concat_files(serialize_paths)?;
     serialize_contents.push_str(&gen_scope.rust_serialize().to_string());
-    std::fs::write(CLI_ARGS.output.join("core/src/serialization.rs"), serialize_contents)?;
+    std::fs::write(rust_dir.join("core/src/serialization.rs"), serialize_contents)?;
     // Cargo.toml
     let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
     if CLI_ARGS.preserve_encodings {
@@ -154,12 +165,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if CLI_ARGS.json_schema_export {
         rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
     }
-    std::fs::write(CLI_ARGS.output.join("core/Cargo.toml"), rust_cargo_toml)?;
+    std::fs::write(rust_dir.join("core/Cargo.toml"), rust_cargo_toml)?;
     // prelude.rs
-    std::fs::copy("static/prelude.rs", CLI_ARGS.output.join("core/src/prelude.rs"))?;
+    std::fs::copy("static/prelude.rs", rust_dir.join("core/src/prelude.rs"))?;
     // cbor_encodings.rs + ordered_hash_map.rs
     if CLI_ARGS.preserve_encodings {
-        std::fs::write(CLI_ARGS.output.join("core/src/cbor_encodings.rs"), gen_scope.cbor_encodings().to_string())?;
+        std::fs::write(rust_dir.join("core/src/cbor_encodings.rs"), gen_scope.cbor_encodings().to_string())?;
         let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
         if CLI_ARGS.json_serde_derives {
             ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
@@ -167,26 +178,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if CLI_ARGS.json_schema_export {
             ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_schemars.rs")?);
         }
-        std::fs::write(CLI_ARGS.output.join("core/src/ordered_hash_map.rs"), ordered_hash_map_rs)?;
+        std::fs::write(rust_dir.join("core/src/ordered_hash_map.rs"), ordered_hash_map_rs)?;
     }
 
     // wasm crate
     if CLI_ARGS.wasm {
-        std::fs::create_dir_all(CLI_ARGS.output.join("wasm/src"))?;
-        std::fs::write(CLI_ARGS.output.join("wasm/src/lib.rs"), gen_scope.wasm().to_string())?;
+        std::fs::create_dir_all(rust_dir.join("wasm/src"))?;
+        std::fs::write(rust_dir.join("wasm/src/lib.rs"), gen_scope.wasm().to_string())?;
         let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
         if CLI_ARGS.json_serde_derives {
             wasm_toml.push_str("serde_json = \"1.0.57\"\n");
         }
-        std::fs::write(CLI_ARGS.output.join("wasm/Cargo.toml"), wasm_toml)?;
-        std::fs::copy("static/prelude_wasm.rs", CLI_ARGS.output.join("wasm/src/prelude.rs"))?;
+        std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
+        std::fs::copy("static/prelude_wasm.rs", rust_dir.join("wasm/src/prelude.rs"))?;
     }
 
     // json-gen crate for exporting JSON schemas
     if CLI_ARGS.json_schema_export {
-        std::fs::create_dir_all(CLI_ARGS.output.join("json-gen/src"))?;
-        std::fs::copy("static/Cargo_json_gen.toml", CLI_ARGS.output.join("json-gen/Cargo.toml"))?;
-        std::fs::write(CLI_ARGS.output.join("json-gen/src/main.rs"), gen_scope.json().to_string())?;
+        std::fs::create_dir_all(rust_dir.join("json-gen/src"))?;
+        std::fs::copy("static/Cargo_json_gen.toml", rust_dir.join("json-gen/Cargo.toml"))?;
+        std::fs::write(rust_dir.join("json-gen/src/main.rs"), gen_scope.json().to_string())?;
     }
 
     types.print_info();
