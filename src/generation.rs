@@ -132,6 +132,7 @@ pub struct GenerationScope {
     serialize_scope: codegen::Scope,
     wasm_scope: codegen::Scope,
     cbor_encodings_scope: codegen::Scope,
+    json_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
@@ -143,6 +144,7 @@ impl GenerationScope {
             serialize_scope: codegen::Scope::new(),
             wasm_scope: codegen::Scope::new(),
             cbor_encodings_scope: codegen::Scope::new(),
+            json_scope: codegen::Scope::new(),
             already_generated: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
         }
@@ -156,7 +158,7 @@ impl GenerationScope {
                 if *gen_rust_alias {
                     self
                         .rust()
-                        .raw(&format!("type {} = {};", ident, base_type.for_rust_member(false)));
+                        .raw(&format!("pub type {} = {};", ident, base_type.for_rust_member(false)));
                 }
                 if *gen_wasm_alias {
                     if let RustType::Fixed(constant) = base_type {
@@ -178,7 +180,7 @@ impl GenerationScope {
                     } else {
                         self
                             .wasm()
-                            .raw(&format!("type {} = {};", ident, base_type.for_wasm_member()));
+                            .raw(&format!("pub type {} = {};", ident, base_type.for_wasm_member()));
                     }
                 }
             }
@@ -248,7 +250,36 @@ impl GenerationScope {
                         None => generate_wrapper_struct(self, types, rust_ident, wrapped, min_max.clone()),
                     }
                 },
+                RustStructType::Prelude => {
+                    // nothing to do here, these are defined in the prelude
+                },
             }
+        }
+        if CLI_ARGS.json_schema_export {
+            self.json_scope.raw("use cddl_lib_core::*;");
+            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
+            let mut macro_match = Block::new("($name:ident) => ");
+            macro_match
+                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
+                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
+            gen_json_schema.push_block(macro_match);
+            let mut main = codegen::Function::new("main");
+            main.push_block(gen_json_schema);
+            main.line("let schema_path = std::path::Path::new(&\"schemas\");");
+            let mut path_exists = codegen::Block::new("if !schema_path.exists()");
+            path_exists.line("std::fs::create_dir(schema_path).unwrap();");
+            main.push_block(path_exists);
+            for (rust_ident, rust_struct) in types.rust_structs() {
+                let is_typedef = match rust_struct.variant() {
+                    RustStructType::Array{ .. } => true,
+                    RustStructType::Table{ .. } => true,
+                    _ => false,
+                };
+                if !is_typedef {
+                    main.line(format!("gen_json_schema!({});", rust_ident));
+                }
+            }
+            self.json_scope.push_fn(main);
         }
     }
 
@@ -266,6 +297,10 @@ impl GenerationScope {
 
     pub fn cbor_encodings(&mut self) -> &mut codegen::Scope {
         &mut self.cbor_encodings_scope
+    }
+
+    pub fn json(&mut self) -> &mut codegen::Scope {
+        &mut self.json_scope
     }
 
     // is_end means the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
@@ -720,7 +755,7 @@ impl GenerationScope {
                     }
                 }
                 let ty_enc_fields = if CLI_ARGS.preserve_encodings {
-                    encoding_fields(var_name, ty)
+                    encoding_fields(var_name, &ty.clone().resolve_aliases())
                 } else {
                     vec![]
                 };
@@ -977,6 +1012,7 @@ impl GenerationScope {
             self.serialize_scope = codegen::Scope::new();
             self.wasm_scope = codegen::Scope::new();
             self.cbor_encodings_scope = codegen::Scope::new();
+            self.json_scope = codegen::Scope::new();
             self.already_generated.clear();
             // don't delete these to let out-of-order type aliases work
             //self.type_aliases = Self::aliases();
@@ -1044,8 +1080,9 @@ impl GenerationScope {
             let mut s = codegen::Struct::new(&array_type_ident.to_string());
             s
                 .vis("pub")
-                .tuple_field(&inner_type);
-            add_struct_derives(&mut s);
+                .tuple_field(&inner_type)
+                .derive("Clone")
+                .derive("Debug");
             // other functions
             let mut array_impl = codegen::Impl::new(&array_type_ident.to_string());
             let mut new_func = codegen::Function::new("new");
@@ -1107,6 +1144,26 @@ fn canonical_param() -> &'static str {
     } else {
         ""
     }
+}
+
+/// the codegen crate doesn't support proc macros for fields so we need to
+/// do this with newlines. codegen takes care of indentation somehow.
+fn encoding_var_macros(used_in_key: bool) -> String {
+    let mut ret = if used_in_key {
+        format!(
+            "#[derivative({})]\n",
+            key_derives(true)
+                .iter()
+                .map(|derive| format!("{}=\"ignore\"", derive))
+                .collect::<Vec<String>>()
+                .join(", "))
+    } else {
+        String::new()
+    };
+    if CLI_ARGS.json_serde_derives {
+        ret.push_str("#[serde(skip)]\n");
+    }
+    ret
 }
 
 fn start_len(body: &mut dyn CodeBlock, rep: Representation, serializer_use: &str, encoding_var: &str, len_expr: &str) {
@@ -1243,10 +1300,10 @@ impl DataType for codegen::Enum {
     }
 }
 
-fn create_base_rust_struct(ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
+fn create_base_rust_struct<'a>(types: &IntermediateTypes<'a>, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
-    add_struct_derives(&mut s);
+    add_struct_derives(&mut s, types.used_as_key(ident), false);
     let mut group_impl = codegen::Impl::new(name);
     // TODO: anything here?
     (s, group_impl)
@@ -1278,39 +1335,67 @@ impl WasmWrapper {
     }
 }
 
-fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> WasmWrapper {
+fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent, exists_in_rust: bool) -> WasmWrapper {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     s
         .vis("pub")
         .derive("Clone")
         .derive("Debug");
-    //add_struct_derives(&mut s);
     let mut s_impl = codegen::Impl::new(name);
     // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
-    if CLI_ARGS.to_from_bytes_methods {
-        let mut to_bytes = codegen::Function::new("to_bytes");
-        to_bytes
-            .ret("Vec<u8>")
-            .arg_ref_self()
-            .vis("pub");
-        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+    if exists_in_rust {
+        if CLI_ARGS.to_from_bytes_methods {
+            let mut to_bytes = codegen::Function::new("to_bytes");
             to_bytes
-                .arg("force_canonical", "bool")
-                .line("ToBytes::to_bytes(self, force_canonical)");
-        } else {
-            to_bytes.line("ToBytes::to_bytes(self)");
+                .ret("Vec<u8>")
+                .arg_ref_self()
+                .vis("pub");
+            if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+                to_bytes
+                    .arg("force_canonical", "bool")
+                    .line("use core::serialization::ToBytes;")
+                    .line("ToBytes::to_bytes(&self.0, force_canonical)");
+            } else {
+                to_bytes
+                    .line("use core::serialization::ToBytes;")
+                    .line("ToBytes::to_bytes(&self.0)");
+            }
+            s_impl.push_fn(to_bytes);
+            if gen_scope.deserialize_generated(ident) {
+                s_impl
+                    .new_fn("from_bytes")
+                    .ret(format!("Result<{}, JsValue>", name))
+                    .arg("data", "Vec<u8>")
+                    .vis("pub")
+                    .line("use core::prelude::FromBytes;")
+                    .line("FromBytes::from_bytes(data).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {}\", e)))");
+            }
         }
-        s_impl.push_fn(to_bytes);
-        if gen_scope.deserialize_generated(ident) {
-            s_impl
-                .new_fn("from_bytes")
-                .ret(format!("Result<{}, JsValue>", name))
-                .arg("data", "Vec<u8>")
+        if CLI_ARGS.json_serde_derives {
+            let mut to_json = codegen::Function::new("to_json");
+            to_json
+                .ret("Result<String, JsValue>")
+                .arg_ref_self()
                 .vis("pub")
-                .line("FromBytes::from_bytes(data)");
+                .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
+            s_impl.push_fn(to_json);
+            let mut to_json_value = codegen::Function::new("to_json_value");
+            to_json_value
+                .ret("Result<JsValue, JsValue>")
+                .arg_ref_self()
+                .vis("pub")
+                .line("JsValue::from_serde(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
+            s_impl.push_fn(to_json_value);
+            s_impl
+                .new_fn("from_json")
+                .ret(format!("Result<{}, JsValue>", name))
+                .arg("json", "&str")
+                .vis("pub")
+                .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
+            
         }
     }
     WasmWrapper {
@@ -1325,7 +1410,7 @@ fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent) -> Wa
 /// this will include generating to/from traits automatically
 fn create_base_wasm_wrapper(gen_scope: &GenerationScope, ident: &RustIdent, default_structure: bool) -> WasmWrapper {
     assert!(CLI_ARGS.wasm);
-    let mut base = create_base_wasm_struct(gen_scope, ident);
+    let mut base = create_base_wasm_struct(gen_scope, ident, true);
     let name = &ident.to_string();
     if default_structure {
         let native_name = &format!("core::{}", name);
@@ -1609,7 +1694,7 @@ fn make_deser_loop_break_check() -> Block {
 
 pub fn table_type() -> &'static str {
     if CLI_ARGS.preserve_encodings {
-        "LinkedHashMap"
+        "OrderedHashMap"
     } else {
         "BTreeMap"
     }
@@ -1622,7 +1707,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
-    let mut wrapper = create_base_wasm_struct(gen_scope, name);
+    let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
     let inner_type = RustType::name_for_rust_map(&key_type, &value_type, true);
     wrapper.s.tuple_field(&inner_type);
     // new
@@ -1668,11 +1753,18 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .arg_ref_self()
         .arg("key", key_type.for_wasm_param())
         .ret(format!("Option<{}>", value_type.for_wasm_return()))
-        .vis("pub")
-        .line(format!(
+        .vis("pub");
+    if key_type.directly_wasm_exposable() {
+        getter.line(format!(
             "self.0.get({}){}",
             key_type.from_wasm_boundary_ref("key"),
             if value_type.is_copy() { ".copied()" } else { ret_modifier }));
+    } else {
+        getter.line(format!(
+            "self.0.get(&{}.0){}",
+            key_type.from_wasm_boundary_ref("key"),
+            if value_type.is_copy() { ".copied()" } else { ret_modifier }));
+    }
     wrapper.s_impl.push_fn(getter);
     // keys
     let keys_type = RustType::Array(Box::new(key_type.clone()));
@@ -1940,7 +2032,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
     // Rust-only for the rest of this function
 
     // Struct (fields) + constructor
-    let (mut native_struct, mut native_impl) = create_base_rust_struct(name);
+    let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name);
     native_struct.vis("pub");
     let mut native_new = codegen::Function::new("new");
     native_new
@@ -1969,15 +2061,11 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
     }
     let len_encoding_var = if CLI_ARGS.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{}Encoding", name)));
-        native_struct.field("encodings", format!("Option<{}>", encoding_name));
+        native_struct.field(&format!("{}encodings", encoding_var_macros(types.used_as_key(name))), format!("Option<{}>", encoding_name));
         native_new_block.line("encodings: None,");
 
-        let mut encoding_struct = codegen::Struct::new(&encoding_name.to_string());
-        add_struct_derives(&mut encoding_struct);
-        encoding_struct
-            .vis("pub")
-            .derive("Default")
-            .field("pub len_encoding", "LenEncoding");
+        let mut encoding_struct = make_encoding_struct(&encoding_name.to_string());
+        encoding_struct.field("pub len_encoding", "LenEncoding");
         if tag.is_some() {
             encoding_struct.field("pub tag_encoding", "Option<Sz>");
         }
@@ -2697,11 +2785,26 @@ impl EnumVariantInRust {
     fn names_without_outer(&self) -> &[String] {
         &self.names[..self.names.len() - self.outer_vars]
     }
+
+    fn names_with_macros(&self, used_in_key: bool) -> Vec<String> {
+        self.names.iter().enumerate().map(|(i, name)| {
+            if i < self.names.len() - self.enc_fields.len() {
+                // not an encoding variable:
+                name.clone()
+            } else {
+                // encoding variable:
+                // the codeen crate doesn't support proc macros on fields but we just inline
+                // these with a newline in the field names for declaring as workaround.
+                // Indentation is never an issue as we're always 2 levels deep for field declarations
+                format!("{}{}", encoding_var_macros(used_in_key), name)
+            }
+        }).collect()
+    }
     
     fn capture_all(&self) -> String {
         match self.names.len() {
             0 => "".to_owned(),
-            1 => format!("({})", self.names[0]),
+            1 if self.enc_fields.is_empty() => format!("({})", self.names[0]),
             _ => format!("{{ {} }}", self.names.join(", ")),
         }
     }
@@ -2709,7 +2812,7 @@ impl EnumVariantInRust {
     fn capture_ignore_all(&self) -> &'static str {
         match self.names.len() {
             0 => "",
-            1 => "(_)",
+            1 if self.enc_fields.is_empty() => "(_)",
             _ => "{ .. }",
         }
     }
@@ -2717,7 +2820,7 @@ impl EnumVariantInRust {
     fn capture_ignore_encodings(&self) -> String {
         match self.names.len() {
             0 => "".to_owned(),
-            1 => format!("({})", self.names[0]),
+            1 if self.enc_fields.is_empty() => format!("({})", self.names[0]),
             _ => if self.enc_fields.len() == self.names.len() {
                 "{ .. }".to_owned()
             } else {
@@ -2733,7 +2836,7 @@ impl EnumVariantInRust {
             0 => {
                 body.line(&format!("{}Self::{}{}", before, self.name, after));
             },
-            1 => {
+            1 if self.enc_fields.is_empty() => {
                 body.line(&format!("{}Self::{}({}){}", before, self.name, init_fields.join(", "), after));
             },
             _ => {
@@ -2760,7 +2863,6 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         // also create a wasm-exposed enum just to distinguish the type
         let mut kind = codegen::Enum::new(&format!("{}Kind", name));
         kind.vis("pub");
-        //add_struct_derives(&mut kind);
         for variant in variants.iter() {
             kind.new_variant(&variant.name.to_string());
         }
@@ -2777,7 +2879,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
-    add_struct_derives(&mut e);
+    add_struct_derives(&mut e, types.used_as_key(name), true);
     let mut ser_impl = make_serialization_impl(&name.to_string());
     let mut ser_func = make_serialization_function("serialize");
     if let Some(tag) = tag {
@@ -2821,12 +2923,12 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         match enum_gen_info.names.len() {
             0 => {
             },
-            1 => {
+            1 if enum_gen_info.enc_fields.is_empty() => {
                 v.tuple(&enum_gen_info.types[0]);
             },
             _ => {
-                for (name, type_str) in enum_gen_info.names.iter().zip(enum_gen_info.types.iter()) {
-                    v.named(name, type_str);
+                for (name_with_macros, type_str) in enum_gen_info.names_with_macros(types.used_as_key(name)).into_iter().zip(enum_gen_info.types.iter()) {
+                    v.named(&name_with_macros, type_str);
                 }
             },
         }
@@ -2839,14 +2941,16 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         let mut output_comma = false;
         // We only want to generate Variant::new() calls when we created a special struct
         // for the variant, which happens in the general case for multi-field group choices
-        let fields = match &variant.rust_type {
+        let fields = match variant.rust_type.strip_to_semantical_type() {
             // we need to check for sanity here, as if we're referring to the ident
             // it should at this stage be registered
-            RustType::Rust(ident) => match types.rust_struct(ident).unwrap().variant() {
-                RustStructType::Record(record) => Some(&record.fields),
-                _ => None,
+            RustType::Rust(ident) => {
+                
+                match types.rust_struct(ident).expect(&format!("{} refers to undefined ident: {}", name, ident)).variant() {
+                    RustStructType::Record(record) => Some(&record.fields),
+                    _ => None,
+                }
             },
-            RustType::Alias(_, _) => unimplemented!("TODO: do we need to handle aliases here?"),
             _ => None,
         };
         let mut init_fields = match rep.and(fields) {
@@ -3048,6 +3152,16 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     f
 }
 
+fn make_encoding_struct(encoding_name: &str) -> codegen::Struct {
+    let mut encoding_struct = codegen::Struct::new(&encoding_name.to_string());
+    encoding_struct
+        .vis("pub")
+        .derive("Clone")
+        .derive("Debug")
+        .derive("Default");
+    encoding_struct
+}
+
 fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Option<usize>) {
     if let Some(tag) = tag {
         deser_func.line(&format!("let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{}\"))?;", ident));
@@ -3098,7 +3212,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
 
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
     // The tag is easy but the min/max size would require error types in any place that sets/modifies these in other structs.
-    let (mut s, mut s_impl) = create_base_rust_struct(type_name);
+    let (mut s, mut s_impl) = create_base_rust_struct(types, type_name);
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{}Encoding", type_name)));
     let enc_fields = if CLI_ARGS.preserve_encodings {
@@ -3106,12 +3220,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         let enc_fields = encoding_fields("inner", &field_type.clone().resolve_aliases());
         
         if !enc_fields.is_empty() {
-            s.field("encodings", format!("Option<{}>", encoding_name));
-            let mut encoding_struct = codegen::Struct::new(&encoding_name.to_string());
-            add_struct_derives(&mut encoding_struct);
-            encoding_struct
-                .vis("pub")
-                .derive("Default");
+            s.field(&format!("{}encodings", encoding_var_macros(types.used_as_key(type_name))), format!("Option<{}>", encoding_name));
+            let mut encoding_struct = make_encoding_struct(&encoding_name.to_string());
             for field_enc in &enc_fields {
                 encoding_struct.field(&format!("pub {}", field_enc.field_name), &field_enc.type_name);
             }
@@ -3337,15 +3447,49 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         .push_impl(deser_impl);
 }
 
-fn add_struct_derives<T: DataType>(data_type: &mut T) {
+/// the derivative crate doesn't accept Eq="ignore" but omitting it
+/// seems to behave correctly
+fn key_derives(for_ignore: bool) -> &'static [&'static str] {
+    if for_ignore {
+        if CLI_ARGS.preserve_encodings {
+            &["PartialEq", "Ord", "PartialOrd", "Hash"]
+        } else {
+            &["PartialEq", "Ord", "PartialOrd"]
+        }
+    } else {
+        if CLI_ARGS.preserve_encodings {
+            &["Eq", "PartialEq", "Ord", "PartialOrd", "Hash"]
+        } else {
+            &["Eq", "PartialEq", "Ord", "PartialOrd"]
+        }
+    }
+}
+
+fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum: bool) {
     data_type
-        .derive("Clone")
-        .derive("Debug")
-        .derive("Eq")
-        .derive("PartialEq");
-    if !CLI_ARGS.preserve_encodings {
+            .derive("Clone")
+            .derive("Debug");
+    if CLI_ARGS.json_serde_derives {
         data_type
-            .derive("Ord")
-            .derive("PartialOrd");
+            .derive("serde::Deserialize")
+            .derive("serde::Serialize");
+    }
+    if CLI_ARGS.json_schema_export {
+        data_type.derive("schemars::JsonSchema");
+    }
+    if used_in_key {
+        if CLI_ARGS.preserve_encodings {
+            // there's no way to do non-derive() proc macros in the codegen
+            // cate so we must sadly use a newline like this. codegen manages indentation
+            data_type.derive(&format!("Derivative)]\n#[derivative({}", key_derives(false).iter().map(|tr| match *tr {
+                // the derivative crate doesn't support enums tagged with ord/partialord yet without this
+                "Ord" | "PartialOrd" if is_enum => format!("{}=\"feature_allow_slow_enum\"", tr),
+                _ => String::from(*tr),
+            }).collect::<Vec<String>>().join(", ")));
+        } else {
+            for key_derive in key_derives(false) {
+                data_type.derive(key_derive);
+            }
+        }
     }
 }
