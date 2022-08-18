@@ -250,6 +250,9 @@ impl GenerationScope {
                         None => generate_wrapper_struct(self, types, rust_ident, wrapped, min_max.clone()),
                     }
                 },
+                RustStructType::Prelude => {
+                    // nothing to do here, these are defined in the prelude
+                },
             }
         }
         if CLI_ARGS.json_schema_export {
@@ -752,7 +755,7 @@ impl GenerationScope {
                     }
                 }
                 let ty_enc_fields = if CLI_ARGS.preserve_encodings {
-                    encoding_fields(var_name, ty)
+                    encoding_fields(var_name, &ty.clone().resolve_aliases())
                 } else {
                     vec![]
                 };
@@ -1300,7 +1303,7 @@ impl DataType for codegen::Enum {
 fn create_base_rust_struct<'a>(types: &IntermediateTypes<'a>, ident: &RustIdent) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
-    add_struct_derives(&mut s, types.used_as_key(ident));
+    add_struct_derives(&mut s, types.used_as_key(ident), false);
     let mut group_impl = codegen::Impl::new(name);
     // TODO: anything here?
     (s, group_impl)
@@ -2876,7 +2879,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
-    add_struct_derives(&mut e, types.used_as_key(name));
+    add_struct_derives(&mut e, types.used_as_key(name), true);
     let mut ser_impl = make_serialization_impl(&name.to_string());
     let mut ser_func = make_serialization_function("serialize");
     if let Some(tag) = tag {
@@ -2938,14 +2941,16 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         let mut output_comma = false;
         // We only want to generate Variant::new() calls when we created a special struct
         // for the variant, which happens in the general case for multi-field group choices
-        let fields = match &variant.rust_type {
+        let fields = match variant.rust_type.strip_to_semantical_type() {
             // we need to check for sanity here, as if we're referring to the ident
             // it should at this stage be registered
-            RustType::Rust(ident) => match types.rust_struct(ident).unwrap().variant() {
-                RustStructType::Record(record) => Some(&record.fields),
-                _ => None,
+            RustType::Rust(ident) => {
+                
+                match types.rust_struct(ident).expect(&format!("{} refers to undefined ident: {}", name, ident)).variant() {
+                    RustStructType::Record(record) => Some(&record.fields),
+                    _ => None,
+                }
             },
-            RustType::Alias(_, _) => unimplemented!("TODO: do we need to handle aliases here?"),
             _ => None,
         };
         let mut init_fields = match rep.and(fields) {
@@ -3460,7 +3465,7 @@ fn key_derives(for_ignore: bool) -> &'static [&'static str] {
     }
 }
 
-fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool) {
+fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum: bool) {
     data_type
             .derive("Clone")
             .derive("Debug");
@@ -3476,7 +3481,11 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool) {
         if CLI_ARGS.preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
-            data_type.derive(&format!("Derivative)]\n#[derivative({}", key_derives(false).join(", ")));
+            data_type.derive(&format!("Derivative)]\n#[derivative({}", key_derives(false).iter().map(|tr| match *tr {
+                // the derivative crate doesn't support enums tagged with ord/partialord yet without this
+                "Ord" | "PartialOrd" if is_enum => format!("{}=\"feature_allow_slow_enum\"", tr),
+                _ => String::from(*tr),
+            }).collect::<Vec<String>>().join(", ")));
         } else {
             for key_derive in key_derives(false) {
                 data_type.derive(key_derive);
