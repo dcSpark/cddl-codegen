@@ -35,10 +35,12 @@ pub struct IntermediateTypes<'a> {
 
 impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
+        let mut rust_structs = BTreeMap::new();
+        rust_structs.insert(RustIdent::new(CDDLIdent::new("int")), RustStruct::new_prelude(RustIdent::new(CDDLIdent::new("int"))));
         Self {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
-            rust_structs: BTreeMap::new(),
+            rust_structs,
             prelude_to_emit: BTreeSet::new(),
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
@@ -1094,22 +1096,28 @@ impl RustType {
     }
 
     pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+        self.visit_types_excluding(types, f, &mut BTreeSet::new())
+    }
+
+    pub fn visit_types_excluding<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
         f(self);
         match self {
-            RustType::Alias(_ident, ty) => ty.visit_types(types, f),
-            RustType::Array(ty) => ty.visit_types(types, f),
+            RustType::Alias(_ident, ty) => ty.visit_types_excluding(types, f, already_visited),
+            RustType::Array(ty) => ty.visit_types_excluding(types, f, already_visited),
             RustType::Fixed(..) => (),
             RustType::Map(k, v) => {
-                k.visit_types(types, f);
-                v.visit_types(types, f);
+                k.visit_types_excluding(types, f, already_visited);
+                v.visit_types_excluding(types, f, already_visited);
             },
-            RustType::Optional(ty) => ty.visit_types(types, f),
+            RustType::Optional(ty) => ty.visit_types_excluding(types, f, already_visited),
             RustType::Primitive(..) => (),
             RustType::Rust(ident) => {
-                types.rust_struct(ident).map(|t| t.visit_types(types, f));
+                if already_visited.insert(ident.clone()) {
+                    types.rust_struct(ident).map(|t| t.visit_types_excluding(types, f, already_visited));
+                }
             },
-            RustType::Tagged(_tag, ty) => ty.visit_types(types, f),
-            RustType::CBORBytes(ty) => ty.visit_types(types, f),
+            RustType::Tagged(_tag, ty) => ty.visit_types_excluding(types, f, already_visited),
+            RustType::CBORBytes(ty) => ty.visit_types_excluding(types, f, already_visited),
         }
     }
 
@@ -1312,7 +1320,11 @@ pub enum RustStructType {
     Wrapper{
         wrapped: RustType,
         min_max: Option<(Option<isize>, Option<isize>)>,
-    }
+    },
+    /// This is a no-op in generation but to prevent lookups of things in the prelude
+    /// e.g. `int` from not being resolved while still being able to detect it when
+    /// referring to a struct that doesn't exist even after generation.
+    Prelude,
 }
 
 impl RustStruct {
@@ -1377,6 +1389,14 @@ impl RustStruct {
         }
     }
 
+    pub fn new_prelude(ident: RustIdent) -> Self {
+        Self {
+            ident,
+            tag: None,
+            variant: RustStructType::Prelude,
+        }
+    }
+
     pub fn ident(&self) -> &RustIdent {
         &self.ident
     }
@@ -1404,6 +1424,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1419,6 +1440,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1434,6 +1456,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1446,20 +1469,25 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
     pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+        self.visit_types_excluding(types, f, &mut BTreeSet::new())
+    }
+    pub fn visit_types_excluding<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
         match &self.variant {
-            RustStructType::Array{ element_type } => element_type.visit_types(types, f),
+            RustStructType::Array{ element_type } => element_type.visit_types_excluding(types, f, already_visited),
             RustStructType::GroupChoice{ variants, .. } |
-            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.visit_types(types, f)),
-            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.visit_types(types, f)),
+            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.visit_types_excluding(types, f, already_visited)),
+            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.visit_types_excluding(types, f, already_visited)),
             RustStructType::Table{domain, range} => {
-                domain.visit_types(types, f);
-                range.visit_types(types, f);
+                domain.visit_types_excluding(types, f, already_visited);
+                range.visit_types_excluding(types, f, already_visited);
             },
-            RustStructType::Wrapper{ wrapped, .. } => wrapped.visit_types(types, f)
+            RustStructType::Wrapper{ wrapped, .. } => wrapped.visit_types_excluding(types, f, already_visited),
+            RustStructType::Prelude => (),
         }
     }
 }
@@ -1634,6 +1662,7 @@ impl GenericInstance {
             RustStructType::Wrapper{ .. } => {
                 todo!("should we look this up in types to resolve?");
             },
+            RustStructType::Prelude => panic!("generics should not be used on types in the prelude (e.g. int)"),
         };
         instance
     }

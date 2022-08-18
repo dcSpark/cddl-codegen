@@ -484,7 +484,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type1: &Type2) -> RustTyp
                         }
                     } else {
                         // array of non-choice element that has multiple fields: tuples? create seperately?
-                        panic!("TODO: how do we handle this? tuples? or creating a struct definition and referring to it by name?")
+                        panic!("TODO: how do we handle this? tuples? or creating a struct definition and referring to it by name?: {:#?}", group)
                     }
                 },
                 // array of elements with choices: enums?
