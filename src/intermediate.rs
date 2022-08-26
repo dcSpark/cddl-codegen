@@ -523,7 +523,6 @@ mod idents {
             assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
             assert!(
                 cddl_ident.0 == "int" ||
-                !STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]) ||
                 super::cddl_prelude(&cddl_ident.0).is_some() ||
                 super::is_identifier_user_defined(&cddl_ident.0)
             );
