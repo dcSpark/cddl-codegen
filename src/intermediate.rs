@@ -518,7 +518,6 @@ mod idents {
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
             println!("{}", cddl_ident.0);
-            println!("{}", super::convert_to_camel_case(&cddl_ident.0));
 
             assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
             assert!(
