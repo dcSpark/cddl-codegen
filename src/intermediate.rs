@@ -475,6 +475,8 @@ impl Primitive {
 }
 
 mod idents {
+    use crate::rust_reserved::STD_TYPES;
+
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
 
@@ -516,6 +518,8 @@ mod idents {
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
             println!("{}", cddl_ident.0);
+
+            assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
             assert!(
                 cddl_ident.0 == "int" ||
                 super::cddl_prelude(&cddl_ident.0).is_some() ||
