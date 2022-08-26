@@ -475,7 +475,7 @@ impl Primitive {
 }
 
 mod idents {
-    use crate::rust_reserved::STD_TYPES;
+    use crate::{rust_reserved::STD_TYPES, utils::{is_identifier_reserved, is_identifier_in_our_prelude}, cli::CLI_ARGS};
 
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
@@ -520,11 +520,13 @@ mod idents {
             println!("{}", cddl_ident.0);
 
             assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
-            assert!(
-                cddl_ident.0 == "int" ||
-                super::cddl_prelude(&cddl_ident.0).is_some() ||
-                super::is_identifier_user_defined(&cddl_ident.0)
-            );
+            if cddl_ident.0 != "int" {
+                assert!(!is_identifier_reserved(&cddl_ident.0), "Cannot use reserved CDDL keyword: \"{}\"", cddl_ident.0);
+            }
+            if CLI_ARGS.extended_prelude {
+                assert!(!is_identifier_in_our_prelude(&cddl_ident.0), "\"{}\" is built into cddl-codegen prelude when extended_prelude=true and cannot be redefined", cddl_ident.0);
+            }
+
             Self(super::convert_to_camel_case(&cddl_ident.0))
         }
     }
