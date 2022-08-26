@@ -150,7 +150,7 @@ pub fn is_identifier_reserved(name: &str) -> bool {
 }
 
 // as we also support our own identifiers for selecting integer precision, we need this too
-fn is_identifier_in_our_prelude(name: &str) -> bool {
+pub fn is_identifier_in_our_prelude(name: &str) -> bool {
     match name {
         "u32" |
         "i32" |
