@@ -360,8 +360,7 @@ impl<'a> IntermediateTypes<'a> {
         // easier to use instead of directly parsing
         if self.prelude_to_emit.insert(cddl_name.clone()) {
             let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
-            let mut lexer = cddl::lexer::lexer_from_str(&def);
-            let cddl = cddl::parser::cddl_from_str(&mut lexer, &def, true).unwrap();
+            let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
             crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
         }
