@@ -363,6 +363,8 @@ impl GenerationScope {
                 Primitive::Str => {
                     write_string_sz(body, "write_text", serializer_use, &config.expr, line_ender, &encoding_var);
                 },
+                Primitive::I8 |
+                Primitive::I16 |
                 Primitive::I32 |
                 Primitive::I64 => {
                     let mut pos = Block::new(&format!("if {} >= 0", expr_deref));
@@ -372,7 +374,7 @@ impl GenerationScope {
                     write_using_sz(&mut neg, "write_negative_integer", serializer_use, &format!("{} as i128", expr_deref), line_ender, &encoding_var_deref);
                     body.push_block(neg);
                 },
-                Primitive::U32 => {
+                Primitive::U8 | Primitive::U16 | Primitive::U32 => {
                     write_using_sz(body, "write_unsigned_integer", serializer_use, &format!("{} as u64", expr_deref), line_ender, &encoding_var_deref);
                 },
                 Primitive::U64 => {
@@ -648,8 +650,10 @@ impl GenerationScope {
                 };
                 match p {
                     Primitive::Bytes => deser_primitive(final_exprs, "bytes", "bytes", "bytes"),
-                    Primitive::U32 => deser_primitive(final_exprs, "unsigned_integer", "x", &format!("x as {}", p.to_string())),
+                    Primitive::U8  | Primitive::U16 | Primitive::U32 => deser_primitive(final_exprs, "unsigned_integer", "x", &format!("x as {}", p.to_string())),
                     Primitive::U64 => deser_primitive(final_exprs, "unsigned_integer", "x", "x"),
+                    Primitive::I8 |
+                    Primitive::I16 |
                     Primitive::I32 |
                     Primitive::I64 => {
                         let mut sign = Block::new(&format!("{}match {}.unsigned_integer{}()", before, deserializer_name, sz_str));
@@ -917,6 +921,8 @@ impl GenerationScope {
                     }
                     let mut dup_check = Block::new(&format!("if {}.insert({}.clone(), {}).is_some()", table_var, key_var_name, value_var_name));
                     let dup_key_error_key = match &**key_type {
+                        RustType::Primitive(Primitive::U8) |
+                        RustType::Primitive(Primitive::U16) |
                         RustType::Primitive(Primitive::U32) |
                         RustType::Primitive(Primitive::U64) => format!("Key::Uint({}.into())", key_var_name),
                         RustType::Primitive(Primitive::Str) => format!("Key::Str({})", key_var_name),
@@ -1909,9 +1915,13 @@ fn encoding_fields(name: &str, ty: &RustType) -> Vec<EncodingField> {
                     inner: Vec::new(),
                 }
             ],
+            Primitive::I8 |
+            Primitive::I16 |
             Primitive::I32 |
             Primitive::I64 |
             Primitive::N64 |
+            Primitive::U8 |
+            Primitive::U16 |
             Primitive::U32 |
             Primitive::U64 => vec![
                 EncodingField {
@@ -3292,8 +3302,12 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                 Primitive::Bytes |
                 Primitive::Str => "inner.len()",
                 Primitive::Bool |
+                Primitive::U8 |
+                Primitive::U16 |
                 Primitive::U32 |
                 Primitive::U64 |
+                Primitive::I8 |
+                Primitive::I16 |
                 Primitive::I32 |
                 Primitive::I64 |
                 Primitive::N64 => "inner",
@@ -3309,8 +3323,12 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                         Primitive::Bytes |
                         Primitive::Str => true,
                         Primitive::Bool |
+                        Primitive::U8 |
+                        Primitive::U16 |
                         Primitive::U32 |
                         Primitive::U64 => true,
+                        Primitive::I8 |
+                        Primitive::I16 |
                         Primitive::I32 |
                         Primitive::I64 |
                         Primitive::N64 => false,
