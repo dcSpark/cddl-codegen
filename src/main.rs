@@ -4,6 +4,8 @@ pub (crate) mod intermediate;
 pub (crate) mod parsing;
 pub (crate) mod utils;
 pub (crate) mod rust_reserved;
+pub (crate) mod comment_ast;
+
 #[cfg(test)]
 mod test;
 
@@ -27,8 +29,7 @@ fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cddl_in = std::fs::read_to_string(CLI_ARGS.input.clone()).expect("input.cddl file not present or could not be opened");
-    let mut lexer = cddl::lexer::lexer_from_str(&cddl_in);
-    let cddl = cddl::parser::cddl_from_str(&mut lexer, &cddl_in, true)?;
+    let cddl = cddl::parser::cddl_from_str(&cddl_in, true)?;
     // println!("{:#?}", cddl);
     let mut types = IntermediateTypes::new();
     let mut gen_scope = GenerationScope::new();

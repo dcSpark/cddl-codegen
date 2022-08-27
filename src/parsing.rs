@@ -2,6 +2,7 @@ use cddl::ast::*;
 use either::{Either};
 use std::collections::{BTreeMap};
 
+use crate::comment_ast::{RuleMetadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent,
     CDDLIdent,
@@ -388,16 +389,29 @@ fn _field_name_from_comments<'a>(comments: &Option<Comments<'a>>) -> Option<Stri
         .map(|c| c.trim()[6..].trim().to_owned())
 }
 
+fn combine_comments<'a>(a: &'a Option<Comments>, b: &'a Option<Comments>) -> Option<Vec<&'a str>> {
+    match (a.as_ref().map(|comment| comment.0.clone()), b.as_ref().map(|comment| comment.0.clone())) {
+        (Some(a), Some(b)) => Some([a, b].concat()),
+        (opt_a, opt_b) => opt_a.or(opt_b)
+    }
+}
+
 // Attempts to use the style-converted type name as a field name, and if we have already
 // generated one, then we simply add numerals starting at 2, 3, 4...
 // If you wish to only check if there is an explicitly stated field name,
 // then use group_entry_to_raw_field_name()
-fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>) -> String {
+fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated: &mut BTreeMap<String, u32>, optional_comma: &OptionalComma) -> String {
     //println!("group_entry_to_field_name() = {:#?}", entry);
     let field_name = convert_to_snake_case(&match entry {
-        GroupEntry::ValueMemberKey{ ge, .. } => match ge.member_key.as_ref() {
+        GroupEntry::ValueMemberKey{ trailing_comments, ge, .. } => match ge.member_key.as_ref() {
             Some(member_key) => match member_key {
-                MemberKey::Value{ value, .. } => format!("key_{}", value),
+                MemberKey::Value{ value, .. } => {
+                    let combined_comments = combine_comments(trailing_comments, &optional_comma.trailing_comments);
+                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
+                        RuleMetadata { name: Some(name), .. } => name,
+                        _ => format!("key_{}", value)
+                    }
+                },
                 MemberKey::Bareword{ ident, .. } => ident.to_string(),
                 MemberKey::Type1{ t1, .. } => match t1.type2 {
                     Type2::UintValue{ value, .. } => format!("key_{}", value),
@@ -406,11 +420,23 @@ fn group_entry_to_field_name(entry: &GroupEntry, index: usize, already_generated
                 MemberKey::NonMemberKey{ .. } => panic!("Please open a github issue with repro steps"),
             },
             None => {
-                type_to_field_name(&ge.entry_type).unwrap_or_else(|| format!("index_{}", index))
+                type_to_field_name(&ge.entry_type).unwrap_or_else(|| {
+                    let combined_comments = combine_comments(trailing_comments, &optional_comma.trailing_comments);
+                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
+                        RuleMetadata { name: Some(name), .. } => name,
+                        _ => format!("index_{}", index),
+                    }
+                })
             }
         },
-        GroupEntry::TypeGroupname{ ge: TypeGroupnameEntry { name, .. }, .. } => match !is_identifier_user_defined(&name.to_string()) {
-            true => format!("index_{}", index),
+        GroupEntry::TypeGroupname{ trailing_comments, ge: TypeGroupnameEntry { name, .. }, .. } => match !is_identifier_user_defined(&name.to_string()) {
+            true => {
+                let combined_comments = combine_comments(trailing_comments, &optional_comma.trailing_comments);
+                match metadata_from_comments(&combined_comments.unwrap_or_default()) {
+                    RuleMetadata { name: Some(name), .. } => name,
+                    _ => format!("index_{}", index),
+                }
+            },
             false => name.to_string(),
         },
         GroupEntry::InlineGroup{ group, .. } => panic!("not implemented (define a new struct for this!) = {}\n\n {:?}", group, group),
@@ -623,8 +649,8 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
 fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representation, group_choice: &GroupChoice) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
     let fields = group_choice.group_entries.iter().enumerate().map(
-        |(index, (group_entry, _has_comma))| {
-            let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields);
+        |(index, (group_entry, optional_comma))| {
+            let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields, optional_comma);
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, group_entry);
             if let RustType::Rust(ident) = &field_type {
