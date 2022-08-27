@@ -68,6 +68,10 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias("nint", RustType::Primitive(Primitive::N64));
         if CLI_ARGS.extended_prelude {
             // We also provide non-standard 32-bit variants for ease of use from wasm
+            insert_alias("u8", RustType::Primitive(Primitive::U8));
+            insert_alias("i8", RustType::Primitive(Primitive::I8));
+            insert_alias("u16", RustType::Primitive(Primitive::U16));
+            insert_alias("i16", RustType::Primitive(Primitive::I16));
             insert_alias("u32", RustType::Primitive(Primitive::U32));
             insert_alias("i32", RustType::Primitive(Primitive::I32));
             insert_alias("u64", RustType::Primitive(Primitive::U64));
@@ -417,6 +421,14 @@ impl FixedValue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
+    // u8 in our cddl
+    U8,
+    // i8 in our cddl
+    I8,
+    // u16 in our cddl
+    U16,
+    // i16 in our cddl
+    I16,
     // u32 in our cddl
     U32,
     // i32 in our cddl
@@ -436,6 +448,10 @@ impl Primitive {
     pub fn to_string(&self) -> String {
         String::from(match self {
             Primitive::Bool => "bool",
+            Primitive::U8 => "u8",
+            Primitive::I8 => "i8",
+            Primitive::U16 => "u16",
+            Primitive::I16 => "i16",
             Primitive::U32 => "u32",
             Primitive::I32 => "i32",
             Primitive::U64 => "u64",
@@ -450,6 +466,10 @@ impl Primitive {
     pub fn to_variant(&self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
+            Primitive::U8 => "U8",
+            Primitive::I8 => "I8",
+            Primitive::U16 => "U16",
+            Primitive::I16 => "I16",
             Primitive::U32 => "U32",
             Primitive::I32 => "I32",
             Primitive::U64 => "U64",
@@ -463,6 +483,10 @@ impl Primitive {
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
+            Primitive::U8 => vec![CBORType::UnsignedInteger],
+            Primitive::I8 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
+            Primitive::U16 => vec![CBORType::UnsignedInteger],
+            Primitive::I16 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
             Primitive::U32 => vec![CBORType::UnsignedInteger],
             Primitive::I32 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
             Primitive::U64 => vec![CBORType::UnsignedInteger],
@@ -658,6 +682,10 @@ impl RustType {
                     RustType::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
                         Primitive::Bool |
+                        Primitive::I8 |
+                        Primitive::U8 |
+                        Primitive::I16 |
+                        Primitive::U16 |
                         Primitive::I32 |
                         Primitive::U32 => true,
                         // since we generate these as BigNum/Int wrappers we can't nest them
@@ -957,9 +985,13 @@ impl RustType {
             RustType::Fixed(_f) => unreachable!(),
             RustType::Primitive(p) => match p {
                 Primitive::Bool |
+                Primitive::I8 |
+                Primitive::I16 |
                 Primitive::I32 |
                 Primitive::I64 |
                 Primitive::N64 |
+                Primitive::U8 |
+                Primitive::U16 |
                 Primitive::U32 |
                 Primitive::U64 => true,
                 Primitive::Str |
