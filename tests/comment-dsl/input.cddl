@@ -1,0 +1,9 @@
+address = [
+    bytes, ; @name address
+    uint ; @name checksum
+]
+
+protocol_param_update = {
+    0:  uint               ; @name minfee_a
+  , 1:  uint               ; @name minfee_b
+}

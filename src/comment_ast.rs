@@ -12,6 +12,7 @@ pub struct RuleMetadata {
 fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
     RuleMetadata {
         name: match (r1.name.as_ref(), r2.name.as_ref()) {
+            (Some(val1), Some(val2)) => panic!("Key \"name\" specified twice: {:?} {:?}", val1, val2),
             (val@Some(_), _) => val.cloned(),
             (_, val) => val.cloned()
         }
@@ -38,7 +39,7 @@ pub fn metadata_from_comments(comments: &[&str]) -> RuleMetadata {
 }
 
 #[test]
-fn parse_color() {
+fn parse_comment_name() {
   assert_eq!(rule_metadata("@name asdf"), Ok(("", RuleMetadata {
     name: Some("asdf".to_string()),
   })));
