@@ -86,6 +86,11 @@ fn core_no_wasm() {
 }
 
 #[test]
+fn comment_dsl() {
+    run_test("comment-dsl", &["--preserve-encodings=true"], Some("wasm"));
+}
+
+#[test]
 fn preserve_encodings() {
     run_test("preserve-encodings", &["--preserve-encodings=true"], None);
 }
