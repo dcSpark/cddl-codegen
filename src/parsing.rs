@@ -107,7 +107,11 @@ fn type2_to_number_literal(type2: &Type2) -> isize {
     }
 }
 
-fn parse_control_operator(types: &mut IntermediateTypes, operator: &Operator) -> ControlOperator {
+fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operator: &Operator) -> ControlOperator {
+    let lower_bound = match parent {
+        Type2::Typename{ ident, .. } if ident.to_string() == "uint" => Some(0),
+        _ => None,
+    };
     //todo: read up on other range control operators in CDDL RFC
     // (rangeop / ctlop) S type2
     match operator.operator {
@@ -122,41 +126,82 @@ fn parse_control_operator(types: &mut IntermediateTypes, operator: &Operator) ->
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
             ".ne" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), Some(type2_to_number_literal(&operator.type2) - 1))),
-            ".le" => ControlOperator::Range((None, Some(type2_to_number_literal(&operator.type2)))),
-            ".lt" => ControlOperator::Range((None, Some(type2_to_number_literal(&operator.type2) - 1))),
+            ".le" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2)))),
+            ".lt" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) - 1))),
             ".ge" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), None)),
             ".gt" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None)),
-            ".size" => match &operator.type2 {
-                Type2::UintValue{ value, .. } => ControlOperator::Range((Some(*value as isize), Some(*value as isize))),
-                Type2::IntValue{ value, .. } => ControlOperator::Range((Some(*value), Some(*value))),
-                Type2::ParenthesizedType{ pt, .. } => {
-                    assert_eq!(pt.type_choices.len(), 1);
-                    let inner_type = &pt.type_choices.first().unwrap().type1;
-                    let min = match inner_type.type2 {
-                        Type2::UintValue{ value, .. } => Some(value as isize),
-                        Type2::IntValue{ value, .. } => Some(value),
-                        _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
-                    };
-                    let max = match &inner_type.operator {
-                        Some(op) => match op.operator {
-                            RangeCtlOp::RangeOp{ is_inclusive, ..} => {
-                                let value = match op.type2 {
-                                    Type2::UintValue{ value, .. } => value as isize,
-                                    Type2::IntValue{ value, ..} => value,
-                                    _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
-                                };
-                                Some(if is_inclusive { value } else { value + 1 })
+            ".size" => {
+                let base_range = match &operator.type2 {
+                    Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as isize))),
+                    Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value))),
+                    Type2::ParenthesizedType{ pt, .. } => {
+                        assert_eq!(pt.type_choices.len(), 1);
+                        let inner_type = &pt.type_choices.first().unwrap().type1;
+                        let min = match inner_type.type2 {
+                            Type2::UintValue{ value, .. } => Some(value as isize),
+                            Type2::IntValue{ value, .. } => Some(value),
+                            _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+                        };
+                        let max = match &inner_type.operator {
+                            Some(op) => match op.operator {
+                                RangeCtlOp::RangeOp{ is_inclusive, ..} => {
+                                    let value = match op.type2 {
+                                        Type2::UintValue{ value, .. } => value as isize,
+                                        Type2::IntValue{ value, ..} => value,
+                                        _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+                                    };
+                                    Some(if is_inclusive { value } else { value + 1 })
+                                },
+                                RangeCtlOp::CtlOp{ .. } => panic!(""),
                             },
-                            RangeCtlOp::CtlOp{ .. } => panic!(""),
-                        },
-                        None => min,
-                    };
-                    ControlOperator::Range((min, max))
-                },
-                _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+                            None => min,
+                        };
+                        ControlOperator::Range((min, max))
+                    },
+                    _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+                };
+                match parent {
+                    Type2::Typename{ ident, .. } if ident.to_string() == "uint" => {
+                        // .size 3 means 24 bits
+                        match &base_range {
+                            ControlOperator::Range((Some(l), Some(h))) => ControlOperator::Range((Some(isize::pow(2, 8 * *l as u32)), Some(isize::pow(2, 8 * *h as u32) - 1))),
+                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(0), Some(isize::pow(2, 8 * *h as u32) - 1))),
+                            _ => panic!("unexpected partial range in size control operator: {:?}", operator)
+                        }
+                    },
+                    Type2::Typename{ ident, .. } if ident.to_string() == "int" => {
+                        match &base_range {
+                            // this is complex to support since it requires two disjoint ranges of possible values
+                            ControlOperator::Range((Some(_), Some(_))) => panic!(".size range unsupported for signed int type: {:?}", operator),
+                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(-isize::pow(2, 8 * (*h - 1) as u32)), Some(isize::pow(2, (8 * (*h - 1)) as u32) - 1))),
+                            _ => panic!("unexpected partial range in size control operator: {:?}", operator)
+                        }
+                    }
+                    _ => {
+                        match base_range {
+                            // for strings & byte arrays, specifying an upper value means an exact value (.size 3 means a 3 char string)
+                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(h), Some(h))),
+                            range => range,
+                        }
+                    }
+                }
             },
             _ => panic!("Unknown (not seen in RFC-8610) range control operator: {}", ctrl),
         }
+    }
+}
+
+fn range_to_primitive(low: Option<isize>, high: Option<isize>) -> Option<RustType> {
+    match (low, high) {
+        (Some(l), Some(h)) if l == u8::MIN as isize && h == u8::MAX as isize => Some(RustType::Primitive(Primitive::U8)),
+        (Some(l), Some(h)) if l == i8::MIN as isize && h == i8::MAX as isize => Some(RustType::Primitive(Primitive::I8)),
+        (Some(l), Some(h)) if l == u16::MIN as isize && h == u16::MAX as isize => Some(RustType::Primitive(Primitive::U16)),
+        (Some(l), Some(h)) if l == i16::MIN as isize && h == i16::MAX as isize => Some(RustType::Primitive(Primitive::I16)),
+        (Some(l), Some(h)) if l == u32::MIN as isize && h == u32::MAX as isize => Some(RustType::Primitive(Primitive::U32)),
+        (Some(l), Some(h)) if l == i32::MIN as isize && h == i32::MAX as isize => Some(RustType::Primitive(Primitive::I32)),
+        (Some(l), Some(h)) if l == u64::MIN as isize && h == u64::MAX as isize => Some(RustType::Primitive(Primitive::U64)),
+        (Some(l), Some(h)) if l == i64::MIN as isize && h == i64::MAX as isize => Some(RustType::Primitive(Primitive::I64)),
+        _ => None
     }
 }
 
@@ -167,21 +212,27 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
             match control {
                 Some(control) => {
                     assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
                     // TODO: what about aliases that resolve to these? is it even possible to know this at this stage?
-                    let field_type = match cddl_ident.to_string().as_str() {
+                    let field_type = || match cddl_ident.to_string().as_str() {
                         "tstr" | "text" => RustType::Primitive(Primitive::Str),
                         "bstr" | "bytes" => RustType::Primitive(Primitive::Bytes),
                         other => panic!("range control specifiers not supported for type: {}", other),
                     };
                     match control {
                         ControlOperator::Range(min_max) => {
-                            types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type.clone(), Some(min_max)));
+                            match cddl_ident.to_string().as_str() {
+                                "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                    Some(t) => types.register_type_alias(type_name.clone(), t, true, true),
+                                    None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
+                                },
+                                _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone(), Some(min_max)))
+                            }
                         },
-                        ControlOperator::CBOR(ty) => match field_type {
+                        ControlOperator::CBOR(ty) => match field_type() {
                             RustType::Primitive(Primitive::Bytes) => {
                                 types.register_type_alias(type_name.clone(), RustType::CBORBytes(Box::new(ty)), true, true);
                             },
@@ -242,7 +293,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
-                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, op));
+                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, &inner_type.type1.type2, op));
                             match control {
                                 Some(ControlOperator::CBOR(ty)) => {
                                     // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
@@ -252,7 +303,15 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                         .expect(&format!("Please move definition for {} above {}", type_name, ident));
                                     types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(RustType::CBORBytes(Box::new(base_type)))), true, true);
                                 },
-                                Some(ControlOperator::Range(min_max)) => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max))),
+                                Some(ControlOperator::Range(min_max)) => {
+                                    match ident.to_string().as_str() {
+                                        "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                            Some(t) => types.register_type_alias(type_name.clone(), t, true, true),
+                                            None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
+                                        },
+                                        _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max)))
+                                    }
+                                },
                                 None => {
                                     // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
                                     // which would also allow us to do a single pass instead of many like we do now
@@ -462,9 +521,18 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
 }
 
 fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustType {
-    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, op));
+    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
     match control {
         Some(ControlOperator::CBOR(ty)) => RustType::CBORBytes(Box::new(ty)),
+        Some(ControlOperator::Range(min_max)) => {
+            match &type1.type2 {
+                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" => match range_to_primitive(min_max.0, min_max.1) {
+                    Some(t) => t,
+                    None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
+                },
+                _ => rust_type_from_type2(types, &type1.type2)
+            }
+        },
         _ => rust_type_from_type2(types, &type1.type2)
     }
 }

@@ -66,17 +66,6 @@ impl<'a> IntermediateTypes<'a> {
         };
         insert_alias("uint", RustType::Primitive(Primitive::U64));
         insert_alias("nint", RustType::Primitive(Primitive::N64));
-        if CLI_ARGS.extended_prelude {
-            // We also provide non-standard 32-bit variants for ease of use from wasm
-            insert_alias("u8", RustType::Primitive(Primitive::U8));
-            insert_alias("i8", RustType::Primitive(Primitive::I8));
-            insert_alias("u16", RustType::Primitive(Primitive::U16));
-            insert_alias("i16", RustType::Primitive(Primitive::I16));
-            insert_alias("u32", RustType::Primitive(Primitive::U32));
-            insert_alias("i32", RustType::Primitive(Primitive::I32));
-            insert_alias("u64", RustType::Primitive(Primitive::U64));
-            insert_alias("i64", RustType::Primitive(Primitive::I64));
-        }
         insert_alias("bool", RustType::Primitive(Primitive::Bool));
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
@@ -545,9 +534,6 @@ mod idents {
             assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
             if cddl_ident.0 != "int" {
                 assert!(!is_identifier_reserved(&cddl_ident.0), "Cannot use reserved CDDL keyword: \"{}\"", cddl_ident.0);
-            }
-            if CLI_ARGS.extended_prelude {
-                assert!(!is_identifier_in_our_prelude(&cddl_ident.0), "\"{}\" is built into cddl-codegen prelude when extended_prelude=true and cannot be redefined", cddl_ident.0);
             }
 
             Self(super::convert_to_camel_case(&cddl_ident.0))

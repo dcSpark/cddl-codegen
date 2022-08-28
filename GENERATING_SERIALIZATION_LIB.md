@@ -21,7 +21,7 @@ As noted in the readme, not every aspect of CDDL is fully supported by this code
 
 ### Integer precision
 
-CDDL gives us the `uint` type which can be up to 64 bits, but especially for wasm/js interop, this isn't very easy to use. We provide our own rust-specific types: `u32`, `i32`, `u64`, `i64` when `USE_EXTENDED_PRELUDE` is enabled to have more control over this. This can be a problem as `u64` for example converts to `bigint` in JS when built via `wasm_bindgen`, but your environment might not support this yet. Note that the structs will fail to deserialize if an integer out of these smaller bounds is encountered even if it's valid according to the CDDL, as it won't fit in the `u32` or whichever you selected.
+CDDL gives us the `uint` type which can be up to 64 bits, but especially for wasm/js interop, this isn't very easy to use. We provide our own rust-specific types: `u32`, `i32`, `u64`, `i64` which are automatically use if you specify the correct control operator (ex: `.lt`). This can be a problem as `u64` for example converts to `bigint` in JS when built via `wasm_bindgen`, but your environment might not support this yet. Note that the structs will fail to deserialize if an integer out of these smaller bounds is encountered even if it's valid according to the CDDL, as it won't fit in the `u32` or whichever you selected.
 
 
 

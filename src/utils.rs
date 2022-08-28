@@ -165,7 +165,7 @@ pub fn is_identifier_in_our_prelude(name: &str) -> bool {
 }
 
 pub fn is_identifier_user_defined(name: &str) -> bool {
-    !is_identifier_reserved(name) && (!CLI_ARGS.extended_prelude || !is_identifier_in_our_prelude(name))
+    !is_identifier_reserved(name)
 }
 
 pub fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: String) -> String {
