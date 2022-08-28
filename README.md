@@ -41,7 +41,6 @@ Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Nam
 
 There are several arguments that are set at the top of `main.rs` to configure code generation:
 * `ANNOTATE_FIELDS` - Annotates errors with locational context if set. On by default.
-* `USE_EXTENDED_PRELUDE` - Whether to use our extended prelude (`u64`, `i32`, etc)
 * `GENERATE_TO_FROM_BYTES` - Generates `to_bytes()` and `from_bytes()` usable from wasm in addition to the `Serialize` and `Deserialize` traits. Off by default.
 
 #### Heterogeneous Arrays
