@@ -110,8 +110,10 @@ mod tests {
     }
 
     #[test]
-    fn test_u8() {
-        assert_eq!(0u8, TestU8::from(0));
-        assert_eq!(0u16, TestU16::from(0));
+    fn test_prelude_numbers() {
+        assert_eq!(0u8, U8::from(0u8));
+        assert_eq!(0u16, U16::from(0u16));
+        assert_eq!(0u32, U32::from(0u32));
+        assert_eq!(0i8, I8::from(0i8));
     }
 }

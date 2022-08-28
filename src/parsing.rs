@@ -115,7 +115,19 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operato
     //todo: read up on other range control operators in CDDL RFC
     // (rangeop / ctlop) S type2
     match operator.operator {
-        RangeCtlOp::RangeOp{ .. } => panic!("Range Op only expected as 2nd type in range control operator"),
+        RangeCtlOp::RangeOp{ is_inclusive, .. } => {
+            let range_start = match parent {
+                Type2::UintValue{ value, .. } => *value as isize,
+                Type2::IntValue{ value, .. } => *value,
+                _ => panic!("Number expected as range start. Found {:?}", parent)
+            };
+            let range_end = match operator.type2 {
+                Type2::UintValue{ value, .. } => value as isize,
+                Type2::IntValue{ value, ..} => value,
+                _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+            };
+            ControlOperator::Range((Some(range_start), Some(if is_inclusive { range_end } else { range_end + 1 })))
+        },
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
             ".default" |
             ".cborseq" |
@@ -331,10 +343,34 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         },
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Int(*value)), true, true);
+            let fallback_type = RustType::Fixed(FixedValue::Int(*value));
+
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+            let base_type = match control {
+                Some(ControlOperator::Range(min_max)) => {
+                    match range_to_primitive(min_max.0, min_max.1) {
+                        Some(t) => t,
+                        _ => fallback_type
+                    }
+                },
+                _ => fallback_type
+            };
+            types.register_type_alias(type_name.clone(), base_type, true, true);
         },
         Type2::UintValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Uint(*value)), true, true);
+            let fallback_type = RustType::Fixed(FixedValue::Uint(*value));
+
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+            let base_type = match control {
+                Some(ControlOperator::Range(min_max)) => {
+                    match range_to_primitive(min_max.0, min_max.1) {
+                        Some(t) => t,
+                        _ => fallback_type
+                    }
+                },
+                _ => fallback_type
+            };
+            types.register_type_alias(type_name.clone(), base_type, true, true);
         },
         Type2::TextValue{ value, .. } => {
             types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.to_string())), true, true);
