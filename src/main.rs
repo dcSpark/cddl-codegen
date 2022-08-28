@@ -116,6 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             parse_rule(&mut types, cddl_rule);
         }
         types.finalize();
+        println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
         gen_scope.generate(&types);
     }
 

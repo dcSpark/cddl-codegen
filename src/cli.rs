@@ -22,10 +22,6 @@ pub struct Cli {
     #[clap(long, parse(try_from_str), default_value_t = true)]
     pub to_from_bytes_methods: bool,
 
-    /// Use our own extended prelude with types like i32, u64, etc for more control than 'uint', etc
-    #[clap(long, parse(try_from_str), default_value_t = true)]
-    pub extended_prelude: bool,
-
     /// Generate byte string definitions as new rust types (TODO: look into this or remove it)
     #[clap(long, parse(try_from_str), default_value_t = false)]
     pub binary_wrappers: bool,

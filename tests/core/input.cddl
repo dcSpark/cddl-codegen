@@ -35,3 +35,9 @@ foo_bytes = bytes .cbor foo
 
 ; since we don't generate code for definitions like the above (should we if no one refers to it?)
 cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]
+
+
+u8 = uint .size 1
+u16 = uint .le 65535
+u32 = 0..4294967295
+i8 = -128..127

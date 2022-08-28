@@ -108,4 +108,12 @@ mod tests {
     fn cbor_in_cbor() {
         deser_test(&CborInCbor::new(Foo::new(0, String::new(), vec![]), 9))
     }
+
+    #[test]
+    fn test_prelude_numbers() {
+        assert_eq!(0u8, U8::from(0u8));
+        assert_eq!(0u16, U16::from(0u16));
+        assert_eq!(0u32, U32::from(0u32));
+        assert_eq!(0i8, I8::from(0i8));
+    }
 }

@@ -8,6 +8,8 @@ bar = {
 	five: 5,
 }
 
+u32 = uint .size 4 ; 4 bytes
+
 table_arr_members = {
 	arr: [*u32],
 	arr2: [*foo],
