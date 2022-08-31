@@ -1592,7 +1592,7 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
     let name = &ident.to_string();
     let mut deser_impl = codegen::Impl::new(name);
     // TODO: add config param to decide if we want to use our deserialize
-    //       or theirs using Error::Cusom(String) + DeserializeError::to_string()
+    //       or theirs using Error::Custom(String) + DeserializeError::to_string()
     //deser_impl.impl_trait("cbor_event::de::Deserialize");
     deser_impl.impl_trait("Deserialize");
     if let Some(tag) = tag {
@@ -1615,7 +1615,7 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
                 }
                 if !generate_deserialize_embedded {
                     if let Some(encoding_var_name) = store_encoding {
-                        deser_body.line(&format!("let {} = len.into();", encoding_var_name));
+                        deser_body.line(&format!("let {}: LenEncoding = len.into();", encoding_var_name));
                     }
                 }
                 add_deserialize_initial_len_check(deser_body, len_info);
@@ -1631,7 +1631,7 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
                 }
                 if !generate_deserialize_embedded {
                     if let Some(encoding_var_name) = store_encoding {
-                        deser_body.line(&format!("let {} = len.into();", encoding_var_name));
+                        deser_body.line(&format!("let {}: LenEncoding = len.into();", encoding_var_name));
                     }
                 }
                 add_deserialize_initial_len_check(deser_body, len_info);
