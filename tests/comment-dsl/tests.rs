@@ -27,4 +27,12 @@ mod tests {
         assert_eq!(minfee_a, addr.minfee_a);
         assert_eq!(minfee_b, addr.minfee_b);
     }
+
+    #[test]
+    fn group_choice() {
+        // just checking these fields exist with the expected name
+        Block::new_ebb_block_wrapper(vec![]);
+        Block::new_main_block_wrapper(vec![]);
+        assert!(true);
+    }
 }

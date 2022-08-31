@@ -7,3 +7,11 @@ protocol_param_update = {
     0:  uint               ; @name minfee_a
   , 1:  uint               ; @name minfee_b
 }
+
+block = [
+    ; @name ebb_block_wrapper
+    0, bytes ; @name ebb_block_cbor
+    //
+    ; @name main_block_wrapper
+    1, bytes ; @name main_block_cbor
+]
