@@ -846,8 +846,10 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
                 //     EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), true)
                 // },
             } else {
+                let rule_metadata = RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref());
+                let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{}{}", name, i));
                 // General case, GroupN type identifiers and generate group choice since it's inlined here
-                let variant_name = RustIdent::new(CDDLIdent::new(format!("{}{}", name, i)));
+                let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
                 types.mark_plain_group(variant_name.clone(), None);
                 parse_group_choice(types, group_choice, &variant_name, rep, None, generic_params.clone());
                 EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), true)

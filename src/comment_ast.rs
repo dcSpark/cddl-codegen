@@ -28,6 +28,16 @@ fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
   Ok((input, RuleMetadata { name: Some(name.to_string()) }))
 }
 
+
+impl <'a> From<Option<&'a cddl::ast::Comments<'a>>> for RuleMetadata {
+  fn from(comments: Option<&'a cddl::ast::Comments<'a>>) -> RuleMetadata {
+    match comments {
+      None => RuleMetadata::default(),
+      Some(c) => metadata_from_comments(&c.0)
+    }
+  }
+}
+
 pub fn metadata_from_comments(comments: &[&str]) -> RuleMetadata {
     let mut result = RuleMetadata::default();
     for comment in comments {
