@@ -3242,7 +3242,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         s.tuple_field(field_type.for_rust_member(false));
         None
     };
-    if field_type.is_copy() {
+    // TODO: is there a way to know if the encoding object is also copyable?
+    if field_type.is_copy() && !CLI_ARGS.preserve_encodings {
         s.derive("Copy");
     }
     let (inner_var, self_var) = if CLI_ARGS.preserve_encodings {
