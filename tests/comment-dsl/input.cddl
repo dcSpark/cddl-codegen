@@ -1,11 +1,11 @@
 address = [
     bytes, ; @name address
-    uint ; @name checksum
+    uint   ; @name checksum
 ]
 
 protocol_param_update = {
-    0:  uint               ; @name minfee_a
-  , 1:  uint               ; @name minfee_b
+    0:  uint, ; @name minfee_a
+    1:  uint, ; @name minfee_b
 }
 
 block = [
@@ -15,3 +15,8 @@ block = [
     ; @name main_block_wrapper
     1, bytes ; @name main_block_cbor
 ]
+
+typechoice =
+    [0, bytes] ; @name case_1
+    /
+    [1, bytes] ; @name case_2
