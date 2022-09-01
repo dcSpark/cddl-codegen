@@ -51,4 +51,10 @@ mod tests {
         Typechoice::new_case2(Case2::new(vec![]));
         assert!(true);
     }
+
+    #[test]
+    fn newtype() {
+        let pm = ProtocolMagic::new(5);
+        assert_eq!(pm.get(), 5);
+    }
 }
