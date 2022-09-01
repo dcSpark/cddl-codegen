@@ -2985,7 +2985,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
                     vec![]
                 } else {
                     // just directly pass in the variant's type
-                    let field_name = variant.name.to_string();
+                    let field_name = variant.name_as_var();
                     new_func.arg(&field_name, variant.rust_type.for_rust_move());
                     vec![field_name]
                     // ^ TODO: check types.can_new_fail(&field.name)?

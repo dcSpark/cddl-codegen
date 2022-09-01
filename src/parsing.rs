@@ -33,6 +33,11 @@ enum ControlOperator {
     CBOR(RustType),
 }
 
+struct Type2AndParent<'a> {
+    type2: &'a Type2<'a>,
+    parent: &'a Type1<'a>,
+}
+
 pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
     match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
@@ -107,8 +112,8 @@ fn type2_to_number_literal(type2: &Type2) -> isize {
     }
 }
 
-fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operator: &Operator) -> ControlOperator {
-    let lower_bound = match parent {
+fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent, operator: &Operator) -> ControlOperator {
+    let lower_bound = match parent.type2 {
         Type2::Typename{ ident, .. } if ident.to_string() == "uint" => Some(0),
         _ => None,
     };
@@ -116,10 +121,10 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operato
     // (rangeop / ctlop) S type2
     match operator.operator {
         RangeCtlOp::RangeOp{ is_inclusive, .. } => {
-            let range_start = match parent {
+            let range_start = match parent.type2 {
                 Type2::UintValue{ value, .. } => *value as isize,
                 Type2::IntValue{ value, .. } => *value,
-                _ => panic!("Number expected as range start. Found {:?}", parent)
+                _ => panic!("Number expected as range start. Found {:?}", parent.type2)
             };
             let range_end = match operator.type2 {
                 Type2::UintValue{ value, .. } => value as isize,
@@ -133,7 +138,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operato
             ".cborseq" |
             ".within" |
             ".and" => todo!("control operator {} not supported", ctrl),
-            ".cbor" => ControlOperator::CBOR(rust_type_from_type2(types, &operator.type2)),
+            ".cbor" => ControlOperator::CBOR(rust_type_from_type2(types, &Type2AndParent { type2: &operator.type2, parent: parent.parent, })),
             ".eq" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), Some(type2_to_number_literal(&operator.type2)))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
@@ -172,7 +177,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2, operato
                     },
                     _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                 };
-                match parent {
+                match parent.type2 {
                     Type2::Typename{ ident, .. } if ident.to_string() == "uint" => {
                         // .size 3 means 24 bits
                         match &base_range {
@@ -224,7 +229,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { type2: &type1.type2, parent: &type1 }, op));
             match control {
                 Some(control) => {
                     assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
@@ -305,7 +310,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                         Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
-                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, &inner_type.type1.type2, op));
+                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: &inner_type.type1, type2: &inner_type.type1.type2 }, op));
                             match control {
                                 Some(ControlOperator::CBOR(ty)) => {
                                     // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
@@ -345,7 +350,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         Type2::IntValue{ value, .. } => {
             let fallback_type = RustType::Fixed(FixedValue::Int(*value));
 
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -360,7 +365,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         Type2::UintValue{ value, .. } => {
             let fallback_type = RustType::Fixed(FixedValue::Uint(*value));
 
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -557,7 +562,8 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
 }
 
 fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustType {
-    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &type1.type2, op));
+    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
+    // println!("type1: {:#?}", type1);
     match control {
         Some(ControlOperator::CBOR(ty)) => RustType::CBORBytes(Box::new(ty)),
         Some(ControlOperator::Range(min_max)) => {
@@ -566,16 +572,16 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustTyp
                     Some(t) => t,
                     None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                 },
-                _ => rust_type_from_type2(types, &type1.type2)
+                _ => rust_type_from_type2(types, &Type2AndParent { type2: &type1.type2, parent: type1, })
             }
         },
-        _ => rust_type_from_type2(types, &type1.type2)
+        _ => rust_type_from_type2(types, &Type2AndParent { type2: &type1.type2, parent: type1, })
     }
 }
 
-fn rust_type_from_type2(types: &mut IntermediateTypes, type1: &Type2) -> RustType {
+fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -> RustType {
     // TODO: socket plugs (used in hash type)
-    match &type1 {
+    match &type2.type2 {
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
         Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
@@ -613,8 +619,16 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type1: &Type2) -> RustTyp
                             _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
                         }
                     } else {
-                        // array of non-choice element that has multiple fields: tuples? create seperately?
-                        panic!("TODO: how do we handle this? tuples? or creating a struct definition and referring to it by name?: {:#?}", group)
+                        let rule_metadata = RuleMetadata::from(type2.parent.comments_after_type.as_ref());
+                        let name = match rule_metadata.name.as_ref() {
+                            Some(name) => name,
+                            None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
+                        };
+                        let cddl_ident = CDDLIdent::new(name);
+                        let rust_ident = RustIdent::new(cddl_ident.clone());
+                        parse_group(types, group, &rust_ident, Representation::Array, None, None);
+                        // we aren't returning an array, but rather a struct where the fields are ordered
+                        return types.new_type(&cddl_ident)
                     }
                 },
                 // array of elements with choices: enums?
@@ -654,7 +668,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type1: &Type2) -> RustTyp
             RustType::Tagged(tag.expect("tagged data without tag not supported"), Box::new(rust_type(types, t)))
         },
         _ => {
-            panic!("Ignoring Type1: {:?}", type1);
+            panic!("Ignoring Type2: {:?}", type2.type2);
         },
     }
 }

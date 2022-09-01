@@ -31,8 +31,24 @@ mod tests {
     #[test]
     fn group_choice() {
         // just checking these fields exist with the expected name
-        Block::new_ebb_block_wrapper(vec![]);
-        Block::new_main_block_wrapper(vec![]);
+        let ebb_block = Block::new_ebb_block_wrapper(vec![]);
+        match &ebb_block {
+            Block::EbbBlockWrapper(wrapper) => { wrapper.ebb_block_cbor.clone(); },
+            _ => {}
+        };
+        let main_block = Block::new_main_block_wrapper(vec![]);
+        match &main_block {
+            Block::MainBlockWrapper(wrapper) => { wrapper.main_block_cbor.clone(); },
+            _ => {}
+        };
+        assert!(true);
+    }
+
+    #[test]
+    fn type_choice() {
+        // just checking these fields exist with the expected name
+        Typechoice::new_case1(Case1::new(vec![]));
+        Typechoice::new_case2(Case2::new(vec![]));
         assert!(true);
     }
 }
