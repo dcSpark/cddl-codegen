@@ -277,7 +277,12 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                     types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
                                 },
                                 None => {
-                                    types.register_type_alias(type_name.clone(), concrete_type, true, true);
+                                    let rule_metadata = RuleMetadata::from(type1.comments_after_type.as_ref());
+                                    if rule_metadata.is_newtype {
+                                        types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None)); 
+                                    } else {
+                                        types.register_type_alias(type_name.clone(), concrete_type, true, true);
+                                    }
                                 }
                             }
                         }
