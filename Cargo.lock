@@ -116,7 +116,7 @@ checksum = "52b3d8b289b6c7d6d8832c8e2bf151c7677126afa627f51e19a6320aec8237cb"
 [[package]]
 name = "cddl"
 version = "0.9.0"
-source = "git+https://github.com/dcSpark/cddl?branch=fix-group-comments#f85a35eeca552e40c263d1353d5891cb7e7d9d43"
+source = "git+https://github.com/dcSpark/cddl?branch=fix-group-comments#51bac9d087aeb0c628de9e5893741ea3b3347eef"
 dependencies = [
  "abnf_to_pest",
  "base16",
