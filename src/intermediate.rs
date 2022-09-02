@@ -1342,7 +1342,7 @@ pub enum RustStructType {
     },
     Wrapper{
         wrapped: RustType,
-        min_max: Option<(Option<isize>, Option<isize>)>,
+        min_max: Option<(Option<i128>, Option<i128>)>,
     },
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
@@ -1401,7 +1401,7 @@ impl RustStruct {
         }
     }
 
-    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<isize>, Option<isize>)>) -> Self {
+    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<i128>, Option<i128>)>) -> Self {
         Self {
             ident,
             tag,
