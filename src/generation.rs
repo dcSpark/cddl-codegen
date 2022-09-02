@@ -3182,7 +3182,7 @@ fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Op
 }
 
 // This is used mostly for when thing are tagged have specific ranges.
-fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, min_max: Option<(Option<isize>, Option<isize>)>) {
+fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, type_name: &RustIdent, field_type: &RustType, min_max: Option<(Option<i128>, Option<i128>)>) {
     if min_max.is_some() {
         assert!(types.can_new_fail(type_name));
     }

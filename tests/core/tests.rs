@@ -115,5 +115,7 @@ mod tests {
         assert_eq!(0u16, U16::from(0u16));
         assert_eq!(0u32, U32::from(0u32));
         assert_eq!(0i8, I8::from(0i8));
+        assert_eq!(0u64, U64::from(0u64));
+        assert_eq!(0i64, I64::from(0i64));
     }
 }
