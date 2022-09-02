@@ -29,7 +29,7 @@ use crate::utils::{
 
 #[derive(Clone, Debug)]
 enum ControlOperator {
-    Range((Option<isize>, Option<isize>)),
+    Range((Option<i128>, Option<i128>)),
     CBOR(RustType),
 }
 
@@ -131,7 +131,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
                 Type2::IntValue{ value, ..} => value,
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
-            ControlOperator::Range((Some(range_start), Some(if is_inclusive { range_end } else { range_end + 1 })))
+            ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
         },
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
             ".default" |
@@ -139,32 +139,32 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
             ".within" |
             ".and" => todo!("control operator {} not supported", ctrl),
             ".cbor" => ControlOperator::CBOR(rust_type_from_type2(types, &Type2AndParent { type2: &operator.type2, parent: parent.parent, })),
-            ".eq" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), Some(type2_to_number_literal(&operator.type2)))),
+            ".eq" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            ".ne" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), Some(type2_to_number_literal(&operator.type2) - 1))),
-            ".le" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2)))),
-            ".lt" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) - 1))),
-            ".ge" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), None)),
-            ".gt" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None)),
+            ".ne" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            ".le" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
+            ".lt" => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            ".ge" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
+            ".gt" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
             ".size" => {
                 let base_range = match &operator.type2 {
-                    Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as isize))),
-                    Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value))),
+                    Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
+                    Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::ParenthesizedType{ pt, .. } => {
                         assert_eq!(pt.type_choices.len(), 1);
                         let inner_type = &pt.type_choices.first().unwrap().type1;
                         let min = match inner_type.type2 {
-                            Type2::UintValue{ value, .. } => Some(value as isize),
-                            Type2::IntValue{ value, .. } => Some(value),
+                            Type2::UintValue{ value, .. } => Some(value as i128),
+                            Type2::IntValue{ value, .. } => Some(value as i128),
                             _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                         };
                         let max = match &inner_type.operator {
                             Some(op) => match op.operator {
                                 RangeCtlOp::RangeOp{ is_inclusive, ..} => {
                                     let value = match op.type2 {
-                                        Type2::UintValue{ value, .. } => value as isize,
-                                        Type2::IntValue{ value, ..} => value,
+                                        Type2::UintValue{ value, .. } => value as i128,
+                                        Type2::IntValue{ value, ..} => value as i128,
                                         _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                                     };
                                     Some(if is_inclusive { value } else { value + 1 })
@@ -181,8 +181,8 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
                     Type2::Typename{ ident, .. } if ident.to_string() == "uint" => {
                         // .size 3 means 24 bits
                         match &base_range {
-                            ControlOperator::Range((Some(l), Some(h))) => ControlOperator::Range((Some(isize::pow(2, 8 * *l as u32)), Some(isize::pow(2, 8 * *h as u32) - 1))),
-                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(0), Some(isize::pow(2, 8 * *h as u32) - 1))),
+                            ControlOperator::Range((Some(l), Some(h))) => ControlOperator::Range((Some(i128::pow(2, 8 * *l as u32)), Some(i128::pow(2, 8 * *h as u32) - 1))),
+                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(0), Some(i128::pow(2, 8 * *h as u32) - 1))),
                             _ => panic!("unexpected partial range in size control operator: {:?}", operator)
                         }
                     },
@@ -190,7 +190,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
                         match &base_range {
                             // this is complex to support since it requires two disjoint ranges of possible values
                             ControlOperator::Range((Some(_), Some(_))) => panic!(".size range unsupported for signed int type: {:?}", operator),
-                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(-isize::pow(2, 8 * (*h - 1) as u32)), Some(isize::pow(2, (8 * (*h - 1)) as u32) - 1))),
+                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((Some(-i128::pow(2, ((8 * *h) - 1) as u32)), Some(i128::pow(2, ((8 * *h) - 1) as u32) - 1))),
                             _ => panic!("unexpected partial range in size control operator: {:?}", operator)
                         }
                     }
@@ -208,16 +208,16 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
     }
 }
 
-fn range_to_primitive(low: Option<isize>, high: Option<isize>) -> Option<RustType> {
+fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<RustType> {
     match (low, high) {
-        (Some(l), Some(h)) if l == u8::MIN as isize && h == u8::MAX as isize => Some(RustType::Primitive(Primitive::U8)),
-        (Some(l), Some(h)) if l == i8::MIN as isize && h == i8::MAX as isize => Some(RustType::Primitive(Primitive::I8)),
-        (Some(l), Some(h)) if l == u16::MIN as isize && h == u16::MAX as isize => Some(RustType::Primitive(Primitive::U16)),
-        (Some(l), Some(h)) if l == i16::MIN as isize && h == i16::MAX as isize => Some(RustType::Primitive(Primitive::I16)),
-        (Some(l), Some(h)) if l == u32::MIN as isize && h == u32::MAX as isize => Some(RustType::Primitive(Primitive::U32)),
-        (Some(l), Some(h)) if l == i32::MIN as isize && h == i32::MAX as isize => Some(RustType::Primitive(Primitive::I32)),
-        (Some(l), Some(h)) if l == u64::MIN as isize && h == u64::MAX as isize => Some(RustType::Primitive(Primitive::U64)),
-        (Some(l), Some(h)) if l == i64::MIN as isize && h == i64::MAX as isize => Some(RustType::Primitive(Primitive::I64)),
+        (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => Some(RustType::Primitive(Primitive::U8)),
+        (Some(l), Some(h)) if l == i8::MIN as i128 && h == i8::MAX as i128 => Some(RustType::Primitive(Primitive::I8)),
+        (Some(l), Some(h)) if l == u16::MIN as i128 && h == u16::MAX as i128 => Some(RustType::Primitive(Primitive::U16)),
+        (Some(l), Some(h)) if l == i16::MIN as i128 && h == i16::MAX as i128 => Some(RustType::Primitive(Primitive::I16)),
+        (Some(l), Some(h)) if l == u32::MIN as i128 && h == u32::MAX as i128 => Some(RustType::Primitive(Primitive::U32)),
+        (Some(l), Some(h)) if l == i32::MIN as i128 && h == i32::MAX as i128 => Some(RustType::Primitive(Primitive::I32)),
+        (Some(l), Some(h)) if l == u64::MIN as i128 && h == u64::MAX as i128 => Some(RustType::Primitive(Primitive::U64)),
+        (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => Some(RustType::Primitive(Primitive::I64)),
         _ => None
     }
 }
