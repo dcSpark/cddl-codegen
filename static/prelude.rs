@@ -144,29 +144,3 @@ impl<T: Deserialize + Sized> FromBytes for T {
     }
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Int {
-    Uint(u64),
-    Nint(u64),
-}
-
-impl cbor_event::se::Serialize for Int {
-    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
-        match self {
-            Self::Uint(x) => serializer.write_unsigned_integer(*x),
-            Self::Nint(x) => serializer.write_negative_integer(-(*x as i128) as i64),
-        }
-    }
-}
-
-impl Deserialize for Int {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> {
-            match raw.cbor_type()? {
-                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
-                cbor_event::Type::NegativeInteger => Ok(Self::Nint(-raw.negative_integer()? as u64)),
-                _ => Err(DeserializeFailure::NoVariantMatched.into()),
-            }
-        })().map_err(|e| e.annotate("Int"))
-    }
-}

@@ -251,7 +251,10 @@ impl GenerationScope {
                     }
                 },
                 RustStructType::Prelude => {
-                    // nothing to do here, these are defined in the prelude
+                    match rust_ident.to_string().as_ref() {
+                        "Int" => generate_int(self, types),
+                        other => panic!("prelude not defined: {}", other),
+                    }
                 },
             }
         }
@@ -3511,4 +3514,137 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
             }
         }
     }
+}
+
+fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
+    let ident = RustIdent::new(CDDLIdent::new("int"));
+    // todo: wasm bindings + to/from string traits
+    if CLI_ARGS.wasm {
+        let mut wrapper = create_base_wasm_wrapper(gen_scope, &ident, true);
+        let mut wasm_new = codegen::Function::new("new");
+        let mut new_if = codegen::Block::new("if x >= 0");
+        new_if.line("Self(core::Int::Uint(x as u64))");
+        let mut new_else = codegen::Block::new("else");
+        new_else.line("Self(core::Int::Nint((x + 1).abs() as u64))");
+        wasm_new
+            .ret("Self")
+            .vis("pub")
+            .arg("x", "i64")
+            .push_block(new_if)
+            .push_block(new_else);
+
+        let mut to_str = codegen::Function::new("to_str");
+        to_str
+            .vis("pub")
+            .arg_ref_self()
+            .ret("String")
+            .line("self.to_string()");
+
+        let mut from_str = codegen::Function::new("from_str");
+        from_str
+            .attr("#[allow(clippy::should_implement_trait)]")
+            .vis("pub")
+            .arg("string", "&str")
+            .ret("Result<Int, JsError>")
+            .line("// have to redefine so it's visible in WASM")
+            .line("std::str::FromStr::from_str(string)");
+
+        wrapper
+            .s_impl
+            .push_fn(wasm_new)
+            .push_fn(to_str)
+            .push_fn(from_str);
+        wrapper.push(gen_scope);
+    }
+
+    let mut native_struct = codegen::Enum::new("Int");
+    let mut uint = codegen::Variant::new("Uint");
+    uint.tuple("u64");
+    native_struct.push_variant(uint);
+    let mut nint = codegen::Variant::new("Nint");
+    nint.tuple("u64");
+    native_struct.push_variant(nint);
+    add_struct_derives(&mut native_struct, types.used_as_key(&ident), true);
+
+    // serialization
+    let mut ser_impl = make_serialization_impl("Int");
+    let mut ser_func = make_serialization_function("serialize");
+    let mut ser_block = Block::new("match self");
+    ser_block
+        .line("Self::Uint(x) => serializer.write_unsigned_integer(*x),")
+        .line("Self::Nint(x) => serializer.write_negative_integer(-(*x as i128) as i64),");
+    ser_func.push_block(ser_block);
+    ser_impl.push_fn(ser_func);
+
+    // deserialization
+    let mut deser_impl = codegen::Impl::new("Int");
+    deser_impl.impl_trait("Deserialize");
+    let mut deser_func = make_deserialization_function("deserialize");
+    let mut annotate = make_err_annotate_block("Int", "", "");
+    let mut deser_match = codegen::Block::new("match raw.cbor_type()?");
+    deser_match
+        .line("cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),")
+        .line("cbor_event::Type::NegativeInteger => Ok(Self::Nint(-raw.negative_integer()? as u64)),")
+        .line("_ => Err(DeserializeFailure::NoVariantMatched.into()),");
+    annotate.push_block(deser_match);
+    deser_func.push_block(annotate);
+    deser_impl.push_fn(deser_func);
+
+    // traits
+    let mut int_err = codegen::Enum::new("IntError");
+    int_err
+        .new_variant("Bounds")
+        .tuple("std::num::TryFromIntError");
+    int_err
+        .new_variant("Parsing")
+        .tuple("std::num::ParseIntError");
+
+    let mut display = codegen::Impl::new("Int");
+    let mut display_match = codegen::Block::new("match self");
+    display_match
+        .line("Self::Uint(x) => write!(f, \"{}\", x),")
+        .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
+    display
+        .impl_trait("std::fmt::Display")
+        .new_fn("fmt")
+        .arg_ref_self()
+        .arg("f", "&mut std::fmt::Formatter<'_>")
+        .ret("std::fmt::Result")
+        .push_block(display_match);
+    
+    let mut from_str = codegen::Impl::new("Int");
+    from_str
+        .impl_trait("std::str::FromStr")
+        .associate_type("Err", "IntError")
+        .new_fn("from_str")
+        .arg("s", "&str")
+        .ret("Result<Self, Self::Err>")
+        .line("let x = i128::from_str(s).map_err(IntError::Parsing)?;")
+        .line("Self::try_from(x).map_err(IntError::Bounds)");
+
+    let mut try_from_i128 = codegen::Impl::new("Int");
+    let mut try_from_if = codegen::Block::new("if x >= 0");
+    try_from_if.line("u64::try_from(x).map(Self::Uint)");
+    let mut try_from_else = codegen::Block::new("else");
+    try_from_else.line("u64::try_from((x + 1).abs()).map(Self::Nint)");
+    try_from_i128
+        .impl_trait("TryFrom<i128>")
+        .associate_type("Error", "std::num::TryFromIntError")
+        .new_fn("try_from")
+        .arg("x", "i128")
+        .ret("Result<Self, Self::Error>")
+        .push_block(try_from_if)
+        .push_block(try_from_else);
+
+    gen_scope
+        .rust()
+        .push_enum(native_struct)
+        .push_enum(int_err)
+        .push_impl(display)
+        .push_impl(from_str)
+        .push_impl(try_from_i128);
+    gen_scope
+        .rust_serialize()
+        .push_impl(ser_impl)
+        .push_impl(deser_impl);
 }
