@@ -38,3 +38,14 @@ foo_bytes = bytes .cbor foo
 
 ; since we don't generate code for definitions like the above (should we if no one refers to it?)
 cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]
+
+signed_ints = [
+	u_8: uint .size 1,
+	u_16: uint .size 2,
+	u_32: uint .size 4,
+	u_64: uint .size 8,
+	i_8: int .size 1,
+	i_16: int .size 2,
+	i_32: int .size 4,
+	i_64: int .size 8,
+]

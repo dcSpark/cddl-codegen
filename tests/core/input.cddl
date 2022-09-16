@@ -43,3 +43,14 @@ u32 = 0..4294967295
 u64 = uint .size 8 ; 8 bytes
 i8 = -128..127
 i64 = int .size 8 ; 8 bytes
+
+signed_ints = [
+	u_8: uint .size 1,
+	u_16: uint .size 2,
+	u_32: uint .size 4,
+	u_64: uint .size 8,
+	i_8: int .size 1,
+	i_16: int .size 2,
+	i_32: int .size 4,
+	i_64: int .size 8,
+]
