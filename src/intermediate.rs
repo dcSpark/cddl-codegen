@@ -743,25 +743,34 @@ impl RustType {
 
     /// Function parameter TYPE from wasm (i.e. ref for non-primitives, value for supported primitives)
     pub fn for_wasm_param(&self) -> String {
+        self.for_wasm_param_impl(false)
+    }
+
+    fn for_wasm_param_impl(&self, force_not_ref: bool) -> String {
+        let opt_ref = if force_not_ref {
+            ""
+        } else {
+            "&"
+        };
         match self {
             RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
             RustType::Primitive(p) => p.to_string(),
-            RustType::Rust(ident) => format!("&{}", ident),
+            RustType::Rust(ident) => format!("{}{}", opt_ref, ident),
             RustType::Array(ty) => if self.directly_wasm_exposable() {
                 ty.name_as_wasm_array()
             } else {
-                format!("&{}", ty.name_as_wasm_array())
+                format!("{}{}", opt_ref, ty.name_as_wasm_array())
             },
-            RustType::Tagged(_tag, ty) => ty.for_wasm_param(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_param()),
-            RustType::Map(_k, _v) => format!("&{}", self.for_wasm_member()),
+            RustType::Tagged(_tag, ty) => ty.for_wasm_param_impl(force_not_ref),
+            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_param_impl(true)),
+            RustType::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member()),
             // it might not be worth generating this as alises are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
             RustType::Alias(ident, ty) => match &**ty {
-                RustType::Rust(_) => format!("&{}", ident),
+                RustType::Rust(_) => format!("{}{}", opt_ref, ident),
                 _ => ident.to_string(),
             }
-            RustType::CBORBytes(ty) => ty.for_wasm_member(),
+            RustType::CBORBytes(ty) => ty.for_wasm_param(),
         }
     }
 

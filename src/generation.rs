@@ -224,6 +224,8 @@ impl GenerationScope {
                         let map_ident = RustType::name_for_wasm_map(domain, range);
                         if wasm_wrappers_generated.insert(map_ident.to_string()) {
                             codegen_table_type(self, types, rust_ident, domain.clone(), range.clone(), rust_struct.tag());
+                        } else {
+                            self.wasm_scope.raw(&format!("type {} = {};", rust_ident, map_ident));
                         }
                     }
                     //self
@@ -3545,7 +3547,6 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
 
 fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let ident = RustIdent::new(CDDLIdent::new("int"));
-    // todo: wasm bindings + to/from string traits
     if CLI_ARGS.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, &ident, true);
         let mut wasm_new = codegen::Function::new("new");
