@@ -366,7 +366,7 @@ pub enum Representation {
 pub enum FixedValue {
     Null,
     Bool(bool),
-    Int(isize),
+    Nint(isize),
     Uint(usize),
     // float not supported right now - doesn't appear to be in cbor_event
     //Float(f64),
@@ -386,7 +386,7 @@ impl FixedValue {
                 true => "True",
                 false => "False",
             }),
-            FixedValue::Int(i) => VariantIdent::new_custom(format!("U{}", i)),
+            FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{}", i)),
             FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
             //FixedValue::Float(f) => format!("F{}", f),
             FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
@@ -398,7 +398,7 @@ impl FixedValue {
         match self {
             FixedValue::Null => buf.write_special(cbor_event::Special::Null),
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
-            FixedValue::Int(i) => buf.write_negative_integer(*i as i64),
+            FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
             FixedValue::Text(s) => buf.write_text(s),
         }.expect("Unable to serialize key for canonical ordering");
@@ -444,8 +444,7 @@ impl Primitive {
             Primitive::I32 => "i32",
             Primitive::U64 => "u64",
             Primitive::I64 => "i64",
-            // TODO: this should ideally be a u64 but the cbor_event lib takes i64 anyway so we don't get that extra precision
-            Primitive::N64 => "i64",
+            Primitive::N64 => "u64",
             Primitive::Str => "String",
             Primitive::Bytes => "Vec<u8>",
         })
@@ -672,11 +671,10 @@ impl RustType {
                         Primitive::I16 |
                         Primitive::U16 |
                         Primitive::I32 |
-                        Primitive::U32 => true,
-                        // since we generate these as BigNum/Int wrappers we can't nest them
+                        Primitive::U32 |
                         Primitive::I64 |
                         Primitive::N64 |
-                        Primitive::U64 => false,
+                        Primitive::U64 => true,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
                         // Vec<String> is not supported by wasm-bindgen
@@ -1014,7 +1012,7 @@ impl RustType {
         match self {
             RustType::Fixed(f) => vec![match f {
                 FixedValue::Uint(_) => CBORType::UnsignedInteger,
-                FixedValue::Int(_) => CBORType::NegativeInteger,
+                FixedValue::Nint(_) => CBORType::NegativeInteger,
                 FixedValue::Text(_) => CBORType::Text,
                 FixedValue::Null => CBORType::Special,
                 FixedValue::Bool(_) => CBORType::Special,

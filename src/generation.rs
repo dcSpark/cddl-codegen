@@ -166,7 +166,7 @@ impl GenerationScope {
                         let (ty, val) = match constant {
                             FixedValue::Null => panic!("null constants not supported"),
                             FixedValue::Bool(b) => ("bool", b.to_string()),
-                            FixedValue::Int(i) => ("i32", i.to_string()),
+                            FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
                             FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
                         };
@@ -351,9 +351,28 @@ impl GenerationScope {
                     let expr = format!("{}u64", u);
                     write_using_sz(body, "write_unsigned_integer", serializer_use, &expr, &expr, line_ender, &encoding_var_deref);
                 },
-                // TODO: should this be Nint instead of Int? CDDL spec is Nint but cddl lib is Int
-                FixedValue::Int(i) => {
-                    write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), &format!("({} + 1).abs() as u64", i), line_ender, &encoding_var_deref);
+                FixedValue::Nint(i) => {
+                    assert!(*i < 0);
+                    if !CLI_ARGS.preserve_encodings && isize::BITS >= i64::BITS && *i <= i64::MIN as isize {
+                        // cbor_event's write_negative_integer doesn't support serialiing i64::MIN
+                        // we need to use the write_negative_integer_sz endpoint which does support it.
+                        // the bits check is since the constant parsed by cddl might not even be able to
+                        // be that small e.g. on 32-bit platforms in which case we're already working with garbage
+                        let sz_str = if *i >= -24 {
+                            "cbor_event::Sz::Inline"
+                        } else if *i >= -0x1_00 {
+                            "cbor_event::Sz::One"
+                        } else if *i >= -0x1_00_00 {
+                            "cbor_event::Sz::Two"
+                        } else if *i >= -0x1_00_00_00_00 {
+                            "cbor_event::Sz::Four"
+                        } else {
+                            "cbor_event::Sz::Eight"
+                        };
+                        body.line(&format!("{}.write_negative_integer_sz({}i128, {}){}", serializer_use, i, sz_str, line_ender));
+                    } else {
+                        write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), &format!("({}i128 + 1).abs() as u64", i), line_ender, &encoding_var_deref);
+                    }
                 },
                 FixedValue::Text(s) => {
                     write_string_sz(body, "write_text", serializer_use, &format!("\"{}\"", s), line_ender, &encoding_var);
@@ -384,7 +403,13 @@ impl GenerationScope {
                     } else {
                         format!("{} as i64", expr_deref)
                     };
-                    write_using_sz(&mut neg, "write_negative_integer", serializer_use, &expr, &format!("({} + 1).abs() as u64", expr_deref), line_ender, &encoding_var_deref);
+                    if !CLI_ARGS.preserve_encodings && *primitive == Primitive::I64 {
+                        // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
+                        // even when not preserving encodings
+                        neg.line(&format!("{}.write_negative_integer_sz({} as i128, cbor_event::Sz::canonical(({} + 1).abs() as u64)){}", serializer_use, expr_deref, expr_deref, line_ender));
+                    } else {
+                        write_using_sz(&mut neg, "write_negative_integer", serializer_use, &expr, &format!("({} + 1).abs() as u64", expr_deref), line_ender, &encoding_var_deref);
+                    }
                     body.push_block(neg);
                 },
                 Primitive::U8 |
@@ -397,13 +422,13 @@ impl GenerationScope {
                     write_using_sz(body, "write_unsigned_integer", serializer_use, &expr_deref, &expr_deref, line_ender, &encoding_var_deref);
                 },
                 Primitive::N64 => {
-                    // only the _sz variants support i128, the other endpoint is i64
-                    let expr = if CLI_ARGS.preserve_encodings {
-                        format!("{} as i128", expr_deref)
+                    if CLI_ARGS.preserve_encodings {
+                        write_using_sz(body, "write_negative_integer", serializer_use, &format!("-({} as i128 + 1)", expr_deref), &expr_deref, line_ender, &encoding_var_deref);
                     } else {
-                        format!("{} as i64", expr_deref)
-                    };
-                    write_using_sz(body, "write_negative_integer", serializer_use, &expr, &format!("({} + 1).abs() as u64", expr_deref), line_ender, &encoding_var_deref);
+                        // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz()
+                        // even when not preserving encodings
+                        body.line(&format!("{}.write_negative_integer_sz(-({} as i128 + 1), cbor_event::Sz::canonical({})){}", serializer_use, expr_deref, expr_deref, line_ender));
+                    }
                 },
             },
             RustType::Rust(t) => {
@@ -627,6 +652,23 @@ impl GenerationScope {
                             //body.line(&format!("{}{}{}_encoding{}{}", before, sp, var_name, ep, after));
                         }
                     },
+                    FixedValue::Nint(x) => {
+                        if CLI_ARGS.preserve_encodings {
+                            body.line(&format!("let ({}_value, {}_encoding) = {}.negative_integer_sz()?;", var_name, var_name, deserializer_name));
+                        } else {
+                            // we use the _sz variant here too to get around imcomplete nint support in the regular negative_integer()
+                            body.line(&format!("let ({}_value, _) = {}.negative_integer_sz()?;", var_name, deserializer_name));
+                        }
+                        let x_abs = (x + 1).abs();
+                        let mut compare_block = Block::new(&format!("if {}_value != {}", var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint(({}_value + 1).abs() as u64), expected: Key::Uint({}) }}.into());", var_name, x_abs));
+                        body.push_block(compare_block);
+                        if CLI_ARGS.preserve_encodings {
+                            final_exprs.push(format!("Some({}_encoding)", var_name));
+                            body.line(&format!("{}{}{}", before, final_expr(final_exprs, None), after));
+                            //body.line(&format!("{}{}{}_encoding{}{}", before, sp, var_name, ep, after));
+                        }
+                    },
                     FixedValue::Text(x) => {
                         if CLI_ARGS.preserve_encodings {
                             body.line(&format!("let ({}_value, {}_encoding) = {}.text_sz()?;", var_name, var_name, deserializer_name));
@@ -696,13 +738,23 @@ impl GenerationScope {
                             type_check.push_block(neg);
                         } else {
                             type_check
-                                .line(format!("cbor_event::Type::UnsignedInteger => {}.unsigned_integer()? as {},", deserializer_name, p.to_string()))
-                                .line(format!("_ => {}.negative_integer()? as {},", deserializer_name, p.to_string()));
+                                .line(format!("cbor_event::Type::UnsignedInteger => {}.unsigned_integer()? as {},", deserializer_name, p.to_string()));
+                            // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
+                            if *p == Primitive::I64 {
+                                type_check.line(format!("_ => {}.negative_integer_sz().map(|(x, _enc)| x)? as {},", deserializer_name, p.to_string()));
+                            } else {
+                                type_check.line(format!("_ => {}.negative_integer()? as {},", deserializer_name, p.to_string()));
+                            }
                         }
                         type_check.after(after);
                         body.push_block(type_check);
                     },
-                    Primitive::N64 => deser_primitive(final_exprs, "negative_integer", "x", "x as i128"),
+                    Primitive::N64 => if CLI_ARGS.preserve_encodings{
+                        deser_primitive(final_exprs, "negative_integer", "x", "(x + 1).abs() as u64")
+                    } else {
+                        // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
+                        body.line(&format!("{}{}.negative_integer_sz().map(|(x, _enc)| (x + 1).abs() as u64)?{}", before, deserializer_name, after));
+                    },
                     Primitive::Str => deser_primitive(final_exprs, "text", "s", "s"),
                     Primitive::Bool => {
                         // no encoding differences for bool
@@ -1967,7 +2019,7 @@ fn encoding_fields(name: &str, ty: &RustType) -> Vec<EncodingField> {
         RustType::Fixed(f) => match f {
             FixedValue::Bool(_) |
             FixedValue::Null => vec![],
-            FixedValue::Int(_) => encoding_fields(name, &RustType::Primitive(Primitive::I64)),
+            FixedValue::Nint(_) => encoding_fields(name, &RustType::Primitive(Primitive::I64)),
             FixedValue::Uint(_) => encoding_fields(name, &RustType::Primitive(Primitive::U64)),
             FixedValue::Text(_) => encoding_fields(name, &RustType::Primitive(Primitive::Str)),
         },
@@ -3551,9 +3603,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, &ident, true);
         let mut wasm_new = codegen::Function::new("new");
         let mut new_if = codegen::Block::new("if x >= 0");
-        new_if.line("Self(core::Int::Uint(x as u64))");
         let mut new_else = codegen::Block::new("else");
-        new_else.line("Self(core::Int::Nint((x + 1).abs() as u64))");
+        if CLI_ARGS.preserve_encodings {
+            new_if.line("Self(core::Int::Uint(x as u64, None))");
+            new_else.line("Self(core::Int::Nint((x + 1).abs() as u64, None))");
+        } else {
+            new_if.line("Self(core::Int::Uint(x as u64))");
+            new_else.line("Self(core::Int::Nint((x + 1).abs() as u64))");
+        }
         wasm_new
             .ret("Self")
             .vis("pub")
@@ -3589,9 +3646,16 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     native_struct.vis("pub");
     let mut uint = codegen::Variant::new("Uint");
     uint.tuple("u64");
-    native_struct.push_variant(uint);
     let mut nint = codegen::Variant::new("Nint");
     nint.tuple("u64");
+    let ignore_enc_str = if CLI_ARGS.preserve_encodings {
+        uint.tuple("Option<cbor_event::Sz>");
+        nint.tuple("Option<cbor_event::Sz>");
+        ", _enc"
+    } else {
+        ""
+    };
+    native_struct.push_variant(uint);
     native_struct.push_variant(nint);
     add_struct_derives(&mut native_struct, types.used_as_key(&ident), true);
 
@@ -3599,9 +3663,15 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut ser_impl = make_serialization_impl("Int");
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_block = Block::new("match self");
-    ser_block
-        .line("Self::Uint(x) => serializer.write_unsigned_integer(*x),")
-        .line("Self::Nint(x) => serializer.write_negative_integer(-((*x + 1) as i128) as i64),");
+    if CLI_ARGS.preserve_encodings {
+            ser_block
+            .line(format!("Self::Uint(x, enc) => serializer.write_unsigned_integer_sz(*x, fit_sz(*x, *enc{})),", canonical_param()))
+            .line(format!("Self::Nint(x, enc) => serializer.write_negative_integer_sz(-((*x as i128) + 1), fit_sz(*x, *enc{})),", canonical_param()));
+    } else {
+        ser_block
+            .line("Self::Uint(x) => serializer.write_unsigned_integer(*x),")
+            .line("Self::Nint(x) => serializer.write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),");
+    }
     ser_func.push_block(ser_block);
     ser_impl.push_fn(ser_func);
 
@@ -3611,10 +3681,16 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut deser_func = make_deserialization_function("deserialize");
     let mut annotate = make_err_annotate_block("Int", "", "");
     let mut deser_match = codegen::Block::new("match raw.cbor_type()?");
-    deser_match
-        .line("cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),")
-        .line("cbor_event::Type::NegativeInteger => Ok(Self::Nint((-1 - raw.negative_integer()?) as u64)),")
-        .line("_ => Err(DeserializeFailure::NoVariantMatched.into()),");
+    if CLI_ARGS.preserve_encodings {
+        deser_match
+            .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint(x, Some(enc))).map_err(std::convert::Into::into),")
+            .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint((-1 - x) as u64, Some(enc))).map_err(std::convert::Into::into),");
+    } else {
+        deser_match
+            .line("cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),")
+            .line("cbor_event::Type::NegativeInteger => Ok(Self::Nint((-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64)),");
+    }
+    deser_match.line("_ => Err(DeserializeFailure::NoVariantMatched.into()),");
     annotate.push_block(deser_match);
     deser_func.push_block(annotate);
     deser_impl.push_fn(deser_func);
@@ -3635,8 +3711,8 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut display = codegen::Impl::new("Int");
     let mut display_match = codegen::Block::new("match self");
     display_match
-        .line("Self::Uint(x) => write!(f, \"{}\", x),")
-        .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
+        .line(format!("Self::Uint(x{}) => write!(f, \"{{}}\", x),", ignore_enc_str))
+        .line(format!("Self::Nint(x{}) => write!(f, \"-{{}}\", x + 1),", ignore_enc_str));
     display
         .impl_trait("std::fmt::Display")
         .new_fn("fmt")
@@ -3657,9 +3733,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
 
     let mut try_from_i128 = codegen::Impl::new("Int");
     let mut try_from_if = codegen::Block::new("if x >= 0");
-    try_from_if.line("u64::try_from(x).map(Self::Uint)");
     let mut try_from_else = codegen::Block::new("else");
-    try_from_else.line("u64::try_from((x + 1).abs()).map(Self::Nint)");
+    if CLI_ARGS.preserve_encodings {
+        try_from_if.line("u64::try_from(x).map(|x| Self::Uint(x, None))");
+        try_from_else.line("u64::try_from((x + 1).abs()).map(|x| Self::Nint(x, None))");
+    } else {
+        try_from_if.line("u64::try_from(x).map(Self::Uint)");
+        try_from_else.line("u64::try_from((x + 1).abs()).map(Self::Nint)");
+    }
     try_from_i128
         .impl_trait("TryFrom<i128>")
         .associate_type("Error", "std::num::TryFromIntError")

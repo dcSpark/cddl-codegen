@@ -48,4 +48,12 @@ signed_ints = [
 	i_16: int .size 2,
 	i_32: int .size 4,
 	i_64: int .size 8,
+	n_64: nint
+	u64_max: 18446744073709551615,
+	; this test assumes i64::BITS == isize::BITS or else the cddl parsing lib would mess up
+	; if this test fails on your platform we might need to either remove this part
+	; or make a fix for the cddl library.
+	; The fix would be ideal as even though the true min in CBOR would be -u64::MAX
+	; we can't support since isize::BITS is never > 64 in any normal system and likely never will be
+	i64_min: -9223372036854775808
 ]
