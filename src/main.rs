@@ -101,7 +101,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             gen_scope.wasm().import("wasm_bindgen::prelude", "*");
             gen_scope
                 .wasm()
-                .raw("mod prelude;")
                 .raw("use std::collections::BTreeMap;");
                 
             if CLI_ARGS.preserve_encodings {
@@ -193,7 +192,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             wasm_toml.push_str("serde_json = \"1.0.57\"\n");
         }
         std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
-        std::fs::copy("static/prelude_wasm.rs", rust_dir.join("wasm/src/prelude.rs"))?;
     }
 
     // json-gen crate for exporting JSON schemas

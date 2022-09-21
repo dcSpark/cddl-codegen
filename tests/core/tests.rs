@@ -118,4 +118,12 @@ mod tests {
         assert_eq!(0u64, U64::from(0u64));
         assert_eq!(0i64, I64::from(0i64));
     }
+
+    #[test]
+    fn signed_ints() {
+        let min = SignedInts::new(u8::MIN, u16::MIN, u32::MIN, u64::MIN, i8::MIN, i16::MIN, i32::MIN, i64::MIN, u64::MIN);
+        deser_test(&min);
+        let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
+        deser_test(&max);
+    }
 }
