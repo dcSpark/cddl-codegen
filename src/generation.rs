@@ -354,7 +354,7 @@ impl GenerationScope {
                 FixedValue::Nint(i) => {
                     assert!(*i < 0);
                     if !CLI_ARGS.preserve_encodings && isize::BITS >= i64::BITS && *i <= i64::MIN as isize {
-                        // cbor_event's write_negative_integer doesn't support serialiing i64::MIN
+                        // cbor_event's write_negative_integer doesn't support serializing i64::MIN (https://github.com/primetype/cbor_event/issues/9)
                         // we need to use the write_negative_integer_sz endpoint which does support it.
                         // the bits check is since the constant parsed by cddl might not even be able to
                         // be that small e.g. on 32-bit platforms in which case we're already working with garbage
@@ -404,6 +404,7 @@ impl GenerationScope {
                         format!("{} as i64", expr_deref)
                     };
                     if !CLI_ARGS.preserve_encodings && *primitive == Primitive::I64 {
+                        // https://github.com/primetype/cbor_event/issues/9
                         // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
                         // even when not preserving encodings
                         neg.line(&format!("{}.write_negative_integer_sz({} as i128, cbor_event::Sz::canonical(({} + 1).abs() as u64)){}", serializer_use, expr_deref, expr_deref, line_ender));
@@ -425,6 +426,7 @@ impl GenerationScope {
                     if CLI_ARGS.preserve_encodings {
                         write_using_sz(body, "write_negative_integer", serializer_use, &format!("-({} as i128 + 1)", expr_deref), &expr_deref, line_ender, &encoding_var_deref);
                     } else {
+                        // https://github.com/primetype/cbor_event/issues/9
                         // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz()
                         // even when not preserving encodings
                         body.line(&format!("{}.write_negative_integer_sz(-({} as i128 + 1), cbor_event::Sz::canonical({})){}", serializer_use, expr_deref, expr_deref, line_ender));
@@ -739,6 +741,7 @@ impl GenerationScope {
                         } else {
                             type_check
                                 .line(format!("cbor_event::Type::UnsignedInteger => {}.unsigned_integer()? as {},", deserializer_name, p.to_string()));
+                            // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
                             if *p == Primitive::I64 {
                                 type_check.line(format!("_ => {}.negative_integer_sz().map(|(x, _enc)| x)? as {},", deserializer_name, p.to_string()));
@@ -752,6 +755,7 @@ impl GenerationScope {
                     Primitive::N64 => if CLI_ARGS.preserve_encodings{
                         deser_primitive(final_exprs, "negative_integer", "x", "(x + 1).abs() as u64")
                     } else {
+                        // https://github.com/primetype/cbor_event/issues/9
                         // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
                         body.line(&format!("{}{}.negative_integer_sz().map(|(x, _enc)| (x + 1).abs() as u64)?{}", before, deserializer_name, after));
                     },
