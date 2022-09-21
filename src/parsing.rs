@@ -353,7 +353,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         },
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue{ value, .. } => {
-            let fallback_type = RustType::Fixed(FixedValue::Int(*value));
+            let fallback_type = RustType::Fixed(FixedValue::Nint(*value));
 
             let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
             let base_type = match control {
@@ -588,7 +588,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
     // TODO: socket plugs (used in hash type)
     match &type2.type2 {
         Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
-        Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Int(*value)),
+        Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Nint(*value)),
         //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
         Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.to_string())),
         Type2::Typename{ ident, generic_args, .. } => {
@@ -751,14 +751,14 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
             match ge.member_key.as_ref()? {
                 MemberKey::Value{ value, .. } => match value {
                     cddl::token::Value::UINT(x) => Some(FixedValue::Uint(*x)),
-                    cddl::token::Value::INT(x) => Some(FixedValue::Int(*x)),
+                    cddl::token::Value::INT(x) => Some(FixedValue::Nint(*x)),
                     cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.to_string())),
                     _ => panic!("unsupported map identifier(1): {:?}", value),
                 },
                 MemberKey::Bareword{ ident, .. } => Some(FixedValue::Text(ident.to_string())),
                 MemberKey::Type1{ t1, .. } => match &t1.type2 {
                     Type2::UintValue{ value, .. } => Some(FixedValue::Uint(*value)),
-                    Type2::IntValue{ value, .. } => Some(FixedValue::Int(*value)),
+                    Type2::IntValue{ value, .. } => Some(FixedValue::Nint(*value)),
                     Type2::TextValue{ value, .. } => Some(FixedValue::Text(value.to_string())),
                     _ => panic!("unsupported map identifier(2): {:?}", entry),
                 },

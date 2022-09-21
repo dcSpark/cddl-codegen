@@ -447,4 +447,63 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn signed_ints() {
+        use std::cmp::min;
+        let umins = [0i128, u8::MIN as i128, u16::MIN as i128, u32::MIN as i128, u64::MIN as i128];
+        let umaxs = [23i128, u8::MAX as i128, u16::MAX as i128, u32::MAX as i128, u64::MAX as i128];
+        let imins = [-24i128, i8::MIN as i128, i16::MIN as i128, i32::MIN as i128, i64::MIN as i128];
+        let imaxs = [-1i128, i8::MAX as i128, i16::MAX as i128, i32::MAX as i128, i64::MAX as i128];
+        let def_encodings = [Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for i in 0..5 {
+            let i_8 = min(1, i);
+            let i_16 = min(2, i);
+            let i_32 = min(3, i);
+            let i_64 = min(4, i);
+            let irregular_bytes_min = vec![
+                vec![ARR_INDEF],
+                    // uints
+                    cbor_int(umins[i_8], def_encodings[i]),
+                    cbor_int(umins[i_16], def_encodings[i]),
+                    cbor_int(umins[i_32], def_encodings[i]),
+                    cbor_int(umins[i_64], def_encodings[i]),
+                    // ints
+                    cbor_int(imins[i_8], def_encodings[i]),
+                    cbor_int(imins[i_16], def_encodings[i]),
+                    cbor_int(imins[i_32], def_encodings[i]),
+                    cbor_int(imins[i_64], def_encodings[i]),
+                    // nint
+                    cbor_int(-1 - umins[i_64], def_encodings[i]),
+                    // u64 max const
+                    cbor_int(u64::MAX as i128, Sz::Eight),
+                    // i64 min const
+                    cbor_int(i64::MIN as i128, Sz::Eight),
+                vec![BREAK],
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let irregular_min = SignedInts::from_bytes(irregular_bytes_min.clone()).unwrap();
+            assert_eq!(irregular_bytes_min, irregular_min.to_bytes());
+            let irregular_bytes_max = vec![
+                arr_sz(11, def_encodings[i]),
+                    // uints
+                    cbor_int(umaxs[i_8], def_encodings[i]),
+                    cbor_int(umaxs[i_16], def_encodings[i]),
+                    cbor_int(umaxs[i_32], def_encodings[i]),
+                    cbor_int(umaxs[i_64], def_encodings[i]),
+                    // ints
+                    cbor_int(imaxs[i_8], def_encodings[i]),
+                    cbor_int(imaxs[i_16], def_encodings[i]),
+                    cbor_int(imaxs[i_32], def_encodings[i]),
+                    cbor_int(imaxs[i_64], def_encodings[i]),
+                    // nint
+                    cbor_int(-1 - umaxs[i_64], def_encodings[i]),
+                    // u64 max const
+                    cbor_int(u64::MAX as i128, Sz::Eight),
+                    // i64 min const
+                    cbor_int(i64::MIN as i128, Sz::Eight),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let irregular_max = SignedInts::from_bytes(irregular_bytes_max.clone()).unwrap();
+            assert_eq!(irregular_bytes_max, irregular_max.to_bytes());
+        }
+    }
 }
