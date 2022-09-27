@@ -254,7 +254,9 @@ impl GenerationScope {
                 },
                 RustStructType::Prelude => {
                     match rust_ident.to_string().as_ref() {
-                        "Int" => generate_int(self, types),
+                        "Int" => if types.is_referenced(rust_ident) {
+                            generate_int(self, types)
+                        },
                         other => panic!("prelude not defined: {}", other),
                     }
                 },
@@ -3608,13 +3610,8 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         let mut wasm_new = codegen::Function::new("new");
         let mut new_if = codegen::Block::new("if x >= 0");
         let mut new_else = codegen::Block::new("else");
-        if CLI_ARGS.preserve_encodings {
-            new_if.line("Self(core::Int::Uint(x as u64, None))");
-            new_else.line("Self(core::Int::Nint((x + 1).abs() as u64, None))");
-        } else {
-            new_if.line("Self(core::Int::Uint(x as u64))");
-            new_else.line("Self(core::Int::Nint((x + 1).abs() as u64))");
-        }
+        new_if.line("Self(core::Int::new_uint(x as u64))");
+        new_else.line("Self(core::Int::new_nint((x + 1).abs() as u64))");
         wasm_new
             .ret("Self")
             .vis("pub")
@@ -3649,28 +3646,65 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut native_struct = codegen::Enum::new("Int");
     native_struct.vis("pub");
     let mut uint = codegen::Variant::new("Uint");
-    uint.tuple("u64");
     let mut nint = codegen::Variant::new("Nint");
-    nint.tuple("u64");
-    let ignore_enc_str = if CLI_ARGS.preserve_encodings {
-        uint.tuple("Option<cbor_event::Sz>");
-        nint.tuple("Option<cbor_event::Sz>");
-        ", _enc"
+    if CLI_ARGS.preserve_encodings {
+        uint
+            .named("value", "u64")
+            .named(&format!("{}encoding", encoding_var_macros(types.used_as_key(&ident))), "Option<cbor_event::Sz>");
+        nint
+            .named("value", "u64")
+            .named(&format!("{}encoding", encoding_var_macros(types.used_as_key(&ident))), "Option<cbor_event::Sz>");
     } else {
-        ""
-    };
+        uint.tuple("u64");
+        nint.tuple("u64");
+    }
     native_struct.push_variant(uint);
     native_struct.push_variant(nint);
     add_struct_derives(&mut native_struct, types.used_as_key(&ident), true);
+
+    // impl Int
+    let mut native_impl = codegen::Impl::new("Int");
+    let mut new_uint = codegen::Function::new("new_uint");
+    new_uint
+        .vis("pub")
+        .arg("value", "u64")
+        .ret("Self");
+    if CLI_ARGS.preserve_encodings {
+        let mut new_uint_ctor = codegen::Block::new("Self::Uint");
+        new_uint_ctor
+            .line("value,")
+            .line("encoding: None,");
+        new_uint.push_block(new_uint_ctor);
+    } else {
+        new_uint.line("Self::Uint(value)");
+    }
+    native_impl.push_fn(new_uint);
+
+    let mut new_nint = codegen::Function::new("new_nint");
+    new_nint
+        .vis("pub")
+        .doc("* `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.")
+        .arg("value", "u64")
+        .ret("Self");
+    if CLI_ARGS.preserve_encodings {
+        let mut new_nint_ctor = codegen::Block::new("Self::Nint");
+        new_nint_ctor
+            .line("value,")
+            .line("encoding: None,");
+        new_nint.push_block(new_nint_ctor);
+    } else {
+        new_nint.line("Self::Nint(value)");
+    }
+    native_impl.push_fn(new_nint);
 
     // serialization
     let mut ser_impl = make_serialization_impl("Int");
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_block = Block::new("match self");
     if CLI_ARGS.preserve_encodings {
-            ser_block
-            .line(format!("Self::Uint(x, enc) => serializer.write_unsigned_integer_sz(*x, fit_sz(*x, *enc{})),", canonical_param()))
-            .line(format!("Self::Nint(x, enc) => serializer.write_negative_integer_sz(-((*x as i128) + 1), fit_sz(*x, *enc{})),", canonical_param()));
+        ser_block
+            .line(format!("Self::Uint{{ value, encoding }} => serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding{})),", canonical_param()))
+            .line(format!("Self::Nint{{ value, encoding }} => serializer.write_negative_integer_sz(-((*value as i128) + 1), fit_sz(*value, *encoding{})),", canonical_param()));
     } else {
         ser_block
             .line("Self::Uint(x) => serializer.write_unsigned_integer(*x),")
@@ -3687,8 +3721,8 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut deser_match = codegen::Block::new("match raw.cbor_type()?");
     if CLI_ARGS.preserve_encodings {
         deser_match
-            .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint(x, Some(enc))).map_err(std::convert::Into::into),")
-            .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint((-1 - x) as u64, Some(enc))).map_err(std::convert::Into::into),");
+            .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint{ value: x, encoding: Some(enc) }).map_err(std::convert::Into::into),")
+            .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint{ value: (-1 - x) as u64, encoding: Some(enc) }).map_err(std::convert::Into::into),");
     } else {
         deser_match
             .line("cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),")
@@ -3714,9 +3748,15 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
 
     let mut display = codegen::Impl::new("Int");
     let mut display_match = codegen::Block::new("match self");
-    display_match
-        .line(format!("Self::Uint(x{}) => write!(f, \"{{}}\", x),", ignore_enc_str))
-        .line(format!("Self::Nint(x{}) => write!(f, \"-{{}}\", x + 1),", ignore_enc_str));
+    if CLI_ARGS.preserve_encodings {
+        display_match
+            .line("Self::Uint{ value, .. } => write!(f, \"{}\", value),")
+            .line("Self::Nint{ value, .. } => write!(f, \"-{}\", value + 1),");
+    } else {
+        display_match
+            .line("Self::Uint(x) => write!(f, \"{}\", x),")
+            .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
+    }
     display
         .impl_trait("std::fmt::Display")
         .new_fn("fmt")
@@ -3739,8 +3779,8 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut try_from_if = codegen::Block::new("if x >= 0");
     let mut try_from_else = codegen::Block::new("else");
     if CLI_ARGS.preserve_encodings {
-        try_from_if.line("u64::try_from(x).map(|x| Self::Uint(x, None))");
-        try_from_else.line("u64::try_from((x + 1).abs()).map(|x| Self::Nint(x, None))");
+        try_from_if.line("u64::try_from(x).map(|x| Self::Uint{ value: x, encoding: None })");
+        try_from_else.line("u64::try_from((x + 1).abs()).map(|x| Self::Nint{ value: x, encoding: None })");
     } else {
         try_from_if.line("u64::try_from(x).map(Self::Uint)");
         try_from_else.line("u64::try_from((x + 1).abs()).map(Self::Nint)");
@@ -3758,6 +3798,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .rust()
         .push_enum(native_struct)
         .push_enum(int_err)
+        .push_impl(native_impl)
         .push_impl(display)
         .push_impl(from_str)
         .push_impl(try_from_i128);
