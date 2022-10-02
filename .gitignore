@@ -1,3 +1,13 @@
+# IDE
+.idea/
+.vscode/
+
+# tests
 tests/*/export/**
 tests/*/export_wasm/**
+
+# Mac files
+**/.DS_STore
+
+# Rust
 target/**
