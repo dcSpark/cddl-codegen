@@ -38,8 +38,8 @@ struct Type2AndParent<'a> {
     parent: &'a Type1<'a>,
 }
 
-pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
-    match cddl_rule {
+pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule, scope: String) {
+    let rust_ident = match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
             // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
             //     It's used, but used for no reason as it is the initial definition
@@ -56,16 +56,19 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
             } else {
                 parse_type_choices(types, &rust_ident, &rule.value.type_choices, None, generic_params);
             }
+            rust_ident
         },
         cddl::ast::Rule::Group{ rule, .. } => {
             assert_eq!(rule.generic_params, None, "{}: Generics not supported on plain groups", rule.name);
             // Freely defined group - no need to generate anything outside of group module
+            // already handled in main.rs
             match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup{ .. } => (),// already handled in main.rs
+                cddl::ast::GroupEntry::InlineGroup{ .. } => RustIdent::new(CDDLIdent::new(rule.name.to_string())),
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
         },
-    }
+    };
+    types.mark_scope(rust_ident, scope);
 }
 
 fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<TypeChoice>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {

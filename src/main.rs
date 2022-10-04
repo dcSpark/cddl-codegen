@@ -19,17 +19,44 @@ use parsing::{parse_rule};
 
 use cli::CLI_ARGS;
 
-fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
-    let mut buf = String::new();
-    for path in paths {
-        buf.push_str(&std::fs::read_to_string(path).map_err(|_| panic!("can't read: {}", path)).unwrap());
+fn cddl_paths(output: &mut Vec<std::path::PathBuf>, cd: &std::path::PathBuf) -> std::io::Result<()> {
+    for dir_entry in std::fs::read_dir(cd)? {
+        let path = dir_entry?.path();
+        if path.is_dir() {
+            cddl_paths(output, &path)?;
+        } else if path.as_path().extension().unwrap() == "cddl" {
+            output.push(path);
+        } else {
+            println!("Skipping file: {}", path.as_path().to_str().unwrap());
+        }
     }
-    Ok(buf)
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cddl_in = std::fs::read_to_string(CLI_ARGS.input.clone()).expect("input.cddl file not present or could not be opened");
-    let cddl = cddl::parser::cddl_from_str(&cddl_in, true)?;
+    let input_files = if CLI_ARGS.input.is_dir() {
+        let mut cddl_paths_buf = Vec::new();
+        cddl_paths(&mut cddl_paths_buf, &CLI_ARGS.input)?;
+        cddl_paths_buf
+    } else {
+        vec![CLI_ARGS.input.clone()]
+    };
+    // we need to store the string content since cddl::ast::CDDL contains a lifetime
+    // based on the string that created it.
+    let input_files_content = input_files
+        .iter()
+        .map(|input_file| std::fs::read_to_string(input_file))
+        .collect::<Result<Vec<String>, _>>()?;
+    let cddl_defs = input_files
+        .iter()
+        .zip(input_files_content.iter())
+        .map(|(input_file, cddl_in)| -> Result<(String, cddl::ast::CDDL), Box<dyn std::error::Error>> {
+        println!("STEM - {}", input_file.file_stem().unwrap().to_str().unwrap());
+        let cddl = cddl::parser::cddl_from_str(&cddl_in, true)?;
+        // cddl contains lifetime for cddl_in so we need to return it too
+        Ok((input_file.file_stem().unwrap().to_str().unwrap().to_owned().clone(), cddl))
+    }).collect::<Result<Vec<_>, _>>()?;
+
     // println!("{:#?}", cddl);
     let mut types = IntermediateTypes::new();
     let mut gen_scope = GenerationScope::new();
@@ -42,14 +69,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pass_count = 0;
     // Need to know beforehand which are plain groups so we can serialize them properly
     // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
-    for cddl_rule in &cddl.rules {
-        if let cddl::ast::Rule::Group{ rule, .. } = cddl_rule {
-            // Freely defined group - no need to generate anything outside of group module
-            match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup{ group, .. } => {
-                    types.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), Some(group.clone()));
-                },
-                x => panic!("Group rule with non-inline group? {:?}", x),
+    for (_file_scope, cddl) in &cddl_defs {
+        for cddl_rule in cddl.rules.iter() {
+            if let cddl::ast::Rule::Group{ rule, .. } = cddl_rule {
+                // Freely defined group - no need to generate anything outside of group module
+                match &rule.entry {
+                    cddl::ast::GroupEntry::InlineGroup{ group, .. } => {
+                        types.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), Some(group.clone()));
+                    },
+                    x => panic!("Group rule with non-inline group? {:?}", x),
+                }
             }
         }
     }
@@ -63,143 +92,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
         // does not work.
 
-        // Rust
-        gen_scope.rust().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/Emurgo/cddl-codegen");
-        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-            gen_scope.rust().raw("use cbor_event::{self, de::Deserializer, se::Serializer};");
-        } else {
-            gen_scope.rust().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
-        }
-        gen_scope.rust().import("std::io", "{BufRead, Seek, Write}");
-        gen_scope.rust().import("prelude", "*");
-        gen_scope
-            .rust()
-            .raw("use cbor_event::Type as CBORType;")
-            .raw("use cbor_event::Special as CBORSpecial;")
-            .raw("use serialization::*;")
-            .raw("pub mod prelude;")
-            .raw("pub mod serialization;")
-            .raw("use std::collections::BTreeMap;")
-            .raw("use std::convert::{From, TryFrom};");
-        if CLI_ARGS.preserve_encodings {
-            gen_scope
-                .rust()
-                .raw("pub mod ordered_hash_map;")
-                .raw("use ordered_hash_map::OrderedHashMap;")
-                .raw("use cbor_event::{Sz, LenSz, StringLenSz};")
-                .raw("pub mod cbor_encodings;")
-                .raw("use cbor_encodings::*;")
-                .raw("extern crate derivative;")
-                .raw("use derivative::Derivative;");
-            gen_scope.cbor_encodings().raw("use super::*;");
-        }
-        gen_scope.rust_serialize().import("super", "*");
-        gen_scope.rust_serialize().import("std::io", "{Seek, SeekFrom}");
-
-        // Wasm
-        if CLI_ARGS.wasm {
-            gen_scope.wasm().import("wasm_bindgen::prelude", "*");
-            gen_scope
-                .wasm()
-                .raw("use std::collections::BTreeMap;");
-                
-            if CLI_ARGS.preserve_encodings {
-                gen_scope
-                    .wasm()
-                    .raw("use core::ordered_hash_map::OrderedHashMap;")
-                    .raw("use core::serialization::{LenEncoding, StringEncoding};");
+        for (file_scope, cddl) in &cddl_defs {
+            let scope = if input_files.len() > 1 {
+                file_scope
+            }  else {
+                "lib"
+            };
+            for cddl_rule in cddl.rules.iter() {
+                println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
+                parse_rule(&mut types, cddl_rule, scope.to_string());
             }
-        }
-        for cddl_rule in &cddl.rules {
-            println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
-            parse_rule(&mut types, cddl_rule);
         }
         types.finalize();
         println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
         gen_scope.generate(&types);
     }
 
-    // package.json / scripts
-    let rust_dir = if CLI_ARGS.package_json {
-        if CLI_ARGS.json_schema_export {
-            std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
-            std::fs::copy("static/run-json2ts.js", CLI_ARGS.output.join("scripts/run-json2ts.js"))?;
-            std::fs::copy("static/json-ts-types.js", CLI_ARGS.output.join("scripts/json-ts-types.js"))?;
-            std::fs::copy("static/package_json_schemas.json", CLI_ARGS.output.join("package.json"))?;
-        } else {
-            std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
-        }
-        CLI_ARGS.output.join("rust")
-    } else {
-        CLI_ARGS.output.clone()
-    };
-
-    // lib.rs
-    std::fs::create_dir_all(rust_dir.join("core/src"))?;
-    std::fs::write(rust_dir.join("core/src/lib.rs"), gen_scope.rust().to_string())?;
-    // serialiation.rs
-    let mut serialize_paths = vec!["static/serialization.rs"];
-    if CLI_ARGS.preserve_encodings {
-        serialize_paths.push("static/serialization_preserve.rs");
-        if CLI_ARGS.canonical_form {
-            serialize_paths.push("static/serialization_preserve_force_canonical.rs");
-        } else {
-            serialize_paths.push("static/serialization_preserve_non_force_canonical.rs");
-            serialize_paths.push("static/serialization_non_force_canonical.rs");
-        }
-    } else {
-        serialize_paths.push("static/serialization_non_preserve.rs");
-        serialize_paths.push("static/serialization_non_force_canonical.rs");
-    }
-    let mut serialize_contents = concat_files(serialize_paths)?;
-    serialize_contents.push_str(&gen_scope.rust_serialize().to_string());
-    std::fs::write(rust_dir.join("core/src/serialization.rs"), serialize_contents)?;
-    // Cargo.toml
-    let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
-    if CLI_ARGS.preserve_encodings {
-        rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
-        rust_cargo_toml.push_str("derivative = \"2.2.0\"\n");
-    }
-    if CLI_ARGS.json_serde_derives {
-        rust_cargo_toml.push_str("serde = { version = \"1.0\", features = [\"derive\"] }\n");
-        rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
-    }
-    if CLI_ARGS.json_schema_export {
-        rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
-    }
-    std::fs::write(rust_dir.join("core/Cargo.toml"), rust_cargo_toml)?;
-    // prelude.rs
-    std::fs::copy("static/prelude.rs", rust_dir.join("core/src/prelude.rs"))?;
-    // cbor_encodings.rs + ordered_hash_map.rs
-    if CLI_ARGS.preserve_encodings {
-        std::fs::write(rust_dir.join("core/src/cbor_encodings.rs"), gen_scope.cbor_encodings().to_string())?;
-        let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
-        if CLI_ARGS.json_serde_derives {
-            ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
-        }
-        if CLI_ARGS.json_schema_export {
-            ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_schemars.rs")?);
-        }
-        std::fs::write(rust_dir.join("core/src/ordered_hash_map.rs"), ordered_hash_map_rs)?;
-    }
-
-    // wasm crate
-    if CLI_ARGS.wasm {
-        std::fs::create_dir_all(rust_dir.join("wasm/src"))?;
-        std::fs::write(rust_dir.join("wasm/src/lib.rs"), gen_scope.wasm().to_string())?;
-        let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
-        if CLI_ARGS.json_serde_derives {
-            wasm_toml.push_str("serde_json = \"1.0.57\"\n");
-        }
-        std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
-    }
-
-    // json-gen crate for exporting JSON schemas
-    if CLI_ARGS.json_schema_export {
-        std::fs::create_dir_all(rust_dir.join("json-gen/src"))?;
-        std::fs::copy("static/Cargo_json_gen.toml", rust_dir.join("json-gen/Cargo.toml"))?;
-        std::fs::write(rust_dir.join("json-gen/src/main.rs"), gen_scope.json().to_string())?;
-    }
+    gen_scope.export()?;
 
     types.print_info();
 
