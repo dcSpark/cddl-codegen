@@ -253,6 +253,23 @@ impl<'a> IntermediateTypes<'a> {
         self.used_as_key = used_as_key;
     }
 
+    pub fn visit_types<F: FnMut(&RustType)>(&self, f: &mut F) {
+        for rust_struct in self.rust_structs().values() {
+            rust_struct.visit_types(self, f);
+        }
+    }
+
+    pub fn is_referenced(&self, ident: &RustIdent) -> bool {
+        let mut found = false;
+        self.visit_types(&mut |ty| match ty {
+            RustType::Rust(id) => if id == ident {
+                found = true
+            },
+            _ => (),
+        });
+        found
+    }
+
     // see self.plain_groups comments
     pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group<'a>>) {
         self.plain_groups.insert(ident, group);
