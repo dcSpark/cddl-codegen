@@ -38,6 +38,23 @@ struct Type2AndParent<'a> {
     parent: &'a Type1<'a>,
 }
 
+/// Some means it is a scope marker, containing the scope
+pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+    match cddl_rule {
+        Rule::Type{ rule: TypeRule{ name: Identifier{ ident , .. }, value, .. }, .. } => {
+            if value.type_choices.len() == 1 && ident.starts_with("_CDDL_CODEGEN_SCOPE_MARKER_") {
+                match &value.type_choices[0].type1.type2 {
+                    Type2::TextValue{ value, .. } => Some(value.to_string()),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        },
+        _ => None,
+    }
+}
+
 pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule, scope: String) {
     let rust_ident = match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {

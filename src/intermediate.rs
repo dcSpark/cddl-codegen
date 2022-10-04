@@ -328,7 +328,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     pub fn scope(&self, ident: &RustIdent) -> &str {
-        self.scopes.get(ident).unwrap()
+        self.scopes.get(ident).map(|s| s.as_str()).unwrap_or("lib")
     }
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {

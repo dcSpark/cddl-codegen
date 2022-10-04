@@ -220,7 +220,7 @@ impl GenerationScope {
                 // also make sure not to generate it if we instead generated a binary wrapper type
                 if *gen_rust_alias {
                     self
-                        .rust(types, ident)
+                        .rust_lib()
                         .raw(&format!("pub type {} = {};", ident, base_type.for_rust_member(false)));
                 }
                 if *gen_wasm_alias {

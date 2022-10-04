@@ -15,7 +15,7 @@ use intermediate::{
     IntermediateTypes,
     RustIdent,
 };
-use parsing::{parse_rule};
+use parsing::{parse_rule, rule_is_scope_marker};
 
 use cli::CLI_ARGS;
 
@@ -41,22 +41,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         vec![CLI_ARGS.input.clone()]
     };
-    // we need to store the string content since cddl::ast::CDDL contains a lifetime
-    // based on the string that created it.
+
+    // To get around an issue with cddl where you can't parse a partial cddl fragment
+    // we must group all files together. To mark scope we insert string constants with
+    // a specific, unlikely to ever be used, prefix. The names contain a number after
+    // to avoid a parsing error (rule with same identifier already defined).
+    // This approeach was chosen over comments as those were finicky when not attached
+    // to specific structs, and the existing comment parsing ast was not suited for this.
+    // If, in the future, cddl released a feature flag to allow partial cddl we can just
+    // remove all this and revert back the commit before this one for scope handling.
     let input_files_content = input_files
         .iter()
-        .map(|input_file| std::fs::read_to_string(input_file))
-        .collect::<Result<Vec<String>, _>>()?;
-    let cddl_defs = input_files
-        .iter()
-        .zip(input_files_content.iter())
-        .map(|(input_file, cddl_in)| -> Result<(String, cddl::ast::CDDL), Box<dyn std::error::Error>> {
-        println!("STEM - {}", input_file.file_stem().unwrap().to_str().unwrap());
-        let cddl = cddl::parser::cddl_from_str(&cddl_in, true)?;
-        // cddl contains lifetime for cddl_in so we need to return it too
-        Ok((input_file.file_stem().unwrap().to_str().unwrap().to_owned().clone(), cddl))
-    }).collect::<Result<Vec<_>, _>>()?;
-
+        .enumerate()
+        .map(|(i, input_file)| {
+            let scope = if input_files.len() > 1 {
+                input_file.file_stem().unwrap().to_str().unwrap()
+            }  else {
+                "lib"
+            };
+            std::fs::read_to_string(input_file)
+                .map(|raw| format!("\n_CDDL_CODEGEN_SCOPE_MARKER_{}_ = \"{}\"\n{}\n", i, scope, raw))
+        }).collect::<Result<String, _>>()?;
+    let cddl = cddl::parser::cddl_from_str(&input_files_content, true)?;
     // println!("{:#?}", cddl);
     let mut types = IntermediateTypes::new();
     let mut gen_scope = GenerationScope::new();
@@ -69,19 +75,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pass_count = 0;
     // Need to know beforehand which are plain groups so we can serialize them properly
     // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
-    for (_file_scope, cddl) in &cddl_defs {
-        for cddl_rule in cddl.rules.iter() {
-            if let cddl::ast::Rule::Group{ rule, .. } = cddl_rule {
-                // Freely defined group - no need to generate anything outside of group module
-                match &rule.entry {
-                    cddl::ast::GroupEntry::InlineGroup{ group, .. } => {
-                        types.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), Some(group.clone()));
-                    },
-                    x => panic!("Group rule with non-inline group? {:?}", x),
-                }
+    for cddl_rule in cddl.rules.iter() {
+        if let cddl::ast::Rule::Group{ rule, .. } = cddl_rule {
+            // Freely defined group - no need to generate anything outside of group module
+            match &rule.entry {
+                cddl::ast::GroupEntry::InlineGroup{ group, .. } => {
+                    types.mark_plain_group(RustIdent::new(CDDLIdent::new(rule.name.to_string())), Some(group.clone()));
+                },
+                x => panic!("Group rule with non-inline group? {:?}", x),
             }
         }
     }
+    let mut scope = "lib".to_owned();
     // TODO: handle out-of-order definition properly instead of just mandating at least two passes.
     // If we separate codegen and parsing this would probably be a lot easier too.
     // This is probably hiding some other issues too.
@@ -92,15 +97,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
         // does not work.
 
-        for (file_scope, cddl) in &cddl_defs {
-            let scope = if input_files.len() > 1 {
-                file_scope
-            }  else {
-                "lib"
-            };
-            for cddl_rule in cddl.rules.iter() {
+        for cddl_rule in cddl.rules.iter() {
+            // We inserted string constants with specific prefixes earlier to mark scope
+            if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
+                println!("Switching from scope '{}' to '{}'", scope, new_scope);
+                scope = new_scope;
+            } else {
                 println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", cddl_rule.name());
-                parse_rule(&mut types, cddl_rule, scope.to_string());
+                parse_rule(&mut types, cddl_rule, scope.clone());
             }
         }
         types.finalize();
