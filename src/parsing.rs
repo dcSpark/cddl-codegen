@@ -38,11 +38,13 @@ struct Type2AndParent<'a> {
     parent: &'a Type1<'a>,
 }
 
+pub const SCOPE_MARKER: &'static str = "_CDDL_CODEGEN_SCOPE_MARKER_";
+
 /// Some means it is a scope marker, containing the scope
 pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     match cddl_rule {
         Rule::Type{ rule: TypeRule{ name: Identifier{ ident , .. }, value, .. }, .. } => {
-            if value.type_choices.len() == 1 && ident.starts_with("_CDDL_CODEGEN_SCOPE_MARKER_") {
+            if value.type_choices.len() == 1 && ident.starts_with(SCOPE_MARKER) {
                 match &value.type_choices[0].type1.type2 {
                     Type2::TextValue{ value, .. } => Some(value.to_string()),
                     _ => None,
@@ -55,8 +57,8 @@ pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     }
 }
 
-pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule, scope: String) {
-    let rust_ident = match cddl_rule {
+pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
+    match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
             // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
             //     It's used, but used for no reason as it is the initial definition
@@ -73,19 +75,27 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule, sc
             } else {
                 parse_type_choices(types, &rust_ident, &rule.value.type_choices, None, generic_params);
             }
-            rust_ident
         },
         cddl::ast::Rule::Group{ rule, .. } => {
             assert_eq!(rule.generic_params, None, "{}: Generics not supported on plain groups", rule.name);
             // Freely defined group - no need to generate anything outside of group module
             // already handled in main.rs
             match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup{ .. } => RustIdent::new(CDDLIdent::new(rule.name.to_string())),
+                cddl::ast::GroupEntry::InlineGroup{ .. } => (),
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
         },
-    };
-    types.mark_scope(rust_ident, scope);
+    }
+}
+
+pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
+    match cddl_rule {
+        cddl::ast::Rule::Type{ rule, .. } => RustIdent::new(CDDLIdent::new(rule.name.to_string())),
+        cddl::ast::Rule::Group{ rule, .. } => match &rule.entry {
+            cddl::ast::GroupEntry::InlineGroup{ .. } => RustIdent::new(CDDLIdent::new(rule.name.to_string())),
+            x => panic!("Group rule with non-inline group? {:?}", x),
+        },
+    }
 }
 
 fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<TypeChoice>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {

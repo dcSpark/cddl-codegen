@@ -382,7 +382,7 @@ impl<'a> IntermediateTypes<'a> {
             let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
             let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
-            crate::parsing::parse_rule(self, cddl.rules.first().unwrap(), "prelude".to_owned());
+            crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
         }
     }
 }
