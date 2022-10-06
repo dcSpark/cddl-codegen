@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }).collect::<Vec<_>>();
     // We need to know beforehand which are plain groups so we can serialize them properly
-    // ie x = (3, 4), y = [1, x, 2] would be [1, 3, 4, 2] instead of [1, [3, 4], 2]
+    // e.g. x = (3, 4), y = [1, x, 2] should be [1, 3, 4, 2] instead of [1, [3, 4], 2]
     for cddl_rule in cddl_rules.iter() {
         if let cddl::ast::Rule::Group{ rule, .. } = cddl_rule {
             // Freely defined group - no need to generate anything outside of group module
@@ -101,14 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        // We inserted string constants with specific prefixes earlier to mark scope
-        if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
-            println!("Switching from scope '{}' to '{}'", scope, new_scope);
-            scope = new_scope;
-        } else {
-            println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", scope);
-            parse_rule(&mut types, cddl_rule);
-        }
+        println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", scope);
+        parse_rule(&mut types, cddl_rule);
     }
     types.finalize();
 
