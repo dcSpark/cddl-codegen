@@ -719,7 +719,7 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
     occur
         .as_ref()
         .map(|o| match o.occur {
-            Occur::Optional(_) => true,
+            Occur::Optional { .. } => true,
             _ => false,
         })
         .unwrap_or(false)
