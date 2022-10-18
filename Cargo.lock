@@ -116,7 +116,7 @@ checksum = "52b3d8b289b6c7d6d8832c8e2bf151c7677126afa627f51e19a6320aec8237cb"
 [[package]]
 name = "cddl"
 version = "0.9.0"
-source = "git+https://github.com/dcSpark/cddl?branch=fix-group-comments#51bac9d087aeb0c628de9e5893741ea3b3347eef"
+source = "git+https://github.com/anweiss/cddl?branch=dcSpark-ast-parent-pointer#a94078e041023052c6c8d4b8786c6267a0696c1a"
 dependencies = [
  "abnf_to_pest",
  "base16",
@@ -138,6 +138,7 @@ dependencies = [
  "regex",
  "regex-syntax",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "simplelog",
  "uriparse",
@@ -290,9 +291,9 @@ dependencies = [
 
 [[package]]
 name = "crossterm"
-version = "0.23.2"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2102ea4f781910f8a5b98dd061f4c2023f479ce7bb1236330099ceb5a93cf17"
+checksum = "e64e6c0fbe2c17357405f7c758c1ef960fce08bdfb2c03d88d2a18d7e09c4b67"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
@@ -761,6 +762,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-wasm-bindgen"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cfc62771e7b829b517cb213419236475f434fb480eddd76112ae182d274434a"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -980,8 +992,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7652e3f6c4706c8d9cd54832c4a4ccb9b5336e2c3bd154d5cccfbf1c1f5f7d"
 dependencies = [
  "cfg-if",
- "serde",
- "serde_json",
  "wasm-bindgen-macro",
 ]
 
