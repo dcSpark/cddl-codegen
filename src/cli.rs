@@ -6,8 +6,8 @@ use once_cell::sync::Lazy;
 #[derive(Debug, Parser)]
 #[clap()]
 pub struct Cli {
-    /// Input .cddl file to generate from.
-    #[clap(short, long, parse(from_os_str), value_name = "INPUT_FILE")]
+    /// Input .cddl file to generate from. If this is a directory then it will read all *.cddl files and generate one output for each.
+    #[clap(short, long, parse(from_os_str), value_name = "INPUT_FILE/INPUT_DIR")]
     pub input: std::path::PathBuf,
 
     /// Output directory for the generated code.
