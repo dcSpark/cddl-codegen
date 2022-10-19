@@ -31,6 +31,7 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
+    scopes: BTreeMap<RustIdent, String>,
 }
 
 impl<'a> IntermediateTypes<'a> {
@@ -46,6 +47,7 @@ impl<'a> IntermediateTypes<'a> {
             generic_instances: BTreeMap::new(),
             news_can_fail: BTreeSet::new(),
             used_as_key: BTreeSet::new(),
+            scopes: BTreeMap::new(),
         }
     }
 
@@ -315,6 +317,18 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn can_new_fail(&self, name: &RustIdent) -> bool {
         self.news_can_fail.contains(name)
+    }
+
+    pub fn mark_scope(&mut self, ident: RustIdent, scope: String) {
+        if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone()) {
+            if old_scope != scope {
+                panic!("{} defined multiple times, first referenced in scope '{}' then in '{}'", ident, old_scope, scope);
+            }
+        }
+    }
+
+    pub fn scope(&self, ident: &RustIdent) -> &str {
+        self.scopes.get(ident).map(|s| s.as_str()).unwrap_or("lib")
     }
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {

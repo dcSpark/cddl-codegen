@@ -127,10 +127,20 @@ impl<'a> SerializeConfig<'a> {
     }
 }
 
+fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
+    let mut buf = String::new();
+    for path in paths {
+        buf.push_str(&std::fs::read_to_string(path).map_err(|_| panic!("can't read: {}", path)).unwrap());
+    }
+    Ok(buf)
+}
+
 pub struct GenerationScope {
-    global_scope: codegen::Scope,
+    rust_lib_scope: codegen::Scope,
+    rust_scopes: BTreeMap<String, codegen::Scope>,
     serialize_scope: codegen::Scope,
-    wasm_scope: codegen::Scope,
+    wasm_lib_scope: codegen::Scope,
+    wasm_scopes: BTreeMap<String, codegen::Scope>,
     cbor_encodings_scope: codegen::Scope,
     json_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
@@ -140,9 +150,11 @@ pub struct GenerationScope {
 impl GenerationScope {
     pub fn new() -> Self {
         Self {
-            global_scope: codegen::Scope::new(),
+            rust_lib_scope: codegen::Scope::new(),
+            rust_scopes: BTreeMap::new(),
             serialize_scope: codegen::Scope::new(),
-            wasm_scope: codegen::Scope::new(),
+            wasm_lib_scope: codegen::Scope::new(),
+            wasm_scopes: BTreeMap::new(),
             cbor_encodings_scope: codegen::Scope::new(),
             json_scope: codegen::Scope::new(),
             already_generated: BTreeSet::new(),
@@ -150,14 +162,68 @@ impl GenerationScope {
         }
     }
 
+    /// Generates, i.e. populates the state, based on `types`.
+    /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes) {
+        // Rust (populate rust_lib() - used for top of file before structs)
+        self.rust_lib().raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen");
+        // We can't generate groups of imports with codegen::Import so we just output this as raw text
+        // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
+        // does not work.
+        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+            self.rust_lib().raw("use cbor_event::{self, de::Deserializer, se::Serializer};");
+        } else {
+            self.rust_lib().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
+        }
+        self.rust_lib().import("std::io", "{BufRead, Seek, Write}");
+        self.rust_lib().import("prelude", "*");
+        self
+            .rust_lib()
+            .raw("use cbor_event::Type as CBORType;")
+            .raw("use cbor_event::Special as CBORSpecial;")
+            .raw("use serialization::*;")
+            .raw("use std::collections::BTreeMap;")
+            .raw("use std::convert::{From, TryFrom};")
+            .raw("pub mod prelude;")
+            .raw("pub mod serialization;");
+        if CLI_ARGS.preserve_encodings {
+            self
+                .rust_lib()
+                .raw("pub mod ordered_hash_map;")
+                .raw("use ordered_hash_map::OrderedHashMap;")
+                .raw("use cbor_event::{Sz, LenSz, StringLenSz};")
+                .raw("pub mod cbor_encodings;")
+                .raw("use cbor_encodings::*;")
+                .raw("extern crate derivative;")
+                .raw("use derivative::Derivative;");
+                self.cbor_encodings().raw("use super::*;");
+        }
+        self.rust_serialize().import("super", "*");
+        self.rust_serialize().import("std::io", "{Seek, SeekFrom}");
+
+        // Wasm (populate wasm_lib() - used for top of file before structs)
+        if CLI_ARGS.wasm {
+            self.wasm_lib().import("wasm_bindgen::prelude", "*");
+            self
+                .wasm_lib()
+                .raw("use std::collections::BTreeMap;");
+                
+            if CLI_ARGS.preserve_encodings {
+                self
+                    .wasm_lib()
+                    .raw("use core::ordered_hash_map::OrderedHashMap;")
+                    .raw("use core::serialization::{LenEncoding, StringEncoding};");
+            }
+        }
+
+        // Type aliases
         for (alias, (base_type, gen_rust_alias, gen_wasm_alias)) in types.type_aliases() {
             // only generate user-defined ones
             if let AliasIdent::Rust(ident) = alias {
                 // also make sure not to generate it if we instead generated a binary wrapper type
                 if *gen_rust_alias {
                     self
-                        .rust()
+                        .rust_lib()
                         .raw(&format!("pub type {} = {};", ident, base_type.for_rust_member(false)));
                 }
                 if *gen_wasm_alias {
@@ -171,7 +237,7 @@ impl GenerationScope {
                             FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
                         };
                         self
-                            .wasm()
+                            .wasm(types, ident)
                             .raw("#[wasm_bindgen]")
                             .new_fn(&convert_to_snake_case(&ident.to_string()))
                             .vis("pub")
@@ -179,12 +245,14 @@ impl GenerationScope {
                             .line(val);
                     } else {
                         self
-                            .wasm()
+                            .wasm(types, ident)
                             .raw(&format!("pub type {} = {};", ident, base_type.for_wasm_member()));
                     }
                 }
             }
         }
+
+        // Structs
         let mut wasm_wrappers_generated = BTreeSet::new();
         for (rust_ident, rust_struct) in types.rust_structs() {
             assert_eq!(rust_ident, rust_struct.ident());
@@ -225,7 +293,7 @@ impl GenerationScope {
                         if wasm_wrappers_generated.insert(map_ident.to_string()) {
                             codegen_table_type(self, types, rust_ident, domain.clone(), range.clone(), rust_struct.tag());
                         } else {
-                            self.wasm_scope.raw(&format!("type {} = {};", rust_ident, map_ident));
+                            self.wasm(types, rust_ident).raw(&format!("type {} = {};", rust_ident, map_ident));
                         }
                     }
                     //self
@@ -262,6 +330,8 @@ impl GenerationScope {
                 },
             }
         }
+
+        // JSON export
         if CLI_ARGS.json_schema_export {
             self.json_scope.raw("use cddl_lib_core::*;");
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
@@ -290,22 +360,180 @@ impl GenerationScope {
         }
     }
 
-    pub fn rust(&mut self) -> &mut codegen::Scope {
-        &mut self.global_scope
+    /// Exports all already-generated state to the provided directory.
+    /// Call generate() first to populate the generation state.
+    pub fn export(&mut self) -> std::io::Result<()> {
+        // package.json / scripts
+        let rust_dir = if CLI_ARGS.package_json {
+            if CLI_ARGS.json_schema_export {
+                std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
+                std::fs::copy("static/run-json2ts.js", CLI_ARGS.output.join("scripts/run-json2ts.js"))?;
+                std::fs::copy("static/json-ts-types.js", CLI_ARGS.output.join("scripts/json-ts-types.js"))?;
+                std::fs::copy("static/package_json_schemas.json", CLI_ARGS.output.join("package.json"))?;
+            } else {
+                std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
+            }
+            CLI_ARGS.output.join("rust")
+        } else {
+            CLI_ARGS.output.clone()
+        };
+
+        // lib.rs / other files (if input is a directory)
+        std::fs::create_dir_all(rust_dir.join("core/src"))?;
+        let scope_names = self
+            .rust_scopes
+            .keys()
+            .filter(|scope| *scope != "lib")
+            .map(|scope| scope.clone())
+            .collect::<Vec<_>>();
+        for scope in scope_names {
+            self
+                .rust_lib()
+                .raw(&format!("pub mod {};", scope))
+                .raw(&format!("pub use {}::*;\n", scope));
+        }
+        let mut rust_lib = self.rust_lib().to_string();
+        for (scope, content) in self.rust_scopes.iter_mut() {
+            if scope == "lib" {
+                rust_lib.push_str(&content.to_string());
+            } else {
+                content.raw("use super::*;");
+                std::fs::write(rust_dir.join(format!("core/src/{}.rs", scope)), content.to_string())?;
+            }
+        }
+        std::fs::write(rust_dir.join("core/src/lib.rs"), rust_lib)?;
+
+        // serialiation.rs
+        let mut serialize_paths = vec!["static/serialization.rs"];
+        if CLI_ARGS.preserve_encodings {
+            serialize_paths.push("static/serialization_preserve.rs");
+            if CLI_ARGS.canonical_form {
+                serialize_paths.push("static/serialization_preserve_force_canonical.rs");
+            } else {
+                serialize_paths.push("static/serialization_preserve_non_force_canonical.rs");
+                serialize_paths.push("static/serialization_non_force_canonical.rs");
+            }
+        } else {
+            serialize_paths.push("static/serialization_non_preserve.rs");
+            serialize_paths.push("static/serialization_non_force_canonical.rs");
+        }
+        let mut serialize_contents = concat_files(serialize_paths)?;
+        serialize_contents.push_str(&self.rust_serialize().to_string());
+        std::fs::write(rust_dir.join("core/src/serialization.rs"), serialize_contents)?;
+
+        // Cargo.toml
+        let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
+        if CLI_ARGS.preserve_encodings {
+            rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
+            rust_cargo_toml.push_str("derivative = \"2.2.0\"\n");
+        }
+        if CLI_ARGS.json_serde_derives {
+            rust_cargo_toml.push_str("serde = { version = \"1.0\", features = [\"derive\"] }\n");
+            rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
+        }
+        if CLI_ARGS.json_schema_export {
+            rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
+        }
+        std::fs::write(rust_dir.join("core/Cargo.toml"), rust_cargo_toml)?;
+
+        // prelude.rs
+        std::fs::copy("static/prelude.rs", rust_dir.join("core/src/prelude.rs"))?;
+
+        // cbor_encodings.rs + ordered_hash_map.rs
+        if CLI_ARGS.preserve_encodings {
+            std::fs::write(rust_dir.join("core/src/cbor_encodings.rs"), self.cbor_encodings().to_string())?;
+            let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
+            if CLI_ARGS.json_serde_derives {
+                ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
+            }
+            if CLI_ARGS.json_schema_export {
+                ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_schemars.rs")?);
+            }
+            std::fs::write(rust_dir.join("core/src/ordered_hash_map.rs"), ordered_hash_map_rs)?;
+        }
+
+        // wasm crate
+        if CLI_ARGS.wasm {
+            std::fs::create_dir_all(rust_dir.join("wasm/src"))?;
+            let scope_names = self
+                .wasm_scopes
+                .keys()
+                .filter(|scope| *scope != "lib")
+                .map(|scope| scope.clone())
+                .collect::<Vec<_>>();
+            for scope in scope_names {
+                self
+                    .wasm_lib()
+                    .raw(&format!("pub mod {};", scope))
+                    .raw(&format!("pub use {}::*;\n", scope));
+            }
+            let mut wasm_lib = self.wasm_lib().to_string();
+            for (scope, content) in self.wasm_scopes.iter_mut() {
+                if scope == "lib" {
+                    wasm_lib.push_str(&content.to_string());
+                } else {
+                    content.raw("use super::*;");
+                    std::fs::write(rust_dir.join(format!("wasm/src/{}.rs", scope)), content.to_string())?;
+                }
+            }
+            std::fs::write(rust_dir.join("wasm/src/lib.rs"), wasm_lib)?;
+            let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
+            if CLI_ARGS.json_serde_derives {
+                wasm_toml.push_str("serde_json = \"1.0.57\"\n");
+            }
+            std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
+        }
+
+        // json-gen crate for exporting JSON schemas
+        if CLI_ARGS.json_schema_export {
+            std::fs::create_dir_all(rust_dir.join("json-gen/src"))?;
+            std::fs::copy("static/Cargo_json_gen.toml", rust_dir.join("json-gen/Cargo.toml"))?;
+            std::fs::write(rust_dir.join("json-gen/src/main.rs"), self.json().to_string())?;
+        }
+
+        Ok(())
     }
 
+    /// Generates in the appropriate scope for `ident`
+    /// Used for all the generated structs and associated traits (besides serialization ones)
+    pub fn rust(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
+        let scope_name = types.scope(ident).to_owned();
+        self.rust_scopes.entry(scope_name).or_insert(codegen::Scope::new())
+    }
+
+    /// Scope header above the rest of the "lib" rust scope.
+    /// This is useful for when there is no explicit scope
+    /// e.g. implicit types like arrays/tables (for WASM)
+    pub fn rust_lib(&mut self) -> &mut codegen::Scope {
+        &mut self.rust_lib_scope
+    }
+
+    /// We dump all serialization into a "serialization" scope as these details
+    /// aren't very helpful to users as long as they work so we don't clutter other files.
     pub fn rust_serialize(&mut self) -> &mut codegen::Scope {
         &mut self.serialize_scope
     }
 
-    pub fn wasm(&mut self) -> &mut codegen::Scope {
-        &mut self.wasm_scope
+    /// Generates in the appropriate scope for `ident`
+    /// Used for all the generated WASM wrapper structs and associated traits
+    pub fn wasm(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
+        let scope_name = types.scope(ident).to_owned();
+        self.wasm_scopes.entry(scope_name).or_insert(codegen::Scope::new())
     }
 
+    /// Scope header above the rest of the "lib" WASM scope.
+    /// This is useful for when there is no explicit scope
+    /// e.g. implicit types like arrays/tables (for WASM)
+    pub fn wasm_lib(&mut self) -> &mut codegen::Scope {
+        &mut self.wasm_lib_scope
+    }
+
+    /// If used, all associated *Encoding structs.
     pub fn cbor_encodings(&mut self) -> &mut codegen::Scope {
         &mut self.cbor_encodings_scope
     }
 
+    /// If used, scope for json-gen crate's main.rs
     pub fn json(&mut self) -> &mut codegen::Scope {
         &mut self.json_scope
     }
@@ -1089,34 +1317,11 @@ impl GenerationScope {
 
     pub fn print_structs_without_deserialize(&self) {
         for (name, reasons) in &self.no_deser_reasons {
-            println!("Not generating {}::deserialize() - reasons:", name);
+            eprintln!("Not generating {}::deserialize() - reasons:", name);
             for reason in reasons {
                 println!("\t{}", reason);
             }
         }
-    }
-
-    pub fn reset_except_not_deserialized(&mut self, last_time: &mut Option<usize>) -> bool {
-        let repeat = match last_time {
-            Some(n) => *n != self.no_deser_reasons.len(),
-            None => true,
-        };
-        if repeat {
-            self.global_scope = codegen::Scope::new();
-            self.serialize_scope = codegen::Scope::new();
-            self.wasm_scope = codegen::Scope::new();
-            self.cbor_encodings_scope = codegen::Scope::new();
-            self.json_scope = codegen::Scope::new();
-            self.already_generated.clear();
-            // don't delete these to let out-of-order type aliases work
-            //self.type_aliases = Self::aliases();
-            // keep empty ones so we can know it's not generated
-            for (_ident, reasons) in self.no_deser_reasons.iter_mut() {
-                reasons.clear();
-            }
-        }
-        *last_time = Some(self.no_deser_reasons.len());
-        repeat
     }
 
     // TODO: repurpose this for type choices (not group choices)
@@ -1162,7 +1367,7 @@ impl GenerationScope {
                 wrapper.s_impl.push_fn(new_func);
             }
             add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, None);
-            wrapper.push(self);
+            wrapper.push(self, types);
             //push_wasm_wrapper(self, name, s, s_impl);
         }
     }
@@ -1174,7 +1379,7 @@ impl GenerationScope {
             let mut s = codegen::Struct::new(&array_type_ident.to_string());
             s
                 .vis("pub")
-                .tuple_field(&inner_type)
+                .tuple_field(format!("pub(crate) {}", &inner_type))
                 .derive("Clone")
                 .derive("Debug");
             // other functions
@@ -1221,7 +1426,7 @@ impl GenerationScope {
                 .ret(inner_type)
                 .line("self.0");
             self
-                .wasm()
+                .wasm_lib()
                 .raw("#[wasm_bindgen]")
                 .push_struct(s)
                 .raw("#[wasm_bindgen]")
@@ -1403,7 +1608,8 @@ fn create_base_rust_struct<'a>(types: &IntermediateTypes<'a>, ident: &RustIdent)
     (s, group_impl)
 }
 
-struct WasmWrapper {
+struct WasmWrapper<'a> {
+    ident: &'a RustIdent,
     s: codegen::Struct,
     s_impl: codegen::Impl,
     // rust -> wasm
@@ -1412,24 +1618,24 @@ struct WasmWrapper {
     from_native: Option<codegen::Impl>,
 }
 
-impl WasmWrapper {
-    fn push(self, gen_scope: &mut GenerationScope) {
+impl<'a> WasmWrapper<'a> {
+    fn push(self, gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         gen_scope
-            .wasm()
+            .wasm(types, self.ident)
             .raw("#[wasm_bindgen]")
             .push_struct(self.s)
             .raw("#[wasm_bindgen]")
             .push_impl(self.s_impl);
         if let Some(from_wasm) = self.from_wasm {
-            gen_scope.wasm().push_impl(from_wasm);
+            gen_scope.wasm(types, self.ident).push_impl(from_wasm);
         }
         if let Some(from_native) = self.from_native {
-            gen_scope.wasm().push_impl(from_native);
+            gen_scope.wasm(types, self.ident).push_impl(from_native);
         }
     }
 }
 
-fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent, exists_in_rust: bool) -> WasmWrapper {
+fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent, exists_in_rust: bool) -> WasmWrapper<'a> {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
     s
@@ -1493,6 +1699,7 @@ fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent, exist
         }
     }
     WasmWrapper {
+        ident,
         s,
         s_impl,
         from_wasm: None,
@@ -1502,13 +1709,13 @@ fn create_base_wasm_struct(gen_scope: &GenerationScope, ident: &RustIdent, exist
 
 /// default_structure will have it be a DIRECT wrapper with a tuple field of core::{ident}
 /// this will include generating to/from traits automatically
-fn create_base_wasm_wrapper(gen_scope: &GenerationScope, ident: &RustIdent, default_structure: bool) -> WasmWrapper {
+fn create_base_wasm_wrapper<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent, default_structure: bool) -> WasmWrapper<'a> {
     assert!(CLI_ARGS.wasm);
     let mut base = create_base_wasm_struct(gen_scope, ident, true);
     let name = &ident.to_string();
     if default_structure {
         let native_name = &format!("core::{}", name);
-        base.s.tuple_field(native_name);
+        base.s.tuple_field(format!("pub(crate) {}", native_name));
         let mut from_wasm = codegen::Impl::new(name);
         from_wasm
             .impl_trait(format!("From<{}>", native_name))
@@ -1747,14 +1954,17 @@ fn create_deserialize_impls(ident: &RustIdent, rep: Option<Representation>, tag:
 
 fn push_rust_struct(
     gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
     name: &RustIdent,
     s: codegen::Struct,
     s_impl: codegen::Impl,
     ser_impl: codegen::Impl,
     ser_embedded_impl: Option<codegen::Impl>,
 ) {
-    gen_scope.rust().push_struct(s);
-    gen_scope.rust().push_impl(s_impl);
+    gen_scope
+        .rust(types, name)
+        .push_struct(s)
+        .push_impl(s_impl);
     gen_scope.rust_serialize().push_impl(ser_impl);
     if let Some(s) = ser_embedded_impl {
         gen_scope.rust_serialize().push_impl(s);
@@ -1804,7 +2014,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
     let inner_type = RustType::name_for_rust_map(&key_type, &value_type, true);
-    wrapper.s.tuple_field(&inner_type);
+    wrapper.s.tuple_field(format!("pub(crate) {}", inner_type));
     // new
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -1889,9 +2099,9 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .arg_self()
         .ret(inner_type)
         .line("self.0");
-    wrapper.push(gen_scope);
+    wrapper.push(gen_scope, types);
     gen_scope
-        .wasm()
+        .wasm_lib()
         .push_impl(from_wasm)
         .push_impl(to_wasm);
 }
@@ -2125,7 +2335,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
         }
         wasm_new.line(format!("Self(core::{}::new({}))", name, wasm_new_args.join(", ")));
         wrapper.s_impl.push_fn(wasm_new);
-        wrapper.push(gen_scope);
+        wrapper.push(gen_scope, types);
     }
     
     // Rust-only for the rest of this function
@@ -2160,7 +2370,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
     }
     let len_encoding_var = if CLI_ARGS.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{}Encoding", name)));
-        native_struct.field(&format!("{}encodings", encoding_var_macros(types.used_as_key(name))), format!("Option<{}>", encoding_name));
+        native_struct.field(&format!("{}pub encodings", encoding_var_macros(types.used_as_key(name))), format!("Option<{}>", encoding_name));
         native_new_block.line("encodings: None,");
 
         let mut encoding_struct = make_encoding_struct(&encoding_name.to_string());
@@ -2682,7 +2892,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
             deser_impl.push_fn(deser_f);
         },
     };
-    push_rust_struct(gen_scope, name, native_struct, native_impl, ser_impl, ser_embedded_impl);
+    push_rust_struct(gen_scope, types, name, native_struct, native_impl, ser_impl, ser_embedded_impl);
     // TODO: generic deserialize (might need backtracking)
     if gen_scope.deserialize_generated(name) {
         gen_scope.rust_serialize().push_impl(deser_impl);
@@ -2771,7 +2981,7 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
         // enum-getters
         add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, Some(rep));
         //push_wasm_wrapper(gen_scope, name, s, s_impl);
-        wrapper.push(gen_scope);
+        wrapper.push(gen_scope, types);
     }
 }
 
@@ -2967,7 +3177,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
             kind.new_variant(&variant.name.to_string());
         }
         gen_scope
-            .wasm()
+            .wasm(types, name)
             .raw("#[wasm_bindgen]")
             .push_enum(kind);
     }
@@ -3211,7 +3421,7 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
     gen_scope
-        .rust()
+        .rust(types, name)
         .push_enum(e)
         .push_impl(e_impl);
     gen_scope
@@ -3307,7 +3517,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
             get.line(field_type.to_wasm_boundary("self.0.get()", false));
         }
         wrapper.s_impl.push_fn(get);
-        wrapper.push(gen_scope);
+        wrapper.push(gen_scope, types);
     }
 
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
@@ -3316,11 +3526,11 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{}Encoding", type_name)));
     let enc_fields = if CLI_ARGS.preserve_encodings {
-        s.field("inner", field_type.for_rust_member(false));
+        s.field("pub inner", field_type.for_rust_member(false));
         let enc_fields = encoding_fields("inner", &field_type.clone().resolve_aliases());
         
         if !enc_fields.is_empty() {
-            s.field(&format!("{}encodings", encoding_var_macros(types.used_as_key(type_name))), format!("Option<{}>", encoding_name));
+            s.field(&format!("{}pub encodings", encoding_var_macros(types.used_as_key(type_name))), format!("Option<{}>", encoding_name));
             let mut encoding_struct = make_encoding_struct(&encoding_name.to_string());
             for field_enc in &enc_fields {
                 encoding_struct.field(&format!("pub {}", field_enc.field_name), &field_enc.type_name);
@@ -3329,7 +3539,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         }
         Some(enc_fields)
     } else {
-        s.tuple_field(field_type.for_rust_member(false));
+        s.tuple_field(format!("pub {}", field_type.for_rust_member(false)));
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
@@ -3545,7 +3755,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         .ret("Self")
         .line(format!("wrapper.{}", inner_var));
     gen_scope
-        .rust()
+        .rust(types, type_name)
         .push_struct(s)
         .push_impl(s_impl)
         .push_impl(from_impl)
@@ -3640,7 +3850,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
             .push_fn(wasm_new)
             .push_fn(to_str)
             .push_fn(from_str);
-        wrapper.push(gen_scope);
+        wrapper.push(gen_scope, types);
     }
 
     let mut native_struct = codegen::Enum::new("Int");
@@ -3795,7 +4005,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .push_block(try_from_else);
 
     gen_scope
-        .rust()
+        .rust_lib()
         .push_enum(native_struct)
         .push_enum(int_err)
         .push_impl(native_impl)
