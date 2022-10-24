@@ -19,6 +19,6 @@ block = [
 typechoice =
     [0, bytes] ; @name case_1
     /
-    [1, bytes] ; @name case_2
+    [1, bytes] ; anonymous group test
 
 protocol_magic = uint ; @newtype
