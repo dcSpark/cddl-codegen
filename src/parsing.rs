@@ -1,9 +1,7 @@
-use cddl::ast::*;
-use cddl::validator::parent_visitor::{ParentVisitor, Parent};
-use cddl::visitor::Visitor;
+use cddl::{ast::*, token};
+use cddl::validator::parent_visitor::{ParentVisitor};
 use either::{Either};
 use std::collections::{BTreeMap};
-use std::ops::Deref;
 
 use crate::comment_ast::{RuleMetadata, metadata_from_comments};
 use crate::intermediate::{
@@ -162,20 +160,20 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
             ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
         },
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
-            ".default" |
-            ".cborseq" |
-            ".within" |
-            ".and" => todo!("control operator {} not supported", ctrl),
-            ".cbor" => ControlOperator::CBOR(rust_type_from_type2(types, parent_visitor, &operator.type2)),
-            ".eq" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
+            token::ControlOperator::DEFAULT |
+            token::ControlOperator::CBORSEQ |
+            token::ControlOperator::WITHIN |
+            token::ControlOperator::AND => todo!("control operator {} not supported", ctrl),
+            token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(types, parent_visitor, &operator.type2)),
+            token::ControlOperator::EQ => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            ".ne" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            ".le" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
-            ".lt" => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            ".ge" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
-            ".gt" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
-            ".size" => {
+            token::ControlOperator::NE => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            token::ControlOperator::LE => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
+            token::ControlOperator::LT => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            token::ControlOperator::GE => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
+            token::ControlOperator::GT => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
+            token::ControlOperator::SIZE => {
                 let base_range = match &operator.type2 {
                     Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
@@ -653,7 +651,6 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
                         }
                     } else {
                         let cddl_ident = infer_best_name(types, parent_visitor, &CDDLType::from(type2));
-                        println!("ASDF {:?}", cddl_ident);
                         let rust_ident = RustIdent::new(cddl_ident.clone());
                         parse_group(types, parent_visitor, group, &rust_ident, Representation::Array, None, None);
                         // we aren't returning an array, but rather a struct where the fields are ordered
