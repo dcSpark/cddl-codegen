@@ -968,9 +968,20 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
         CDDLType::Identifier(_) => None, // TODO: recurse up for GenericParam
         CDDLType::Type(_) => None,
         CDDLType::TypeChoice(t) => t.comments_after_type.clone(),
-        // TODO: check child and return either comments_after_type or comments_before_operator depending on the match
-        // TODO: if operator is not none, recurse up for GenericArg/TypeChoice/MemberKey
-        CDDLType::Type1(t) => t.comments_after_type.clone(),
+        CDDLType::Type1(t) => {
+            if let Some(CDDLType::Type2(_)) = child {
+                if let Some(op) = &t.operator {
+                    return op.comments_before_operator.clone()
+                } else {
+                    return t.comments_after_type.clone()
+                }
+            };
+            if t.operator.is_none() {
+                get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type))
+            } else {
+                None
+            }
+        },
         CDDLType::Type2(t) => match t {
             Type2::ParenthesizedType { comments_after_type, .. } => get_comments_if_type_parent(parent_visitor, cddl_type, child, comments_after_type),
             Type2::Map { comments_after_group, .. } => get_comments_if_group_parent(parent_visitor, cddl_type, child, comments_after_group),
@@ -981,11 +992,18 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
             Type2::TaggedData { comments_after_type, .. } => get_comments_if_type_parent(parent_visitor, cddl_type, child, comments_after_type),
             _ => None,
         },
-        CDDLType::Operator(_) => {
-            // TODO: missing from upstream cddl library
-            // if let Some(CDDLType::(_)) = child {
-            //     return comments_after_group
-            // }
+        CDDLType::Operator(t) => {
+            if let Some(CDDLType::RangeCtlOp(_)) = child {
+                return t.comments_after_operator.clone()
+            }
+            if let Some(CDDLType::Type2(t2)) = child {
+                // "comments_before_operator" is associated with the 1st type2 and not the second (t.type2)
+                if *t2 == &t.type2 {
+                    return None
+                } else {
+                    return t.comments_before_operator.clone()
+                }
+            }
             None
         },
         CDDLType::Occurrence(t) => t.comments.clone(),
@@ -993,11 +1011,9 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
         CDDLType::Value(_) => None,
         CDDLType::ValueMemberKeyEntry(_) => None,
         CDDLType::TypeGroupnameEntry(_) => None,
-        CDDLType::MemberKey(t) => {
-            match t {
-                MemberKey::NonMemberKey { comments_after_type_or_group, .. } => comments_after_type_or_group.clone(),
-                _ => None
-            }
+        CDDLType::MemberKey(t) => match t {
+            MemberKey::NonMemberKey { comments_after_type_or_group, .. } => comments_after_type_or_group.clone(),
+            _ => None
         },
         CDDLType::NonMemberKey(_) => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
         _ => None
