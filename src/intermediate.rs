@@ -66,23 +66,23 @@ impl<'a> IntermediateTypes<'a> {
             let ident = AliasIdent::new(CDDLIdent::new(name));
             aliases.insert(ident.clone(), (rust_type, false, false));
         };
-        insert_alias("uint", RustType::Primitive(Primitive::U64));
-        insert_alias("nint", RustType::Primitive(Primitive::N64));
-        insert_alias("bool", RustType::Primitive(Primitive::Bool));
+        insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
+        insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
+        insert_alias("bool", ConceptualRustType::Primitive(Primitive::Bool).into());
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
         //"int" => "i64",
-        let string_type = RustType::Primitive(Primitive::Str);
+        let string_type: RustType = ConceptualRustType::Primitive(Primitive::Str).into();
         insert_alias("tstr", string_type.clone());
         insert_alias("text", string_type);
-        insert_alias("bstr", RustType::Primitive(Primitive::Bytes));
-        insert_alias("bytes", RustType::Primitive(Primitive::Bytes));
-        let null_type = RustType::Fixed(FixedValue::Null);
+        insert_alias("bstr", ConceptualRustType::Primitive(Primitive::Bytes).into());
+        insert_alias("bytes", ConceptualRustType::Primitive(Primitive::Bytes).into());
+        let null_type: RustType = ConceptualRustType::Fixed(FixedValue::Null).into();
         insert_alias("null", null_type.clone());
         insert_alias("nil", null_type);
-        insert_alias("true", RustType::Fixed(FixedValue::Bool(true)));
-        insert_alias("false", RustType::Fixed(FixedValue::Bool(false)));
+        insert_alias("true", ConceptualRustType::Fixed(FixedValue::Bool(true)).into());
+        insert_alias("false", ConceptualRustType::Fixed(FixedValue::Bool(false)).into());
         // What about bingint/other stuff in the standard prelude?
         aliases
     }
@@ -95,12 +95,12 @@ impl<'a> IntermediateTypes<'a> {
         let resolved = match self.apply_type_aliases(&alias_ident) {
             Some(ty) => match alias_ident {
                 AliasIdent::Reserved(_) => ty,
-                AliasIdent::Rust(_) => RustType::Alias(alias_ident.clone(), Box::new(ty))
+                AliasIdent::Rust(_) => ty.as_alias(alias_ident.clone())
             },
-            None => RustType::Rust(RustIdent::new(raw.clone())),
+            None => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
         };
-        let resolved_inner = match &resolved {
-            RustType::Alias(_, ty) => ty,
+        let resolved_inner = match &resolved.conceptual_type {
+            ConceptualRustType::Alias(_, ty) => ty,
             ty => ty,
         };
         if CLI_ARGS.binary_wrappers {
@@ -108,8 +108,8 @@ impl<'a> IntermediateTypes<'a> {
             // we would have generated a named wrapper object so we should
             // refer to that instead
             if !is_identifier_reserved(&raw.to_string()) {
-                if let RustType::Primitive(Primitive::Bytes) = resolved_inner {
-                    return RustType::Rust(RustIdent::new(raw.clone()));
+                if let ConceptualRustType::Primitive(Primitive::Bytes) = resolved_inner {
+                    return ConceptualRustType::Rust(RustIdent::new(raw.clone())).into();
                 }
             }
         }
@@ -117,10 +117,10 @@ impl<'a> IntermediateTypes<'a> {
         // specifically handle this case since you wouldn't know whether you hit a break
         // or are reading a key here, unless we check, but then you'd need to store the
         // non-break special value once read
-        if let RustType::Array(ty) = resolved_inner {
+        if let ConceptualRustType::Array(ty) = resolved_inner {
             assert!(!ty.cbor_types().contains(&CBORType::Special));
         }
-        if let RustType::Map(key_type, _val_type) = resolved_inner {
+        if let ConceptualRustType::Map(key_type, _val_type) = resolved_inner {
             assert!(!key_type.cbor_types().contains(&CBORType::Special));
         }
         resolved
@@ -140,14 +140,14 @@ impl<'a> IntermediateTypes<'a> {
                     // we auto-include only the parts of the cddl prelude necessary (and supported)
                     cddl_prelude(reserved).expect(&format!("Reserved ident {} not a part of cddl_prelude?", reserved));
                     self.emit_prelude(reserved.clone());
-                    Some(RustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))))
+                    Some(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))).into())
                 },
             },
         }
     }
 
     pub fn register_type_alias(&mut self, alias: RustIdent, base_type: RustType, generate_rust_alias: bool, generate_wasm_alias: bool) {
-        if let RustType::Alias(_ident, _ty) = &base_type {
+        if let ConceptualRustType::Alias(_ident, _ty) = &base_type.conceptual_type {
             panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
         }
         self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias, generate_wasm_alias));
@@ -163,28 +163,28 @@ impl<'a> IntermediateTypes<'a> {
             RustStructType::Table { domain, range } => {
                 // we must provide the keys type to return
                 if CLI_ARGS.wasm {
-                    self.create_and_register_array_type(domain.clone(), &domain.name_as_wasm_array());
+                    self.create_and_register_array_type(domain.clone(), &domain.conceptual_type.name_as_wasm_array());
                 }
-                if rust_struct.tag.is_none() {
-                    self.register_type_alias(
-                        rust_struct.ident.clone(),
-                        RustType::Map(Box::new(domain.clone()), Box::new(range.clone())),
-                        true,
-                        false)
-                } else {
-                    unimplemented!("what to do here?");
+                let mut map_type: RustType = ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
+                if let Some(tag) = rust_struct.tag {
+                    map_type = map_type.tag(tag);
                 }
+                self.register_type_alias(
+                    rust_struct.ident.clone(),
+                    map_type,
+                    true,
+                    false)
             },
             RustStructType::Array { element_type } => {
-                if rust_struct.tag.is_none() {
-                    self.register_type_alias(
-                        rust_struct.ident.clone(),
-                        RustType::Array(Box::new(element_type.clone())),
-                        true,
-                        false)
-                } else {
-                    unimplemented!("what to do here?");
+                let mut array_type: RustType = ConceptualRustType::Array(Box::new(element_type.clone())).into();
+                if let Some(tag) = rust_struct.tag {
+                    array_type = array_type.tag(tag);
                 }
+                self.register_type_alias(
+                    rust_struct.ident.clone(),
+                    array_type,
+                    true,
+                    false)
             },
             RustStructType::Wrapper { min_max: Some(_) , ..} => {
                 self.mark_new_can_fail(rust_struct.ident.clone());
@@ -196,23 +196,23 @@ impl<'a> IntermediateTypes<'a> {
 
     // creates a RustType for the array type - and if needed, registers a type to generate
     // TODO: After the split we should be able to only register it directly
-    // and then examine those at generation-time and handle things ALWAYS as RustType::Array
+    // and then examine those at generation-time and handle things ALWAYS as ConceptualRustType::Array
     pub fn create_and_register_array_type(&mut self, element_type: RustType, array_type_name: &str) -> RustType {
-        let raw_arr_type = RustType::Array(Box::new(element_type.clone()));
+        let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
         if raw_arr_type.directly_wasm_exposable() {
-            return raw_arr_type;
+            return raw_arr_type.into();
         }
         let array_type_ident = RustIdent::new(CDDLIdent::new(array_type_name));
         // If we are the only thing referring to our element and it's a plain group
         // we must mark it as being serialized as an array
-        if let RustType::Rust(_) = &element_type {
+        if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
             self.set_rep_if_plain_group(&array_type_ident, Representation::Array);
         }
         // we don't pass in tags here. If a tag-wrapped array is done I think it generates
         // 2 separate types (array wrapper -> tag wrapper struct)
         self.register_rust_struct(RustStruct::new_array(array_type_ident, None, element_type.clone()));
-        RustType::Array(Box::new(element_type))
+        ConceptualRustType::Array(Box::new(element_type)).into()
     }
 
     pub fn register_generic_def(&mut self, def: GenericDef) {
@@ -236,13 +236,13 @@ impl<'a> IntermediateTypes<'a> {
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types
         let mut used_as_key = BTreeSet::new();
-        fn mark_used_as_key(ty: &RustType, used_as_key: &mut BTreeSet<RustIdent>) {
-            if let RustType::Rust(ident) = ty {
+        fn mark_used_as_key(ty: &ConceptualRustType, used_as_key: &mut BTreeSet<RustIdent>) {
+            if let ConceptualRustType::Rust(ident) = ty {
                 used_as_key.insert(ident.clone());
             }
         }
-        fn check_used_as_key<'a>(ty: &RustType, types: &IntermediateTypes<'a>, used_as_key: &mut BTreeSet<RustIdent>) {
-            if let RustType::Map(k, _v) = ty {
+        fn check_used_as_key<'a>(ty: &ConceptualRustType, types: &IntermediateTypes<'a>, used_as_key: &mut BTreeSet<RustIdent>) {
+            if let ConceptualRustType::Map(k, _v) = ty {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
@@ -255,7 +255,7 @@ impl<'a> IntermediateTypes<'a> {
         self.used_as_key = used_as_key;
     }
 
-    pub fn visit_types<F: FnMut(&RustType)>(&self, f: &mut F) {
+    pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, f);
         }
@@ -264,7 +264,7 @@ impl<'a> IntermediateTypes<'a> {
     pub fn is_referenced(&self, ident: &RustIdent) -> bool {
         let mut found = false;
         self.visit_types(&mut |ty| match ty {
-            RustType::Rust(id) => if id == ident {
+            ConceptualRustType::Rust(id) => if id == ident {
                 found = true
             },
             _ => (),
@@ -640,8 +640,134 @@ mod idents {
 }
 pub use idents::*;
 
+/// Details on how to encode a rust type in CBOR. Order is important
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RustType {
+pub enum CBOREncodingOperation {
+    /// CBOR tagged type
+    Tagged(usize),
+    /// bytes .cbor T in cddl, outside of serialization is semantically like T
+    CBORBytes,
+}
+
+/// A complete rust type, including serialization options that don't impact other areas
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustType {
+    /// Conceptual type i.e. how it's used in non-serialization contexts
+    pub conceptual_type: ConceptualRustType,
+    /// How to encode the conceptual type. Order is important. Applied in iteration order.
+    pub encodings: Vec<CBOREncodingOperation>,
+    // default value when missing in deserialization
+    pub default: Option<FixedValue>,
+}
+
+impl std::ops::Deref for RustType {
+    type Target = ConceptualRustType;
+
+    fn deref(&self) -> &Self::Target {
+        &self.conceptual_type
+    }
+}
+
+impl RustType {
+    pub fn new(conceptual_type: ConceptualRustType) -> Self {
+        Self {
+            conceptual_type,
+            encodings: Vec::new(),
+            default: None,
+        }
+    }
+
+    pub fn as_alias(mut self, alias_ident: AliasIdent) -> Self {
+        self.conceptual_type = ConceptualRustType::Alias(alias_ident, Box::new(self.conceptual_type));
+        self
+    }
+
+    pub fn tag(mut self, tag: usize) -> Self {
+        self.encodings.push(CBOREncodingOperation::Tagged(tag));
+        self
+    }
+
+    pub fn default(mut self, default_value: FixedValue) -> Self {
+        assert!(self.default.is_none());
+        // TODO: verify that the fixed value makes sense for the conceptual_type
+        self.default = Some(default_value);
+        self
+    }
+
+    pub fn as_bytes(mut self) -> Self {
+        self.encodings.push(CBOREncodingOperation::CBORBytes);
+        self
+    }
+
+    pub fn resolve_aliases(self) -> Self {
+        Self {
+            conceptual_type: self.conceptual_type.resolve_aliases(),
+            encodings: self.encodings,
+            default: self.default,
+        }
+    }
+
+    pub fn cbor_types(&self) -> Vec<CBORType> {
+        match self.encodings.last() {
+            Some(CBOREncodingOperation::Tagged(_)) => vec![CBORType::Tag],
+            Some(CBOREncodingOperation::CBORBytes) => vec![CBORType::Bytes],
+            None => match &self.conceptual_type {
+                ConceptualRustType::Fixed(f) => vec![match f {
+                    FixedValue::Uint(_) => CBORType::UnsignedInteger,
+                    FixedValue::Nint(_) => CBORType::NegativeInteger,
+                    FixedValue::Text(_) => CBORType::Text,
+                    FixedValue::Null => CBORType::Special,
+                    FixedValue::Bool(_) => CBORType::Special,
+                }],
+                ConceptualRustType::Primitive(p) => p.cbor_types(),
+                ConceptualRustType::Rust(_ident) => {
+                    //panic!("TODO: store first cbor tag somewhere")
+                    vec![CBORType::Array, CBORType::Map]
+                },
+                ConceptualRustType::Array(_) => vec![CBORType::Array],
+                ConceptualRustType::Map(_k, _v) => vec![CBORType::Map],
+                ConceptualRustType::Optional(ty) => {
+                    let mut inner_types = ty.cbor_types();
+                    if !inner_types.contains(&CBORType::Special) {
+                        inner_types.push(CBORType::Special);
+                    }
+                    inner_types
+                },
+                ConceptualRustType::Alias(_ident, ty) => Self::new((**ty).clone()).cbor_types(),
+            }
+        }
+    }
+
+    fn _cbor_special_type(&self) -> Option<CBORSpecial> {
+        unimplemented!()
+    }
+
+    fn _is_serialize_multiline(&self) -> bool {
+        if self.encodings.is_empty() {
+            match &self.conceptual_type {
+                ConceptualRustType::Fixed(_) => false,
+                ConceptualRustType::Primitive(_) => false,
+                ConceptualRustType::Rust(_) => false,
+                ConceptualRustType::Array(_) => true,
+                ConceptualRustType::Optional(_) => false,
+                ConceptualRustType::Map(_, _) => false,
+                ConceptualRustType::Alias(_ident, ty) => Self::new((**ty).clone())._is_serialize_multiline(),
+            }
+        } else {
+            true
+        }
+    }
+}
+
+impl std::convert::From<ConceptualRustType> for RustType {
+    fn from(conceptual_type: ConceptualRustType) -> Self {
+        Self::new(conceptual_type)
+    }
+}
+
+/// How a type will be represented in rust outside of a serialization context
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConceptualRustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm
     Primitive(Primitive),
@@ -649,16 +775,12 @@ pub enum RustType {
     Rust(RustIdent),
     // Array-wrapped type. Passed as Vec<T> if T is Primitive
     Array(Box<RustType>),
-    // Tagged type. Behavior depends entirely on wrapped type.
-    Tagged(usize, Box<RustType>),
     // T / null in CDDL - auto-converts to Option<T> in rust for ease of use.
     Optional(Box<RustType>),
     // TODO: table type to support inlined defined table-type groups as fields
     Map(Box<RustType>, Box<RustType>),
     // Alias for another type
-    Alias(AliasIdent, Box<RustType>),
-    // bytes .cbor T in cddl, outside of serialization is semantically like T
-    CBORBytes(Box<RustType>),
+    Alias(AliasIdent, Box<ConceptualRustType>),
 
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
@@ -667,34 +789,31 @@ pub enum RustType {
     // another approach would be necessary.
 }
 
-impl RustType {
+impl ConceptualRustType {
     pub fn resolve_aliases(self) -> Self {
         match self {
-            RustType::Array(ty) => RustType::Array(Box::new(ty.resolve_aliases())),
-            RustType::Tagged(tag, ty) => RustType::Tagged(tag, Box::new(ty.resolve_aliases())),
-            RustType::Alias(_, ty) => ty.resolve_aliases(),
-            RustType::Map(key, value) => RustType::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
-            RustType::Optional(ty) => RustType::Optional(Box::new(ty.resolve_aliases())),
-            RustType::CBORBytes(ty) => RustType::CBORBytes(Box::new(ty.resolve_aliases())),
+            Self::Array(ty) => Self::Array(Box::new(ty.resolve_aliases())),
+            Self::Alias(_, ty) => ty.resolve_aliases(),
+            Self::Map(key, value) => Self::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
+            Self::Optional(ty) => Self::Optional(Box::new(ty.resolve_aliases())),
             _ => self,
         }
     }
 
     pub fn directly_wasm_exposable(&self) -> bool {
         match self {
-            RustType::Fixed(_) => false,
-            RustType::Primitive(_) => true,
-            RustType::Rust(_) => false,
+            Self::Fixed(_) => false,
+            Self::Primitive(_) => true,
+            Self::Rust(_) => false,
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
-            RustType::Array(ty) => {
-                let inner = match &**ty {
-                    RustType::Alias(_ident, ty) => ty,
-                    RustType::Optional(ty) => ty,
-                    RustType::Tagged(_tag, ty) => ty,
+            Self::Array(ty) => {
+                let inner = match &ty.conceptual_type {
+                    Self::Alias(_ident, ty) => &*ty,
+                    Self::Optional(ty) => &ty.conceptual_type,
                     ty => ty,
                 };
                 match inner {
-                    RustType::Primitive(p) => match p {
+                    Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
                         Primitive::Bool |
                         Primitive::I8 |
@@ -711,30 +830,26 @@ impl RustType {
                         // Vec<String> is not supported by wasm-bindgen
                         Primitive::Str => false,
                     },
-                    RustType::Array(_) => false,
-                    _ => ty.directly_wasm_exposable(),
+                    Self::Array(_) => false,
+                    _ => ty.conceptual_type.directly_wasm_exposable(),
                 }
             },
-            RustType::Tagged(_tag, ty) => ty.directly_wasm_exposable(),
-            RustType::Optional(ty) => ty.directly_wasm_exposable(),
-            RustType::Map(_, _) => false,
-            RustType::Alias(_ident, ty) => ty.directly_wasm_exposable(),
-            RustType::CBORBytes(ty) => ty.directly_wasm_exposable(),
+            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(),
+            Self::Map(_, _) => false,
+            Self::Alias(_ident, ty) => ty.directly_wasm_exposable(),
         }
     }
 
     pub fn is_fixed_value(&self) -> bool {
         match self {
-            RustType::Fixed(_) => true,
-            RustType::Tagged(_tag, ty) => ty.is_fixed_value(),
-            RustType::Alias(_ident, ty) => ty.is_fixed_value(),
-            RustType::CBORBytes(ty) => ty.is_fixed_value(),
+            Self::Fixed(_) => true,
+            Self::Alias(_ident, ty) => ty.is_fixed_value(),
             _ => false,
         }
     }
 
     pub fn name_as_wasm_array(&self) -> String {
-        if RustType::Array(Box::new(self.clone())).directly_wasm_exposable() {
+        if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable() {
             format!("Vec<{}>", self.for_wasm_member())
         } else {
             format!("{}s", self.for_variant())
@@ -753,20 +868,18 @@ impl RustType {
     /// Function parameter TYPE by-non-mut-reference for read-only
     pub fn for_rust_read(&self) -> String {
         match self {
-            RustType::Fixed(_) => panic!("should not expose Fixed type, only here for serialization: {:?}", self),
-            RustType::Primitive(p) => p.to_string(),
-            RustType::Rust(ident) => format!("&{}", ident),
-            RustType::Array(ty) => format!("&{}", ty.name_as_rust_array(false)),
-            RustType::Tagged(_tag, ty) => ty.for_rust_read(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_rust_read()),
-            RustType::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
-            RustType::Alias(ident, ty) => match &**ty {
+            Self::Fixed(_) => panic!("should not expose Fixed type, only here for serialization: {:?}", self),
+            Self::Primitive(p) => p.to_string(),
+            Self::Rust(ident) => format!("&{}", ident),
+            Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(false)),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_rust_read()),
+            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
+            Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
-                RustType::Rust(_) => format!("&{}", ident),
+                Self::Rust(_) => format!("&{}", ident),
                 
                 _ => ident.to_string(),
             },
-            RustType::CBORBytes(ty) => ty.for_rust_read(),
         }
     }
 
@@ -782,24 +895,22 @@ impl RustType {
             "&"
         };
         match self {
-            RustType::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
-            RustType::Primitive(p) => p.to_string(),
-            RustType::Rust(ident) => format!("{}{}", opt_ref, ident),
-            RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.name_as_wasm_array()
+            Self::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
+            Self::Primitive(p) => p.to_string(),
+            Self::Rust(ident) => format!("{}{}", opt_ref, ident),
+            Self::Array(ty) => if self.directly_wasm_exposable() {
+                ty.conceptual_type.name_as_wasm_array()
             } else {
-                format!("{}{}", opt_ref, ty.name_as_wasm_array())
+                format!("{}{}", opt_ref, ty.conceptual_type.name_as_wasm_array())
             },
-            RustType::Tagged(_tag, ty) => ty.for_wasm_param_impl(force_not_ref),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_param_impl(true)),
-            RustType::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member()),
-            // it might not be worth generating this as alises are ignored by wasm-pack build, but
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_param_impl(true)),
+            Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member()),
+            // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
-            RustType::Alias(ident, ty) => match &**ty {
-                RustType::Rust(_) => format!("{}{}", opt_ref, ident),
+            Self::Alias(ident, ty) => match &**ty {
+                Self::Rust(_) => format!("{}{}", opt_ref, ident),
                 _ => ident.to_string(),
             }
-            RustType::CBORBytes(ty) => ty.for_wasm_param(),
         }
     }
 
@@ -809,31 +920,29 @@ impl RustType {
     }
 
     pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(format!("Map{}To{}", k.for_variant(), v.for_variant())))
+        RustIdent::new(CDDLIdent::new(format!("Map{}To{}", k.conceptual_type.for_variant(), v.conceptual_type.for_variant())))
     }
 
     pub fn name_for_rust_map(k: &RustType, v: &RustType, from_wasm: bool) -> String {
-        format!("{}<{}, {}>", table_type(), k.for_rust_member(from_wasm), v.for_rust_member(from_wasm))
+        format!("{}<{}, {}>", table_type(), k.conceptual_type.for_rust_member(from_wasm), v.conceptual_type.for_rust_member(from_wasm))
     }
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used.
     pub fn for_wasm_member(&self) -> String {
         match self {
-            RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
-            RustType::Primitive(p) => p.to_string(),
-            RustType::Rust(ident) => ident.to_string(),
-            RustType::Array(ty) => ty.name_as_wasm_array(),
-            RustType::Tagged(_tag, ty) => ty.for_wasm_member(),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_wasm_member()),
-            RustType::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
-            RustType::Alias(ident, ty) => match ident {
+            Self::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
+            Self::Primitive(p) => p.to_string(),
+            Self::Rust(ident) => ident.to_string(),
+            Self::Array(ty) => ty.conceptual_type.name_as_wasm_array(),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_member()),
+            Self::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
+            Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_wasm_member(),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
-            RustType::CBORBytes(ty) => ty.for_wasm_member(),
         }
     }
 
@@ -845,40 +954,36 @@ impl RustType {
             ""
         };
         match self {
-            RustType::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
-            RustType::Primitive(p) => p.to_string(),
-            RustType::Rust(ident) => format!("{}{}", core, ident),
-            RustType::Array(ty) => ty.name_as_rust_array(from_wasm),
-            RustType::Tagged(_tag, ty) => ty.for_rust_member(from_wasm),
-            RustType::Optional(ty) => format!("Option<{}>", ty.for_rust_member(from_wasm)),
-            RustType::Map(k, v) => Self::name_for_rust_map(k, v, from_wasm),
-            RustType::Alias(ident, ty) => match ident {
+            Self::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
+            Self::Primitive(p) => p.to_string(),
+            Self::Rust(ident) => format!("{}{}", core, ident),
+            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(from_wasm),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_rust_member(from_wasm)),
+            Self::Map(k, v) => Self::name_for_rust_map(k, v, from_wasm),
+            Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_rust_member(from_wasm),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => format!("{}{}", core, ident),
             },
-            RustType::CBORBytes(ty) => ty.for_rust_member(from_wasm),
         }
     }
 
     /// IDENTIFIER for an enum variant. (Use for_rust_member() for the )
     pub fn for_variant(&self) -> VariantIdent {
         match self {
-            RustType::Fixed(f) => f.for_variant(),
-            RustType::Primitive(p) => p.to_variant(),
-            RustType::Rust(ident) => VariantIdent::new_rust(ident.clone()),
-            RustType::Array(inner) => VariantIdent::new_custom(format!("Arr{}", inner.for_variant())),
-            RustType::Tagged(_tag, ty) => ty.for_variant(),
+            Self::Fixed(f) => f.for_variant(),
+            Self::Primitive(p) => p.to_variant(),
+            Self::Rust(ident) => VariantIdent::new_rust(ident.clone()),
+            Self::Array(inner) => VariantIdent::new_custom(format!("Arr{}", inner.conceptual_type.for_variant())),
             // TODO: should we not end up in this situation and just insert a Null fixed value instead?
-            RustType::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.for_variant())),
-            RustType::Map(k, v) => VariantIdent::new_custom(Self::name_for_wasm_map(k, v).to_string()),
-            RustType::Alias(ident, _ty) => match ident {
+            Self::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.conceptual_type.for_variant())),
+            Self::Map(k, v) => VariantIdent::new_custom(Self::name_for_wasm_map(k, v).to_string()),
+            Self::Alias(ident, _ty) => match ident {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
                 AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
             },
-            RustType::CBORBytes(ty) => VariantIdent::new_custom(format!("CBORBytes{}", ty.for_variant())),
         }
     }
 
@@ -886,57 +991,56 @@ impl RustType {
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
     pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
-        //assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
+        //assert!(matches!(self, Self::Tagged(_, _)) || !can_fail);
         match self {
-            RustType::Tagged(_tag, ty) => {
-                let mut inner = ty.from_wasm_boundary_clone(expr, can_fail);
-                if can_fail {
-                    inner.push(ToWasmBoundaryOperations::TryInto);
-                } else {
-                    inner.push(ToWasmBoundaryOperations::Into);
-                }
-                inner
-            },
-            RustType::Rust(_ident) => vec![
+            // Self::Tagged(_tag, ty) => {
+            //     let mut inner = ty.from_wasm_boundary_clone(expr, can_fail);
+            //     if can_fail {
+            //         inner.push(ToWasmBoundaryOperations::TryInto);
+            //     } else {
+            //         inner.push(ToWasmBoundaryOperations::Into);
+            //     }
+            //     inner
+            // },
+            Self::Rust(_ident) => vec![
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
             ],
-            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
-            RustType::Optional(ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
-            RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.from_wasm_boundary_clone(expr, can_fail)
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
+            Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_clone_optional(expr, can_fail),
+            Self::Array(ty) => if self.directly_wasm_exposable() {
+                ty.conceptual_type.from_wasm_boundary_clone(expr, can_fail)
             } else {
                 vec![
                     ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                     ToWasmBoundaryOperations::Into,
                 ]
             },
-            RustType::Map(_k, _v) => vec![
+            Self::Map(_k, _v) => vec![
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
             ],
-            RustType::CBORBytes(ty) => ty.from_wasm_boundary_clone(expr, can_fail),
             _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
         }
     }
 
     fn from_wasm_boundary_clone_optional(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
-        assert!(matches!(self, RustType::Tagged(_, _)) || !can_fail);
+        //assert!(matches!(self, Self::Tagged(_, _)) || !can_fail);
         match self {
-            RustType::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
-            RustType::Tagged(_tag, ty) => {
-                let mut inner = ty.from_wasm_boundary_clone_optional(expr, can_fail);
-                if can_fail {
-                    inner.push(ToWasmBoundaryOperations::TryInto);
-                } else {
-                    inner.push(ToWasmBoundaryOperations::Into);
-                }
-                inner
-            },
-            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
-            RustType::Array(..) |
-            RustType::Rust(..) |
-            RustType::Map(..) => vec![
+            Self::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
+            // Self::Tagged(_tag, ty) => {
+            //     let mut inner = ty.from_wasm_boundary_clone_optional(expr, can_fail);
+            //     if can_fail {
+            //         inner.push(ToWasmBoundaryOperations::TryInto);
+            //     } else {
+            //         inner.push(ToWasmBoundaryOperations::Into);
+            //     }
+            //     inner
+            // },
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
+            Self::Array(..) |
+            Self::Rust(..) |
+            Self::Map(..) => vec![
                 ToWasmBoundaryOperations::Code(expr.to_owned()),
                 if can_fail {
                     ToWasmBoundaryOperations::MapTryInto
@@ -944,7 +1048,6 @@ impl RustType {
                     ToWasmBoundaryOperations::MapInto
                 },
             ],
-            RustType::CBORBytes(ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
             _ => panic!("unsupported or unexpected"),
         }
     }
@@ -952,17 +1055,15 @@ impl RustType {
     /// for non-owning parameter TYPES from wasm
     pub fn from_wasm_boundary_ref(&self, expr: &str) -> String {
         match self {
-            RustType::Tagged(_tag, ty) => ty.from_wasm_boundary_ref(expr),
-            RustType::Rust(_ident) => expr.to_owned(),
-            RustType::Alias(_ident, ty) => ty.from_wasm_boundary_ref(expr),
-            RustType::Optional(ty) => ty.from_wasm_boundary_ref(expr),
-            RustType::Array(ty) => if self.directly_wasm_exposable() {
-                ty.from_wasm_boundary_ref(expr)
+            Self::Rust(_ident) => expr.to_owned(),
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_ref(expr),
+            Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(expr),
+            Self::Array(ty) => if self.directly_wasm_exposable() {
+                ty.conceptual_type.from_wasm_boundary_ref(expr)
             } else {
                 expr.to_owned()
             },
-            RustType::Map(_k, _v) => expr.to_owned(),
-            RustType::CBORBytes(ty) => ty.from_wasm_boundary_ref(expr),
+            Self::Map(_k, _v) => expr.to_owned(),
             _ => format!("&{}", expr),
         }
     }
@@ -970,8 +1071,8 @@ impl RustType {
     /// FROM rust TO wasm (with cloning/wrapping) (for arguments)
     pub fn to_wasm_boundary(&self, expr: &str, is_ref: bool) -> String {
         match self {
-            RustType::Fixed(_) => panic!("fixed types are a serialization detail"),
-            RustType::Primitive(_p) => if self.is_copy() {
+            Self::Fixed(_) => panic!("fixed types are a serialization detail"),
+            Self::Primitive(_p) => if self.is_copy() {
                 if is_ref {
                     format!("*{}", expr)
                 } else {
@@ -980,20 +1081,18 @@ impl RustType {
             } else {
                 format!("{}.clone()", expr)
             },
-            RustType::Tagged(_tag, ty) => ty.to_wasm_boundary(expr, is_ref),
-            RustType::Rust(_ident) => format!("{}.clone().into()", expr),
-            //RustType::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
-            //RustType::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
-            RustType::Array(ty) => format!("{}.clone().into()", expr),
-            RustType::Map(k, v) => format!("{}.clone().into()", expr),
-            RustType::Optional(ty) => ty.to_wasm_boundary_optional(expr, is_ref),
-            RustType::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
-            RustType::CBORBytes(ty) => ty.to_wasm_boundary(expr, is_ref),
+            Self::Rust(_ident) => format!("{}.clone().into()", expr),
+            //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
+            //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
+            Self::Array(_ty) => format!("{}.clone().into()", expr),
+            Self::Map(_k, _v) => format!("{}.clone().into()", expr),
+            Self::Optional(ty) => ty.conceptual_type.to_wasm_boundary_optional(expr, is_ref),
+            Self::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
         }
     }
 
     /// FROM rust TO wasm as Option<T>. This is separate as we can have optional fields
-    /// that act identical to RustType::Optional(ty)
+    /// that act identical to Self::Optional(ty)
     pub fn to_wasm_boundary_optional(&self, expr: &str, is_ref: bool) -> String {
         if self.directly_wasm_exposable() {
             self.to_wasm_boundary(expr, is_ref)
@@ -1005,8 +1104,8 @@ impl RustType {
     // if it impements the Copy trait in rust
     pub fn is_copy(&self) -> bool {
         match self {
-            RustType::Fixed(_f) => unreachable!(),
-            RustType::Primitive(p) => match p {
+            Self::Fixed(_f) => unreachable!(),
+            Self::Primitive(p) => match p {
                 Primitive::Bool |
                 Primitive::I8 |
                 Primitive::I16 |
@@ -1020,13 +1119,11 @@ impl RustType {
                 Primitive::Str |
                 Primitive::Bytes => false,
             },
-            RustType::Rust(_ident) => false,
-            RustType::Tagged(_tag, ty) => ty.is_copy(),
-            RustType::Array(_) => false,
-            RustType::Map(_k, _v) => false,
-            RustType::Optional(ty) => ty.is_copy(),
-            RustType::Alias(_ident, ty) => ty.is_copy(),
-            RustType::CBORBytes(ty) => ty.is_copy(),
+            Self::Rust(_ident) => false,
+            Self::Array(_) => false,
+            Self::Map(_k, _v) => false,
+            Self::Optional(ty) => ty.conceptual_type.is_copy(),
+            Self::Alias(_ident, ty) => ty.is_copy(),
         }
     }
 
@@ -1038,58 +1135,10 @@ impl RustType {
         }
     }
 
-    // Ok case is single first cbor type in bytes, Err is multiple possibilities
-    pub fn cbor_types(&self) -> Vec<CBORType> {
-        match self {
-            RustType::Fixed(f) => vec![match f {
-                FixedValue::Uint(_) => CBORType::UnsignedInteger,
-                FixedValue::Nint(_) => CBORType::NegativeInteger,
-                FixedValue::Text(_) => CBORType::Text,
-                FixedValue::Null => CBORType::Special,
-                FixedValue::Bool(_) => CBORType::Special,
-            }],
-            RustType::Primitive(p) => p.cbor_types(),
-            RustType::Rust(_ident) => {
-                //panic!("TODO: store first cbor tag somewhere")
-                vec![CBORType::Array, CBORType::Map]
-            },
-            RustType::Tagged(_tag, _ty) => vec![CBORType::Tag],
-            RustType::Array(_) => vec![CBORType::Array],
-            RustType::Map(_k, _v) => vec![CBORType::Map],
-            RustType::Optional(ty) => {
-                let mut inner_types = ty.cbor_types();
-                if !inner_types.contains(&CBORType::Special) {
-                    inner_types.push(CBORType::Special);
-                }
-                inner_types
-            },
-            RustType::Alias(_ident, ty) => ty.cbor_types(),
-            RustType::CBORBytes(ty) => vec![CBORType::Bytes],
-        }
-    }
-
-    fn _cbor_special_type(&self) -> Option<CBORSpecial> {
-        unimplemented!()
-    }
-
-    fn _is_serialize_multiline(&self) -> bool {
-        match self {
-            RustType::Fixed(_) => false,
-            RustType::Primitive(_) => false,
-            RustType::Rust(_) => false,
-            RustType::Array(_) => true,
-            RustType::Tagged(_, _) => true,
-            RustType::Optional(_) => false,
-            RustType::Map(_, _) => false,
-            RustType::Alias(_ident, ty) => ty._is_serialize_multiline(),
-            RustType::CBORBytes(ty) => true,
-        }
-    }
-
     // CBOR len count for the entire type if it were embedded as a member in a cbor collection (array/map)
     pub fn expanded_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
         match self {
-            RustType::Optional(ty) => match ty.expanded_field_count(types) {
+            Self::Optional(ty) => match ty.conceptual_type.expanded_field_count(types) {
                 Some(1) => Some(1),
                 // differing sizes when Null vs Some
                 _ => None,
@@ -1098,12 +1147,12 @@ impl RustType {
             // Once we split up parsing and codegen this shouldn't happen but with our current multi-pass
             // approach we might have out of order struct references which would break here without it
             // but on the final pass (the one we export) this should't be an issue
-            RustType::Rust(ident) => if types.is_plain_group(ident) {
+            Self::Rust(ident) => if types.is_plain_group(ident) {
                 types.rust_structs.get(&ident)?.fixed_field_count(types)
             } else {
                 Some(1)
             },
-            RustType::Alias(_ident, ty) => ty.expanded_field_count(types),
+            Self::Alias(_ident, ty) => ty.expanded_field_count(types),
             _ => Some(1),
         }
     }
@@ -1116,8 +1165,8 @@ impl RustType {
         match self.expanded_field_count(types) {
             Some(count) => Some(count.to_string()),
             None => match self {
-                RustType::Optional(ty) => Some(format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.definite_info("x", types)?)),
-                RustType::Rust(ident) => if types.is_plain_group(ident) {
+                Self::Optional(ty) => Some(format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.conceptual_type.definite_info("x", types)?)),
+                Self::Rust(ident) => if types.is_plain_group(ident) {
                     match types.rust_structs.get(&ident) {
                         Some(rs) => rs.definite_info(types),
                         // when we split up parsing from codegen instead of multi-passing this should be an error
@@ -1126,7 +1175,7 @@ impl RustType {
                 } else {
                     Some(String::from("1"))
                 },
-                RustType::Alias(_ident, ty) => ty.definite_info(self_expr, types),
+                Self::Alias(_ident, ty) => ty.definite_info(self_expr, types),
                 _ => Some(String::from("1")),
             }
         }
@@ -1137,11 +1186,11 @@ impl RustType {
     // has cbor len 1 too - to be consistent with expanded_field_count
     pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
         match self {
-            RustType::Optional(ty) => match ty.expanded_field_count(types) {
+            Self::Optional(ty) => match ty.conceptual_type.expanded_field_count(types) {
                 Some(1) => 1,
                 _ => 0,
             },
-            RustType::Rust(ident) => if types.is_plain_group(ident) {
+            Self::Rust(ident) => if types.is_plain_group(ident) {
                 println!("ident: {}", ident);
                 match types.rust_structs.get(&ident) {
                     Some(x) => x.expanded_mandatory_field_count(types),
@@ -1151,61 +1200,32 @@ impl RustType {
             } else {
                 1
             },
-            RustType::Alias(_ident, ty) => ty.expanded_mandatory_field_count(types),
+            Self::Alias(_ident, ty) => ty.expanded_mandatory_field_count(types),
             _ => 1,
         }
     }
 
-    pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+    pub fn visit_types<F: FnMut(&Self)>(&self, types: &IntermediateTypes, f: &mut F) {
         self.visit_types_excluding(types, f, &mut BTreeSet::new())
     }
 
-    pub fn visit_types_excluding<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
+    pub fn visit_types_excluding<F: FnMut(&Self)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
         f(self);
         match self {
-            RustType::Alias(_ident, ty) => ty.visit_types_excluding(types, f, already_visited),
-            RustType::Array(ty) => ty.visit_types_excluding(types, f, already_visited),
-            RustType::Fixed(..) => (),
-            RustType::Map(k, v) => {
-                k.visit_types_excluding(types, f, already_visited);
-                v.visit_types_excluding(types, f, already_visited);
+            Self::Alias(_ident, ty) => ty.visit_types_excluding(types, f, already_visited),
+            Self::Array(ty) => ty.conceptual_type.visit_types_excluding(types, f, already_visited),
+            Self::Fixed(_) => (),
+            Self::Map(k, v) => {
+                k.conceptual_type.visit_types_excluding(types, f, already_visited);
+                v.conceptual_type.visit_types_excluding(types, f, already_visited);
             },
-            RustType::Optional(ty) => ty.visit_types_excluding(types, f, already_visited),
-            RustType::Primitive(..) => (),
-            RustType::Rust(ident) => {
+            Self::Optional(ty) => ty.conceptual_type.visit_types_excluding(types, f, already_visited),
+            Self::Primitive(_) => (),
+            Self::Rust(ident) => {
                 if already_visited.insert(ident.clone()) {
                     types.rust_struct(ident).map(|t| t.visit_types_excluding(types, f, already_visited));
                 }
             },
-            RustType::Tagged(_tag, ty) => ty.visit_types_excluding(types, f, already_visited),
-            RustType::CBORBytes(ty) => ty.visit_types_excluding(types, f, already_visited),
-        }
-    }
-
-    // This applies ONLY to how it's used around the generated code OUTSIDE of serialization contexts
-    pub fn strip_to_semantical_type(&self) -> &Self {
-        match self {
-            RustType::Alias(_ident, ty) => ty,
-            RustType::Tagged(_tag, ty) => ty,
-            RustType::CBORBytes(ty) => ty,
-            _ => self,
-        }
-    }
-
-    // how things are handled in a CBOR/serialization context only
-    pub fn strip_to_serialization_type(&self) -> Self {
-        match self {
-            RustType::Alias(_ident, ty) => *ty.clone(),
-            RustType::CBORBytes(_ty) => RustType::Primitive(Primitive::Bytes),
-            _ => self.clone(),
-        }
-    }
-
-    pub fn strip_tag(&self) -> &Self {
-        match self {
-            RustType::Alias(_ident, ty) => ty.strip_tag(),
-            RustType::Tagged(_tag, ty) => ty,
-            _ => self,
         }
     }
 }
@@ -1534,20 +1554,20 @@ impl RustStruct {
         }
     }
 
-    pub fn visit_types<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F) {
+    pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, types: &IntermediateTypes, f: &mut F) {
         self.visit_types_excluding(types, f, &mut BTreeSet::new())
     }
-    pub fn visit_types_excluding<F: FnMut(&RustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
+    pub fn visit_types_excluding<F: FnMut(&ConceptualRustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
         match &self.variant {
-            RustStructType::Array{ element_type } => element_type.visit_types_excluding(types, f, already_visited),
+            RustStructType::Array{ element_type } => element_type.conceptual_type.visit_types_excluding(types, f, already_visited),
             RustStructType::GroupChoice{ variants, .. } |
-            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.visit_types_excluding(types, f, already_visited)),
-            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.visit_types_excluding(types, f, already_visited)),
+            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.conceptual_type.visit_types_excluding(types, f, already_visited)),
+            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.conceptual_type.visit_types_excluding(types, f, already_visited)),
             RustStructType::Table{domain, range} => {
-                domain.visit_types_excluding(types, f, already_visited);
-                range.visit_types_excluding(types, f, already_visited);
+                domain.conceptual_type.visit_types_excluding(types, f, already_visited);
+                range.conceptual_type.visit_types_excluding(types, f, already_visited);
             },
-            RustStructType::Wrapper{ wrapped, .. } => wrapped.visit_types_excluding(types, f, already_visited),
+            RustStructType::Wrapper{ wrapped, .. } => wrapped.conceptual_type.visit_types_excluding(types, f, already_visited),
             RustStructType::Prelude => (),
         }
     }
@@ -1568,7 +1588,7 @@ impl RustRecord {
                 return None;
             }
             count += match self.rep {
-                Representation::Array => field.rust_type.expanded_field_count(types)?,
+                Representation::Array => field.rust_type.conceptual_type.expanded_field_count(types)?,
                 Representation::Map => 1,
             };
         }
@@ -1588,20 +1608,20 @@ impl RustRecord {
                             conditional_field_expr.push_str(" + ");
                         }
                         let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => ("x", field.rust_type.definite_info("x", types)?),
+                            Representation::Array => ("x", field.rust_type.conceptual_type.definite_info("x", types)?),
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
                         conditional_field_expr.push_str(&format!("match &self.{} {{ Some({}) => {}, None => 0 }}", field.name, field_expr, field_contribution));
                     } else {
                         match self.rep {
-                            Representation::Array => match field.rust_type.expanded_field_count(types) {
+                            Representation::Array => match field.rust_type.conceptual_type.expanded_field_count(types) {
                                 Some(field_expanded_count) => fixed_field_count += field_expanded_count,
                                 None => {
                                     if !conditional_field_expr.is_empty() {
                                         conditional_field_expr.push_str(" + ");
                                     }
-                                    let field_len_expr = field.rust_type.definite_info(&format!("self.{}", field.name), types)?;
+                                    let field_len_expr = field.rust_type.conceptual_type.definite_info(&format!("self.{}", field.name), types)?;
                                     conditional_field_expr.push_str(&field_len_expr);
                                 },
                             },
@@ -1621,7 +1641,7 @@ impl RustRecord {
     }
 
     pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
-        self.fields.iter().filter(|field| !field.optional).map(|field| field.rust_type.expanded_mandatory_field_count(types)).sum()
+        self.fields.iter().filter(|field| !field.optional).map(|field| field.rust_type.conceptual_type.expanded_mandatory_field_count(types)).sum()
     }
 
     pub fn cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
@@ -1729,7 +1749,7 @@ impl GenericInstance {
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
-        if let RustType::Rust(ident) = orig {
+        if let ConceptualRustType::Rust(ident) = &orig.conceptual_type {
             if let Some(resolved_type) = args.get(ident) {
                 return (*resolved_type).clone();
             }
