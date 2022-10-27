@@ -6,6 +6,7 @@ use crate::comment_ast::{RuleMetadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent,
     CDDLIdent,
+    ConceptualRustType,
     EnumVariant,
     FixedValue,
     GenericDef,
@@ -120,8 +121,8 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
         }
         let inner_rust_type = rust_type_from_type1(types, inner_type2);
         let final_type = match tag {
-            Some(tag) => RustType::Tagged(tag, Box::new(RustType::Optional(Box::new(inner_rust_type)))),
-            None => RustType::Optional(Box::new(inner_rust_type)),
+            Some(tag) => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag),
+            None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
         };
         types.register_type_alias(name.clone(), final_type, true, true);
     } else {
@@ -164,20 +165,20 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
             ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
         },
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
-            ".default" |
-            ".cborseq" |
-            ".within" |
-            ".and" => todo!("control operator {} not supported", ctrl),
-            ".cbor" => ControlOperator::CBOR(rust_type_from_type2(types, &Type2AndParent { type2: &operator.type2, parent: parent.parent, })),
-            ".eq" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
+            cddl::token::ControlOperator::DEFAULT |
+            cddl::token::ControlOperator::CBORSEQ |
+            cddl::token::ControlOperator::WITHIN |
+            cddl::token::ControlOperator::AND => todo!("control operator {} not supported", ctrl),
+            cddl::token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(types, &Type2AndParent { type2: &operator.type2, parent: parent.parent, })),
+            cddl::token::ControlOperator::EQ => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            ".ne" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            ".le" => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
-            ".lt" => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            ".ge" => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
-            ".gt" => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
-            ".size" => {
+            cddl::token::ControlOperator::NE => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            cddl::token::ControlOperator::LE => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
+            cddl::token::ControlOperator::LT => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            cddl::token::ControlOperator::GE => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
+            cddl::token::ControlOperator::GT => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
+            cddl::token::ControlOperator::SIZE => {
                 let base_range = match &operator.type2 {
                     Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
@@ -238,16 +239,16 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
     }
 }
 
-fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<RustType> {
+fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<ConceptualRustType> {
     match (low, high) {
-        (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => Some(RustType::Primitive(Primitive::U8)),
-        (Some(l), Some(h)) if l == i8::MIN as i128 && h == i8::MAX as i128 => Some(RustType::Primitive(Primitive::I8)),
-        (Some(l), Some(h)) if l == u16::MIN as i128 && h == u16::MAX as i128 => Some(RustType::Primitive(Primitive::U16)),
-        (Some(l), Some(h)) if l == i16::MIN as i128 && h == i16::MAX as i128 => Some(RustType::Primitive(Primitive::I16)),
-        (Some(l), Some(h)) if l == u32::MIN as i128 && h == u32::MAX as i128 => Some(RustType::Primitive(Primitive::U32)),
-        (Some(l), Some(h)) if l == i32::MIN as i128 && h == i32::MAX as i128 => Some(RustType::Primitive(Primitive::I32)),
-        (Some(l), Some(h)) if l == u64::MIN as i128 && h == u64::MAX as i128 => Some(RustType::Primitive(Primitive::U64)),
-        (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => Some(RustType::Primitive(Primitive::I64)),
+        (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U8)),
+        (Some(l), Some(h)) if l == i8::MIN as i128 && h == i8::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I8)),
+        (Some(l), Some(h)) if l == u16::MIN as i128 && h == u16::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U16)),
+        (Some(l), Some(h)) if l == i16::MIN as i128 && h == i16::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I16)),
+        (Some(l), Some(h)) if l == u32::MIN as i128 && h == u32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U32)),
+        (Some(l), Some(h)) if l == i32::MIN as i128 && h == i32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I32)),
+        (Some(l), Some(h)) if l == u64::MIN as i128 && h == u64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U64)),
+        (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I64)),
         _ => None
     }
 }
@@ -265,32 +266,32 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                     assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
                     // TODO: what about aliases that resolve to these? is it even possible to know this at this stage?
                     let field_type = || match cddl_ident.to_string().as_str() {
-                        "tstr" | "text" => RustType::Primitive(Primitive::Str),
-                        "bstr" | "bytes" => RustType::Primitive(Primitive::Bytes),
+                        "tstr" | "text" => ConceptualRustType::Primitive(Primitive::Str),
+                        "bstr" | "bytes" => ConceptualRustType::Primitive(Primitive::Bytes),
                         other => panic!("range control specifiers not supported for type: {}", other),
                     };
                     match control {
                         ControlOperator::Range(min_max) => {
                             match cddl_ident.to_string().as_str() {
                                 "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
-                                    Some(t) => types.register_type_alias(type_name.clone(), t, true, true),
+                                    Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                     None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
                                 },
-                                _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone(), Some(min_max)))
+                                _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone().into(), Some(min_max)))
                             }
                         },
                         ControlOperator::CBOR(ty) => match field_type() {
-                            RustType::Primitive(Primitive::Bytes) => {
-                                types.register_type_alias(type_name.clone(), RustType::CBORBytes(Box::new(ty)), true, true);
+                            ConceptualRustType::Primitive(Primitive::Bytes) => {
+                                types.register_type_alias(type_name.clone(), ty.as_bytes(), true, true);
                             },
                             _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
                         },
                     }
                 },
                 None => {
-                    let concrete_type = match types.new_type(&cddl_ident) {
-                        RustType::Alias(_ident, ty) => *ty,
-                        ty => ty,
+                    let mut concrete_type = types.new_type(&cddl_ident);
+                    if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type {
+                        concrete_type.conceptual_type = *ty;
                     };
                     match &generic_params {
                         Some(_params) => {
@@ -347,18 +348,18 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
                             let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: &inner_type.type1, type2: &inner_type.type1.type2 }, op));
                             match control {
-                                Some(ControlOperator::CBOR(ty)) => {
+                                Some(ControlOperator::CBOR(_ty)) => {
                                     // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
                                     // which would also allow us to do a single pass instead of many like we do now
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
                                         .expect(&format!("Please move definition for {} above {}", type_name, ident));
-                                    types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(RustType::CBORBytes(Box::new(base_type)))), true, true);
+                                    types.register_type_alias(type_name.clone(), base_type.as_bytes().tag(tag_unwrap), true, true);
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
                                         "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
-                                            Some(t) => types.register_type_alias(type_name.clone(), t, true, true),
+                                            Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
                                         _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max)))
@@ -370,7 +371,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
                                         .expect(&format!("Please move definition for {} above {}", type_name, ident));
-                                    types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(base_type)), true, true);
+                                    types.register_type_alias(type_name.clone(), base_type.tag(tag_unwrap), true, true);
                                 },
                             }
                         },
@@ -383,7 +384,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         },
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue{ value, .. } => {
-            let fallback_type = RustType::Fixed(FixedValue::Nint(*value));
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Nint(*value));
 
             let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
             let base_type = match control {
@@ -395,10 +396,10 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                 },
                 _ => fallback_type
             };
-            types.register_type_alias(type_name.clone(), base_type, true, true);
+            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
         },
         Type2::UintValue{ value, .. } => {
-            let fallback_type = RustType::Fixed(FixedValue::Uint(*value));
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
 
             let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
             let base_type = match control {
@@ -410,10 +411,10 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                 },
                 _ => fallback_type
             };
-            types.register_type_alias(type_name.clone(), base_type, true, true);
+            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
         },
         Type2::TextValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), RustType::Fixed(FixedValue::Text(value.to_string())), true, true);
+            types.register_type_alias(type_name.clone(), ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(), true, true);
         },
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -600,11 +601,11 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustTyp
     let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
     // println!("type1: {:#?}", type1);
     match control {
-        Some(ControlOperator::CBOR(ty)) => RustType::CBORBytes(Box::new(ty)),
+        Some(ControlOperator::CBOR(ty)) => ty.as_bytes(),
         Some(ControlOperator::Range(min_max)) => {
             match &type1.type2 {
                 Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" => match range_to_primitive(min_max.0, min_max.1) {
-                    Some(t) => t,
+                    Some(t) => t.into(),
                     None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                 },
                 _ => rust_type_from_type2(types, &Type2AndParent { type2: &type1.type2, parent: type1, })
@@ -617,10 +618,10 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustTyp
 fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -> RustType {
     // TODO: socket plugs (used in hash type)
     match &type2.type2 {
-        Type2::UintValue{ value, .. } => RustType::Fixed(FixedValue::Uint(*value)),
-        Type2::IntValue{ value, .. } => RustType::Fixed(FixedValue::Nint(*value)),
-        //Type2::FloatValue{ value, .. } => RustType::Fixed(FixedValue::Float(*value)),
-        Type2::TextValue{ value, .. } => RustType::Fixed(FixedValue::Text(value.to_string())),
+        Type2::UintValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Uint(*value)).into(),
+        Type2::IntValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Nint(*value)).into(),
+        //Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)),
+        Type2::TextValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
         Type2::Typename{ ident, generic_args, .. } => {
             let cddl_ident = CDDLIdent::new(ident.ident);
             match generic_args {
@@ -672,7 +673,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
             
             //let array_wrapper_name = element_type.name_as_wasm_array();
             //types.create_and_register_array_type(element_type, &array_wrapper_name)
-            RustType::Array(Box::new(element_type))
+            ConceptualRustType::Array(Box::new(element_type)).into()
         },
         Type2::Map { group, .. } => {
             match group.group_choices.len() {
@@ -690,7 +691,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
                             // for general map types we can though but not for tables
                             //let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_wasm_member(), value_type.for_wasm_member())));
                             //types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
-                            RustType::Map(Box::new(key_type), Box::new(value_type))
+                            ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into()
                         },
                         None => unimplemented!("TODO: non-table types as types: {:?}", group),
                     }
@@ -700,7 +701,8 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
         },
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData{ tag, t, .. } => {
-            RustType::Tagged(tag.expect("tagged data without tag not supported"), Box::new(rust_type(types, t)))
+            let tag_unwrap = tag.expect("tagged data without tag not supported");
+            rust_type(types, t).tag(tag_unwrap)
         },
         _ => {
             panic!("Ignoring Type2: {:?}", type2.type2);
@@ -717,10 +719,10 @@ fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
             let a = &t.type_choices[0].type1;
             let b = &t.type_choices[1].type1;
             if type2_is_null(&a.type2) {
-                return RustType::Optional(Box::new(rust_type_from_type1(types, b)));
+                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, b))).into();
             }
             if type2_is_null(&b.type2) {
-                return RustType::Optional(Box::new(rust_type_from_type1(types, a)));
+                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, a))).into();
             }
         }
         let variants = create_variants_from_type_choices(types, &t.type_choices);
@@ -806,7 +808,7 @@ fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representa
             let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields, optional_comma);
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, group_entry);
-            if let RustType::Rust(ident) = &field_type {
+            if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
                 types.set_rep_if_plain_group(ident, rep);
             }
             let optional_field = group_entry_optional(group_entry);
@@ -871,7 +873,7 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
             if group_choice.group_entries.len() == 1 {
                 let group_entry = &group_choice.group_entries.first().unwrap().0;
                 let ty = group_entry_to_type(types, group_entry);
-                let serialize_as_embedded = if let RustType::Rust(ident) = &ty {
+                let serialize_as_embedded = if let ConceptualRustType::Rust(ident) = &ty.conceptual_type {
                     // we might need to generate it if not used elsewhere
                     types.set_rep_if_plain_group(ident, rep);
                     types.is_plain_group(ident)
@@ -901,7 +903,7 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
                 let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
                 types.mark_plain_group(variant_name.clone(), None);
                 parse_group_choice(types, group_choice, &variant_name, rep, None, generic_params.clone());
-                EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), RustType::Rust(variant_name), true)
+                EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), ConceptualRustType::Rust(variant_name).into(), true)
             }
         }).collect();
         types.register_rust_struct(RustStruct::new_group_choice(name.clone(), tag, variants, rep));
