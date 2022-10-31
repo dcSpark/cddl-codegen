@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // we must group all files together. To mark scope we insert string constants with
     // a specific, unlikely to ever be used, prefix. The names contain a number after
     // to avoid a parsing error (rule with same identifier already defined).
-    // This approeach was chosen over comments as those were finicky when not attached
+    // This approach was chosen over comments as those were finicky when not attached
     // to specific structs, and the existing comment parsing ast was not suited for this.
     // If, in the future, cddl released a feature flag to allow partial cddl we can just
     // remove all this and revert back the commit before this one for scope handling.
@@ -70,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Plain group / scope marking
     let cddl = cddl::parser::cddl_from_str(&input_files_content, true)?;
+    let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
     // mark scope and filter scope markers
     let mut scope = "lib".to_owned();
@@ -102,9 +103,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
         println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", scope);
-        parse_rule(&mut types, cddl_rule);
+        parse_rule(&mut types, &pv, cddl_rule);
     }
-    types.finalize();
+    types.finalize(&pv);
 
     // Generating code from intermediate form
     println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
