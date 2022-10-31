@@ -1,5 +1,5 @@
+use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
-use cddl::validator::parent_visitor::{ParentVisitor};
 use either::{Either};
 use std::collections::{BTreeMap};
 
@@ -19,7 +19,7 @@ use crate::intermediate::{
     RustStruct,
     RustType,
     RustField,
-    VariantIdent, new_ident_if_duplicate,
+    VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate,
@@ -650,7 +650,12 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
                             _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
                         }
                     } else {
-                        let cddl_ident = infer_best_name(types, parent_visitor, &CDDLType::from(type2));
+                        let rule_metadata = RuleMetadata::from(get_comment_after(parent_visitor, &CDDLType::from(type2), None).as_ref());;
+                        let name = match rule_metadata.name.as_ref() {
+                            Some(name) => name,
+                            None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
+                        };
+                        let cddl_ident = CDDLIdent::new(name);
                         let rust_ident = RustIdent::new(cddl_ident.clone());
                         parse_group(types, parent_visitor, group, &rust_ident, Representation::Array, None, None);
                         // we aren't returning an array, but rather a struct where the fields are ordered
@@ -940,7 +945,10 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
                 _ => None,
             }
         },
-        CDDLType::GroupChoice(_) => None, // TODO: handle child by looking up the group entry in group_entries
+        // TODO: handle child by looking up the group entry in group_entries
+        // the expected behavior of this may instead be to combine_comments based off its parents
+        // which is a slippery slope in complexity
+        CDDLType::GroupChoice(_) => None,
         CDDLType::GenericParams(_) => None,
         CDDLType::GenericParam(t) => {
             if let Some(CDDLType::Identifier(_)) = child {
@@ -998,7 +1006,7 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
             }
             if let Some(CDDLType::Type2(t2)) = child {
                 // "comments_before_operator" is associated with the 1st type2 and not the second (t.type2)
-                if *t2 == &t.type2 {
+                if std::ptr::eq(*t2, &t.type2) {
                     return None
                 } else {
                     return t.comments_before_operator.clone()
@@ -1032,12 +1040,4 @@ fn get_rule_name<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType
         CDDLType::GroupRule(t) => t.name.clone(),
         other => get_rule_name(parent_visitor, other.parent(parent_visitor).unwrap()),
     }
-}
-fn infer_best_name(types: &IntermediateTypes, parent_visitor: &ParentVisitor, cddl_type: &CDDLType) -> CDDLIdent {
-    let rule_metadata = RuleMetadata::from(get_comment_after(parent_visitor, cddl_type, None).as_ref());
-    if let Some(name) = rule_metadata.name.as_ref() {
-        return CDDLIdent::new(name);
-    };
-    let rule_name = get_rule_name(parent_visitor, cddl_type).ident.to_owned();
-    new_ident_if_duplicate(types, &CDDLIdent::new(rule_name))
 }

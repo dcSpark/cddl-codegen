@@ -48,8 +48,7 @@ mod tests {
     fn type_choice() {
         // just checking these fields exist with the expected name
         Typechoice::new_case1(Case1::new(vec![]));
-        // TODO: uncomment once we fix this
-        // Typechoice::typechoice2(Typechoice2::new(vec![]));
+        Typechoice::new_case2(Case2::new(vec![]));
         assert!(true);
     }
 

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
-use cddl::validator::parent_visitor::ParentVisitor;
+use cddl::ast::parent::ParentVisitor;
 
 use crate::cli::CLI_ARGS;
 // TODO: move all of these generation specifics into generation.rs
@@ -399,7 +399,7 @@ impl<'a> IntermediateTypes<'a> {
             let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
             let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
-            let pv = cddl::validator::parent_visitor::ParentVisitor::new(&cddl).unwrap();
+            let pv = ParentVisitor::new(&cddl).unwrap();
             crate::parsing::parse_rule(self, &pv, cddl.rules.first().unwrap());
         }
     }
@@ -1762,11 +1762,5 @@ fn try_ident_with_id(intermediate_types: &IntermediateTypes, name: &CDDLIdent, v
     match intermediate_types.has_ident(&rust_ident) {
         false => new_ident,
         true => try_ident_with_id(intermediate_types, name, value + 1)
-    }
-}
-pub fn new_ident_if_duplicate(intermediate_types: &IntermediateTypes, name: &CDDLIdent) -> CDDLIdent {
-    match intermediate_types.has_ident(&RustIdent::new(name.clone())) {
-        false => name.clone(),
-        true => try_ident_with_id(intermediate_types, name, 1)
     }
 }
