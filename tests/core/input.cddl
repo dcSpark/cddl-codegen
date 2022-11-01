@@ -62,3 +62,10 @@ signed_ints = [
 	; we can't test that since isize::BITS is never > 64 in any normal system and likely never will be
 	i64_min: -9223372036854775808
 ]
+
+default_uint = uint .default 1337
+
+map_with_defaults = {
+	? 1 : default_uint
+	? 2 : text .default "two"
+}

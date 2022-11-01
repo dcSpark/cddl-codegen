@@ -435,6 +435,27 @@ impl FixedValue {
         }.expect("Unable to serialize key for canonical ordering");
         buf.finalize()
     }
+
+    /// Converts a literal to a valid rust expression capable of initializing a Primitive
+    /// e.g. Text is an actual String, etc
+    pub fn to_primitive_str_assign(&self) -> String {
+        match self {
+            FixedValue::Null => "None".to_owned(),
+            FixedValue::Bool(b) => b.to_string(),
+            FixedValue::Nint(i) => i.to_string(),
+            FixedValue::Uint(u) => u.to_string(),
+            FixedValue::Text(s) => format!("\"{}\".to_owned()", s),
+        }
+    }
+
+    /// Converts a literal to a valid rust comparison valid for comparisons
+    /// e.g. Text can be &str to avoid creating a String
+    pub fn to_primitive_str_compare(&self) -> String {
+        match self {
+            FixedValue::Text(s) => format!("\"{}\"", s),
+            _=> self.to_primitive_str_assign(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -498,6 +519,7 @@ impl Primitive {
         })
     }
 
+    /// All POSSIBLE outermost CBOR types this can encode to
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
@@ -689,7 +711,20 @@ impl RustType {
 
     pub fn default(mut self, default_value: FixedValue) -> Self {
         assert!(self.default.is_none());
-        // TODO: verify that the fixed value makes sense for the conceptual_type
+        let matches = if let ConceptualRustType::Primitive(p) = self.conceptual_type.clone().resolve_aliases() {
+            match &default_value {
+                FixedValue::Bool(_) => p == Primitive::Bool,
+                FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
+                FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
+                FixedValue::Null => false,
+                FixedValue::Text(_) => p == Primitive::Str,
+            }
+        } else {
+            false
+        };
+        if !matches {
+            panic!(".default {:?} invalid for type {:?}", default_value, self.conceptual_type);
+        }
         self.default = Some(default_value);
         self
     }
@@ -707,6 +742,7 @@ impl RustType {
         }
     }
 
+    /// All POSSIBLE outermost CBOR types this can encode to
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self.encodings.last() {
             Some(CBOREncodingOperation::Tagged(_)) => vec![CBORType::Tag],
@@ -970,7 +1006,7 @@ impl ConceptualRustType {
         }
     }
 
-    /// IDENTIFIER for an enum variant. (Use for_rust_member() for the )
+    /// IDENTIFIER for an enum variant. (Use for_rust_member() for the enum value)
     pub fn for_variant(&self) -> VariantIdent {
         match self {
             Self::Fixed(f) => f.for_variant(),
@@ -991,17 +1027,7 @@ impl ConceptualRustType {
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
     pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
-        //assert!(matches!(self, Self::Tagged(_, _)) || !can_fail);
-        match self {
-            // Self::Tagged(_tag, ty) => {
-            //     let mut inner = ty.from_wasm_boundary_clone(expr, can_fail);
-            //     if can_fail {
-            //         inner.push(ToWasmBoundaryOperations::TryInto);
-            //     } else {
-            //         inner.push(ToWasmBoundaryOperations::Into);
-            //     }
-            //     inner
-            // },
+        let mut ops = match self {
             Self::Rust(_ident) => vec![
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
@@ -1021,22 +1047,16 @@ impl ConceptualRustType {
                 ToWasmBoundaryOperations::Into,
             ],
             _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
+        };
+        if can_fail {
+            ops.push(ToWasmBoundaryOperations::TryInto);
         }
+        ops
     }
 
     fn from_wasm_boundary_clone_optional(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
-        //assert!(matches!(self, Self::Tagged(_, _)) || !can_fail);
-        match self {
+        let mut ops = match self {
             Self::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
-            // Self::Tagged(_tag, ty) => {
-            //     let mut inner = ty.from_wasm_boundary_clone_optional(expr, can_fail);
-            //     if can_fail {
-            //         inner.push(ToWasmBoundaryOperations::TryInto);
-            //     } else {
-            //         inner.push(ToWasmBoundaryOperations::Into);
-            //     }
-            //     inner
-            // },
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
             Self::Array(..) |
             Self::Rust(..) |
@@ -1049,7 +1069,11 @@ impl ConceptualRustType {
                 },
             ],
             _ => panic!("unsupported or unexpected"),
+        };
+        if can_fail {
+            ops.push(ToWasmBoundaryOperations::TryInto);
         }
+        ops
     }
 
     /// for non-owning parameter TYPES from wasm
@@ -1612,7 +1636,24 @@ impl RustRecord {
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
-                        conditional_field_expr.push_str(&format!("match &self.{} {{ Some({}) => {}, None => 0 }}", field.name, field_expr, field_contribution));
+                        if let Some(default_value) = &field.rust_type.default {
+                            if CLI_ARGS.preserve_encodings {
+                                conditional_field_expr.push_str(&format!(
+                                    "if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
+                                    field.name,
+                                    default_value.to_primitive_str_compare(),
+                                    field.name,
+                                    field_contribution));
+                            } else {
+                                conditional_field_expr.push_str(&format!(
+                                    "if self.{} != {} {{ {} }} else {{ 0 }}",
+                                    field.name,
+                                    default_value.to_primitive_str_compare(),
+                                    field_contribution));
+                            }
+                        } else {
+                            conditional_field_expr.push_str(&format!("match &self.{} {{ Some({}) => {}, None => 0 }}", field.name, field_expr, field_contribution));
+                        }
                     } else {
                         match self.rep {
                             Representation::Array => match field.rust_type.conceptual_type.expanded_field_count(types) {
