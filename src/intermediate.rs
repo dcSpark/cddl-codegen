@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
+use cddl::ast::parent::ParentVisitor;
 
 use crate::cli::CLI_ARGS;
 // TODO: move all of these generation specifics into generation.rs
@@ -49,6 +50,22 @@ impl<'a> IntermediateTypes<'a> {
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
         }
+    }
+
+    pub fn has_ident(&self, ident: &RustIdent) -> bool {
+        let foo: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
+            match alias {
+                AliasIdent::Reserved(_) => {},
+                AliasIdent::Rust(ident) => { acc.push(ident.clone()) }
+            };
+            acc
+        });
+        println!("{:?}", self.plain_groups.keys().chain(foo.iter()).chain(self.rust_structs.keys()).chain(self.generic_defs.keys()).chain(self.generic_instances.keys()));
+        self.plain_groups.contains_key(ident)
+         || self.type_aliases.contains_key(&AliasIdent::Rust(ident.clone()))
+         || self.rust_structs.contains_key(ident)
+         || self.generic_defs.contains_key(ident)
+         || self.generic_instances.contains_key(ident)
     }
 
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool, bool)> {
@@ -158,12 +175,12 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // this is called by register_table_type / register_array_type automatically
-    pub fn register_rust_struct(&mut self, rust_struct: RustStruct) {
+    pub fn register_rust_struct(&mut self, parent_visitor: &ParentVisitor, rust_struct: RustStruct) {
         match &rust_struct.variant {
             RustStructType::Table { domain, range } => {
                 // we must provide the keys type to return
                 if CLI_ARGS.wasm {
-                    self.create_and_register_array_type(domain.clone(), &domain.conceptual_type.name_as_wasm_array());
+                    self.create_and_register_array_type(parent_visitor, domain.clone(), &domain.conceptual_type.name_as_wasm_array());
                 }
                 let mut map_type: RustType = ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
                 if let Some(tag) = rust_struct.tag {
@@ -196,8 +213,8 @@ impl<'a> IntermediateTypes<'a> {
 
     // creates a RustType for the array type - and if needed, registers a type to generate
     // TODO: After the split we should be able to only register it directly
-    // and then examine those at generation-time and handle things ALWAYS as ConceptualRustType::Array
-    pub fn create_and_register_array_type(&mut self, element_type: RustType, array_type_name: &str) -> RustType {
+    // and then examine those at generation-time and handle things ALWAYS as RustType::Array
+    pub fn create_and_register_array_type(&mut self, parent_visitor: &ParentVisitor, element_type: RustType, array_type_name: &str) -> RustType {
         let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
         if raw_arr_type.directly_wasm_exposable() {
@@ -207,11 +224,11 @@ impl<'a> IntermediateTypes<'a> {
         // If we are the only thing referring to our element and it's a plain group
         // we must mark it as being serialized as an array
         if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
-            self.set_rep_if_plain_group(&array_type_ident, Representation::Array);
+            self.set_rep_if_plain_group(parent_visitor, &array_type_ident, Representation::Array);
         }
         // we don't pass in tags here. If a tag-wrapped array is done I think it generates
         // 2 separate types (array wrapper -> tag wrapper struct)
-        self.register_rust_struct(RustStruct::new_array(array_type_ident, None, element_type.clone()));
+        self.register_rust_struct(parent_visitor, RustStruct::new_array(array_type_ident, None, element_type.clone()));
         ConceptualRustType::Array(Box::new(element_type)).into()
     }
 
@@ -226,12 +243,12 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // call this after all types have been registered
-    pub fn finalize(&mut self) {
+    pub fn finalize(&mut self, parent_visitor: &ParentVisitor) {
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
         let resolved_generics = self.generic_instances.values().map(|instance| instance.resolve(self)).collect::<Vec<_>>();
         for resolved_instance in resolved_generics {
-            self.register_rust_struct(resolved_instance);
+            self.register_rust_struct(parent_visitor, resolved_instance);
         }
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types
@@ -278,7 +295,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see self.plain_groups comments
-    pub fn set_rep_if_plain_group(&mut self, ident: &RustIdent, rep: Representation) {
+    pub fn set_rep_if_plain_group(&mut self, parent_visitor: &ParentVisitor, ident: &RustIdent, rep: Representation) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
             if let Some(group) = plain_group.as_ref().map(|g| g.clone()) {
@@ -295,7 +312,7 @@ impl<'a> IntermediateTypes<'a> {
                 } else {
                     // you can't tag plain groups hence the None
                     // we also don't support generics in plain groups hence the other None
-                    crate::parsing::parse_group(self, &group, ident, rep, None, None);
+                    crate::parsing::parse_group(self, parent_visitor, &group, ident, rep, None, None);
                 }
             } else {
                 // If plain_group is None, then this wasn't defined in .cddl but instead
@@ -382,7 +399,8 @@ impl<'a> IntermediateTypes<'a> {
             let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
             let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
-            crate::parsing::parse_rule(self, cddl.rules.first().unwrap());
+            let pv = ParentVisitor::new(&cddl).unwrap();
+            crate::parsing::parse_rule(self, &pv, cddl.rules.first().unwrap());
         }
     }
 }
@@ -1796,5 +1814,14 @@ impl GenericInstance {
             }
         }
         orig.clone()
+    }
+}
+
+fn try_ident_with_id(intermediate_types: &IntermediateTypes, name: &CDDLIdent, value: u32) -> CDDLIdent {
+    let new_ident = CDDLIdent::new(format!("{}{}", name, value));
+    let rust_ident = RustIdent::new(new_ident.clone());
+    match intermediate_types.has_ident(&rust_ident) {
+        false => new_ident,
+        true => try_ident_with_id(intermediate_types, name, value + 1)
     }
 }
