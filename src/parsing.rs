@@ -1,4 +1,5 @@
-use cddl::ast::*;
+use cddl::ast::parent::ParentVisitor;
+use cddl::{ast::*, token};
 use either::{Either};
 use std::collections::{BTreeMap};
 
@@ -35,11 +36,6 @@ enum ControlOperator {
     Default(FixedValue),
 }
 
-struct Type2AndParent<'a> {
-    type2: &'a Type2<'a>,
-    parent: &'a Type1<'a>,
-}
-
 pub const SCOPE_MARKER: &'static str = "_CDDL_CODEGEN_SCOPE_MARKER_";
 
 /// Some means it is a scope marker, containing the scope
@@ -59,7 +55,7 @@ pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     }
 }
 
-pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
+pub fn parse_rule(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, cddl_rule: &cddl::ast::Rule) {
     match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
             // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
@@ -73,9 +69,9 @@ pub fn parse_rule(types: &mut IntermediateTypes, cddl_rule: &cddl::ast::Rule) {
                 .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.param.to_string()))).collect::<Vec<_>>());
             if rule.value.type_choices.len() == 1 {
                 let choice = &rule.value.type_choices.first().unwrap();
-                parse_type(types, &rust_ident, choice, None, generic_params);
+                parse_type(types, parent_visitor, &rust_ident, choice, None, generic_params);
             } else {
-                parse_type_choices(types, &rust_ident, &rule.value.type_choices, None, generic_params);
+                parse_type_choices(types, parent_visitor, &rust_ident, &rule.value.type_choices, None, generic_params);
             }
         },
         cddl::ast::Rule::Group{ rule, .. } => {
@@ -100,7 +96,7 @@ pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
     }
 }
 
-fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choices: &Vec<TypeChoice>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_type_choices(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, name: &RustIdent, type_choices: &Vec<TypeChoice>, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let optional_inner_type = if type_choices.len() == 2 {
         let a = &type_choices[0].type1;
         let b = &type_choices[1].type1;
@@ -120,18 +116,18 @@ fn parse_type_choices(types: &mut IntermediateTypes, name: &RustIdent, type_choi
             // but that won't happen with T / null types since we generate an alias instead
             todo!("support foo<T> = T / null");
         }
-        let inner_rust_type = rust_type_from_type1(types, inner_type2);
+        let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2);
         let final_type = match tag {
             Some(tag) => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag),
             None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
         };
         types.register_type_alias(name.clone(), final_type, true, true);
     } else {
-        let variants = create_variants_from_type_choices(types, type_choices);
+        let variants = create_variants_from_type_choices(types, parent_visitor, type_choices);
         let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants);
         match generic_params {
             Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
-            None => types.register_rust_struct(rust_struct),
+            None => types.register_rust_struct(parent_visitor, rust_struct),
         };
     }
 }
@@ -153,8 +149,8 @@ fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
     }
 }
 
-fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent, operator: &Operator) -> ControlOperator {
-    let lower_bound = match parent.type2 {
+fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type2: &Type2, operator: &Operator) -> ControlOperator {
+    let lower_bound = match type2 {
         Type2::Typename{ ident, .. } if ident.to_string() == "uint" => Some(0),
         _ => None,
     };
@@ -162,10 +158,10 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
     // (rangeop / ctlop) S type2
     match operator.operator {
         RangeCtlOp::RangeOp{ is_inclusive, .. } => {
-            let range_start = match parent.type2 {
+            let range_start = match type2 {
                 Type2::UintValue{ value, .. } => *value as isize,
                 Type2::IntValue{ value, .. } => *value,
-                _ => panic!("Number expected as range start. Found {:?}", parent.type2)
+                _ => panic!("Number expected as range start. Found {:?}", type2)
             };
             let range_end = match operator.type2 {
                 Type2::UintValue{ value, .. } => value as isize,
@@ -175,20 +171,20 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
             ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
         },
         RangeCtlOp::CtlOp{ ctrl, .. } => match ctrl {
-            cddl::token::ControlOperator::CBORSEQ |
-            cddl::token::ControlOperator::WITHIN |
-            cddl::token::ControlOperator::AND => todo!("control operator {} not supported", ctrl),
-            cddl::token::ControlOperator::DEFAULT => ControlOperator::Default(type2_to_fixed_value(&operator.type2)),
-            cddl::token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(types, &Type2AndParent { type2: &operator.type2, parent: parent.parent, })),
-            cddl::token::ControlOperator::EQ => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
+            token::ControlOperator::CBORSEQ |
+            token::ControlOperator::WITHIN |
+            token::ControlOperator::AND => todo!("control operator {} not supported", ctrl),
+            token::ControlOperator::DEFAULT => ControlOperator::Default(type2_to_fixed_value(&operator.type2)),
+            token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(types, parent_visitor, &operator.type2)),
+            token::ControlOperator::EQ => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)  as i128), Some(type2_to_number_literal(&operator.type2)  as i128))),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            cddl::token::ControlOperator::NE => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            cddl::token::ControlOperator::LE => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
-            cddl::token::ControlOperator::LT => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
-            cddl::token::ControlOperator::GE => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
-            cddl::token::ControlOperator::GT => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
-            cddl::token::ControlOperator::SIZE => {
+            token::ControlOperator::NE => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            token::ControlOperator::LE => ControlOperator::Range((lower_bound, Some(type2_to_number_literal(&operator.type2) as i128))),
+            token::ControlOperator::LT => ControlOperator::Range((lower_bound, Some((type2_to_number_literal(&operator.type2) - 1) as i128))),
+            token::ControlOperator::GE => ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) as i128), None)),
+            token::ControlOperator::GT => ControlOperator::Range((Some((type2_to_number_literal(&operator.type2) + 1) as i128), None)),
+            token::ControlOperator::SIZE => {
                 let base_range = match &operator.type2 {
                     Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
@@ -218,7 +214,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent: &Type2AndParent
                     },
                     _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                 };
-                match parent.type2 {
+                match type2 {
                     Type2::Typename{ ident, .. } if ident.to_string() == "uint" => {
                         // .size 3 means 24 bits
                         match &base_range {
@@ -263,14 +259,14 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<Conceptua
     }
 }
 
-fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice: &TypeChoice, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type_name: &RustIdent, type_choice: &TypeChoice, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let type1 = &type_choice.type1;
     match &type1.type2 {
         Type2::Typename{ ident, generic_args, .. } => {
             // Note: this handles bool constants too, since we apply the type aliases and they resolve
             // and there's no Type2::BooleanValue
             let cddl_ident = CDDLIdent::new(ident.to_string());
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { type2: &type1.type2, parent: &type1 }, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
             match control {
                 Some(control) => {
                     assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
@@ -287,7 +283,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                     Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                     None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
                                 },
-                                _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone().into(), Some(min_max)))
+                                _ => types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone().into(), Some(min_max)))
                             }
                         },
                         ControlOperator::CBOR(ty) => match field_type() {
@@ -297,7 +293,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                             _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
                         },
                         ControlOperator::Default(default_value) => {
-                            let default_type = rust_type_from_type2(types, &Type2AndParent { type2: &type1.type2, parent: &type1 })
+                            let default_type = rust_type_from_type2(types, parent_visitor, &type1.type2)
                                 .default(default_value);
                             types.register_type_alias(type_name.clone(), default_type, true, true);
                         },
@@ -319,13 +315,13 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                 Some(arg) => {
                                     // This is for named generic instances such as:
                                     // foo = bar<text>
-                                    let generic_args = arg.args.iter().map(|a| rust_type_from_type1(types, &a.arg)).collect();
+                                    let generic_args = arg.args.iter().map(|a| rust_type_from_type1(types, parent_visitor, &a.arg)).collect();
                                     types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
                                 },
                                 None => {
                                     let rule_metadata = RuleMetadata::from(type1.comments_after_type.as_ref());
                                     if rule_metadata.is_newtype {
-                                        types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None)); 
+                                        types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None)); 
                                     } else {
                                         types.register_type_alias(type_name.clone(), concrete_type, true, true);
                                     }
@@ -337,12 +333,12 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
             }
         },
         Type2::Map{ group, .. } => {
-            parse_group(types, group, type_name, Representation::Map, outer_tag, generic_params);
+            parse_group(types, parent_visitor, group, type_name, Representation::Map, outer_tag, generic_params);
         },
         Type2::Array{ group, .. } => {
             // TODO: We could potentially generate an array-wrapper type around this
             // possibly based on the occurency specifier.
-            parse_group(types, group, type_name, Representation::Array, outer_tag, generic_params);
+            parse_group(types, parent_visitor, group, type_name, Representation::Array, outer_tag, generic_params);
         },
         Type2::TaggedData{ tag, t, .. } => {
             if let Some(_) = outer_tag {
@@ -358,10 +354,10 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                         Type2::Array{ group, .. } => Either::Left(group),
                         x => panic!("only supports tagged arrays/maps/typenames - found: {:?} in rule {}", x, type_name),
                     } {
-                        Either::Left(_group) => parse_type(types, type_name, inner_type, *tag, generic_params),
+                        Either::Left(_group) => parse_type(types, parent_visitor, type_name, inner_type, *tag, generic_params),
                         Either::Right(ident) => {
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
-                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: &inner_type.type1, type2: &inner_type.type1.type2 }, op));
+                            let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &inner_type.type1.type2, op));
                             match control {
                                 Some(ControlOperator::CBOR(_ty)) => {
                                     // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
@@ -377,11 +373,11 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                                             Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
-                                        _ => types.register_rust_struct(RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max)))
+                                        _ => types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max)))
                                     }
                                 },
                                 Some(ControlOperator::Default(default_value)) => {
-                                    let default_tagged_type = rust_type_from_type2(types, &Type2AndParent { parent: &inner_type.type1, type2: &inner_type.type1.type2 })
+                                    let default_tagged_type = rust_type_from_type2(types, parent_visitor, &inner_type.type1.type2)
                                         .default(default_value)
                                         .tag(tag_unwrap);
                                     types.register_type_alias(type_name.clone(), default_tagged_type, true, true);
@@ -399,7 +395,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
                     };
                 },
                 _ => {
-                    parse_type_choices(types, type_name, &t.type_choices, *tag, generic_params);
+                    parse_type_choices(types, parent_visitor, type_name, &t.type_choices, *tag, generic_params);
                 }
             };
         },
@@ -407,7 +403,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         Type2::IntValue{ value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Nint(*value));
 
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -422,7 +418,7 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
         Type2::UintValue{ value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
 
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -444,10 +440,10 @@ fn parse_type(types: &mut IntermediateTypes, type_name: &RustIdent, type_choice:
 }
 
 // TODO: Also generates individual choices if required, ie for a / [foo] / c would generate Foos
-pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, type_choices: &Vec<TypeChoice>) -> Vec<EnumVariant> {
+pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type_choices: &Vec<TypeChoice>) -> Vec<EnumVariant> {
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     type_choices.iter().map(|choice| {
-        let rust_type = rust_type_from_type1(types, &choice.type1);
+        let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1);
         let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant().to_string());
         EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
     }).collect()
@@ -618,9 +614,9 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
     }
 }
 
-fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustType {
-    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, &Type2AndParent { parent: type1, type2: &type1.type2 }, op));
-    let base_type = rust_type_from_type2(types, &Type2AndParent { type2: &type1.type2, parent: type1, });
+fn rust_type_from_type1(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type1: &Type1) -> RustType {
+    let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+    let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2);
     // println!("type1: {:#?}", type1);
     match control {
         Some(ControlOperator::CBOR(ty)) => {
@@ -641,9 +637,9 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, type1: &Type1) -> RustTyp
     }
 }
 
-fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -> RustType {
+fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type2: &Type2) -> RustType {
     // TODO: socket plugs (used in hash type)
-    match &type2.type2 {
+    match &type2 {
         Type2::UintValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Uint(*value)).into(),
         Type2::IntValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Nint(*value)).into(),
         //Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)),
@@ -656,7 +652,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
                     // foo = [a: bar<text, bool>]
                     // so to be able to expose it to wasm, we create a new generic instance
                     // under the name bar_string_bool in this case.
-                    let generic_args = args.args.iter().map(|a| rust_type_from_type1(types, &a.arg)).collect::<Vec<_>>();
+                    let generic_args = args.args.iter().map(|a| rust_type_from_type1(types, parent_visitor, &a.arg)).collect::<Vec<_>>();
                     let args_name = generic_args.iter().map(|t| t.for_variant().to_string()).collect::<Vec<String>>().join("_");
                     let instance_cddl_ident = CDDLIdent::new(format!("{}_{}", cddl_ident, args_name));
                     let instance_ident = RustIdent::new(instance_cddl_ident.clone());
@@ -676,19 +672,19 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
                     if choice.group_entries.len() == 1 {
                         let (entry, _has_comma) = choice.group_entries.first().unwrap();
                         match entry {
-                            GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, &ge.entry_type),
+                            GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, parent_visitor, &ge.entry_type),
                             GroupEntry::TypeGroupname{ ge, .. } => types.new_type(&CDDLIdent::new(&ge.name.to_string())),
                             _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
                         }
                     } else {
-                        let rule_metadata = RuleMetadata::from(type2.parent.comments_after_type.as_ref());
+                        let rule_metadata = RuleMetadata::from(get_comment_after(parent_visitor, &CDDLType::from(type2), None).as_ref());;
                         let name = match rule_metadata.name.as_ref() {
                             Some(name) => name,
                             None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
                         };
                         let cddl_ident = CDDLIdent::new(name);
                         let rust_ident = RustIdent::new(cddl_ident.clone());
-                        parse_group(types, group, &rust_ident, Representation::Array, None, None);
+                        parse_group(types, parent_visitor, group, &rust_ident, Representation::Array, None, None);
                         // we aren't returning an array, but rather a struct where the fields are ordered
                         return types.new_type(&cddl_ident)
                     }
@@ -709,8 +705,8 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
                     match table_types {
                         // Table map - homogenous key/value types
                         Some((domain, range)) => {
-                            let key_type = rust_type_from_type1(types, domain);
-                            let value_type = rust_type(types, range);
+                            let key_type = rust_type_from_type1(types, parent_visitor, domain);
+                            let value_type = rust_type(types, parent_visitor, range);
                             // Generate a MapTToV for a { t => v } table-type map as we are an anonymous type
                             // defined as part of another type if we're in this level of parsing.
                             // We also can't have plain groups unlike arrays, so don't try and generate those
@@ -728,30 +724,30 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, type2: &Type2AndParent) -
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData{ tag, t, .. } => {
             let tag_unwrap = tag.expect("tagged data without tag not supported");
-            rust_type(types, t).tag(tag_unwrap)
+            rust_type(types, parent_visitor, t).tag(tag_unwrap)
         },
         _ => {
-            panic!("Ignoring Type2: {:?}", type2.type2);
+            panic!("Ignoring Type2: {:?}", type2);
         },
     }
 }
 
-fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
+fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &Type) -> RustType {
     if t.type_choices.len() == 1 {
-        rust_type_from_type1(types, &t.type_choices.first().unwrap().type1)
+        rust_type_from_type1(types, parent_visitor, &t.type_choices.first().unwrap().type1)
     } else {
         if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
             let a = &t.type_choices[0].type1;
             let b = &t.type_choices[1].type1;
             if type2_is_null(&a.type2) {
-                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, b))).into();
+                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, parent_visitor, b))).into();
             }
             if type2_is_null(&b.type2) {
-                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, a))).into();
+                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(types, parent_visitor, a))).into();
             }
         }
-        let variants = create_variants_from_type_choices(types, &t.type_choices);
+        let variants = create_variants_from_type_choices(types, parent_visitor, &t.type_choices);
         let mut combined_name = String::new();
         // one caveat: nested types can leave ambiguous names and cause problems like
         // (a / b) / c and a / (b / c) would both be AOrBOrC
@@ -763,7 +759,7 @@ fn rust_type(types: &mut IntermediateTypes, t: &Type) -> RustType {
             combined_name.push_str(&variant.rust_type.for_variant().to_string());
         }
         let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
-        types.register_rust_struct(RustStruct::new_type_choice(combined_ident, None, variants));
+        types.register_rust_struct(parent_visitor, RustStruct::new_type_choice(combined_ident, None, variants));
         types.new_type(&CDDLIdent::new(combined_name))
     }
 }
@@ -783,9 +779,9 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
         .unwrap_or(false)
 }
 
-fn group_entry_to_type(types: &mut IntermediateTypes, entry: &GroupEntry) -> RustType {
+fn group_entry_to_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, entry: &GroupEntry) -> RustType {
     let ret = match entry {
-        GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, &ge.entry_type),
+        GroupEntry::ValueMemberKey{ ge, .. } => rust_type(types, parent_visitor, &ge.entry_type),
         GroupEntry::TypeGroupname{ ge, .. } => {
             if ge.generic_args.is_some() {
                 // I am not sure how we end up with this kind of generic args since definitional ones
@@ -827,15 +823,15 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
     }
 }
 
-fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representation, group_choice: &GroupChoice) -> RustRecord {
+fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representation, parent_visitor: &ParentVisitor, group_choice: &GroupChoice) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
     let fields = group_choice.group_entries.iter().enumerate().map(
         |(index, (group_entry, optional_comma))| {
             let field_name = group_entry_to_field_name(group_entry, index, &mut generated_fields, optional_comma);
             // does not exist for fixed values importantly
-            let field_type = group_entry_to_type(types, group_entry);
+            let field_type = group_entry_to_type(types, parent_visitor, group_entry);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
-                types.set_rep_if_plain_group(ident, rep);
+                types.set_rep_if_plain_group(parent_visitor, ident, rep);
             }
             let optional_field = group_entry_optional(group_entry);
             let key = match rep {
@@ -851,32 +847,32 @@ fn parse_record_from_group_choice(types: &mut IntermediateTypes, rep: Representa
     }
 }
 
-fn parse_group_choice<'a>(types: &mut IntermediateTypes, group_choice: &'a GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+fn parse_group_choice<'a>(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, group_choice: &'a GroupChoice, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let table_types = table_domain_range(group_choice, rep);
     let rust_struct = match table_types {
         // Table map - homogenous key/value types
         Some((domain, range)) => {
-            let key_type = rust_type_from_type1(types, domain);
-            let value_type = rust_type(types, range);
+            let key_type = rust_type_from_type1(types, parent_visitor, domain);
+            let value_type = rust_type(types, parent_visitor, range);
             RustStruct::new_table(name.clone(), tag, key_type, value_type)
         },
         // Heterogenous map (or array!) with defined key/value pairs in the cddl like a struct
         None => {
-            let record = parse_record_from_group_choice(types, rep, group_choice);
+            let record = parse_record_from_group_choice(types, rep, parent_visitor, group_choice);
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
             RustStruct::new_record(name.clone(), tag, record)
         }
     };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
-        None => types.register_rust_struct(rust_struct),
+        None => types.register_rust_struct(parent_visitor, rust_struct),
     };
 }
 
-pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
+pub fn parse_group(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, group: &Group, name: &RustIdent, rep: Representation, tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
-        parse_group_choice(types, group.group_choices.first().unwrap(), name, rep, tag, generic_params);
+        parse_group_choice(types, parent_visitor, group.group_choices.first().unwrap(), name, rep, tag, generic_params);
     } else {
         if generic_params.is_some() {
             todo!("{}: generic group choices not supported", name);
@@ -898,10 +894,10 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
             // We might end up doing this anyway to support table-maps in choices though.
             if group_choice.group_entries.len() == 1 {
                 let group_entry = &group_choice.group_entries.first().unwrap().0;
-                let ty = group_entry_to_type(types, group_entry);
+                let ty = group_entry_to_type(types, parent_visitor, group_entry);
                 let serialize_as_embedded = if let ConceptualRustType::Rust(ident) = &ty.conceptual_type {
                     // we might need to generate it if not used elsewhere
-                    types.set_rep_if_plain_group(ident, rep);
+                    types.set_rep_if_plain_group(parent_visitor, ident, rep);
                     types.is_plain_group(ident)
                 } else {
                     false
@@ -928,10 +924,148 @@ pub fn parse_group(types: &mut IntermediateTypes, group: &Group, name: &RustIden
                 // General case, GroupN type identifiers and generate group choice since it's inlined here
                 let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
                 types.mark_plain_group(variant_name.clone(), None);
-                parse_group_choice(types, group_choice, &variant_name, rep, None, generic_params.clone());
+                parse_group_choice(types, parent_visitor, group_choice, &variant_name, rep, None, generic_params.clone());
                 EnumVariant::new(VariantIdent::new_rust(variant_name.clone()), ConceptualRustType::Rust(variant_name).into(), true)
             }
         }).collect();
-        types.register_rust_struct(RustStruct::new_group_choice(name.clone(), tag, variants, rep));
+        types.register_rust_struct(parent_visitor, RustStruct::new_group_choice(name.clone(), tag, variants, rep));
+    }
+}
+
+fn get_comments_if_group_parent<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &CDDLType<'a, 'a>, child: Option<&CDDLType<'a, 'a>>, comments_after_group: &Option<Comments<'a>>) -> Option<Comments<'a>> {
+    if let Some(CDDLType::Group(_)) = child {
+        return comments_after_group.clone()
+    }
+    get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type))
+}
+fn get_comments_if_type_parent<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &CDDLType<'a, 'a>, child: Option<&CDDLType<'a, 'a>>, comments_after_type: &Option<Comments<'a>>) -> Option<Comments<'a>> {
+    if let Some(CDDLType::Type(_)) = child {
+        return comments_after_type.clone()
+    }
+    get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type))
+}
+
+
+/// Gets the comment(s) that come after a type by parsing the CDDL AST
+/// 
+/// (implementation detail) sometimes getting the comment after a type requires walking up the AST
+/// This happens when whether or not the type has a comment after it depends in which structure it is embedded in
+///    For example, CDDLType::Group has no "comment_after_group" type
+///    However, when part of a Type2::Array, it does have a "comment_after_group" embedded inside the Type2
+/// 
+/// Note: we do NOT merge comments when the type is coincidentally the last node inside its parent structure
+///    For example, the last CDDLType::GroupChoice inside a CDDLType::Group will not return its parent's comment
+fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &CDDLType<'a, 'a>, child: Option<&CDDLType<'a, 'a>>) -> Option<Comments<'a>> {
+    match cddl_type {
+        CDDLType::CDDL(_) => None,
+        CDDLType::Rule(t) =>
+            match t {
+                Rule::Type { comments_after_rule, .. } => comments_after_rule.clone(),
+                Rule::Group { comments_after_rule, .. } => comments_after_rule.clone(),
+            },
+        CDDLType::TypeRule(_) => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
+        CDDLType::GroupRule(_) => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
+        CDDLType::Group(_) => {
+            match cddl_type.parent(parent_visitor).unwrap() {
+                parent@CDDLType::GroupEntry(_) => get_comment_after(parent_visitor, parent, Some(cddl_type)),
+                parent@CDDLType::Type2(_) => get_comment_after(parent_visitor, parent, Some(cddl_type)),
+                parent@CDDLType::MemberKey(_) => get_comment_after(parent_visitor, parent, Some(cddl_type)),
+                _ => None,
+            }
+        },
+        // TODO: handle child by looking up the group entry in group_entries
+        // the expected behavior of this may instead be to combine_comments based off its parents
+        // which is a slippery slope in complexity
+        CDDLType::GroupChoice(_) => None,
+        CDDLType::GenericParams(_) => None,
+        CDDLType::GenericParam(t) => {
+            if let Some(CDDLType::Identifier(_)) = child {
+                return t.comments_after_ident.clone()
+            }
+            None
+        },
+        CDDLType::GenericArgs(_) => None,
+        CDDLType::GenericArg(t) => {
+            if let Some(CDDLType::Type1(_)) = child {
+                return t.comments_after_type.clone()
+            }
+            None
+        },
+        CDDLType::GroupEntry(t) => match t {
+            GroupEntry::ValueMemberKey { trailing_comments, .. } => trailing_comments.clone(),
+            GroupEntry::TypeGroupname { trailing_comments, .. } => trailing_comments.clone(),
+            GroupEntry::InlineGroup { comments_after_group, .. } => {
+                if let Some(CDDLType::Group(_)) = child {
+                    return comments_after_group.clone()
+                }
+                None
+            },
+        },
+        CDDLType::Identifier(_) => None, // TODO: recurse up for GenericParam
+        CDDLType::Type(_) => None,
+        CDDLType::TypeChoice(t) => t.comments_after_type.clone(),
+        CDDLType::Type1(t) => {
+            if let Some(CDDLType::Type2(_)) = child {
+                if let Some(op) = &t.operator {
+                    return op.comments_before_operator.clone()
+                } else {
+                    return t.comments_after_type.clone()
+                }
+            };
+            if t.operator.is_none() {
+                get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type))
+            } else {
+                None
+            }
+        },
+        CDDLType::Type2(t) => match t {
+            Type2::ParenthesizedType { comments_after_type, .. } => get_comments_if_type_parent(parent_visitor, cddl_type, child, comments_after_type),
+            Type2::Map { comments_after_group, .. } => get_comments_if_group_parent(parent_visitor, cddl_type, child, comments_after_group),
+            Type2::Array { comments_after_group, .. } => get_comments_if_group_parent(parent_visitor, cddl_type, child, comments_after_group),
+            Type2::Unwrap { .. } => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
+            Type2::ChoiceFromInlineGroup { comments_after_group, .. } => get_comments_if_group_parent(parent_visitor, cddl_type, child, comments_after_group),
+            Type2::ChoiceFromGroup { .. } => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
+            Type2::TaggedData { comments_after_type, .. } => get_comments_if_type_parent(parent_visitor, cddl_type, child, comments_after_type),
+            _ => None,
+        },
+        CDDLType::Operator(t) => {
+            if let Some(CDDLType::RangeCtlOp(_)) = child {
+                return t.comments_after_operator.clone()
+            }
+            if let Some(CDDLType::Type2(t2)) = child {
+                // "comments_before_operator" is associated with the 1st type2 and not the second (t.type2)
+                if std::ptr::eq(*t2, &t.type2) {
+                    return None
+                } else {
+                    return t.comments_before_operator.clone()
+                }
+            }
+            None
+        },
+        CDDLType::Occurrence(t) => t.comments.clone(),
+        CDDLType::Occur(_) => None,
+        CDDLType::Value(_) => None,
+        CDDLType::ValueMemberKeyEntry(_) => None,
+        CDDLType::TypeGroupnameEntry(_) => None,
+        CDDLType::MemberKey(t) => match t {
+            MemberKey::NonMemberKey { comments_after_type_or_group, .. } => comments_after_type_or_group.clone(),
+            _ => None
+        },
+        CDDLType::NonMemberKey(_) => get_comment_after(parent_visitor, cddl_type.parent(parent_visitor).unwrap(), Some(cddl_type)),
+        _ => None
+    }
+}
+
+fn get_rule_name<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> Identifier<'a> {
+    match cddl_type {
+        CDDLType::CDDL(_) => panic!("Cannot get the rule name of a top-level CDDL node"),
+        CDDLType::Rule(t) =>
+            match t {
+                Rule::Type { rule, .. } => get_rule_name(parent_visitor, &CDDLType::from(rule)),
+                Rule::Group { rule, .. } => get_rule_name(parent_visitor, &CDDLType::from(rule.as_ref())),
+            },
+        CDDLType::TypeRule(t) => t.name.clone(),
+        CDDLType::GroupRule(t) => t.name.clone(),
+        other => get_rule_name(parent_visitor, other.parent(parent_visitor).unwrap()),
     }
 }
