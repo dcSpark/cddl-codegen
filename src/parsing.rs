@@ -701,7 +701,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
             RustType::Tagged(tag.expect("tagged data without tag not supported"), Box::new(rust_type(types, parent_visitor, t)))
         },
         Type2::ParenthesizedType { pt, .. } => {
-            rust_type(types, pt)
+            rust_type(types, parent_visitor, pt)
         },
         _ => {
             panic!("Ignoring Type2: {:?}", type2);
