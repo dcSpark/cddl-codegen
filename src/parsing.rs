@@ -1131,14 +1131,3 @@ fn _has_embed<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a
         _ => false
     }
 }
-
-/// A recursive type is defied as one that has a node of the same type in its parent hierarchy 
-fn is_recursive<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> bool {
-    _is_recursive(parent_visitor, &mut HashSet::new(), cddl_type)
-}
-fn _is_recursive<'a, 'b>(parent_visitor: &'a ParentVisitor, seen_set: &mut HashSet<Discriminant<CDDLType<'a, 'b>>>, cddl_type: &CDDLType<'a, 'b>) -> bool {
-    match seen_set.insert(std::mem::discriminant(cddl_type)) {
-        true => _is_recursive(parent_visitor, seen_set, cddl_type.parent(parent_visitor).unwrap()),
-        false => false
-    }
-}

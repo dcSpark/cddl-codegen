@@ -52,22 +52,6 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    pub fn has_ident(&self, ident: &RustIdent) -> bool {
-        let foo: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
-            match alias {
-                AliasIdent::Reserved(_) => {},
-                AliasIdent::Rust(ident) => { acc.push(ident.clone()) }
-            };
-            acc
-        });
-        println!("{:?}", self.plain_groups.keys().chain(foo.iter()).chain(self.rust_structs.keys()).chain(self.generic_defs.keys()).chain(self.generic_instances.keys()));
-        self.plain_groups.contains_key(ident)
-         || self.type_aliases.contains_key(&AliasIdent::Rust(ident.clone()))
-         || self.rust_structs.contains_key(ident)
-         || self.generic_defs.contains_key(ident)
-         || self.generic_instances.contains_key(ident)
-    }
-
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool, bool)> {
         &self.type_aliases
     }
@@ -1753,14 +1737,5 @@ impl GenericInstance {
             }
         }
         orig.clone()
-    }
-}
-
-fn try_ident_with_id(intermediate_types: &IntermediateTypes, name: &CDDLIdent, value: u32) -> CDDLIdent {
-    let new_ident = CDDLIdent::new(format!("{}{}", name, value));
-    let rust_ident = RustIdent::new(new_ident.clone());
-    match intermediate_types.has_ident(&rust_ident) {
-        false => new_ident,
-        true => try_ident_with_id(intermediate_types, name, value + 1)
     }
 }
