@@ -1,7 +1,8 @@
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use either::{Either};
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, HashSet};
+use std::mem::Discriminant;
 
 use crate::comment_ast::{RuleMetadata, metadata_from_comments};
 use crate::intermediate::{
@@ -279,7 +280,11 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                         },
                         ControlOperator::CBOR(ty) => match field_type() {
                             RustType::Primitive(Primitive::Bytes) => {
-                                types.register_type_alias(type_name.clone(), RustType::CBORBytes(Box::new(ty)), true, true);
+                                if has_embed(parent_visitor, get_rule(parent_visitor, &CDDLType::from(type1))) {
+                                    types.register_type_alias(type_name.clone(), RustType::CBORBytes(Box::new(ty)), true, true);
+                                } else {
+                                    types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, RustType::CBORBytes(Box::new(ty)), None));
+                                }
                             },
                             _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
                         },
@@ -351,7 +356,11 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
                                         .expect(&format!("Please move definition for {} above {}", type_name, ident));
-                                    types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(RustType::CBORBytes(Box::new(base_type)))), true, true);
+                                    if has_embed(parent_visitor, get_rule(parent_visitor, &CDDLType::from(&inner_type.type1.type2))) {
+                                        types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(RustType::CBORBytes(Box::new(base_type)))), true, true)
+                                    } else {
+                                        types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), Some(tag_unwrap), RustType::CBORBytes(Box::new(base_type)), None));
+                                    }
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
@@ -368,7 +377,11 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
                                         .expect(&format!("Please move definition for {} above {}", type_name, ident));
-                                    types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(base_type)), true, true);
+                                    if has_embed(parent_visitor, get_rule(parent_visitor, &CDDLType::from(&inner_type.type1.type2))) {
+                                        types.register_type_alias(type_name.clone(), RustType::Tagged(tag_unwrap, Box::new(base_type)), false, true);
+                                    } else {
+                                        types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), Some(tag_unwrap), base_type, None));
+                                    }
                                 },
                             }
                         },
@@ -1033,6 +1046,13 @@ fn get_comment_after<'a>(parent_visitor: &'a ParentVisitor<'a, 'a>, cddl_type: &
     }
 }
 
+fn get_rule<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> &'a Rule<'a> {
+    match cddl_type {
+        CDDLType::CDDL(_) => panic!("Cannot get the rule name of a top-level CDDL node"),
+        CDDLType::Rule(rule) => rule,
+        other => get_rule(parent_visitor, other.parent(parent_visitor).unwrap()),
+    }
+}
 fn get_rule_name<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> Identifier<'a> {
     match cddl_type {
         CDDLType::CDDL(_) => panic!("Cannot get the rule name of a top-level CDDL node"),
@@ -1044,5 +1064,81 @@ fn get_rule_name<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType
         CDDLType::TypeRule(t) => t.name.clone(),
         CDDLType::GroupRule(t) => t.name.clone(),
         other => get_rule_name(parent_visitor, other.parent(parent_visitor).unwrap()),
+    }
+}
+
+/// An embedded type is a type embedded inside a larger structure (group, array, etc)
+fn has_embed<'a>(parent_visitor: &'a ParentVisitor, rule: &Rule<'a>) -> bool {
+    _has_embed(parent_visitor, &CDDLType::from(rule))
+}
+fn _has_embed<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> bool {
+    match cddl_type {
+        CDDLType::CDDL(_) => panic!("has_embed cannot be called on a root CDDL type"),
+        CDDLType::Rule(rule) => match rule {
+            Rule::Type { rule, .. } => _has_embed(parent_visitor, &CDDLType::from(rule)),
+            Rule::Group { rule, .. }  => _has_embed(parent_visitor, &CDDLType::from(&rule.entry))
+        },
+        CDDLType::TypeRule(rule) => _has_embed(parent_visitor, &CDDLType::from(&rule.value)),
+        CDDLType::GroupRule(_) => true,
+        CDDLType::Group(_) => true,
+        CDDLType::GroupChoice(_) => true,
+        CDDLType::GenericParams(_) => false,
+        CDDLType::GenericParam(_) => false,
+        CDDLType::GenericArgs(t) => {
+            match t.args.len() {
+                1 => _has_embed(parent_visitor, &CDDLType::from(t.args.first().unwrap())),
+                _ => true,
+            }
+        },
+        CDDLType::GenericArg(t) => _has_embed(parent_visitor, &CDDLType::from(t.arg.as_ref())),
+        CDDLType::GroupEntry(_) => true,
+        CDDLType::Identifier(_) => false,
+        CDDLType::Type(t) => {
+            match t.type_choices.len() {
+                1 => _has_embed(parent_visitor, &CDDLType::from(t.type_choices.first().unwrap())),
+                _ => true,
+            }
+        },
+        CDDLType::TypeChoice(_) => false,
+        CDDLType::Type1(t) => {
+            match _has_embed(parent_visitor, &CDDLType::from(&t.type2)) {
+                true => true,
+                false => match &t.operator {
+                    None => false,
+                    Some(op) => _has_embed(parent_visitor, &CDDLType::from(op)),
+                }
+            }
+
+        },
+        CDDLType::Type2(t) => match t {
+            Type2::ParenthesizedType { pt, .. } => _has_embed(parent_visitor, &CDDLType::from(pt)),
+            Type2::Map { .. } => true,
+            Type2::Array { .. } => true,
+            Type2::Unwrap { .. } => true,
+            Type2::ChoiceFromInlineGroup { .. } => true,
+            Type2::ChoiceFromGroup { .. } => true,
+            Type2::TaggedData { t, .. } => _has_embed(parent_visitor, &CDDLType::from(t)),
+            _ => false,
+        },
+        CDDLType::Operator(op) => _has_embed(parent_visitor, &CDDLType::from(&op.type2)),
+        CDDLType::Occurrence(_) => true,
+        CDDLType::Occur(_) => true,
+        CDDLType::Value(_) => false,
+        CDDLType::ValueMemberKeyEntry(_) => true,
+        CDDLType::TypeGroupnameEntry(_) => true,
+        CDDLType::MemberKey(_) => true,
+        CDDLType::NonMemberKey(_) => true,
+        _ => false
+    }
+}
+
+/// A recursive type is defied as one that has a node of the same type in its parent hierarchy 
+fn is_recursive<'a, 'b>(parent_visitor: &'a ParentVisitor, cddl_type: &CDDLType<'a, 'b>) -> bool {
+    _is_recursive(parent_visitor, &mut HashSet::new(), cddl_type)
+}
+fn _is_recursive<'a, 'b>(parent_visitor: &'a ParentVisitor, seen_set: &mut HashSet<Discriminant<CDDLType<'a, 'b>>>, cddl_type: &CDDLType<'a, 'b>) -> bool {
+    match seen_set.insert(std::mem::discriminant(cddl_type)) {
+        true => _is_recursive(parent_visitor, seen_set, cddl_type.parent(parent_visitor).unwrap()),
+        false => false
     }
 }
