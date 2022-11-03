@@ -126,4 +126,28 @@ mod tests {
         let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
         deser_test(&max);
     }
+
+    #[test]
+    fn paren_types() {
+        {
+            let _: ParenSize = 5u8;
+        }
+        {
+            let cbor = ParenCbor::new("foo".to_string());
+            // TODO: fix this assert by inputting the right value
+            assert_eq!(cbor.to_bytes(), vec![]);
+        }
+    }
+
+    #[test]
+    fn toplevel_types() {
+        {
+            let tag = NoEmbedTag::new(5);
+            assert_eq!(tag.to_bytes(), vec![0xd8, 0x18, 0x05]);
+        }
+        {
+            let cbor = NoEmbedCbor::new(5);
+            assert_eq!(cbor.to_bytes(), vec![0x41, 0x05]);
+        }
+    }
 }

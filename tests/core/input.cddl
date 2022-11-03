@@ -65,3 +65,6 @@ signed_ints = [
 
 paren_size = uint .size (1)
 paren_cbor = bytes .cbor (text)
+
+no_embed_tag = #6.24(uint)
+no_embed_cbor = bytes .cbor uint
