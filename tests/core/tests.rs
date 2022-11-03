@@ -128,6 +128,18 @@ mod tests {
     }
 
     #[test]
+    fn paren_types() {
+        {
+            let _: ParenSize = 5u8;
+        }
+        {
+            let cbor = ParenCbor::new("foo".to_string());
+            // TODO: fix this assert by inputting the right value
+            assert_eq!(cbor.to_bytes(), vec![]);
+        }
+    }
+
+    #[test]
     fn toplevel_types() {
         {
             let tag = NoEmbedTag::new(5);
