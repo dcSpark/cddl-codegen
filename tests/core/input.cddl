@@ -62,3 +62,6 @@ signed_ints = [
 	; we can't test that since isize::BITS is never > 64 in any normal system and likely never will be
 	i64_min: -9223372036854775808
 ]
+
+paren_size = uint .size (1)
+paren_cbor = bytes .cbor (text)
