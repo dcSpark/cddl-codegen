@@ -185,7 +185,10 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                             Type2::IntValue{ value, .. } => Some(value as i128),
                             _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                         };
-                        let max = match &inner_type.operator {
+                        match &inner_type.operator {
+                            // if there was only one value instead of a range, we take that value to be the max
+                            // ex: uint .size (1)
+                            None => ControlOperator::Range((None, min)),
                             Some(op) => match op.operator {
                                 RangeCtlOp::RangeOp{ is_inclusive, ..} => {
                                     let value = match op.type2 {
@@ -193,13 +196,12 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                                         Type2::IntValue{ value, ..} => value as i128,
                                         _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                                     };
-                                    Some(if is_inclusive { value } else { value + 1 })
+                                    let max = Some(if is_inclusive { value } else { value + 1 });
+                                    ControlOperator::Range((min, max))
                                 },
                                 RangeCtlOp::CtlOp{ .. } => panic!(""),
                             },
-                            None => min,
-                        };
-                        ControlOperator::Range((min, max))
+                        }
                     },
                     _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                 };
@@ -697,6 +699,9 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData{ tag, t, .. } => {
             RustType::Tagged(tag.expect("tagged data without tag not supported"), Box::new(rust_type(types, parent_visitor, t)))
+        },
+        Type2::ParenthesizedType { pt, .. } => {
+            rust_type(types, parent_visitor, pt)
         },
         _ => {
             panic!("Ignoring Type2: {:?}", type2);
