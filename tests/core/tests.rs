@@ -126,4 +126,14 @@ mod tests {
         let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
         deser_test(&max);
     }
+
+    #[test]
+    fn defaults() {
+        let mut md = MapWithDefaults::new();
+        deser_test(&md);
+        md.key_1 = 0;
+        deser_test(&md);
+        md.key_2 = "not two".into();
+        deser_test(&md);
+    }
 }
