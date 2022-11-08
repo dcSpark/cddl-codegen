@@ -506,4 +506,48 @@ mod tests {
             assert_eq!(irregular_bytes_max, irregular_max.to_bytes());
         }
     }
+
+    #[test]
+    fn defaults() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_3_encodings = vec![
+            StringLenSz::Len(Sz::Eight),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(1, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (1, Sz::Four)]),
+        ];
+        let bools = [(false, true), (true, false), (true, true)];
+        for str_enc in &str_3_encodings {
+            for def_enc in &def_encodings {
+                for ((key_1_present, key_1_default), (key_2_present, key_2_default)) in bools.iter().zip(bools.iter()) {
+                    let value_1: u64 = if *key_1_default { 1337 } else { 2 };
+                    let value_2 = if *key_2_default { "two" } else { "one" };
+                    let irregular_bytes = vec![
+                        vec![MAP_INDEF],
+                            if *key_1_present {
+                                vec![
+                                    cbor_int(1, *def_enc),
+                                        cbor_int(value_1 as i128, Sz::Two),
+                                ].into_iter().flatten().clone().collect::<Vec<u8>>()
+                            } else {
+                                vec![]
+                            },
+                            if *key_2_present {
+                                vec![
+                                    cbor_int(2, *def_enc),
+                                        cbor_str_sz(value_2, str_enc.clone()),
+                                ].into_iter().flatten().clone().collect::<Vec<u8>>()
+                            } else {
+                                vec![]
+                            },
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular = MapWithDefaults::from_bytes(irregular_bytes.clone()).unwrap();
+                    assert_eq!(irregular_bytes, irregular.to_bytes());
+                    assert_eq!(irregular.key_1, value_1);
+                    assert_eq!(irregular.key_2, value_2);
+                }
+            }
+        }
+    }
 }
