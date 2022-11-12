@@ -1,4 +1,4 @@
-use core::hash::{Hash, Hasher};
+use core::hash::Hash;
 
 #[derive(Clone, Debug, Default, Hash, Ord, Eq, PartialEq, PartialOrd)]
 pub struct OrderedHashMap<K, V>(linked_hash_map::LinkedHashMap<K, V>) where

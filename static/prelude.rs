@@ -1,6 +1,5 @@
-use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
-use std::io::{BufRead, Seek, Write};
-use crate::serialization::CBORReadLen;
+use cbor_event::{self, de::Deserializer};
+use std::io::{BufRead, Seek};
 
 #[derive(Debug)]
 pub enum Key {

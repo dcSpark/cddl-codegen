@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cbor_event::{LenSz, StringLenSz};
 
     fn deser_test<T: Deserialize + ToBytes>(orig: &T) {
         print_cbor_types("orig", &orig.to_bytes());
