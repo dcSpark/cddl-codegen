@@ -463,16 +463,14 @@ impl GenerationScope {
 
         // Wasm (populate wasm_lib() - used for top of file before structs)
         if CLI_ARGS.wasm {
-            self.wasm_lib().import("wasm_bindgen::prelude", "*");
             self
                 .wasm_lib()
-                .raw("use std::collections::BTreeMap;");
-                
+                .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]")
+                .raw("use wasm_bindgen::prelude::{wasm_bindgen, JsValue};");
             if CLI_ARGS.preserve_encodings {
-                self
-                    .wasm_lib()
-                    .raw("use core::ordered_hash_map::OrderedHashMap;")
-                    .raw("use core::serialization::{LenEncoding, StringEncoding};");
+                self.wasm_lib().raw("use core::ordered_hash_map::OrderedHashMap;");
+            } else {
+                self.wasm_lib().raw("use std::collections::BTreeMap;");
             }
         }
 
@@ -740,6 +738,7 @@ impl GenerationScope {
             let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
             if CLI_ARGS.json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
+                wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
             }
             std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
         }
@@ -1818,13 +1817,13 @@ impl GenerationScope {
                 .arg("native", &inner_type)
                 .ret("Self")
                 .line("Self(native)");
-            let mut to_wasm = codegen::Impl::new(&array_type_ident.to_string());
+            let mut to_wasm = codegen::Impl::new(&inner_type);
             to_wasm
-                .impl_trait(format!("std::convert::Into<{}>", inner_type))
-                .new_fn("into")
-                .arg_self()
-                .ret(inner_type)
-                .line("self.0");
+                .impl_trait(format!("From<{}>", array_type_ident.to_string()))
+                .new_fn("from")
+                .arg("wrapper", array_type_ident.to_string())
+                .ret("Self")
+                .line("wrapper.0");
             self
                 .wasm_lib()
                 .raw("#[wasm_bindgen]")
@@ -2093,7 +2092,7 @@ fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent
                 .ret("Result<JsValue, JsValue>")
                 .arg_ref_self()
                 .vis("pub")
-                .line("JsValue::from_serde(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
+                .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
             s_impl.push_fn(to_json_value);
             s_impl
                 .new_fn("from_json")
@@ -2413,6 +2412,7 @@ pub fn table_type() -> &'static str {
 
 fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes, name: &RustIdent, key_type: RustType, value_type: RustType, tag: Option<usize>) {
     assert!(CLI_ARGS.wasm);
+    assert!(tag.is_none(), "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?");
     // this would interfere with loop code generation unless we
     // specially handle this case since you wouldn't know whether you hit a break
     // or are reading a key here, unless we check, but then you'd need to store the
@@ -2436,13 +2436,6 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .arg_ref_self()
         .line("self.0.len()");
     // insert
-    let ret_modifier = if value_type.is_copy() {
-        ""
-    } else if value_type.directly_wasm_exposable() {
-        ".map(|v| v.clone())"
-    } else {
-        ".map(|v| v.clone().into())"
-    };
     let mut insert_func = codegen::Function::new("insert");
     insert_func
         .vis("pub")
@@ -2455,10 +2448,17 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
                 "self.0.insert({}, {}){}",
                 ToWasmBoundaryOperations::format(key_type.from_wasm_boundary_clone("key", false).into_iter()),
                 ToWasmBoundaryOperations::format(value_type.from_wasm_boundary_clone("value", false).into_iter()),
-                ret_modifier));
+                if value_type.directly_wasm_exposable() { "" } else { ".map(Into::into)" }));
     // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
     wrapper.s_impl.push_fn(insert_func);
     // get
+    let get_ret_modifier = if value_type.is_copy() {
+        ""
+    } else if value_type.directly_wasm_exposable() {
+        ".map(|v| v.clone())"
+    } else {
+        ".map(|v| v.clone().into())"
+    };
     let mut getter = codegen::Function::new("get");
     getter
         .arg_ref_self()
@@ -2469,12 +2469,12 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         getter.line(format!(
             "self.0.get({}){}",
             key_type.from_wasm_boundary_ref("key"),
-            if value_type.is_copy() { ".copied()" } else { ret_modifier }));
+            if value_type.is_copy() { ".copied()" } else { get_ret_modifier }));
     } else {
         getter.line(format!(
             "self.0.get(&{}.0){}",
             key_type.from_wasm_boundary_ref("key"),
-            if value_type.is_copy() { ".copied()" } else { ret_modifier }));
+            if value_type.is_copy() { ".copied()" } else { get_ret_modifier }));
     }
     wrapper.s_impl.push_fn(getter);
     // keys
@@ -2485,7 +2485,12 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .ret(keys_type.for_wasm_return())
         .vis("pub");
     if keys_type.directly_wasm_exposable() {
-        keys.line("self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>()");
+        let key_clone = if key_type.is_copy() {
+            ".keys().copied()"
+        } else {
+            ".keys().cloned()"
+        };
+        keys.line(format!("self.0{}.collect::<Vec<_>>()", key_clone));
     } else {
         keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())", keys_type.for_wasm_return()));
     }
@@ -2498,13 +2503,13 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         .arg("native", &inner_type)
         .ret("Self")
         .line("Self(native)");
-    let mut to_wasm = codegen::Impl::new(&name.to_string());
+    let mut to_wasm = codegen::Impl::new(&inner_type);
     to_wasm
-        .impl_trait(format!("std::convert::Into<{}>", inner_type))
-        .new_fn("into")
-        .arg_self()
-        .ret(inner_type)
-        .line("self.0");
+        .impl_trait(format!("From<{}>", name.to_string()))
+        .new_fn("from")
+        .arg("wrapper", name.to_string())
+        .ret("Self")
+        .line("wrapper.0");
     wrapper.push(gen_scope, types);
     gen_scope
         .wasm_lib()
@@ -4096,12 +4101,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         get
             .vis("pub")
             .arg_ref_self()
-            .ret(field_type.for_wasm_return());
-        if field_type.directly_wasm_exposable() && !field_type.is_copy() {
-            get.line(field_type.to_wasm_boundary("self.0.get().clone()", false));
-        } else {
-            get.line(field_type.to_wasm_boundary("self.0.get()", false));
-        }
+            .ret(field_type.for_wasm_return())
+            .line(field_type.to_wasm_boundary("self.0.get()", false));
         wrapper.s_impl.push_fn(get);
         wrapper.push(gen_scope, types);
     }

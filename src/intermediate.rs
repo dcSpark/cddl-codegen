@@ -920,18 +920,17 @@ impl ConceptualRustType {
     }
 
     /// Function parameter TYPE by-non-mut-reference for read-only
-    pub fn for_rust_read(&self) -> String {
+    pub fn _for_rust_read(&self) -> String {
         match self {
             Self::Fixed(_) => panic!("should not expose Fixed type, only here for serialization: {:?}", self),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => format!("&{}", ident),
             Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(false)),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_rust_read()),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read()),
             Self::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
                 Self::Rust(_) => format!("&{}", ident),
-                
                 _ => ident.to_string(),
             },
         }
@@ -962,7 +961,12 @@ impl ConceptualRustType {
             // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
             Self::Alias(ident, ty) => match &**ty {
-                Self::Rust(_) => format!("{}{}", opt_ref, ident),
+                Self::Rust(_) | 
+                Self::Array(_) |
+                Self::Map(_, _) if !self.directly_wasm_exposable() => format!("{}{}", opt_ref, ident),
+                Self::Optional(_) |
+                // no special handling if for some reason nested aliases, just strip all to avoid hassle
+                Self::Alias(_, _) => ty.for_wasm_param_impl(force_not_ref),
                 _ => ident.to_string(),
             }
         }
@@ -1045,9 +1049,14 @@ impl ConceptualRustType {
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
     pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
+        let expr_cloned = if self.is_copy() {
+            expr.to_owned()
+        } else {
+            format!("{}.clone()", expr)
+        };
         let mut ops = match self {
             Self::Rust(_ident) => vec![
-                ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
             ],
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
@@ -1056,12 +1065,12 @@ impl ConceptualRustType {
                 ty.conceptual_type.from_wasm_boundary_clone(expr, can_fail)
             } else {
                 vec![
-                    ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                    ToWasmBoundaryOperations::Code(expr_cloned),
                     ToWasmBoundaryOperations::Into,
                 ]
             },
             Self::Map(_k, _v) => vec![
-                ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
             ],
             _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
@@ -1126,7 +1135,11 @@ impl ConceptualRustType {
             Self::Rust(_ident) => format!("{}.clone().into()", expr),
             //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
             //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
-            Self::Array(_ty) => format!("{}.clone().into()", expr),
+            Self::Array(_ty) => if self.directly_wasm_exposable() {
+                format!("{}.clone()", expr)
+            } else {
+                format!("{}.clone().into()", expr)
+            },
             Self::Map(_k, _v) => format!("{}.clone().into()", expr),
             Self::Optional(ty) => ty.conceptual_type.to_wasm_boundary_optional(expr, is_ref),
             Self::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
