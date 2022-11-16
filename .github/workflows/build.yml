@@ -1,6 +1,20 @@
 name: Linter and unit tests
 
-on: [ push, pull_request ]
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/build.yml'
+      - "**/Cargo.*"
+      - "src/**"
+      - "tests/**"
+  pull_request:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/build.yml'
+      - "**/Cargo.*"
+      - "src/**"
+      - "tests/**"
 
 jobs:
   test:
