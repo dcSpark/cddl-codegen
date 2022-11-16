@@ -1,6 +1,5 @@
-use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
-use std::io::{BufRead, Seek, Write};
-use crate::serialization::CBORReadLen;
+use cbor_event::{self, de::Deserializer};
+use std::io::{BufRead, Seek};
 
 #[derive(Debug)]
 pub enum Key {
@@ -129,7 +128,7 @@ pub trait Deserialize {
 
 impl<T: cbor_event::de::Deserialize> Deserialize for T {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<T, DeserializeError> {
-        T::deserialize(raw).map_err(|e| DeserializeError::from(e))
+        T::deserialize(raw).map_err(DeserializeError::from)
     }
 }
 
