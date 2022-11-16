@@ -1,3 +1,18 @@
+# global .gitignore
+*.swp
+
+# IDE
+.idea/
+.vscode/
+
+# Rust
+target/
+book/
+Cargo.lock
+
+# Mac files
+**/.DS_STore
+
+# Test files
 tests/*/export/**
 tests/*/export_wasm/**
-target/**
