@@ -4,7 +4,7 @@ fn run_test(dir: &str, options: &[&str], export_suffix: Option<&str>) {
     use std::str::FromStr;
     let export_path = match export_suffix {
         Some(suffix) => format!("export_{}", suffix),
-        None => "export".to_owned()
+        None => "export".to_owned(),
     };
     let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
     println!("--------- running test: {} ---------", dir);
@@ -13,8 +13,14 @@ fn run_test(dir: &str, options: &[&str], export_suffix: Option<&str>) {
     cargo_run
         .arg("run")
         .arg("--")
-        .arg(format!("--input={}", test_path.join("input.cddl").to_str().unwrap()))
-        .arg(format!("--output={}", test_path.join(&export_path).to_str().unwrap()));
+        .arg(format!(
+            "--input={}",
+            test_path.join("input.cddl").to_str().unwrap()
+        ))
+        .arg(format!(
+            "--output={}",
+            test_path.join(&export_path).to_str().unwrap()
+        ));
     for option in options {
         cargo_run.arg(option);
     }
@@ -30,7 +36,12 @@ fn run_test(dir: &str, options: &[&str], export_suffix: Option<&str>) {
         .append(true)
         .open(test_path.join(format!("{}/core/src/lib.rs", export_path)))
         .unwrap();
-    let deser_test_rs = std::fs::read_to_string(std::path::PathBuf::from_str("tests").unwrap().join("deser_test")).unwrap();
+    let deser_test_rs = std::fs::read_to_string(
+        std::path::PathBuf::from_str("tests")
+            .unwrap()
+            .join("deser_test"),
+    )
+    .unwrap();
     lib_rs.write("\n\n".as_bytes()).unwrap();
     lib_rs.write_all(deser_test_rs.as_bytes()).unwrap();
     let test_rs = std::fs::read_to_string(test_path.join("tests.rs")).unwrap();
@@ -44,9 +55,15 @@ fn run_test(dir: &str, options: &[&str], export_suffix: Option<&str>) {
         .output()
         .unwrap();
     if !cargo_test.status.success() {
-        eprintln!("test stderr:\n{}", String::from_utf8(cargo_test.stderr).unwrap());
+        eprintln!(
+            "test stderr:\n{}",
+            String::from_utf8(cargo_test.stderr).unwrap()
+        );
     }
-    println!("test stdout:\n{}", String::from_utf8(cargo_test.stdout).unwrap());
+    println!(
+        "test stdout:\n{}",
+        String::from_utf8(cargo_test.stdout).unwrap()
+    );
     assert!(cargo_test.status.success());
     let wasm_export_dir = test_path.join(format!("{}/wasm", export_path));
     let wasm_test_dir = test_path.join("tests_wasm.rs");
@@ -58,18 +75,27 @@ fn run_test(dir: &str, options: &[&str], export_suffix: Option<&str>) {
             .output()
             .unwrap();
         if !cargo_test_wasm.status.success() {
-            eprintln!("test stderr:\n{}", String::from_utf8(cargo_test_wasm.stderr).unwrap());
+            eprintln!(
+                "test stderr:\n{}",
+                String::from_utf8(cargo_test_wasm.stderr).unwrap()
+            );
         }
-        println!("test stdout:\n{}", String::from_utf8(cargo_test_wasm.stdout).unwrap());
+        println!(
+            "test stdout:\n{}",
+            String::from_utf8(cargo_test_wasm.stdout).unwrap()
+        );
         assert!(cargo_test_wasm.status.success());
     } else if wasm_export_dir.exists() {
         let cargo_build_wasm = std::process::Command::new("cargo")
-            .arg("build")    
+            .arg("build")
             .current_dir(wasm_export_dir)
             .output()
             .unwrap();
         if !cargo_build_wasm.status.success() {
-            eprintln!("wasm build stderr:\n{}", String::from_utf8(cargo_build_wasm.stderr).unwrap());
+            eprintln!(
+                "wasm build stderr:\n{}",
+                String::from_utf8(cargo_build_wasm.stderr).unwrap()
+            );
         }
         assert!(cargo_build_wasm.status.success());
     }
@@ -97,7 +123,11 @@ fn preserve_encodings() {
 
 #[test]
 fn canonical() {
-    run_test("canonical", &["--preserve-encodings=true", "--canonical-form=true"], None);
+    run_test(
+        "canonical",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+        None,
+    );
 }
 
 #[test]

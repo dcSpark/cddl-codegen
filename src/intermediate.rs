@@ -1,16 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet};
-use cbor_event::Type as CBORType;
 use cbor_event::Special as CBORSpecial;
+use cbor_event::Type as CBORType;
 use cddl::ast::parent::ParentVisitor;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::CLI_ARGS;
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
-    cddl_prelude,
-    convert_to_camel_case,
-    convert_to_snake_case,
-    is_identifier_reserved,
+    cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
     is_identifier_user_defined,
 };
 
@@ -38,7 +35,10 @@ pub struct IntermediateTypes<'a> {
 impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
         let mut rust_structs = BTreeMap::new();
-        rust_structs.insert(RustIdent::new(CDDLIdent::new("int")), RustStruct::new_prelude(RustIdent::new(CDDLIdent::new("int"))));
+        rust_structs.insert(
+            RustIdent::new(CDDLIdent::new("int")),
+            RustStruct::new_prelude(RustIdent::new(CDDLIdent::new("int"))),
+        );
         Self {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
@@ -55,17 +55,27 @@ impl<'a> IntermediateTypes<'a> {
     pub fn has_ident(&self, ident: &RustIdent) -> bool {
         let foo: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
             match alias {
-                AliasIdent::Reserved(_) => {},
-                AliasIdent::Rust(ident) => { acc.push(ident.clone()) }
+                AliasIdent::Reserved(_) => {}
+                AliasIdent::Rust(ident) => acc.push(ident.clone()),
             };
             acc
         });
-        println!("{:?}", self.plain_groups.keys().chain(foo.iter()).chain(self.rust_structs.keys()).chain(self.generic_defs.keys()).chain(self.generic_instances.keys()));
+        println!(
+            "{:?}",
+            self.plain_groups
+                .keys()
+                .chain(foo.iter())
+                .chain(self.rust_structs.keys())
+                .chain(self.generic_defs.keys())
+                .chain(self.generic_instances.keys())
+        );
         self.plain_groups.contains_key(ident)
-         || self.type_aliases.contains_key(&AliasIdent::Rust(ident.clone()))
-         || self.rust_structs.contains_key(ident)
-         || self.generic_defs.contains_key(ident)
-         || self.generic_instances.contains_key(ident)
+            || self
+                .type_aliases
+                .contains_key(&AliasIdent::Rust(ident.clone()))
+            || self.rust_structs.contains_key(ident)
+            || self.generic_defs.contains_key(ident)
+            || self.generic_instances.contains_key(ident)
     }
 
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool, bool)> {
@@ -85,7 +95,10 @@ impl<'a> IntermediateTypes<'a> {
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
-        insert_alias("bool", ConceptualRustType::Primitive(Primitive::Bool).into());
+        insert_alias(
+            "bool",
+            ConceptualRustType::Primitive(Primitive::Bool).into(),
+        );
         // TODO: define enum or something as otherwise it can overflow i64
         // and also we can't define the serialization traits for types
         // that are defined outside of this crate (includes primitives)
@@ -93,13 +106,25 @@ impl<'a> IntermediateTypes<'a> {
         let string_type: RustType = ConceptualRustType::Primitive(Primitive::Str).into();
         insert_alias("tstr", string_type.clone());
         insert_alias("text", string_type);
-        insert_alias("bstr", ConceptualRustType::Primitive(Primitive::Bytes).into());
-        insert_alias("bytes", ConceptualRustType::Primitive(Primitive::Bytes).into());
+        insert_alias(
+            "bstr",
+            ConceptualRustType::Primitive(Primitive::Bytes).into(),
+        );
+        insert_alias(
+            "bytes",
+            ConceptualRustType::Primitive(Primitive::Bytes).into(),
+        );
         let null_type: RustType = ConceptualRustType::Fixed(FixedValue::Null).into();
         insert_alias("null", null_type.clone());
         insert_alias("nil", null_type);
-        insert_alias("true", ConceptualRustType::Fixed(FixedValue::Bool(true)).into());
-        insert_alias("false", ConceptualRustType::Fixed(FixedValue::Bool(false)).into());
+        insert_alias(
+            "true",
+            ConceptualRustType::Fixed(FixedValue::Bool(true)).into(),
+        );
+        insert_alias(
+            "false",
+            ConceptualRustType::Fixed(FixedValue::Bool(false)).into(),
+        );
         // What about bingint/other stuff in the standard prelude?
         aliases
     }
@@ -112,7 +137,7 @@ impl<'a> IntermediateTypes<'a> {
         let resolved = match self.apply_type_aliases(&alias_ident) {
             Some(ty) => match alias_ident {
                 AliasIdent::Reserved(_) => ty,
-                AliasIdent::Rust(_) => ty.as_alias(alias_ident.clone())
+                AliasIdent::Rust(_) => ty.as_alias(alias_ident.clone()),
             },
             None => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
         };
@@ -150,24 +175,44 @@ impl<'a> IntermediateTypes<'a> {
             Some((alias, _, _)) => Some(alias.clone()),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
-                AliasIdent::Reserved(reserved) => if reserved == "int" {
-                    // We define an Int rust struct in prelude.rs
-                    None
-                } else {
-                    // we auto-include only the parts of the cddl prelude necessary (and supported)
-                    cddl_prelude(reserved).expect(&format!("Reserved ident {} not a part of cddl_prelude?", reserved));
-                    self.emit_prelude(reserved.clone());
-                    Some(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))).into())
-                },
+                AliasIdent::Reserved(reserved) => {
+                    if reserved == "int" {
+                        // We define an Int rust struct in prelude.rs
+                        None
+                    } else {
+                        // we auto-include only the parts of the cddl prelude necessary (and supported)
+                        cddl_prelude(reserved).expect(&format!(
+                            "Reserved ident {} not a part of cddl_prelude?",
+                            reserved
+                        ));
+                        self.emit_prelude(reserved.clone());
+                        Some(
+                            ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!(
+                                "prelude_{}",
+                                reserved
+                            ))))
+                            .into(),
+                        )
+                    }
+                }
             },
         }
     }
 
-    pub fn register_type_alias(&mut self, alias: RustIdent, base_type: RustType, generate_rust_alias: bool, generate_wasm_alias: bool) {
+    pub fn register_type_alias(
+        &mut self,
+        alias: RustIdent,
+        base_type: RustType,
+        generate_rust_alias: bool,
+        generate_wasm_alias: bool,
+    ) {
         if let ConceptualRustType::Alias(_ident, _ty) = &base_type.conceptual_type {
             panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
         }
-        self.type_aliases.insert(alias.into(), (base_type, generate_rust_alias, generate_wasm_alias));
+        self.type_aliases.insert(
+            alias.into(),
+            (base_type, generate_rust_alias, generate_wasm_alias),
+        );
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {
@@ -175,46 +220,57 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // this is called by register_table_type / register_array_type automatically
-    pub fn register_rust_struct(&mut self, parent_visitor: &ParentVisitor, rust_struct: RustStruct) {
+    pub fn register_rust_struct(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        rust_struct: RustStruct,
+    ) {
         match &rust_struct.variant {
             RustStructType::Table { domain, range } => {
                 // we must provide the keys type to return
                 if CLI_ARGS.wasm {
-                    self.create_and_register_array_type(parent_visitor, domain.clone(), &domain.conceptual_type.name_as_wasm_array());
+                    self.create_and_register_array_type(
+                        parent_visitor,
+                        domain.clone(),
+                        &domain.conceptual_type.name_as_wasm_array(),
+                    );
                 }
-                let mut map_type: RustType = ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
+                let mut map_type: RustType =
+                    ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
+                        .into();
                 if let Some(tag) = rust_struct.tag {
                     map_type = map_type.tag(tag);
                 }
-                self.register_type_alias(
-                    rust_struct.ident.clone(),
-                    map_type,
-                    true,
-                    false)
-            },
+                self.register_type_alias(rust_struct.ident.clone(), map_type, true, false)
+            }
             RustStructType::Array { element_type } => {
-                let mut array_type: RustType = ConceptualRustType::Array(Box::new(element_type.clone())).into();
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type.clone())).into();
                 if let Some(tag) = rust_struct.tag {
                     array_type = array_type.tag(tag);
                 }
-                self.register_type_alias(
-                    rust_struct.ident.clone(),
-                    array_type,
-                    true,
-                    false)
-            },
-            RustStructType::Wrapper { min_max: Some(_) , ..} => {
+                self.register_type_alias(rust_struct.ident.clone(), array_type, true, false)
+            }
+            RustStructType::Wrapper {
+                min_max: Some(_), ..
+            } => {
                 self.mark_new_can_fail(rust_struct.ident.clone());
-            },
+            }
             _ => (),
         }
-        self.rust_structs.insert(rust_struct.ident().clone(), rust_struct);
+        self.rust_structs
+            .insert(rust_struct.ident().clone(), rust_struct);
     }
 
     // creates a RustType for the array type - and if needed, registers a type to generate
     // TODO: After the split we should be able to only register it directly
     // and then examine those at generation-time and handle things ALWAYS as RustType::Array
-    pub fn create_and_register_array_type(&mut self, parent_visitor: &ParentVisitor, element_type: RustType, array_type_name: &str) -> RustType {
+    pub fn create_and_register_array_type(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        element_type: RustType,
+        array_type_name: &str,
+    ) -> RustType {
         let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
         if raw_arr_type.directly_wasm_exposable() {
@@ -228,7 +284,10 @@ impl<'a> IntermediateTypes<'a> {
         }
         // we don't pass in tags here. If a tag-wrapped array is done I think it generates
         // 2 separate types (array wrapper -> tag wrapper struct)
-        self.register_rust_struct(parent_visitor, RustStruct::new_array(array_type_ident, None, element_type.clone()));
+        self.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_array(array_type_ident, None, element_type.clone()),
+        );
         ConceptualRustType::Array(Box::new(element_type)).into()
     }
 
@@ -246,7 +305,11 @@ impl<'a> IntermediateTypes<'a> {
     pub fn finalize(&mut self, parent_visitor: &ParentVisitor) {
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
-        let resolved_generics = self.generic_instances.values().map(|instance| instance.resolve(self)).collect::<Vec<_>>();
+        let resolved_generics = self
+            .generic_instances
+            .values()
+            .map(|instance| instance.resolve(self))
+            .collect::<Vec<_>>();
         for resolved_instance in resolved_generics {
             self.register_rust_struct(parent_visitor, resolved_instance);
         }
@@ -258,14 +321,20 @@ impl<'a> IntermediateTypes<'a> {
                 used_as_key.insert(ident.clone());
             }
         }
-        fn check_used_as_key<'a>(ty: &ConceptualRustType, types: &IntermediateTypes<'a>, used_as_key: &mut BTreeSet<RustIdent>) {
+        fn check_used_as_key<'a>(
+            ty: &ConceptualRustType,
+            types: &IntermediateTypes<'a>,
+            used_as_key: &mut BTreeSet<RustIdent>,
+        ) {
             if let ConceptualRustType::Map(k, _v) = ty {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
         for rust_struct in self.rust_structs().values() {
-            rust_struct.visit_types(self, &mut |ty| check_used_as_key(ty, self, &mut used_as_key));
-            if let RustStructType::Table{ domain, .. } = rust_struct.variant() {
+            rust_struct.visit_types(self, &mut |ty| {
+                check_used_as_key(ty, self, &mut used_as_key)
+            });
+            if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
             }
         }
@@ -281,9 +350,11 @@ impl<'a> IntermediateTypes<'a> {
     pub fn is_referenced(&self, ident: &RustIdent) -> bool {
         let mut found = false;
         self.visit_types(&mut |ty| match ty {
-            ConceptualRustType::Rust(id) => if id == ident {
-                found = true
-            },
+            ConceptualRustType::Rust(id) => {
+                if id == ident {
+                    found = true
+                }
+            }
             _ => (),
         });
         found
@@ -295,7 +366,12 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see self.plain_groups comments
-    pub fn set_rep_if_plain_group(&mut self, parent_visitor: &ParentVisitor, ident: &RustIdent, rep: Representation) {
+    pub fn set_rep_if_plain_group(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        ident: &RustIdent,
+        rep: Representation,
+    ) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
             if let Some(group) = plain_group.as_ref().map(|g| g.clone()) {
@@ -305,14 +381,22 @@ impl<'a> IntermediateTypes<'a> {
                     // it's already defined, let's check that we're not giving it multiple representations
                     let found_rep = match &rust_struct.variant {
                         RustStructType::Record(record) => Some(record.rep),
-                        RustStructType::GroupChoice{ rep, .. } => Some(*rep),
+                        RustStructType::GroupChoice { rep, .. } => Some(*rep),
                         _ => None,
                     };
                     assert_eq!(found_rep, Some(rep));
                 } else {
                     // you can't tag plain groups hence the None
                     // we also don't support generics in plain groups hence the other None
-                    crate::parsing::parse_group(self, parent_visitor, &group, ident, rep, None, None);
+                    crate::parsing::parse_group(
+                        self,
+                        parent_visitor,
+                        &group,
+                        ident,
+                        rep,
+                        None,
+                        None,
+                    );
                 }
             } else {
                 // If plain_group is None, then this wasn't defined in .cddl but instead
@@ -339,7 +423,10 @@ impl<'a> IntermediateTypes<'a> {
     pub fn mark_scope(&mut self, ident: RustIdent, scope: String) {
         if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone()) {
             if old_scope != scope {
-                panic!("{} defined multiple times, first referenced in scope '{}' then in '{}'", ident, old_scope, scope);
+                panic!(
+                    "{} defined multiple times, first referenced in scope '{}' then in '{}'",
+                    ident, old_scope, scope
+                );
             }
         }
     }
@@ -359,7 +446,7 @@ impl<'a> IntermediateTypes<'a> {
                 println!("{}", plain_group.0);
             }
         }
-    
+
         if !self.type_aliases.is_empty() {
             println!("\n\nAliases:");
             for (alias_name, alias_type) in self.type_aliases.iter() {
@@ -380,7 +467,7 @@ impl<'a> IntermediateTypes<'a> {
                 println!("{} -> {:?}", ident, def);
             }
         }
-    
+
         if !self.rust_structs.is_empty() {
             println!("\n\nRustStructs:");
             for (ident, rust_struct) in self.rust_structs.iter() {
@@ -396,7 +483,11 @@ impl<'a> IntermediateTypes<'a> {
         // TODO: we might want to custom-write some of these to make them
         // easier to use instead of directly parsing
         if self.prelude_to_emit.insert(cddl_name.clone()) {
-            let def = format!("prelude_{} = {}\n", cddl_name, cddl_prelude(&cddl_name).unwrap());
+            let def = format!(
+                "prelude_{} = {}\n",
+                cddl_name,
+                cddl_prelude(&cddl_name).unwrap()
+            );
             let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
             let pv = ParentVisitor::new(&cddl).unwrap();
@@ -424,7 +515,10 @@ pub enum FixedValue {
 }
 
 fn convert_to_alphanumeric(input: &str) -> String {
-    input.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
+    input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect()
 }
 
 impl FixedValue {
@@ -438,7 +532,9 @@ impl FixedValue {
             FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{}", i)),
             FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
             //FixedValue::Float(f) => format!("F{}", f),
-            FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
+            FixedValue::Text(s) => {
+                VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s)))
+            }
         }
     }
 
@@ -450,7 +546,8 @@ impl FixedValue {
             FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
             FixedValue::Text(s) => buf.write_text(s),
-        }.expect("Unable to serialize key for canonical ordering");
+        }
+        .expect("Unable to serialize key for canonical ordering");
         buf.finalize()
     }
 
@@ -471,7 +568,7 @@ impl FixedValue {
     pub fn to_primitive_str_compare(&self) -> String {
         match self {
             FixedValue::Text(s) => format!("\"{}\"", s),
-            _=> self.to_primitive_str_assign(),
+            _ => self.to_primitive_str_assign(),
         }
     }
 }
@@ -557,7 +654,11 @@ impl Primitive {
 }
 
 mod idents {
-    use crate::{rust_reserved::STD_TYPES, utils::{is_identifier_reserved, is_identifier_in_our_prelude}, cli::CLI_ARGS};
+    use crate::{
+        cli::CLI_ARGS,
+        rust_reserved::STD_TYPES,
+        utils::{is_identifier_in_our_prelude, is_identifier_reserved},
+    };
 
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
@@ -601,9 +702,17 @@ mod idents {
             // int is special here since it refers to our own rust struct, not a primitive
             println!("{}", cddl_ident.0);
 
-            assert!(!STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]), "Cannot use reserved Rust type name: \"{}\"", cddl_ident.0);
+            assert!(
+                !STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]),
+                "Cannot use reserved Rust type name: \"{}\"",
+                cddl_ident.0
+            );
             if cddl_ident.0 != "int" {
-                assert!(!is_identifier_reserved(&cddl_ident.0), "Cannot use reserved CDDL keyword: \"{}\"", cddl_ident.0);
+                assert!(
+                    !is_identifier_reserved(&cddl_ident.0),
+                    "Cannot use reserved CDDL keyword: \"{}\"",
+                    cddl_ident.0
+                );
             }
 
             Self(super::convert_to_camel_case(&cddl_ident.0))
@@ -718,7 +827,8 @@ impl RustType {
     }
 
     pub fn as_alias(mut self, alias_ident: AliasIdent) -> Self {
-        self.conceptual_type = ConceptualRustType::Alias(alias_ident, Box::new(self.conceptual_type));
+        self.conceptual_type =
+            ConceptualRustType::Alias(alias_ident, Box::new(self.conceptual_type));
         self
     }
 
@@ -729,7 +839,9 @@ impl RustType {
 
     pub fn default(mut self, default_value: FixedValue) -> Self {
         assert!(self.default.is_none());
-        let matches = if let ConceptualRustType::Primitive(p) = self.conceptual_type.clone().resolve_aliases() {
+        let matches = if let ConceptualRustType::Primitive(p) =
+            self.conceptual_type.clone().resolve_aliases()
+        {
             match &default_value {
                 FixedValue::Bool(_) => p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
@@ -741,7 +853,10 @@ impl RustType {
             false
         };
         if !matches {
-            panic!(".default {:?} invalid for type {:?}", default_value, self.conceptual_type);
+            panic!(
+                ".default {:?} invalid for type {:?}",
+                default_value, self.conceptual_type
+            );
         }
         self.default = Some(default_value);
         self
@@ -777,7 +892,7 @@ impl RustType {
                 ConceptualRustType::Rust(_ident) => {
                     //panic!("TODO: store first cbor tag somewhere")
                     vec![CBORType::Array, CBORType::Map]
-                },
+                }
                 ConceptualRustType::Array(_) => vec![CBORType::Array],
                 ConceptualRustType::Map(_k, _v) => vec![CBORType::Map],
                 ConceptualRustType::Optional(ty) => {
@@ -786,9 +901,9 @@ impl RustType {
                         inner_types.push(CBORType::Special);
                     }
                     inner_types
-                },
+                }
                 ConceptualRustType::Alias(_ident, ty) => Self::new((**ty).clone()).cbor_types(),
-            }
+            },
         }
     }
 
@@ -805,7 +920,9 @@ impl RustType {
                 ConceptualRustType::Array(_) => true,
                 ConceptualRustType::Optional(_) => false,
                 ConceptualRustType::Map(_, _) => false,
-                ConceptualRustType::Alias(_ident, ty) => Self::new((**ty).clone())._is_serialize_multiline(),
+                ConceptualRustType::Alias(_ident, ty) => {
+                    Self::new((**ty).clone())._is_serialize_multiline()
+                }
             }
         } else {
             true
@@ -835,7 +952,6 @@ pub enum ConceptualRustType {
     Map(Box<RustType>, Box<RustType>),
     // Alias for another type
     Alias(AliasIdent, Box<ConceptualRustType>),
-
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
     // RustField so that we could basically expand them and not care about having to generate
@@ -848,7 +964,10 @@ impl ConceptualRustType {
         match self {
             Self::Array(ty) => Self::Array(Box::new(ty.resolve_aliases())),
             Self::Alias(_, ty) => ty.resolve_aliases(),
-            Self::Map(key, value) => Self::Map(Box::new(key.resolve_aliases()), Box::new(value.resolve_aliases())),
+            Self::Map(key, value) => Self::Map(
+                Box::new(key.resolve_aliases()),
+                Box::new(value.resolve_aliases()),
+            ),
             Self::Optional(ty) => Self::Optional(Box::new(ty.resolve_aliases())),
             _ => self,
         }
@@ -869,16 +988,16 @@ impl ConceptualRustType {
                 match inner {
                     Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
-                        Primitive::Bool |
-                        Primitive::I8 |
-                        Primitive::U8 |
-                        Primitive::I16 |
-                        Primitive::U16 |
-                        Primitive::I32 |
-                        Primitive::U32 |
-                        Primitive::I64 |
-                        Primitive::N64 |
-                        Primitive::U64 => true,
+                        Primitive::Bool
+                        | Primitive::I8
+                        | Primitive::U8
+                        | Primitive::I16
+                        | Primitive::U16
+                        | Primitive::I32
+                        | Primitive::U32
+                        | Primitive::I64
+                        | Primitive::N64
+                        | Primitive::U64 => true,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
                         // Vec<String> is not supported by wasm-bindgen
@@ -887,7 +1006,7 @@ impl ConceptualRustType {
                     Self::Array(_) => false,
                     _ => ty.conceptual_type.directly_wasm_exposable(),
                 }
-            },
+            }
             Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(),
             Self::Map(_, _) => false,
             Self::Alias(_ident, ty) => ty.directly_wasm_exposable(),
@@ -922,7 +1041,10 @@ impl ConceptualRustType {
     /// Function parameter TYPE by-non-mut-reference for read-only
     pub fn for_rust_read(&self) -> String {
         match self {
-            Self::Fixed(_) => panic!("should not expose Fixed type, only here for serialization: {:?}", self),
+            Self::Fixed(_) => panic!(
+                "should not expose Fixed type, only here for serialization: {:?}",
+                self
+            ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => format!("&{}", ident),
             Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(false)),
@@ -931,7 +1053,7 @@ impl ConceptualRustType {
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
                 Self::Rust(_) => format!("&{}", ident),
-                
+
                 _ => ident.to_string(),
             },
         }
@@ -943,28 +1065,31 @@ impl ConceptualRustType {
     }
 
     fn for_wasm_param_impl(&self, force_not_ref: bool) -> String {
-        let opt_ref = if force_not_ref {
-            ""
-        } else {
-            "&"
-        };
+        let opt_ref = if force_not_ref { "" } else { "&" };
         match self {
-            Self::Fixed(_) => panic!("should not expose Fixed type to wasm, only here for serialization: {:?}", self),
+            Self::Fixed(_) => panic!(
+                "should not expose Fixed type to wasm, only here for serialization: {:?}",
+                self
+            ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => format!("{}{}", opt_ref, ident),
-            Self::Array(ty) => if self.directly_wasm_exposable() {
-                ty.conceptual_type.name_as_wasm_array()
-            } else {
-                format!("{}{}", opt_ref, ty.conceptual_type.name_as_wasm_array())
-            },
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_param_impl(true)),
+            Self::Array(ty) => {
+                if self.directly_wasm_exposable() {
+                    ty.conceptual_type.name_as_wasm_array()
+                } else {
+                    format!("{}{}", opt_ref, ty.conceptual_type.name_as_wasm_array())
+                }
+            }
+            Self::Optional(ty) => {
+                format!("Option<{}>", ty.conceptual_type.for_wasm_param_impl(true))
+            }
             Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member()),
             // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
             Self::Alias(ident, ty) => match &**ty {
                 Self::Rust(_) => format!("{}{}", opt_ref, ident),
                 _ => ident.to_string(),
-            }
+            },
         }
     }
 
@@ -974,17 +1099,29 @@ impl ConceptualRustType {
     }
 
     pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(format!("Map{}To{}", k.conceptual_type.for_variant(), v.conceptual_type.for_variant())))
+        RustIdent::new(CDDLIdent::new(format!(
+            "Map{}To{}",
+            k.conceptual_type.for_variant(),
+            v.conceptual_type.for_variant()
+        )))
     }
 
     pub fn name_for_rust_map(k: &RustType, v: &RustType, from_wasm: bool) -> String {
-        format!("{}<{}, {}>", table_type(), k.conceptual_type.for_rust_member(from_wasm), v.conceptual_type.for_rust_member(from_wasm))
+        format!(
+            "{}<{}, {}>",
+            table_type(),
+            k.conceptual_type.for_rust_member(from_wasm),
+            v.conceptual_type.for_rust_member(from_wasm)
+        )
     }
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used.
     pub fn for_wasm_member(&self) -> String {
         match self {
-            Self::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
+            Self::Fixed(_) => panic!(
+                "should not expose Fixed type in member, only needed for serializaiton: {:?}",
+                self
+            ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => ident.to_string(),
             Self::Array(ty) => ty.conceptual_type.name_as_wasm_array(),
@@ -1002,17 +1139,18 @@ impl ConceptualRustType {
 
     /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
     pub fn for_rust_member(&self, from_wasm: bool) -> String {
-        let core = if from_wasm {
-            "core::"
-        } else {
-            ""
-        };
+        let core = if from_wasm { "core::" } else { "" };
         match self {
-            Self::Fixed(_) => panic!("should not expose Fixed type in member, only needed for serializaiton: {:?}", self),
+            Self::Fixed(_) => panic!(
+                "should not expose Fixed type in member, only needed for serializaiton: {:?}",
+                self
+            ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => format!("{}{}", core, ident),
             Self::Array(ty) => ty.conceptual_type.name_as_rust_array(from_wasm),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_rust_member(from_wasm)),
+            Self::Optional(ty) => {
+                format!("Option<{}>", ty.conceptual_type.for_rust_member(from_wasm))
+            }
             Self::Map(k, v) => Self::name_for_rust_map(k, v, from_wasm),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
@@ -1030,9 +1168,13 @@ impl ConceptualRustType {
             Self::Fixed(f) => f.for_variant(),
             Self::Primitive(p) => p.to_variant(),
             Self::Rust(ident) => VariantIdent::new_rust(ident.clone()),
-            Self::Array(inner) => VariantIdent::new_custom(format!("Arr{}", inner.conceptual_type.for_variant())),
+            Self::Array(inner) => {
+                VariantIdent::new_custom(format!("Arr{}", inner.conceptual_type.for_variant()))
+            }
             // TODO: should we not end up in this situation and just insert a Null fixed value instead?
-            Self::Optional(ty) => VariantIdent::new_custom(format!("Opt{}", ty.conceptual_type.for_variant())),
+            Self::Optional(ty) => {
+                VariantIdent::new_custom(format!("Opt{}", ty.conceptual_type.for_variant()))
+            }
             Self::Map(k, v) => VariantIdent::new_custom(Self::name_for_wasm_map(k, v).to_string()),
             Self::Alias(ident, _ty) => match ident {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
@@ -1044,22 +1186,30 @@ impl ConceptualRustType {
     /// for parameter TYPES from wasm that take ownership (via cloning here)
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
-    pub fn from_wasm_boundary_clone(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
+    pub fn from_wasm_boundary_clone(
+        &self,
+        expr: &str,
+        can_fail: bool,
+    ) -> Vec<ToWasmBoundaryOperations> {
         let mut ops = match self {
             Self::Rust(_ident) => vec![
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
             ],
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
-            Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_clone_optional(expr, can_fail),
-            Self::Array(ty) => if self.directly_wasm_exposable() {
-                ty.conceptual_type.from_wasm_boundary_clone(expr, can_fail)
-            } else {
-                vec![
-                    ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
-                    ToWasmBoundaryOperations::Into,
-                ]
-            },
+            Self::Optional(ty) => ty
+                .conceptual_type
+                .from_wasm_boundary_clone_optional(expr, can_fail),
+            Self::Array(ty) => {
+                if self.directly_wasm_exposable() {
+                    ty.conceptual_type.from_wasm_boundary_clone(expr, can_fail)
+                } else {
+                    vec![
+                        ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
+                        ToWasmBoundaryOperations::Into,
+                    ]
+                }
+            }
             Self::Map(_k, _v) => vec![
                 ToWasmBoundaryOperations::Code(format!("{}.clone()", expr)),
                 ToWasmBoundaryOperations::Into,
@@ -1072,13 +1222,15 @@ impl ConceptualRustType {
         ops
     }
 
-    fn from_wasm_boundary_clone_optional(&self, expr: &str, can_fail: bool) -> Vec<ToWasmBoundaryOperations> {
+    fn from_wasm_boundary_clone_optional(
+        &self,
+        expr: &str,
+        can_fail: bool,
+    ) -> Vec<ToWasmBoundaryOperations> {
         let mut ops = match self {
             Self::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
-            Self::Array(..) |
-            Self::Rust(..) |
-            Self::Map(..) => vec![
+            Self::Array(..) | Self::Rust(..) | Self::Map(..) => vec![
                 ToWasmBoundaryOperations::Code(expr.to_owned()),
                 if can_fail {
                     ToWasmBoundaryOperations::MapTryInto
@@ -1100,11 +1252,13 @@ impl ConceptualRustType {
             Self::Rust(_ident) => expr.to_owned(),
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_ref(expr),
             Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(expr),
-            Self::Array(ty) => if self.directly_wasm_exposable() {
-                ty.conceptual_type.from_wasm_boundary_ref(expr)
-            } else {
-                expr.to_owned()
-            },
+            Self::Array(ty) => {
+                if self.directly_wasm_exposable() {
+                    ty.conceptual_type.from_wasm_boundary_ref(expr)
+                } else {
+                    expr.to_owned()
+                }
+            }
             Self::Map(_k, _v) => expr.to_owned(),
             _ => format!("&{}", expr),
         }
@@ -1114,15 +1268,17 @@ impl ConceptualRustType {
     pub fn to_wasm_boundary(&self, expr: &str, is_ref: bool) -> String {
         match self {
             Self::Fixed(_) => panic!("fixed types are a serialization detail"),
-            Self::Primitive(_p) => if self.is_copy() {
-                if is_ref {
-                    format!("*{}", expr)
+            Self::Primitive(_p) => {
+                if self.is_copy() {
+                    if is_ref {
+                        format!("*{}", expr)
+                    } else {
+                        expr.to_owned()
+                    }
                 } else {
-                    expr.to_owned()
+                    format!("{}.clone()", expr)
                 }
-            } else {
-                format!("{}.clone()", expr)
-            },
+            }
             Self::Rust(_ident) => format!("{}.clone().into()", expr),
             //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
             //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
@@ -1148,18 +1304,17 @@ impl ConceptualRustType {
         match self {
             Self::Fixed(_f) => unreachable!(),
             Self::Primitive(p) => match p {
-                Primitive::Bool |
-                Primitive::I8 |
-                Primitive::I16 |
-                Primitive::I32 |
-                Primitive::I64 |
-                Primitive::N64 |
-                Primitive::U8 |
-                Primitive::U16 |
-                Primitive::U32 |
-                Primitive::U64 => true,
-                Primitive::Str |
-                Primitive::Bytes => false,
+                Primitive::Bool
+                | Primitive::I8
+                | Primitive::I16
+                | Primitive::I32
+                | Primitive::I64
+                | Primitive::N64
+                | Primitive::U8
+                | Primitive::U16
+                | Primitive::U32
+                | Primitive::U64 => true,
+                Primitive::Str | Primitive::Bytes => false,
             },
             Self::Rust(_ident) => false,
             Self::Array(_) => false,
@@ -1189,11 +1344,13 @@ impl ConceptualRustType {
             // Once we split up parsing and codegen this shouldn't happen but with our current multi-pass
             // approach we might have out of order struct references which would break here without it
             // but on the final pass (the one we export) this should't be an issue
-            Self::Rust(ident) => if types.is_plain_group(ident) {
-                types.rust_structs.get(&ident)?.fixed_field_count(types)
-            } else {
-                Some(1)
-            },
+            Self::Rust(ident) => {
+                if types.is_plain_group(ident) {
+                    types.rust_structs.get(&ident)?.fixed_field_count(types)
+                } else {
+                    Some(1)
+                }
+            }
             Self::Alias(_ident, ty) => ty.expanded_field_count(types),
             _ => Some(1),
         }
@@ -1207,19 +1364,25 @@ impl ConceptualRustType {
         match self.expanded_field_count(types) {
             Some(count) => Some(count.to_string()),
             None => match self {
-                Self::Optional(ty) => Some(format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.conceptual_type.definite_info("x", types)?)),
-                Self::Rust(ident) => if types.is_plain_group(ident) {
-                    match types.rust_structs.get(&ident) {
-                        Some(rs) => rs.definite_info(types),
-                        // when we split up parsing from codegen instead of multi-passing this should be an error
-                        None => None,
+                Self::Optional(ty) => Some(format!(
+                    "match {} {{ Some(x) => {}, None => 1 }}",
+                    self_expr,
+                    ty.conceptual_type.definite_info("x", types)?
+                )),
+                Self::Rust(ident) => {
+                    if types.is_plain_group(ident) {
+                        match types.rust_structs.get(&ident) {
+                            Some(rs) => rs.definite_info(types),
+                            // when we split up parsing from codegen instead of multi-passing this should be an error
+                            None => None,
+                        }
+                    } else {
+                        Some(String::from("1"))
                     }
-                } else {
-                    Some(String::from("1"))
-                },
+                }
                 Self::Alias(_ident, ty) => ty.definite_info(self_expr, types),
                 _ => Some(String::from("1")),
-            }
+            },
         }
     }
 
@@ -1232,16 +1395,18 @@ impl ConceptualRustType {
                 Some(1) => 1,
                 _ => 0,
             },
-            Self::Rust(ident) => if types.is_plain_group(ident) {
-                println!("ident: {}", ident);
-                match types.rust_structs.get(&ident) {
-                    Some(x) => x.expanded_mandatory_field_count(types),
-                    None => panic!("could not find ident: {}", ident),
+            Self::Rust(ident) => {
+                if types.is_plain_group(ident) {
+                    println!("ident: {}", ident);
+                    match types.rust_structs.get(&ident) {
+                        Some(x) => x.expanded_mandatory_field_count(types),
+                        None => panic!("could not find ident: {}", ident),
+                    }
+                    //types.rust_structs.get(&ident).unwrap().expanded_mandatory_field_count(types)
+                } else {
+                    1
                 }
-                //types.rust_structs.get(&ident).unwrap().expanded_mandatory_field_count(types)
-            } else {
-                1
-            },
+            }
             Self::Alias(_ident, ty) => ty.expanded_mandatory_field_count(types),
             _ => 1,
         }
@@ -1251,23 +1416,37 @@ impl ConceptualRustType {
         self.visit_types_excluding(types, f, &mut BTreeSet::new())
     }
 
-    pub fn visit_types_excluding<F: FnMut(&Self)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
+    pub fn visit_types_excluding<F: FnMut(&Self)>(
+        &self,
+        types: &IntermediateTypes,
+        f: &mut F,
+        already_visited: &mut BTreeSet<RustIdent>,
+    ) {
         f(self);
         match self {
             Self::Alias(_ident, ty) => ty.visit_types_excluding(types, f, already_visited),
-            Self::Array(ty) => ty.conceptual_type.visit_types_excluding(types, f, already_visited),
+            Self::Array(ty) => ty
+                .conceptual_type
+                .visit_types_excluding(types, f, already_visited),
             Self::Fixed(_) => (),
             Self::Map(k, v) => {
-                k.conceptual_type.visit_types_excluding(types, f, already_visited);
-                v.conceptual_type.visit_types_excluding(types, f, already_visited);
-            },
-            Self::Optional(ty) => ty.conceptual_type.visit_types_excluding(types, f, already_visited),
+                k.conceptual_type
+                    .visit_types_excluding(types, f, already_visited);
+                v.conceptual_type
+                    .visit_types_excluding(types, f, already_visited);
+            }
+            Self::Optional(ty) => {
+                ty.conceptual_type
+                    .visit_types_excluding(types, f, already_visited)
+            }
             Self::Primitive(_) => (),
             Self::Rust(ident) => {
                 if already_visited.insert(ident.clone()) {
-                    types.rust_struct(ident).map(|t| t.visit_types_excluding(types, f, already_visited));
+                    types
+                        .rust_struct(ident)
+                        .map(|t| t.visit_types_excluding(types, f, already_visited));
                 }
-            },
+            }
         }
     }
 }
@@ -1292,17 +1471,13 @@ impl ToWasmBoundaryOperations {
             },
             Self::TryInto => match next {
                 Self::Code(_) => None,
-                Self::Into |
-                Self::TryInto => Some(Self::TryInto),
-                Self::MapInto |
-                Self::MapTryInto => Some(Self::MapTryInto),
+                Self::Into | Self::TryInto => Some(Self::TryInto),
+                Self::MapInto | Self::MapTryInto => Some(Self::MapTryInto),
             },
             Self::MapInto => match next {
                 Self::Code(_) => None,
-                Self::Into |
-                Self::MapInto => Some(Self::MapInto),
-                Self::TryInto |
-                Self::MapTryInto => Some(Self::MapTryInto),
+                Self::Into | Self::MapInto => Some(Self::MapInto),
+                Self::TryInto | Self::MapTryInto => Some(Self::MapTryInto),
             },
             Self::MapTryInto => match next {
                 Self::Code(_) => None,
@@ -1317,20 +1492,18 @@ impl ToWasmBoundaryOperations {
         let mut current: Option<Self> = None;
         while let Some(to_apply) = operations.next() {
             match current {
-                Some(c) => {
-                    match c.merge(&to_apply) {
-                        Some(merged) => {
-                            current = Some(merged);
-                        },
-                        None => {
-                            write!(buf, "{}", c).unwrap();
-                            current = Some(to_apply);
-                        },
+                Some(c) => match c.merge(&to_apply) {
+                    Some(merged) => {
+                        current = Some(merged);
+                    }
+                    None => {
+                        write!(buf, "{}", c).unwrap();
+                        current = Some(to_apply);
                     }
                 },
                 None => {
                     current = Some(to_apply);
-                },
+                }
             }
         }
         if let Some(c) = current {
@@ -1440,7 +1613,7 @@ pub enum RustStructType {
         variants: Vec<EnumVariant>,
         rep: Representation,
     },
-    Wrapper{
+    Wrapper {
         wrapped: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
     },
@@ -1459,14 +1632,16 @@ impl RustStruct {
         }
     }
 
-    pub fn new_table(ident: RustIdent, tag: Option<usize>, domain: RustType, range: RustType) -> Self {
+    pub fn new_table(
+        ident: RustIdent,
+        tag: Option<usize>,
+        domain: RustType,
+        range: RustType,
+    ) -> Self {
         Self {
             ident,
             tag,
-            variant: RustStructType::Table {
-                domain,
-                range,
-            },
+            variant: RustStructType::Table { domain, range },
         }
     }
 
@@ -1474,34 +1649,41 @@ impl RustStruct {
         Self {
             ident,
             tag,
-            variant: RustStructType::Array {
-                element_type,
-            },
+            variant: RustStructType::Array { element_type },
         }
     }
 
-    pub fn new_type_choice(ident: RustIdent, tag: Option<usize>, variants: Vec<EnumVariant>) -> Self {
+    pub fn new_type_choice(
+        ident: RustIdent,
+        tag: Option<usize>,
+        variants: Vec<EnumVariant>,
+    ) -> Self {
         Self {
             ident,
             tag,
-            variant: RustStructType::TypeChoice {
-                variants
-            }
+            variant: RustStructType::TypeChoice { variants },
         }
     }
 
-    pub fn new_group_choice(ident: RustIdent, tag: Option<usize>, variants: Vec<EnumVariant>, rep: Representation) -> Self {
+    pub fn new_group_choice(
+        ident: RustIdent,
+        tag: Option<usize>,
+        variants: Vec<EnumVariant>,
+        rep: Representation,
+    ) -> Self {
         Self {
             ident,
             tag,
-            variant: RustStructType::GroupChoice {
-                variants,
-                rep
-            }
+            variant: RustStructType::GroupChoice { variants, rep },
         }
     }
 
-    pub fn new_wrapper(ident: RustIdent, tag: Option<usize>, wrapped_type: RustType, min_max: Option<(Option<i128>, Option<i128>)>) -> Self {
+    pub fn new_wrapper(
+        ident: RustIdent,
+        tag: Option<usize>,
+        wrapped_type: RustType,
+        min_max: Option<(Option<i128>, Option<i128>)>,
+    ) -> Self {
         Self {
             ident,
             tag,
@@ -1535,19 +1717,25 @@ impl RustStruct {
     // The following methods are used internally to generate serialize/deserialize code
     // INSIDE of the serialize/deserialize implementations for this specific type.
     // You probably aren't interested in this from outside of that use-case.
-    
+
     // Some(count) if it always has the same number of fields (ie no optional fields), None otherwise
     pub fn fixed_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
         match &self.variant {
             RustStructType::Record(record) => record.fixed_field_count(types),
-            RustStructType::Table{ .. } => None,
-            RustStructType::Array{ .. } => None,
+            RustStructType::Table { .. } => None,
+            RustStructType::Array { .. } => None,
             // TODO: investigate if we should be supporting this for TypeChoice (also wrapper?)
             //RustStructType::TypeChoice { .. } => None,
-            RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
-            RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::TypeChoice { .. } => {
+                unreachable!("I don't think type choices should be using length?")
+            }
+            RustStructType::GroupChoice { .. } => {
+                unreachable!("I don't think group choices should be using length?")
+            }
+            RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude { .. } => panic!(
+                "do we need to look this up ever? will the prelude have structs with fields?"
+            ),
         }
     }
 
@@ -1557,13 +1745,19 @@ impl RustStruct {
     pub fn definite_info(&self, types: &IntermediateTypes) -> Option<String> {
         match &self.variant {
             RustStructType::Record(record) => record.definite_info(types),
-            RustStructType::Table{ .. } => Some(String::from("self.0.len() as u64")),
-            RustStructType::Array{ .. } => Some(String::from("self.0.len() as u64")),
+            RustStructType::Table { .. } => Some(String::from("self.0.len() as u64")),
+            RustStructType::Array { .. } => Some(String::from("self.0.len() as u64")),
             //RustStructType::TypeChoice{ .. } => None,
-            RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
-            RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::TypeChoice { .. } => {
+                unreachable!("I don't think type choices should be using length?")
+            }
+            RustStructType::GroupChoice { .. } => {
+                unreachable!("I don't think group choices should be using length?")
+            }
+            RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude { .. } => panic!(
+                "do we need to look this up ever? will the prelude have structs with fields?"
+            ),
         }
     }
 
@@ -1573,43 +1767,77 @@ impl RustStruct {
     pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
         match &self.variant {
             RustStructType::Record(record) => record.expanded_mandatory_field_count(types),
-            RustStructType::Table{ .. } => 0,
-            RustStructType::Array{ .. } => 0,
+            RustStructType::Table { .. } => 0,
+            RustStructType::Array { .. } => 0,
             //RustStructType::TypeChoice{ .. } => 0,
-            RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
-            RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::TypeChoice { .. } => {
+                unreachable!("I don't think type choices should be using length?")
+            }
+            RustStructType::GroupChoice { .. } => {
+                unreachable!("I don't think group choices should be using length?")
+            }
+            RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude { .. } => panic!(
+                "do we need to look this up ever? will the prelude have structs with fields?"
+            ),
         }
     }
 
     fn _cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
         match &self.variant {
             RustStructType::Record(record) => record.cbor_len_info(types),
-            RustStructType::Table{ .. } => RustStructCBORLen::Dynamic,
-            RustStructType::Array{ .. } => RustStructCBORLen::Dynamic,
+            RustStructType::Table { .. } => RustStructCBORLen::Dynamic,
+            RustStructType::Array { .. } => RustStructCBORLen::Dynamic,
             //RustStructType::TypeChoice{ .. } => RustStructCBORLen::Dynamic,
-            RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
-            RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
-            RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::TypeChoice { .. } => {
+                unreachable!("I don't think type choices should be using length?")
+            }
+            RustStructType::GroupChoice { .. } => {
+                unreachable!("I don't think group choices should be using length?")
+            }
+            RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
+            RustStructType::Prelude { .. } => panic!(
+                "do we need to look this up ever? will the prelude have structs with fields?"
+            ),
         }
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, types: &IntermediateTypes, f: &mut F) {
         self.visit_types_excluding(types, f, &mut BTreeSet::new())
     }
-    pub fn visit_types_excluding<F: FnMut(&ConceptualRustType)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
+    pub fn visit_types_excluding<F: FnMut(&ConceptualRustType)>(
+        &self,
+        types: &IntermediateTypes,
+        f: &mut F,
+        already_visited: &mut BTreeSet<RustIdent>,
+    ) {
         match &self.variant {
-            RustStructType::Array{ element_type } => element_type.conceptual_type.visit_types_excluding(types, f, already_visited),
-            RustStructType::GroupChoice{ variants, .. } |
-            RustStructType::TypeChoice{ variants, .. } => variants.iter().for_each(|v| v.rust_type.conceptual_type.visit_types_excluding(types, f, already_visited)),
-            RustStructType::Record(record) => record.fields.iter().for_each(|field| field.rust_type.conceptual_type.visit_types_excluding(types, f, already_visited)),
-            RustStructType::Table{domain, range} => {
-                domain.conceptual_type.visit_types_excluding(types, f, already_visited);
-                range.conceptual_type.visit_types_excluding(types, f, already_visited);
-            },
-            RustStructType::Wrapper{ wrapped, .. } => wrapped.conceptual_type.visit_types_excluding(types, f, already_visited),
+            RustStructType::Array { element_type } => element_type
+                .conceptual_type
+                .visit_types_excluding(types, f, already_visited),
+            RustStructType::GroupChoice { variants, .. }
+            | RustStructType::TypeChoice { variants, .. } => variants.iter().for_each(|v| {
+                v.rust_type
+                    .conceptual_type
+                    .visit_types_excluding(types, f, already_visited)
+            }),
+            RustStructType::Record(record) => record.fields.iter().for_each(|field| {
+                field
+                    .rust_type
+                    .conceptual_type
+                    .visit_types_excluding(types, f, already_visited)
+            }),
+            RustStructType::Table { domain, range } => {
+                domain
+                    .conceptual_type
+                    .visit_types_excluding(types, f, already_visited);
+                range
+                    .conceptual_type
+                    .visit_types_excluding(types, f, already_visited);
+            }
+            RustStructType::Wrapper { wrapped, .. } => wrapped
+                .conceptual_type
+                .visit_types_excluding(types, f, already_visited),
             RustStructType::Prelude => (),
         }
     }
@@ -1630,14 +1858,17 @@ impl RustRecord {
                 return None;
             }
             count += match self.rep {
-                Representation::Array => field.rust_type.conceptual_type.expanded_field_count(types)?,
+                Representation::Array => field
+                    .rust_type
+                    .conceptual_type
+                    .expanded_field_count(types)?,
                 Representation::Map => 1,
             };
         }
         Some(count)
     }
 
-    // This is guaranteed 
+    // This is guaranteed
     pub fn definite_info(&self, types: &IntermediateTypes) -> Option<String> {
         match self.fixed_field_count(types) {
             Some(count) => Some(count.to_string()),
@@ -1650,7 +1881,10 @@ impl RustRecord {
                             conditional_field_expr.push_str(" + ");
                         }
                         let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => ("x", field.rust_type.conceptual_type.definite_info("x", types)?),
+                            Representation::Array => (
+                                "x",
+                                field.rust_type.conceptual_type.definite_info("x", types)?,
+                            ),
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
@@ -1667,31 +1901,47 @@ impl RustRecord {
                                     "if self.{} != {} {{ {} }} else {{ 0 }}",
                                     field.name,
                                     default_value.to_primitive_str_compare(),
-                                    field_contribution));
+                                    field_contribution
+                                ));
                             }
                         } else {
-                            conditional_field_expr.push_str(&format!("match &self.{} {{ Some({}) => {}, None => 0 }}", field.name, field_expr, field_contribution));
+                            conditional_field_expr.push_str(&format!(
+                                "match &self.{} {{ Some({}) => {}, None => 0 }}",
+                                field.name, field_expr, field_contribution
+                            ));
                         }
                     } else {
                         match self.rep {
-                            Representation::Array => match field.rust_type.conceptual_type.expanded_field_count(types) {
-                                Some(field_expanded_count) => fixed_field_count += field_expanded_count,
-                                None => {
-                                    if !conditional_field_expr.is_empty() {
-                                        conditional_field_expr.push_str(" + ");
+                            Representation::Array => {
+                                match field.rust_type.conceptual_type.expanded_field_count(types) {
+                                    Some(field_expanded_count) => {
+                                        fixed_field_count += field_expanded_count
                                     }
-                                    let field_len_expr = field.rust_type.conceptual_type.definite_info(&format!("self.{}", field.name), types)?;
-                                    conditional_field_expr.push_str(&field_len_expr);
-                                },
-                            },
+                                    None => {
+                                        if !conditional_field_expr.is_empty() {
+                                            conditional_field_expr.push_str(" + ");
+                                        }
+                                        let field_len_expr =
+                                            field.rust_type.conceptual_type.definite_info(
+                                                &format!("self.{}", field.name),
+                                                types,
+                                            )?;
+                                        conditional_field_expr.push_str(&field_len_expr);
+                                    }
+                                }
+                            }
                             Representation::Map => {
                                 fixed_field_count += 1;
-                            },
+                            }
                         };
                     }
                 }
                 if conditional_field_expr.is_empty() || fixed_field_count != 0 {
-                    Some(format!("{} + {}", fixed_field_count.to_string(), conditional_field_expr))
+                    Some(format!(
+                        "{} + {}",
+                        fixed_field_count.to_string(),
+                        conditional_field_expr
+                    ))
                 } else {
                     Some(conditional_field_expr)
                 }
@@ -1700,7 +1950,16 @@ impl RustRecord {
     }
 
     pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
-        self.fields.iter().filter(|field| !field.optional).map(|field| field.rust_type.conceptual_type.expanded_mandatory_field_count(types)).sum()
+        self.fields
+            .iter()
+            .filter(|field| !field.optional)
+            .map(|field| {
+                field
+                    .rust_type
+                    .conceptual_type
+                    .expanded_mandatory_field_count(types)
+            })
+            .sum()
     }
 
     pub fn cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
@@ -1751,7 +2010,11 @@ pub struct GenericInstance {
 }
 
 impl GenericInstance {
-    pub fn new(instance_ident: RustIdent, generic_ident: RustIdent, generic_args: Vec<RustType>) -> Self {
+    pub fn new(
+        instance_ident: RustIdent,
+        generic_ident: RustIdent,
+        generic_args: Vec<RustType>,
+    ) -> Self {
         Self {
             instance_ident,
             generic_ident,
@@ -1764,45 +2027,50 @@ impl GenericInstance {
     pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
         let def = match types.generic_defs.get(&self.generic_ident) {
             Some(def) => def,
-            None => panic!("Generic instance used on {} without definition", self.generic_ident),
+            None => panic!(
+                "Generic instance used on {} without definition",
+                self.generic_ident
+            ),
         };
         assert_eq!(def.generic_params.len(), self.generic_args.len());
         let resolved_args = def
             .generic_params
             .iter()
             .zip(self.generic_args.iter())
-            .collect::<BTreeMap::<&RustIdent, &RustType>>();
+            .collect::<BTreeMap<&RustIdent, &RustType>>();
         let mut instance = def.orig.clone();
         instance.ident = self.instance_ident.clone();
-        
+
         match &mut instance.variant {
             RustStructType::Record(record) => {
                 for field in record.fields.iter_mut() {
                     field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
                 }
-            },
-            RustStructType::Table{ domain, range } => {
+            }
+            RustStructType::Table { domain, range } => {
                 *domain = Self::resolve_type(&resolved_args, domain);
                 *range = Self::resolve_type(&resolved_args, range);
-            },
-            RustStructType::Array{ element_type } => {
+            }
+            RustStructType::Array { element_type } => {
                 *element_type = Self::resolve_type(&resolved_args, element_type);
-            },
-            RustStructType::TypeChoice{ variants } => {
+            }
+            RustStructType::TypeChoice { variants } => {
                 for variant in variants.iter_mut() {
                     variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
                 }
-            },
-            RustStructType::GroupChoice{ .. } => {
+            }
+            RustStructType::GroupChoice { .. } => {
                 // for variant in variants.mut_iter() {
                 //     variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
                 // }
                 todo!("we might need to recursively resolve on these");
-            },
-            RustStructType::Wrapper{ .. } => {
+            }
+            RustStructType::Wrapper { .. } => {
                 todo!("should we look this up in types to resolve?");
-            },
-            RustStructType::Prelude => panic!("generics should not be used on types in the prelude (e.g. int)"),
+            }
+            RustStructType::Prelude => {
+                panic!("generics should not be used on types in the prelude (e.g. int)")
+            }
         };
         instance
     }
@@ -1817,11 +2085,15 @@ impl GenericInstance {
     }
 }
 
-fn try_ident_with_id(intermediate_types: &IntermediateTypes, name: &CDDLIdent, value: u32) -> CDDLIdent {
+fn try_ident_with_id(
+    intermediate_types: &IntermediateTypes,
+    name: &CDDLIdent,
+    value: u32,
+) -> CDDLIdent {
     let new_ident = CDDLIdent::new(format!("{}{}", name, value));
     let rust_ident = RustIdent::new(new_ident.clone());
     match intermediate_types.has_ident(&rust_ident) {
         false => new_ident,
-        true => try_ident_with_id(intermediate_types, name, value + 1)
+        true => try_ident_with_id(intermediate_types, name, value + 1),
     }
 }
