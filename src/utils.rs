@@ -103,23 +103,65 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
     }
 }
 
+#[rustfmt::skip]
 pub fn is_identifier_reserved(name: &str) -> bool {
     match name {
         // These are all possible reserved identifiers, even if we don't support them
-        "uint" | "int" | "nint" | "text" | "tstr" | "bytes" | "bstr" | "bool" | "float"
-        | "float16" | "float32" | "float64" | "float16-32" | "float32-64" | "tdate" | "time"
-        | "number" | "biguint" | "bignint" | "bigint" | "integer" | "unsigned" | "decfrac"
-        | "bigfloat" | "eb64url" | "eb64legacy" | "eb16" | "encoded-cbor" | "uri" | "b64url"
-        | "b64legacy" | "regexp" | "mime-messag e" | "cbor-any" | "null" | "nil" | "undefined"
-        | "true" | "false" => true,
+        "uint"          |
+        "int"           |
+        "nint"          |
+        "text"          |
+        "tstr"          |
+        "bytes"         |
+        "bstr"          |
+        "bool"          |
+        "float"         |
+        "float16"       |
+        "float32"       |
+        "float64"       |
+        "float16-32"    |
+        "float32-64"    |
+        "tdate"         |
+        "time"          |
+        "number"        |
+        "biguint"       |
+        "bignint"       |
+        "bigint"        |
+        "integer"       |
+        "unsigned"      |
+        "decfrac"       |
+        "bigfloat"      |
+        "eb64url"       |
+        "eb64legacy"    |
+        "eb16"          |
+        "encoded-cbor"  |
+        "uri"           |
+        "b64url"        |
+        "b64legacy"     |
+        "regexp"        |
+        "mime-messag e" |
+        "cbor-any"      |
+        "null"          |
+        "nil"           |
+        "undefined"     |
+        "true"          |
+        "false" => true,
         _ => false,
     }
 }
 
 // as we also support our own identifiers for selecting integer precision, we need this too
+#[rustfmt::skip]
 pub fn is_identifier_in_our_prelude(name: &str) -> bool {
     match name {
-        "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" => true,
+        "u8"  |
+        "i8"  |
+        "u16" |
+        "i16" |
+        "u32" |
+        "i32" |
+        "u64" |
+        "i64" => true,
         _ => false,
     }
 }
