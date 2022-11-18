@@ -44,5 +44,5 @@ pub const STD_TYPES: [&str; 40] = [
     "Vec",
     "TryFrom",
     "TryInto",
-    "FromIterator"
+    "FromIterator",
 ];
