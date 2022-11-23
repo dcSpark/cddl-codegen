@@ -361,13 +361,14 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                             let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
                             let control = inner_type.type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &inner_type.type1.type2, op));
                             match control {
-                                Some(ControlOperator::CBOR(_ty)) => {
-                                    // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
-                                    // which would also allow us to do a single pass instead of many like we do now
+                                Some(ControlOperator::CBOR(ty)) => {
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
-                                        .expect(&format!("Please move definition for {} above {}", type_name, ident));
-                                    types.register_type_alias(type_name.clone(), base_type.as_bytes().tag(tag_unwrap), true, true);
+                                        .expect("should not fail since ordered by dep graph");
+                                    assert_eq!(base_type.conceptual_type, ConceptualRustType::Primitive(Primitive::Bytes));
+                                    assert_eq!(base_type.default, None);
+                                    assert!(base_type.encodings.is_empty());
+                                    types.register_type_alias(type_name.clone(), ty.as_bytes().tag(tag_unwrap), true, true);
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
@@ -389,7 +390,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                     // which would also allow us to do a single pass instead of many like we do now
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
-                                        .expect(&format!("Please move definition for {} above {}", type_name, ident));
+                                        .expect("should not fail since ordered by dep graph");
                                     types.register_type_alias(type_name.clone(), base_type.tag(tag_unwrap), true, true);
                                 },
                             }

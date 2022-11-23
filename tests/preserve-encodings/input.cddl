@@ -37,7 +37,9 @@ group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]
 foo_bytes = bytes .cbor foo
 
 ; since we don't generate code for definitions like the above (should we if no one refers to it?)
-cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]
+cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint, tagged_foo_bytes]
+
+tagged_foo_bytes = #6.20(bytes .cbor foo)
 
 signed_ints = [
 	u_8: uint .size 1,
