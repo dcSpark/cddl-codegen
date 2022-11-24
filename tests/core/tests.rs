@@ -106,7 +106,8 @@ mod tests {
 
     #[test]
     fn cbor_in_cbor() {
-        deser_test(&CborInCbor::new(Foo::new(0, String::new(), vec![]), 9))
+        let foo = Foo::new(0, String::new(), vec![]);
+        deser_test(&CborInCbor::new(foo.clone(), 9, foo))
     }
 
     #[test]

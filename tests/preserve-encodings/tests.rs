@@ -439,9 +439,11 @@ mod tests {
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
                 let foo_bytes_enc = StringLenSz::Indefinite(vec![(5, Sz::Inline), ((irregular_foo_bytes.len() - 5) as u64, Sz::Eight)]);
                 let irregular_bytes = vec![
-                    arr_sz(2, *def_enc),    
-                        cbor_bytes_sz(irregular_foo_bytes, foo_bytes_enc),
+                    arr_sz(3, *def_enc),    
+                        cbor_bytes_sz(irregular_foo_bytes.clone(), foo_bytes_enc.clone()),
                         cbor_bytes_sz(cbor_int(5, *def_enc), StringLenSz::Len(*def_enc)),
+                        cbor_tag_sz(20, *def_enc),
+                            cbor_bytes_sz(irregular_foo_bytes, foo_bytes_enc),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
                 let irregular = CborInCbor::from_bytes(irregular_bytes.clone()).unwrap();
                 assert_eq!(irregular_bytes, irregular.to_bytes());
