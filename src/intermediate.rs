@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use cbor_event::Type as CBORType;
+use cbor_event::{Special, Type as CBORType};
 use cbor_event::Special as CBORSpecial;
 use cddl::ast::parent::ParentVisitor;
 
@@ -449,7 +449,7 @@ impl FixedValue {
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
             FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
-            FixedValue::Float(f) => buf.write_float(*f),
+            FixedValue::Float(f) => buf.write_special(Special::Float(*f)),
             FixedValue::Text(s) => buf.write_text(s),
         }.expect("Unable to serialize key for canonical ordering");
         buf.finalize()
