@@ -230,6 +230,7 @@ impl EncodingVarIsCopy for FixedValue {
             Self::Bool(_) |
             Self::Nint(_) |
             Self::Null |
+            Self::Float(_) |
             Self::Uint(_) => true,
             Self::Text(_) => false,
         }
@@ -492,6 +493,7 @@ impl GenerationScope {
                             FixedValue::Bool(b) => ("bool", b.to_string()),
                             FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
+                            FixedValue::Float(f) => ("f64", f.to_string()),
                             FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
                         };
                         self
@@ -877,6 +879,9 @@ impl GenerationScope {
                         write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), &format!("({}i128 + 1).abs() as u64", i), line_ender, &encoding_var_deref);
                     }
                 },
+                FixedValue::Float(f) => {
+                    unimplemented!()
+                }
                 FixedValue::Text(s) => {
                     write_string_sz(body, "write_text", serializer_use, &format!("\"{}\"", s), line_ender, &encoding_var);
                 },
@@ -2665,6 +2670,7 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             FixedValue::Null => vec![],
             FixedValue::Nint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::I64)).into()),
             FixedValue::Uint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::U64)).into()),
+            FixedValue::Float(_) => unimplemented!(),
             FixedValue::Text(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::Str)).into()),
         },
         SerializingRustType::Root(ConceptualRustType::Alias(_, _)) => panic!("resolve types before calling this"),
@@ -3355,6 +3361,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
                         FixedValue::Bool(_) |
                         FixedValue::Nint(_) |
                         FixedValue::Null |
+                        FixedValue::Float(_) |
                         FixedValue::Uint(_) => {
                             deser_code.content.line(&format!(
                                 "let {} = {}.unwrap_or({});",

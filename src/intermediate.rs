@@ -418,7 +418,7 @@ pub enum FixedValue {
     Nint(isize),
     Uint(usize),
     // float not supported right now - doesn't appear to be in cbor_event
-    //Float(f64),
+    Float(f64),
     Text(String),
     // UTF byte types not supported
 }
@@ -437,7 +437,7 @@ impl FixedValue {
             }),
             FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{}", i)),
             FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
-            //FixedValue::Float(f) => format!("F{}", f),
+            FixedValue::Float(f) => VariantIdent::new_custom(format!("F{}", f)),
             FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
         }
     }
@@ -449,6 +449,7 @@ impl FixedValue {
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
             FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
+            FixedValue::Float(f) => buf.write_float(*f),
             FixedValue::Text(s) => buf.write_text(s),
         }.expect("Unable to serialize key for canonical ordering");
         buf.finalize()
@@ -462,6 +463,7 @@ impl FixedValue {
             FixedValue::Bool(b) => b.to_string(),
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
+            FixedValue::Float(f) => f.to_string(),
             FixedValue::Text(s) => format!("\"{}\".to_owned()", s),
         }
     }
@@ -734,6 +736,7 @@ impl RustType {
                 FixedValue::Bool(_) => p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
+                FixedValue::Float(_) => p.cbor_types().contains(&CBORType::Special),
                 FixedValue::Null => false,
                 FixedValue::Text(_) => p == Primitive::Str,
             }
@@ -769,6 +772,7 @@ impl RustType {
                 ConceptualRustType::Fixed(f) => vec![match f {
                     FixedValue::Uint(_) => CBORType::UnsignedInteger,
                     FixedValue::Nint(_) => CBORType::NegativeInteger,
+                    FixedValue::Float(_) => CBORType::Special,
                     FixedValue::Text(_) => CBORType::Text,
                     FixedValue::Null => CBORType::Special,
                     FixedValue::Bool(_) => CBORType::Special,
