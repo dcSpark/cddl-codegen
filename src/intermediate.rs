@@ -417,7 +417,6 @@ pub enum FixedValue {
     Bool(bool),
     Nint(isize),
     Uint(usize),
-    // float not supported right now - doesn't appear to be in cbor_event
     Float(f64),
     Text(String),
     // UTF byte types not supported
