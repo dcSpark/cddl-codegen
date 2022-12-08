@@ -880,7 +880,7 @@ impl GenerationScope {
                     }
                 },
                 FixedValue::Float(f) => {
-                    unimplemented!()
+                    body.line(&format!("{}.write_special(CBORSpecial::Float({})){}", serializer_use, f, line_ender));
                 }
                 FixedValue::Text(s) => {
                     write_string_sz(body, "write_text", serializer_use, &format!("\"{}\"", s), line_ender, &encoding_var);
