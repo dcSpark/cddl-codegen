@@ -248,6 +248,8 @@ impl EncodingVarIsCopy for ConceptualRustType {
             Self::Primitive(p) => match p {
                 // bool has no encoding var
                 Primitive::Bool |
+                Primitive::F64 |
+                Primitive::F32 |
                 Primitive::I8 |
                 Primitive::I16 |
                 Primitive::I32 |
@@ -890,6 +892,10 @@ impl GenerationScope {
                 Primitive::Bool => {
                     body.line(&format!("{}.write_special(cbor_event::Special::Bool({})){}", serializer_use, expr_deref, line_ender));
                 },
+                Primitive::F32 |
+                Primitive::F64 => {
+                    body.line(&format!("{}.write_special(cbor_event::Special::Float({})){}", serializer_use, expr_deref, line_ender));
+                },
                 Primitive::Bytes => {
                     write_string_sz(body, "write_bytes", serializer_use, &config.expr, line_ender, &encoding_var);
                 },
@@ -1301,6 +1307,10 @@ impl GenerationScope {
                     Primitive::Bool => {
                         // no encoding differences for bool
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "bool::deserialize(raw)"));
+                    },
+                    Primitive::F32 |
+                    Primitive::F64=> {
+                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f64::deserialize(raw)"));
                     },
                 };
             },
@@ -2655,7 +2665,9 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             Primitive::U8 |
             Primitive::U16 |
             Primitive::U32 |
-            Primitive::U64 => vec![
+            Primitive::U64 |
+            Primitive::F32 | // TODO not sure about this one
+            Primitive::F64 => vec![
                 EncodingField {
                     field_name: format!("{}_encoding", name),
                     type_name: "Option<cbor_event::Sz>".to_owned(),
@@ -4206,6 +4218,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                     Primitive::Bytes |
                     Primitive::Str => "inner.len()",
                     Primitive::Bool |
+                    Primitive::F32 |
+                    Primitive::F64 |
                     Primitive::U8 |
                     Primitive::U16 |
                     Primitive::U32 |
@@ -4228,6 +4242,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                         Primitive::Bytes |
                         Primitive::Str => true,
                         Primitive::Bool |
+                        Primitive::F32 |
+                        Primitive::F64 |
                         Primitive::U8 |
                         Primitive::U16 |
                         Primitive::U32 |

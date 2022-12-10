@@ -100,6 +100,8 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias("nil", null_type);
         insert_alias("true", ConceptualRustType::Fixed(FixedValue::Bool(true)).into());
         insert_alias("false", ConceptualRustType::Fixed(FixedValue::Bool(false)).into());
+        insert_alias("float64", ConceptualRustType::Primitive(Primitive::F64).into());
+        insert_alias("float32", ConceptualRustType::Primitive(Primitive::F32).into());
         // What about bingint/other stuff in the standard prelude?
         aliases
     }
@@ -480,6 +482,8 @@ impl FixedValue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
+    F64,
+    F32,
     // u8 in our cddl
     U8,
     // i8 in our cddl
@@ -507,6 +511,8 @@ impl Primitive {
     pub fn to_string(&self) -> String {
         String::from(match self {
             Primitive::Bool => "bool",
+            Primitive::F32 => "f32",
+            Primitive::F64 => "f64",
             Primitive::U8 => "u8",
             Primitive::I8 => "i8",
             Primitive::U16 => "u16",
@@ -524,6 +530,8 @@ impl Primitive {
     pub fn to_variant(&self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
+            Primitive::F32 => "F32",
+            Primitive::F64 => "F64",
             Primitive::U8 => "U8",
             Primitive::I8 => "I8",
             Primitive::U16 => "U16",
@@ -542,6 +550,8 @@ impl Primitive {
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
+            Primitive::F32 => vec![CBORType::Special],
+            Primitive::F64 => vec![CBORType::Special],
             Primitive::U8 => vec![CBORType::UnsignedInteger],
             Primitive::I8 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
             Primitive::U16 => vec![CBORType::UnsignedInteger],
@@ -873,6 +883,8 @@ impl ConceptualRustType {
                     Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
                         Primitive::Bool |
+                        Primitive::F32 |
+                        Primitive::F64 |
                         Primitive::I8 |
                         Primitive::U8 |
                         Primitive::I16 |
@@ -1165,6 +1177,8 @@ impl ConceptualRustType {
             Self::Fixed(_f) => unreachable!(),
             Self::Primitive(p) => match p {
                 Primitive::Bool |
+                Primitive::F32 |
+                Primitive::F64 |
                 Primitive::I8 |
                 Primitive::I16 |
                 Primitive::I32 |
