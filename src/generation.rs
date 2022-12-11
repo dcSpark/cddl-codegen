@@ -892,7 +892,9 @@ impl GenerationScope {
                 Primitive::Bool => {
                     body.line(&format!("{}.write_special(cbor_event::Special::Bool({})){}", serializer_use, expr_deref, line_ender));
                 },
-                Primitive::F32 |
+                Primitive::F32 => {
+                    body.line(&format!("{}.write_special(cbor_event::Special::Float({} as f64)){}", serializer_use, expr_deref, line_ender));
+                },
                 Primitive::F64 => {
                     body.line(&format!("{}.write_special(cbor_event::Special::Float({})){}", serializer_use, expr_deref, line_ender));
                 },
