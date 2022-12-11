@@ -1308,8 +1308,10 @@ impl GenerationScope {
                         // no encoding differences for bool
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "bool::deserialize(raw)"));
                     },
-                    Primitive::F32 |
-                    Primitive::F64=> {
+                    Primitive::F32 => {
+                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f32::deserialize(raw)"));
+                    },
+                    Primitive::F64 => {
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f64::deserialize(raw)"));
                     },
                 };
