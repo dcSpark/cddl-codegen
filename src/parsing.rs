@@ -695,9 +695,12 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
             };
-            
+
             //let array_wrapper_name = element_type.name_as_wasm_array();
             //types.create_and_register_array_type(element_type, &array_wrapper_name)
+            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+                types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array);
+            }
             ConceptualRustType::Array(Box::new(element_type)).into()
         },
         Type2::Map { group, .. } => {
