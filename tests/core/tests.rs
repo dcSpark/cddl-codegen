@@ -3,10 +3,13 @@ mod tests {
     use super::*;
 
     fn deser_test<T: Deserialize + ToBytes>(orig: &T) {
-        print_cbor_types("orig", &orig.to_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_bytes()))).unwrap();
+        let orig_bytes = orig.to_bytes();
+        print_cbor_types("orig", &orig_bytes);
+        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", &deser.to_bytes());
         assert_eq!(orig.to_bytes(), deser.to_bytes());
+        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
     #[test]
@@ -39,6 +42,12 @@ mod tests {
     #[test]
     fn plain() {
         deser_test(&Plain::new(7576, String::from("wiorurri34h").into()));
+    }
+
+    #[test]
+    fn plain_arrays() {
+        let plain = Plain::new(7576, String::from("wiorurri34h").into());
+        deser_test(&PlainArrays::new(vec![plain.clone(), plain.clone()]));
     }
 
     #[test]
