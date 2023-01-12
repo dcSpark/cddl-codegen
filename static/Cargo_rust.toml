@@ -7,4 +7,4 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cbor_event = { git = "https://github.com/SimonIT/cbor_event", branch = "float" }
+cbor_event = "2.4.0"

@@ -8,6 +8,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 core = { path = "../core", package = "cddl-lib-core" }
-cbor_event = { git = "https://github.com/SimonIT/cbor_event", branch = "float" }
+cbor_event = "2.4.0"
 wasm-bindgen = { version = "0.2", features=["serde-serialize"] }
 linked-hash-map = "0.5.3"
