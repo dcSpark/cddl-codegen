@@ -22,3 +22,8 @@ typechoice =
     [1, bytes] ; @name case_2
 
 protocol_magic = uint ; @newtype
+
+typechoice_variants =
+    text      ; @name case_1
+    /
+    [* text]  ; @name case_2
