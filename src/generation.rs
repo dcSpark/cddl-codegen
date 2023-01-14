@@ -672,6 +672,7 @@ impl GenerationScope {
         let mut rust_lib = self.rust_lib().to_string();
         for (scope, content) in self.rust_scopes.iter_mut() {
             if scope == "lib" {
+                rust_lib.push_str("\n\n");
                 rust_lib.push_str(&content.to_string());
             } else {
                 content.raw("use super::*;");
@@ -747,6 +748,7 @@ impl GenerationScope {
             let mut wasm_lib = self.wasm_lib().to_string();
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 if scope == "lib" {
+                    wasm_lib.push_str("\n\n");
                     wasm_lib.push_str(&content.to_string());
                 } else {
                     content.raw("use super::*;");

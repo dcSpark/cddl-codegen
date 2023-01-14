@@ -447,7 +447,11 @@ pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, parent_v
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     type_choices.iter().map(|choice| {
         let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1);
-        let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant().to_string());
+        let base_name = match RuleMetadata::from(choice.type1.comments_after_type.as_ref()) {
+            RuleMetadata { name: Some(name), .. } => convert_to_camel_case(&name),
+            _ => rust_type.for_variant().to_string(),
+        };
+        let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
         EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
     }).collect()
 }

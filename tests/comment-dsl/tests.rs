@@ -53,6 +53,14 @@ mod tests {
     }
 
     #[test]
+    fn type_choice_variants() {
+        // just checking these fields exist with the expected name
+        TypechoiceVariants::new_case1("".to_string());
+        TypechoiceVariants::new_case2(vec!["".to_string()]);
+        assert!(true);
+    }
+
+    #[test]
     fn newtype() {
         let pm = ProtocolMagic::new(5);
         assert_eq!(pm.get(), 5);
