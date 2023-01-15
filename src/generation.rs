@@ -2670,7 +2670,7 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             Primitive::U16 |
             Primitive::U32 |
             Primitive::U64 |
-            Primitive::F32 | // TODO not sure about this one
+            Primitive::F32 |
             Primitive::F64 => vec![
                 EncodingField {
                     field_name: format!("{}_encoding", name),
