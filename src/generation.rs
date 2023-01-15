@@ -1,6 +1,9 @@
 use codegen::{Block};
 use cbor_event::Type as CBORType;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::process::{Command, Stdio};
+use std::io::Write;
 
 use crate::cli::CLI_ARGS;
 
@@ -676,10 +679,10 @@ impl GenerationScope {
                 rust_lib.push_str(&content.to_string());
             } else {
                 content.raw("use super::*;");
-                std::fs::write(rust_dir.join(format!("core/src/{}.rs", scope)), content.to_string())?;
+                std::fs::write(rust_dir.join(format!("core/src/{}.rs", scope)), rustfmt_generated_string(&content.to_string())?.as_ref())?;
             }
         }
-        std::fs::write(rust_dir.join("core/src/lib.rs"), rust_lib)?;
+        std::fs::write(rust_dir.join("core/src/lib.rs"), rustfmt_generated_string(&rust_lib)?.as_ref())?;
 
         // serialiation.rs
         let mut serialize_paths = vec!["static/serialization.rs"];
@@ -697,7 +700,7 @@ impl GenerationScope {
         }
         let mut serialize_contents = concat_files(serialize_paths)?;
         serialize_contents.push_str(&self.rust_serialize().to_string());
-        std::fs::write(rust_dir.join("core/src/serialization.rs"), serialize_contents)?;
+        std::fs::write(rust_dir.join("core/src/serialization.rs"), rustfmt_generated_string(&serialize_contents)?.as_ref())?;
 
         // Cargo.toml
         let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
@@ -719,7 +722,7 @@ impl GenerationScope {
 
         // cbor_encodings.rs + ordered_hash_map.rs
         if CLI_ARGS.preserve_encodings {
-            std::fs::write(rust_dir.join("core/src/cbor_encodings.rs"), self.cbor_encodings().to_string())?;
+            std::fs::write(rust_dir.join("core/src/cbor_encodings.rs"), rustfmt_generated_string(&self.cbor_encodings().to_string())?.as_ref())?;
             let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
             if CLI_ARGS.json_serde_derives {
                 ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
@@ -727,7 +730,7 @@ impl GenerationScope {
             if CLI_ARGS.json_schema_export {
                 ordered_hash_map_rs.push_str(&std::fs::read_to_string("static/ordered_hash_map_schemars.rs")?);
             }
-            std::fs::write(rust_dir.join("core/src/ordered_hash_map.rs"), ordered_hash_map_rs)?;
+            std::fs::write(rust_dir.join("core/src/ordered_hash_map.rs"), rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref())?;
         }
 
         // wasm crate
@@ -752,10 +755,10 @@ impl GenerationScope {
                     wasm_lib.push_str(&content.to_string());
                 } else {
                     content.raw("use super::*;");
-                    std::fs::write(rust_dir.join(format!("wasm/src/{}.rs", scope)), content.to_string())?;
+                    std::fs::write(rust_dir.join(format!("wasm/src/{}.rs", scope)), rustfmt_generated_string(&content.to_string())?.as_ref())?;
                 }
             }
-            std::fs::write(rust_dir.join("wasm/src/lib.rs"), wasm_lib)?;
+            std::fs::write(rust_dir.join("wasm/src/lib.rs"), rustfmt_generated_string(&wasm_lib)?.as_ref())?;
             let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
             if CLI_ARGS.json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
@@ -768,7 +771,7 @@ impl GenerationScope {
         if CLI_ARGS.json_schema_export {
             std::fs::create_dir_all(rust_dir.join("json-gen/src"))?;
             std::fs::copy("static/Cargo_json_gen.toml", rust_dir.join("json-gen/Cargo.toml"))?;
-            std::fs::write(rust_dir.join("json-gen/src/main.rs"), self.json().to_string())?;
+            std::fs::write(rust_dir.join("json-gen/src/main.rs"), rustfmt_generated_string(&self.json().to_string())?.as_ref())?;
         }
 
         Ok(())
@@ -4659,4 +4662,75 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .rust_serialize()
         .push_impl(ser_impl)
         .push_impl(deser_impl);
+}
+
+/// Gets the rustfmt path to rustfmt the generated bindings.
+fn rustfmt_path<'a>() -> std::io::Result<Cow<'a, std::path::PathBuf>> {
+    if let Ok(rustfmt) = std::env::var("RUSTFMT") {
+        return Ok(Cow::Owned(rustfmt.into()));
+    }
+    #[cfg(feature = "which-rustfmt")]
+    match which::which("rustfmt") {
+        Ok(p) => Ok(Cow::Owned(p)),
+        Err(e) => {
+            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e)))
+        }
+    }
+    #[cfg(not(feature = "which-rustfmt"))]
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "which wasn't enabled, and no rustfmt binary specified",
+    ))
+}
+
+/// Runs rustfmt on the string
+pub fn rustfmt_generated_string(
+    source: &str,
+) -> std::io::Result<Cow<str>> {
+    let mut cmd = Command::new(&rustfmt_path().unwrap().as_ref());
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
+
+    // cmd.args(&["--config-path", path]);
+
+    let mut child = cmd.spawn()?;
+    let mut child_stdin = child.stdin.take().unwrap();
+    let mut child_stdout = child.stdout.take().unwrap();
+
+    let source = source.to_owned();
+
+    // Write to stdin in a new thread, so that we can read from stdout on this
+    // thread. This keeps the child from blocking on writing to its stdout which
+    // might block us from writing to its stdin.
+    let stdin_handle = ::std::thread::spawn(move || {
+        let _ = child_stdin.write_all(source.as_bytes());
+        source
+    });
+
+    let mut output = vec![];
+    std::io::copy(&mut child_stdout, &mut output)?;
+
+    let status = child.wait()?;
+    let source = stdin_handle.join().expect(
+        "The thread writing to rustfmt's stdin doesn't do \
+         anything that could panic",
+    );
+
+    match String::from_utf8(output) {
+        Ok(bindings) => match status.code() {
+            Some(0) => Ok(Cow::Owned(bindings)),
+            Some(2) => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Rustfmt parsing errors.".to_string(),
+            )),
+            Some(3) => {
+                println!("Rustfmt could not format some lines.");
+                Ok(Cow::Owned(bindings))
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Internal rustfmt error".to_string(),
+            )),
+        },
+        _ => Ok(Cow::Owned(source)),
+    }
 }

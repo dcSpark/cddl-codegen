@@ -3,6 +3,11 @@ name = "cddl-codegen"
 version = "0.1.0"
 edition = "2018"
 
+[features]
+default = ["which-rustfmt"]
+# Dynamically discover a `rustfmt` binary using the `which` crate
+which-rustfmt = ["which"]
+
 [dependencies]
 cbor_event = "2.1.3"
 cddl = "0.9.1"
@@ -11,3 +16,4 @@ codegen = "0.1.3"
 either = "1.5.3"
 once_cell = "1.17.0"
 nom = "7.1.1"
+which = { version = "4.2.1", optional = true, default-features = false }
