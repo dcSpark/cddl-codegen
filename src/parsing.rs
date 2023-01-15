@@ -136,6 +136,7 @@ fn type2_to_number_literal(type2: &Type2) -> isize {
     match type2 {
         Type2::UintValue{ value, .. } => *value as isize,
         Type2::IntValue{ value, .. } => *value,
+        Type2::FloatValue{ value, .. } => *value as isize,
         _ => panic!("Value specified: {:?} must be a number literal to be used here", type2),
     }
 }
@@ -144,6 +145,7 @@ fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
     match type2 {
         Type2::UintValue{ value, .. } => FixedValue::Uint(*value),
         Type2::IntValue{ value, .. } => FixedValue::Nint(*value),
+        Type2::FloatValue{ value, .. } => FixedValue::Float(*value),
         Type2::TextValue{ value, .. } => FixedValue::Text(value.to_string()),
         _ => panic!("Type2: {:?} does not correspond to a supported FixedValue", type2),
     }
