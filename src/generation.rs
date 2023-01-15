@@ -4256,8 +4256,6 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                         Primitive::Bytes |
                         Primitive::Str => true,
                         Primitive::Bool |
-                        Primitive::F32 |
-                        Primitive::F64 |
                         Primitive::U8 |
                         Primitive::U16 |
                         Primitive::U32 |
@@ -4266,7 +4264,9 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                         Primitive::I16 |
                         Primitive::I32 |
                         Primitive::I64 |
-                        Primitive::N64 => false,
+                        Primitive::N64 |
+                        Primitive::F32 |
+                        Primitive::F64 => false,
                     },
                     _ => unimplemented!(),
                 };
