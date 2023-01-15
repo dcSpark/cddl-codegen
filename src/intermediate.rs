@@ -745,7 +745,7 @@ impl RustType {
                 FixedValue::Bool(_) => p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
-                FixedValue::Float(_) => p.cbor_types().contains(&CBORType::Special),
+                FixedValue::Float(_) => p == Primitive::F64 || p == Primitive::F32,
                 FixedValue::Null => false,
                 FixedValue::Text(_) => p == Primitive::Str,
             }
