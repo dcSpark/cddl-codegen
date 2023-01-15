@@ -163,11 +163,13 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
             let range_start = match type2 {
                 Type2::UintValue{ value, .. } => *value as isize,
                 Type2::IntValue{ value, .. } => *value,
+                Type2::FloatValue{ value, .. } => *value as isize,
                 _ => panic!("Number expected as range start. Found {:?}", type2)
             };
             let range_end = match operator.type2 {
                 Type2::UintValue{ value, .. } => value as isize,
                 Type2::IntValue{ value, ..} => value,
+                Type2::FloatValue{ value, .. } => value as isize,
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
             ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
@@ -190,12 +192,14 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                 let base_range = match &operator.type2 {
                     Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
+                    Type2::FloatValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::ParenthesizedType{ pt, .. } => {
                         assert_eq!(pt.type_choices.len(), 1);
                         let inner_type = &pt.type_choices.first().unwrap().type1;
                         let min = match inner_type.type2 {
                             Type2::UintValue{ value, .. } => Some(value as i128),
                             Type2::IntValue{ value, .. } => Some(value as i128),
+                            Type2::FloatValue{ value, .. } => Some(value as i128),
                             _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                         };
                         match &inner_type.operator {
@@ -207,6 +211,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                                     let value = match op.type2 {
                                         Type2::UintValue{ value, .. } => value as i128,
                                         Type2::IntValue{ value, ..} => value as i128,
+                                        Type2::FloatValue{ value, .. } => value as i128,
                                         _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                                     };
                                     let max = Some(if is_inclusive { value } else { value + 1 });
