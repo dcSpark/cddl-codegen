@@ -2686,7 +2686,7 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             FixedValue::Null => vec![],
             FixedValue::Nint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::I64)).into()),
             FixedValue::Uint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::U64)).into()),
-            FixedValue::Float(_) => unimplemented!(),
+            FixedValue::Float(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::F64)).into()),
             FixedValue::Text(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::Str)).into()),
         },
         SerializingRustType::Root(ConceptualRustType::Alias(_, _)) => panic!("resolve types before calling this"),
