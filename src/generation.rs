@@ -1219,6 +1219,16 @@ impl GenerationScope {
                             deser_code.content.line(&format!("{}{}{}", before_after.before_str(false), final_expr(config.final_exprs, None), before_after.after_str(false)));
                         }
                     },
+                    FixedValue::Float(x) => {
+                        deser_code.content.line(&format!("let {}_value = {}.float()?;", config.var_name, deserializer_name));
+                        let mut compare_block = Block::new(&format!("if {}_value != {}", config.var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, x));
+                        deser_code.content.push_block(compare_block);
+                        if CLI_ARGS.preserve_encodings {
+                            config.final_exprs.push(format!("Some({}_encoding)", config.var_name));
+                            deser_code.content.line(&format!("{}{}{}", before_after.before_str(false), final_expr(config.final_exprs, None), before_after.after_str(false)));
+                        }
+                    },
                     _ => unimplemented!(),
                 };
                 deser_code.throws = true;
