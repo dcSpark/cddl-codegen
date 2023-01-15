@@ -257,6 +257,8 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<Conceptua
         (Some(l), Some(h)) if l == i32::MIN as i128 && h == i32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I32)),
         (Some(l), Some(h)) if l == u64::MIN as i128 && h == u64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U64)),
         (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I64)),
+        (Some(l), Some(h)) if l == f32::MIN as i128 && h == f32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::F32)),
+        (Some(l), Some(h)) if l == f64::MIN as i128 && h == f64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::F64)),
         _ => None
     }
 }
@@ -281,7 +283,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                     match control {
                         ControlOperator::Range(min_max) => {
                             match cddl_ident.to_string().as_str() {
-                                "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                "int" | "uint" | "float" => match range_to_primitive(min_max.0, min_max.1) {
                                     Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                     None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
                                 },
@@ -372,7 +374,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
-                                        "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                        "int" | "uint" | "float" => match range_to_primitive(min_max.0, min_max.1) {
                                             Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
@@ -435,6 +437,21 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
         },
         Type2::TextValue{ value, .. } => {
             types.register_type_alias(type_name.clone(), ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(), true, true);
+        },
+        Type2::FloatValue { value, .. } => {
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Float(*value));
+
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+            let base_type = match control {
+                Some(ControlOperator::Range(min_max)) => {
+                    match range_to_primitive(min_max.0, min_max.1) {
+                        Some(t) => t,
+                        _ => fallback_type
+                    }
+                },
+                _ => fallback_type
+            };
+            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
         },
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -628,7 +645,7 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, parent_visitor: &ParentVi
         },
         Some(ControlOperator::Range(min_max)) => {
             match &type1.type2 {
-                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" => match range_to_primitive(min_max.0, min_max.1) {
+                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" || ident.to_string() == "float" => match range_to_primitive(min_max.0, min_max.1) {
                     Some(t) => t.into(),
                     None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                 },
@@ -645,7 +662,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
     match &type2 {
         Type2::UintValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Uint(*value)).into(),
         Type2::IntValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Nint(*value)).into(),
-        //Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)),
+        Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)).into(),
         Type2::TextValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
         Type2::Typename{ ident, generic_args, .. } => {
             let cddl_ident = CDDLIdent::new(ident.ident);
