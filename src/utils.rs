@@ -157,8 +157,10 @@ pub fn is_identifier_in_our_prelude(name: &str) -> bool {
         "i16" |
         "u32" |
         "i32" |
+        "f32" |
         "u64" |
-        "i64" => true,
+        "i64" |
+        "f64" => true,
         _ => false,
     }
 }
