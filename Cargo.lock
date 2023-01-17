@@ -255,9 +255,8 @@ dependencies = [
 
 [[package]]
 name = "codegen"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34c59e8a9b988977ec3bd61ab380cf1167048817ecd3d6999fac03657f85a609"
+version = "0.2.0"
+source = "git+https://github.com/dcSpark/codegen?branch=master#1c1aecc7fbc420d4dbade795447ad9f7b1cd43f6"
 dependencies = [
  "indexmap",
 ]

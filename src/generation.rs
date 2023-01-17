@@ -1,4 +1,4 @@
-use codegen::{Block};
+use codegen::{Block, TypeAlias};
 use cbor_event::Type as CBORType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -445,54 +445,66 @@ impl GenerationScope {
         // Rust (populate rust_lib() - used for top of file before structs)
         self
             .rust_lib()
-            .raw("#![allow(clippy::too_many_arguments)]")
-            .raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen");
+            .raw("#![allow(clippy::too_many_arguments)]\n")
+            .raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n");
         // We can't generate groups of imports with codegen::Import so we just output this as raw text
         // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
         // does not work.
         if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-            self.rust_lib().raw("use cbor_event::{self, de::Deserializer, se::Serializer};");
+            self.rust_lib()
+            .push_import("cbor_event", "self", None)
+            .push_import("cbor_event::de", "Deserializer", None)
+            .push_import("cbor_event::se", "Serializer", None);
         } else {
-            self.rust_lib().raw("use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};");
+            self.rust_lib()
+            .push_import("cbor_event", "self", None)
+            .push_import("cbor_event::de", "Deserializer", None)
+            .push_import("cbor_event::se", "Serialize", None)
+            .push_import("cbor_event::se", "Serializer", None);
         }
         self
             .rust_lib()
-            .raw("use std::io::{BufRead, Write};")
-            .raw("use prelude::*;")
-            .raw("use cbor_event::Type as CBORType;")
-            .raw("use cbor_event::Special as CBORSpecial;")
-            .raw("use serialization::*;")
-            .raw("use std::collections::BTreeMap;")
-            .raw("use std::convert::{From, TryFrom};")
+            .push_import("std::io", "BufRead", None)
+            .push_import("std::io", "Write", None)
+            .push_import("std::io", "Write", None)
+            .push_import("prelude", "*", None)
+            .push_import("cbor_event", "Type", Some("CBORType"))
+            .push_import("cbor_event", "Special", Some("CBORSpecial"))
+            .push_import("serialization", "*", None)
+            .push_import("std::collections", "BTreeMap", None)
+            .push_import("std::convert", "From", None)
+            .push_import("std::convert", "TryFrom", None)
             .raw("pub mod prelude;")
             .raw("pub mod serialization;");
         if CLI_ARGS.preserve_encodings {
             self
                 .rust_lib()
                 .raw("pub mod ordered_hash_map;")
-                .raw("use ordered_hash_map::OrderedHashMap;")
-                .raw("use cbor_event::Sz;")
+                .push_import("ordered_hash_map", "OrderedHashMap", None)
+                .push_import("cbor_event", "Sz", None)
                 .raw("pub mod cbor_encodings;")
-                .raw("use cbor_encodings::*;")
-                .raw("extern crate derivative;")
-                .raw("use derivative::Derivative;");
+                .push_import("cbor_encodings", "*", None)
+                .push_import("derivative", "Derivative", None)
+                .raw("extern crate derivative;");
             self
                 .cbor_encodings()
-                .raw("use super::*;");
+                .push_import("super", "*", None);
         }
-        self.rust_serialize().import("super", "*");
-        self.rust_serialize().import("std::io", "{Seek, SeekFrom}");
+        self.rust_serialize().push_import("super", "*", None);
+        self.rust_serialize().push_import("std::io", "Seek", None);
+        self.rust_serialize().push_import("std::io", "SeekFrom", None);
 
         // Wasm (populate wasm_lib() - used for top of file before structs)
         if CLI_ARGS.wasm {
             self
                 .wasm_lib()
                 .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]")
-                .raw("use wasm_bindgen::prelude::{wasm_bindgen, JsValue};");
+                .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
+                .push_import("wasm_bindgen::prelude", "JsValue", None);
             if CLI_ARGS.preserve_encodings {
-                self.wasm_lib().raw("use core::ordered_hash_map::OrderedHashMap;");
+                self.wasm_lib().push_import("core::ordered_hash_map", "OrderedHashMap", None);
             } else {
-                self.wasm_lib().raw("use std::collections::BTreeMap;");
+                self.wasm_lib().push_import("std::collections", "BTreeMap", None);
             }
         }
 
@@ -504,7 +516,7 @@ impl GenerationScope {
                 if *gen_rust_alias {
                     self
                         .rust_lib()
-                        .raw(&format!("pub type {} = {};", ident, base_type.for_rust_member(false)));
+                        .push_type_alias(TypeAlias::new(ident, base_type.for_rust_member(false)).vis("pub").clone());
                 }
                 if *gen_wasm_alias {
                     if let ConceptualRustType::Fixed(constant) = &base_type.conceptual_type {
@@ -518,15 +530,15 @@ impl GenerationScope {
                         };
                         self
                             .wasm(types, ident)
-                            .raw("#[wasm_bindgen]")
                             .new_fn(&convert_to_snake_case(&ident.to_string()))
+                            .attr("wasm_bindgen")
                             .vis("pub")
                             .ret(ty)
                             .line(val);
                     } else {
                         self
                             .wasm(types, ident)
-                            .raw(&format!("pub type {} = {};", ident, base_type.for_wasm_member()));
+                            .push_type_alias(TypeAlias::new(ident, base_type.for_wasm_member()).vis("pub").clone());
                     }
                 }
             }
@@ -573,12 +585,13 @@ impl GenerationScope {
                         if wasm_wrappers_generated.insert(map_ident.to_string()) {
                             codegen_table_type(self, types, rust_ident, domain.clone(), range.clone(), rust_struct.tag());
                         } else {
-                            self.wasm(types, rust_ident).raw(&format!("type {} = {};", rust_ident, map_ident));
+                            self.wasm(types, rust_ident)
+                                .push_type_alias(TypeAlias::new(rust_ident, map_ident));
                         }
                     }
                     //self
                     //    .rust()
-                    //    .raw(&format!("type {} = {};", rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
+                    //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
                 },
                 RustStructType::Array { element_type } => {
                     if CLI_ARGS.wasm {
@@ -586,7 +599,7 @@ impl GenerationScope {
                     }
                     //self
                     //    .rust()
-                    //    .raw(&format!("type {} = {};", rust_struct.ident(), element_type.name_as_rust_array(false)));
+                    //    .push_type_alias(TypeAlias::new(rust_struct.ident(), element_type.name_as_rust_array(false)));
                 },
                 RustStructType::TypeChoice { variants } => {
                     self.generate_type_choices_from_variants(types, rust_ident, variants, rust_struct.tag());
@@ -613,7 +626,7 @@ impl GenerationScope {
 
         // JSON export
         if CLI_ARGS.json_schema_export {
-            self.json_scope.raw("use cddl_lib_core::*;");
+            self.json_scope.push_import("cddl_lib_core", "*", None);
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
             let mut macro_match = Block::new("($name:ident) => ");
             macro_match
@@ -670,19 +683,19 @@ impl GenerationScope {
             self
                 .rust_lib()
                 .raw(&format!("pub mod {};", scope))
-                .raw(&format!("pub use {}::*;\n", scope));
+                .push_import(scope, "*", None);
         }
-        let mut rust_lib = self.rust_lib().to_string();
+        let mut merged_rust_scope = codegen::Scope::new();
+        merged_rust_scope.append(self.rust_lib());
         for (scope, content) in self.rust_scopes.iter_mut() {
             if scope == "lib" {
-                rust_lib.push_str("\n\n");
-                rust_lib.push_str(&content.to_string());
+                merged_rust_scope.append(&content.clone());
             } else {
-                content.raw("use super::*;");
+                content.push_import("super", "*", None);
                 std::fs::write(rust_dir.join(format!("core/src/{}.rs", scope)), rustfmt_generated_string(&content.to_string())?.as_ref())?;
             }
         }
-        std::fs::write(rust_dir.join("core/src/lib.rs"), rustfmt_generated_string(&rust_lib)?.as_ref())?;
+        std::fs::write(rust_dir.join("core/src/lib.rs"), rustfmt_generated_string(&merged_rust_scope.to_string())?.as_ref())?;
 
         // serialiation.rs
         let mut serialize_paths = vec!["static/serialization.rs"];
@@ -746,19 +759,19 @@ impl GenerationScope {
                 self
                     .wasm_lib()
                     .raw(&format!("pub mod {};", scope))
-                    .raw(&format!("pub use {}::*;\n", scope));
+                    .push_import(&scope, "*", None);
             }
-            let mut wasm_lib = self.wasm_lib().to_string();
+            let mut merged_wasm_scope = codegen::Scope::new();
+            merged_wasm_scope.append(self.wasm_lib());
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 if scope == "lib" {
-                    wasm_lib.push_str("\n\n");
-                    wasm_lib.push_str(&content.to_string());
+                    merged_wasm_scope.append(&content.clone());
                 } else {
-                    content.raw("use super::*;");
+                    content.push_import("super", "*", None);
                     std::fs::write(rust_dir.join(format!("wasm/src/{}.rs", scope)), rustfmt_generated_string(&content.to_string())?.as_ref())?;
                 }
             }
-            std::fs::write(rust_dir.join("wasm/src/lib.rs"), rustfmt_generated_string(&wasm_lib)?.as_ref())?;
+            std::fs::write(rust_dir.join("wasm/src/lib.rs"), rustfmt_generated_string(&merged_wasm_scope.to_string())?.as_ref())?;
             let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
             if CLI_ARGS.json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
@@ -1834,9 +1847,11 @@ impl GenerationScope {
                 .vis("pub")
                 .tuple_field(format!("pub(crate) {}", &inner_type))
                 .derive("Clone")
-                .derive("Debug");
+                .derive("Debug")
+                .attr("wasm_bindgen");
             // other functions
             let mut array_impl = codegen::Impl::new(&array_type_ident.to_string());
+            array_impl.r#macro("#[wasm_bindgen]");
             let mut new_func = codegen::Function::new("new");
             new_func
                 .vis("pub")
@@ -1880,9 +1895,7 @@ impl GenerationScope {
                 .line("wrapper.0");
             self
                 .wasm_lib()
-                .raw("#[wasm_bindgen]")
                 .push_struct(s)
-                .raw("#[wasm_bindgen]")
                 .push_impl(array_impl)
                 .push_impl(from_wasm)
                 .push_impl(to_wasm);
@@ -2081,9 +2094,7 @@ impl<'a> WasmWrapper<'a> {
     fn push(self, gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         gen_scope
             .wasm(types, self.ident)
-            .raw("#[wasm_bindgen]")
             .push_struct(self.s)
-            .raw("#[wasm_bindgen]")
             .push_impl(self.s_impl);
         if let Some(from_wasm) = self.from_wasm {
             gen_scope.wasm(types, self.ident).push_impl(from_wasm);
@@ -2100,8 +2111,10 @@ fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent
     s
         .vis("pub")
         .derive("Clone")
-        .derive("Debug");
+        .derive("Debug")
+        .attr("wasm_bindgen");
     let mut s_impl = codegen::Impl::new(name);
+    s_impl.r#macro("#[wasm_bindgen]");
     // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
@@ -3782,9 +3795,9 @@ fn generate_enum(gen_scope: &mut GenerationScope, types: &IntermediateTypes, nam
         for variant in variants.iter() {
             kind.new_variant(&variant.name.to_string());
         }
+        kind.attr("wasm_bindgen");
         gen_scope
             .wasm(types, name)
-            .raw("#[wasm_bindgen]")
             .push_enum(kind);
     }
 
@@ -4718,18 +4731,18 @@ pub fn rustfmt_generated_string(
     match String::from_utf8(output) {
         Ok(bindings) => match status.code() {
             Some(0) => Ok(Cow::Owned(bindings)),
-            Some(2) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Rustfmt parsing errors.".to_string(),
-            )),
+            Some(2) => {
+                println!("Rustfmt parsing errors.");
+                Ok(Cow::Owned(source))
+            },
             Some(3) => {
                 println!("Rustfmt could not format some lines.");
                 Ok(Cow::Owned(bindings))
             }
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Internal rustfmt error".to_string(),
-            )),
+            _ =>{ 
+                println!("Rustfmt internal error.");
+                Ok(Cow::Owned(source))
+            },
         },
         _ => Ok(Cow::Owned(source)),
     }
