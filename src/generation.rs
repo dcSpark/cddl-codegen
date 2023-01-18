@@ -1845,7 +1845,7 @@ impl GenerationScope {
             let mut s = codegen::Struct::new(&array_type_ident.to_string());
             s
                 .vis("pub")
-                .tuple_field(format!("pub(crate) {}", &inner_type))
+                .tuple_field(Some("pub(crate)".to_string()), &inner_type)
                 .derive("Clone")
                 .derive("Debug")
                 .attr("wasm_bindgen");
@@ -2187,7 +2187,7 @@ fn create_base_wasm_wrapper<'a>(gen_scope: &GenerationScope, ident: &'a RustIden
     let name = &ident.to_string();
     if default_structure {
         let native_name = &format!("core::{}", name);
-        base.s.tuple_field(format!("pub(crate) {}", native_name));
+        base.s.tuple_field(Some("pub(crate)".to_string()), native_name);
         let mut from_wasm = codegen::Impl::new(name);
         from_wasm
             .impl_trait(format!("From<{}>", native_name))
@@ -2470,7 +2470,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
     let inner_type = ConceptualRustType::name_for_rust_map(&key_type, &value_type, true);
-    wrapper.s.tuple_field(format!("pub(crate) {}", inner_type));
+    wrapper.s.tuple_field(Some("pub(crate)".to_string()), &inner_type);
     // new
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -4176,7 +4176,7 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
         }
         Some(enc_fields)
     } else {
-        s.tuple_field(format!("pub {}", field_type.for_rust_member(false)));
+        s.tuple_field(Some("pub".to_string()), field_type.for_rust_member(false));
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
