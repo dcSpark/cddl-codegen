@@ -413,7 +413,7 @@ pub enum Representation {
     Map,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FixedValue {
     Null,
     Bool(bool),
@@ -701,7 +701,7 @@ pub enum CBOREncodingOperation {
 }
 
 /// A complete rust type, including serialization options that don't impact other areas
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RustType {
     /// Conceptual type i.e. how it's used in non-serialization contexts
     pub conceptual_type: ConceptualRustType,
@@ -833,7 +833,7 @@ impl std::convert::From<ConceptualRustType> for RustType {
 }
 
 /// How a type will be represented in rust outside of a serialization context
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ConceptualRustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm
