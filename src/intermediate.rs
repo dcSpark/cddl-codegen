@@ -181,9 +181,7 @@ impl<'a> IntermediateTypes<'a> {
         match &rust_struct.variant {
             RustStructType::Table { domain, range } => {
                 // we must provide the keys type to return
-                if CLI_ARGS.wasm {
-                    self.create_and_register_array_type(parent_visitor, domain.clone(), &domain.conceptual_type.name_as_wasm_array());
-                }
+                self.create_and_register_array_type(parent_visitor, domain.clone(), &domain.conceptual_type.name_as_wasm_array());
                 let mut map_type: RustType = ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
                 if let Some(tag) = rust_struct.tag {
                     map_type = map_type.tag(tag);
@@ -228,9 +226,11 @@ impl<'a> IntermediateTypes<'a> {
         if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
             self.set_rep_if_plain_group(parent_visitor, &array_type_ident, Representation::Array);
         }
-        // we don't pass in tags here. If a tag-wrapped array is done I think it generates
-        // 2 separate types (array wrapper -> tag wrapper struct)
-        self.register_rust_struct(parent_visitor, RustStruct::new_array(array_type_ident, None, element_type.clone()));
+        if CLI_ARGS.wasm {
+            // we don't pass in tags here. If a tag-wrapped array is done I think it generates
+            // 2 separate types (array wrapper -> tag wrapper struct)
+            self.register_rust_struct(parent_visitor, RustStruct::new_array(array_type_ident, None, element_type.clone()));
+        }
         ConceptualRustType::Array(Box::new(element_type)).into()
     }
 
@@ -1230,25 +1230,24 @@ impl ConceptualRustType {
     }
 
     // See comment in RustStruct::definite_info(), this is the same, returns a string expression
-    // which evaluates to the length when possible, or None if not.
+    // which evaluates to the length.
     // self_expr is an expresison that evaluates to this RustType (e.g. member, etc) at the point where
     // the return of this function will be used.
-    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes) -> Option<String> {
+    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes) -> String {
         match self.expanded_field_count(types) {
-            Some(count) => Some(count.to_string()),
+            Some(count) => count.to_string(),
             None => match self {
-                Self::Optional(ty) => Some(format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.conceptual_type.definite_info("x", types)?)),
+                Self::Optional(ty) => format!("match {} {{ Some(x) => {}, None => 1 }}", self_expr, ty.conceptual_type.definite_info("x", types)),
                 Self::Rust(ident) => if types.is_plain_group(ident) {
                     match types.rust_structs.get(&ident) {
                         Some(rs) => rs.definite_info(types),
-                        // when we split up parsing from codegen instead of multi-passing this should be an error
-                        None => None,
+                        None => panic!("rust struct {} not found but referenced by {:?}", ident, self),
                     }
                 } else {
-                    Some(String::from("1"))
+                    String::from("1")
                 },
                 Self::Alias(_ident, ty) => ty.definite_info(self_expr, types),
-                _ => Some(String::from("1")),
+                _ => String::from("1"),
             }
         }
     }
@@ -1582,15 +1581,14 @@ impl RustStruct {
         }
     }
 
-    // Even if fixed_field_count() == None, this will try and return an expression for
+    // Even if fixed_field_count() == None, this will return an expression for
     // a definite length, e.g. with optional field checks in the expression
     // This is useful for definite-length serialization
-    pub fn definite_info(&self, types: &IntermediateTypes) -> Option<String> {
+    pub fn definite_info(&self, types: &IntermediateTypes) -> String {
         match &self.variant {
             RustStructType::Record(record) => record.definite_info(types),
-            RustStructType::Table{ .. } => Some(String::from("self.0.len() as u64")),
-            RustStructType::Array{ .. } => Some(String::from("self.0.len() as u64")),
-            //RustStructType::TypeChoice{ .. } => None,
+            RustStructType::Table{ .. } => String::from("self.0.len() as u64"),
+            RustStructType::Array{ .. } => String::from("self.0.len() as u64"),
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
@@ -1669,9 +1667,9 @@ impl RustRecord {
     }
 
     // This is guaranteed 
-    pub fn definite_info(&self, types: &IntermediateTypes) -> Option<String> {
+    pub fn definite_info(&self, types: &IntermediateTypes) -> String {
         match self.fixed_field_count(types) {
-            Some(count) => Some(count.to_string()),
+            Some(count) => count.to_string(),
             None => {
                 let mut fixed_field_count = 0;
                 let mut conditional_field_expr = String::new();
@@ -1681,7 +1679,7 @@ impl RustRecord {
                             conditional_field_expr.push_str(" + ");
                         }
                         let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => ("x", field.rust_type.conceptual_type.definite_info("x", types)?),
+                            Representation::Array => ("x", field.rust_type.conceptual_type.definite_info("x", types)),
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
@@ -1711,7 +1709,7 @@ impl RustRecord {
                                     if !conditional_field_expr.is_empty() {
                                         conditional_field_expr.push_str(" + ");
                                     }
-                                    let field_len_expr = field.rust_type.conceptual_type.definite_info(&format!("self.{}", field.name), types)?;
+                                    let field_len_expr = field.rust_type.conceptual_type.definite_info(&format!("self.{}", field.name), types);
                                     conditional_field_expr.push_str(&field_len_expr);
                                 },
                             },
@@ -1722,9 +1720,9 @@ impl RustRecord {
                     }
                 }
                 if conditional_field_expr.is_empty() || fixed_field_count != 0 {
-                    Some(format!("{} + {}", fixed_field_count.to_string(), conditional_field_expr))
+                    format!("{} + {}", fixed_field_count.to_string(), conditional_field_expr)
                 } else {
-                    Some(conditional_field_expr)
+                    conditional_field_expr
                 }
             }
         }

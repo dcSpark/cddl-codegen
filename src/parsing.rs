@@ -471,7 +471,11 @@ pub fn create_variants_from_type_choices(types: &mut IntermediateTypes, parent_v
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     type_choices.iter().map(|choice| {
         let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1);
-        let variant_name = append_number_if_duplicate(&mut variant_names_used, rust_type.for_variant().to_string());
+        let base_name = match RuleMetadata::from(choice.type1.comments_after_type.as_ref()) {
+            RuleMetadata { name: Some(name), .. } => convert_to_camel_case(&name),
+            _ => rust_type.for_variant().to_string(),
+        };
+        let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
         EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
     }).collect()
 }
@@ -719,9 +723,12 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
             };
-            
+
             //let array_wrapper_name = element_type.name_as_wasm_array();
             //types.create_and_register_array_type(element_type, &array_wrapper_name)
+            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+                types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array);
+            }
             ConceptualRustType::Array(Box::new(element_type)).into()
         },
         Type2::Map { group, .. } => {

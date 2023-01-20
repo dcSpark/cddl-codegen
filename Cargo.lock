@@ -163,6 +163,9 @@ dependencies = [
  "either",
  "nom",
  "once_cell",
+ "quote",
+ "syn",
+ "which",
 ]
 
 [[package]]
@@ -254,11 +257,12 @@ dependencies = [
 
 [[package]]
 name = "codegen"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34c59e8a9b988977ec3bd61ab380cf1167048817ecd3d6999fac03657f85a609"
+version = "0.2.0"
+source = "git+https://github.com/dcSpark/codegen?branch=master#a31b2eff7adfd65dfdb10d6a4d7a83bd2f5d6010"
 dependencies = [
  "indexmap",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1114,6 +1118,17 @@ name = "wasm-bindgen-shared"
 version = "0.2.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c38c045535d93ec4f0b4defec448e4291638ee608530863b1e2ba115d4fff7f"
+
+[[package]]
+name = "which"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c831fbbee9e129a8cf93e7747a82da9d95ba8e16621cae60ec2cdc849bacb7b"
+dependencies = [
+ "either",
+ "libc",
+ "once_cell",
+]
 
 [[package]]
 name = "winapi"
