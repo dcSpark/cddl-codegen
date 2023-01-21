@@ -67,7 +67,6 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         // are handled in the alias system and shouldn't reach here
         "uint" | "nint" | "int" | "bool" | "tstr" | "text" |
         "bstr" | "bytes" | "null" | "nil" | "true"  | "false" |
-        // nor floats (cbor_event restriction)
         "float16" | // #7.25
         "float32" | // #7.26
         "float64" | // #7.27
