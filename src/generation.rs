@@ -1278,8 +1278,7 @@ impl GenerationScope {
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, x));
                         deser_code.content.push_block(compare_block);
                         if CLI_ARGS.preserve_encodings {
-                            config.final_exprs.push(format!("Some({}_encoding)", config.var_name));
-                            deser_code.content.line(&format!("{}{}{}", before_after.before_str(false), final_expr(config.final_exprs, None), before_after.after_str(false)));
+                            unimplemented!("preserve_encodings is not implemented for float")
                         }
                     },
                     _ => unimplemented!(),
