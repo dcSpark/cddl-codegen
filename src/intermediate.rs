@@ -1405,7 +1405,8 @@ impl EnumVariant {
         String::from(match snake.as_str() {
             "u8" | "u16" | "u32" | "u64" => "uint",
             "i8" | "i16" | "i32" | "i64" => "int",
-            "f32" | "f64" => "float",
+            "f32" => "float32",
+            "f64" => "float64",
             x => x,
         })
     }
