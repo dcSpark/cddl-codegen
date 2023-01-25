@@ -2,13 +2,13 @@
 mod tests {
     use super::*;
 
-    fn deser_test<T: Deserialize + ToBytes>(orig: &T) {
-        let orig_bytes = orig.to_bytes();
+    fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
+        let orig_bytes = orig.to_cbor_bytes();
         print_cbor_types("orig", &orig_bytes);
         let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
         let deser = T::deserialize(&mut deserializer).unwrap();
-        print_cbor_types("deser", &deser.to_bytes());
-        assert_eq!(orig.to_bytes(), deser.to_bytes());
+        print_cbor_types("deser", &deser.to_cbor_bytes());
+        assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
         assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
@@ -145,5 +145,28 @@ mod tests {
         deser_test(&md);
         md.key_2 = "not two".into();
         deser_test(&md);
+    }
+
+    #[test]
+    fn no_alias() {
+        use std::str::FromStr;
+        // we can use this test compiling as a test for the presence of an alias by referencing e.g. I8::MIN
+        // but we need to read the actual code to test that we're NOT using an alias somewhere and are indeed
+        // using a raw rust primitive instead
+        let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
+        // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
+        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        // these don't have @no_alias
+        assert!(lib_rs.contains("pub type I8 = i8;"));
+        assert!(lib_rs.contains("pub type I64 = i64;"));
+        assert!(lib_rs.contains("pub type U8 = u8;"));
+        assert!(lib_rs.contains("pub type U16 = u16;"));
+        assert!(lib_rs.contains("pub type U32 = u32;"));
+        assert!(lib_rs.contains("pub type U64 = u64;"));
+        // these do
+        assert!(lib_rs.contains("no_alias_u32: u32"));
+        assert!(lib_rs.contains("no_alias_u64: u64"));
+        assert!(!lib_rs.contains("pub type NoAliasU32"));
+        assert!(!lib_rs.contains("pub type NoAliasU64"));
     }
 }

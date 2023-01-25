@@ -613,12 +613,12 @@ impl GenerationScope {
                         None => generate_wrapper_struct(self, types, rust_ident, wrapped, min_max.clone()),
                     }
                 },
-                RustStructType::Prelude => {
+                RustStructType::Extern => {
                     match rust_ident.to_string().as_ref() {
                         "Int" => if types.is_referenced(rust_ident) {
                             generate_int(self, types)
                         },
-                        other => panic!("prelude not defined: {}", other),
+                        _ => ()/* user-specified external types */,
                     }
                 },
             }
@@ -1348,7 +1348,7 @@ impl GenerationScope {
                     Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s"),
                     Primitive::Bool => {
                         // no encoding differences for bool
-                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "bool::deserialize(raw)"));
+                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "raw.bool()"));
                     },
                 };
             },
@@ -1523,7 +1523,7 @@ impl GenerationScope {
                             n => Some(format!("{}.read_elems({})?;", read_len_overload, n)),
                         };
                         elem_config = elem_config.overload_read_len(read_len_overload);
-                        let deser_loop = make_deser_loop("len", &format!("{}_read_len.read", config.var_name));
+                        let deser_loop = make_deser_loop("len", &format!("{}_read_len.read()", config.var_name));
                         (deser_loop, plain_len_check)
                     },
                     _ => (make_deser_loop("len", &format!("({}.len() as u64)", arr_var_name)), None)
@@ -2088,6 +2088,8 @@ struct WasmWrapper<'a> {
     from_wasm: Option<codegen::Impl>,
     // wasm -> rust
     from_native: Option<codegen::Impl>,
+    // AsRef
+    as_ref: Option<codegen::Impl>,
 }
 
 impl<'a> WasmWrapper<'a> {
@@ -2102,6 +2104,9 @@ impl<'a> WasmWrapper<'a> {
         if let Some(from_native) = self.from_native {
             gen_scope.wasm(types, self.ident).push_impl(from_native);
         }
+        if let Some(as_ref) = self.as_ref {
+            gen_scope.wasm(types, self.ident).push_impl(as_ref);
+        }
     }
 }
 
@@ -2115,35 +2120,36 @@ fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent
         .attr("wasm_bindgen");
     let mut s_impl = codegen::Impl::new(name);
     s_impl.r#macro("#[wasm_bindgen]");
-    // There are auto-implementing ToBytes and FromBytes traits, but unfortunately
+    // There are auto-implementing ToCBORBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
     if exists_in_rust {
         if CLI_ARGS.to_from_bytes_methods {
-            let mut to_bytes = codegen::Function::new("to_bytes");
+            let mut to_bytes = codegen::Function::new("to_cbor_bytes");
             to_bytes
                 .ret("Vec<u8>")
                 .arg_ref_self()
                 .vis("pub");
             if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-                to_bytes
-                    .arg("force_canonical", "bool")
-                    .line("use core::serialization::ToBytes;")
-                    .line("ToBytes::to_bytes(&self.0, force_canonical)");
+                to_bytes.line("core::serialization::Serialize::to_cbor_bytes(&self.0)");
+                let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
+                to_canonical_bytes
+                    .ret("Vec<u8>")
+                    .arg_ref_self()
+                    .vis("pub")
+                    .line("Serialize::to_canonical_cbor_bytes(&self.0)");
             } else {
                 to_bytes
-                    .line("use core::serialization::ToBytes;")
-                    .line("ToBytes::to_bytes(&self.0)");
+                    .line("core::serialization::ToCBORBytes::to_cbor_bytes(&self.0)");
             }
             s_impl.push_fn(to_bytes);
             if gen_scope.deserialize_generated(ident) {
                 s_impl
-                    .new_fn("from_bytes")
+                    .new_fn("from_cbor_bytes")
                     .ret(format!("Result<{}, JsValue>", name))
-                    .arg("data", "Vec<u8>")
+                    .arg("cbor_bytes", "&[u8]")
                     .vis("pub")
-                    .line("use core::prelude::FromBytes;")
-                    .line("FromBytes::from_bytes(data).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {}\", e)))");
+                    .line("core::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {}\", e)))");
             }
         }
         if CLI_ARGS.json_serde_derives {
@@ -2176,6 +2182,7 @@ fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent
         s_impl,
         from_wasm: None,
         from_native: None,
+        as_ref: None,
     }
 }
 
@@ -2196,6 +2203,7 @@ fn create_base_wasm_wrapper<'a>(gen_scope: &GenerationScope, ident: &'a RustIden
             .ret("Self")
             .line("Self(native)");
             //.line(format!("Self({}(native))", native_name));
+        base.from_wasm = Some(from_wasm);
         let mut from_native = codegen::Impl::new(native_name);
         from_native
             .impl_trait(format!("From<{}>", name))
@@ -2203,8 +2211,15 @@ fn create_base_wasm_wrapper<'a>(gen_scope: &GenerationScope, ident: &'a RustIden
             .arg("wasm", name)
             .ret("Self")
             .line("wasm.0");
-        base.from_wasm = Some(from_wasm);
         base.from_native = Some(from_native);
+        let mut as_ref = codegen::Impl::new(name);
+        as_ref
+            .impl_trait(format!("AsRef<{}>", native_name))
+            .new_fn("as_ref")
+            .arg_ref_self()
+            .ret(&format!("&{}", native_name))
+            .line("&self.0");
+        base.as_ref = Some(as_ref);
     }
     base
 }
