@@ -1374,9 +1374,15 @@ impl GenerationScope {
                     },
                     Primitive::F32 => {
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f32::deserialize(raw)"));
+                        if CLI_ARGS.preserve_encodings {
+                            unimplemented!("preserve_encodings is not implemented for float")
+                        }
                     },
                     Primitive::F64 => {
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f64::deserialize(raw)"));
+                        if CLI_ARGS.preserve_encodings {
+                            unimplemented!("preserve_encodings is not implemented for float")
+                        }
                     },
                 };
             },
