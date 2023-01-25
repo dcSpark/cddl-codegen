@@ -1842,29 +1842,24 @@ impl GenerationScope {
     fn generate_array_type(&mut self, types: &IntermediateTypes, element_type: RustType, array_type_ident: &RustIdent) {
         if self.already_generated.insert(array_type_ident.clone()) {
             let inner_type = element_type.name_as_rust_array(true);
-            let mut s = codegen::Struct::new(&array_type_ident.to_string());
-            s
-                .vis("pub")
-                .tuple_field(Some("pub(crate)".to_string()), &inner_type)
-                .derive("Clone")
-                .derive("Debug")
-                .attr("wasm_bindgen");
+            let mut wrapper = create_base_wasm_struct(self, array_type_ident, false);
+            wrapper.s.tuple_field(None, &inner_type);
             // other functions
-            let mut array_impl = codegen::Impl::new(&array_type_ident.to_string());
-            array_impl.r#macro("#[wasm_bindgen]");
             let mut new_func = codegen::Function::new("new");
             new_func
                 .vis("pub")
                 .ret("Self");
             new_func.line("Self(Vec::new())");
-            array_impl.push_fn(new_func);
-            array_impl
+            wrapper.s_impl.push_fn(new_func);
+            wrapper
+                .s_impl
                 .new_fn("len")
                 .vis("pub")
                 .ret("usize")
                 .arg_ref_self()
                 .line("self.0.len()");
-            array_impl
+            wrapper
+                .s_impl
                 .new_fn("get")
                 .vis("pub")
                 .ret(&element_type.for_wasm_return())
@@ -1872,33 +1867,15 @@ impl GenerationScope {
                 .arg("index", "usize")
                 .line(element_type.to_wasm_boundary("self.0[index]", false));
             // TODO: range check stuff? where do we want to put this? or do we want to get rid of this like before?
-            array_impl
+            wrapper
+                .s_impl
                 .new_fn("add")
                 .vis("pub")
                 .arg_mut_self()
                 .arg("elem", element_type.for_wasm_param())
                 .line(format!("self.0.push({});", ToWasmBoundaryOperations::format(element_type.from_wasm_boundary_clone("elem", false).into_iter())));
-            
-            let mut from_wasm = codegen::Impl::new(&array_type_ident.to_string());
-            from_wasm
-                .impl_trait(format!("From<{}>", inner_type))
-                .new_fn("from")
-                .arg("native", &inner_type)
-                .ret("Self")
-                .line("Self(native)");
-            let mut to_wasm = codegen::Impl::new(&inner_type);
-            to_wasm
-                .impl_trait(format!("From<{}>", array_type_ident.to_string()))
-                .new_fn("from")
-                .arg("wrapper", array_type_ident.to_string())
-                .ret("Self")
-                .line("wrapper.0");
-            self
-                .wasm_lib()
-                .push_struct(s)
-                .push_impl(array_impl)
-                .push_impl(from_wasm)
-                .push_impl(to_wasm);
+            wrapper.add_conversion_methods(&inner_type);
+            wrapper.push(self, types);
         }
     }
 }
@@ -2108,6 +2085,37 @@ impl<'a> WasmWrapper<'a> {
             gen_scope.wasm(types, self.ident).push_impl(as_ref);
         }
     }
+
+    /// native_name is &str since we need to possibly prepend namespacing
+    /// and where we're calling it we'd have to construct a RustType where we
+    /// didn't have to before, but we already had the string.
+    fn add_conversion_methods(&mut self, native_name: &str) {
+        let mut from_wasm = codegen::Impl::new(self.ident.to_string());
+        from_wasm
+            .impl_trait(format!("From<{}>", native_name))
+            .new_fn("from")
+            .arg("native", native_name)
+            .ret("Self")
+            .line("Self(native)");
+            //.line(format!("Self({}(native))", native_name));
+            self.from_wasm = Some(from_wasm);
+        let mut from_native = codegen::Impl::new(native_name);
+        from_native
+            .impl_trait(format!("From<{}>", self.ident.to_string()))
+            .new_fn("from")
+            .arg("wasm", self.ident.to_string())
+            .ret("Self")
+            .line("wasm.0");
+            self.from_native = Some(from_native);
+        let mut as_ref = codegen::Impl::new(self.ident.to_string());
+        as_ref
+            .impl_trait(format!("AsRef<{}>", native_name))
+            .new_fn("as_ref")
+            .arg_ref_self()
+            .ret(&format!("&{}", native_name))
+            .line("&self.0");
+            self.as_ref = Some(as_ref);
+    }
 }
 
 fn create_base_wasm_struct<'a>(gen_scope: &GenerationScope, ident: &'a RustIdent, exists_in_rust: bool) -> WasmWrapper<'a> {
@@ -2194,32 +2202,8 @@ fn create_base_wasm_wrapper<'a>(gen_scope: &GenerationScope, ident: &'a RustIden
     let name = &ident.to_string();
     if default_structure {
         let native_name = &format!("core::{}", name);
-        base.s.tuple_field(Some("pub(crate)".to_string()), native_name);
-        let mut from_wasm = codegen::Impl::new(name);
-        from_wasm
-            .impl_trait(format!("From<{}>", native_name))
-            .new_fn("from")
-            .arg("native", native_name)
-            .ret("Self")
-            .line("Self(native)");
-            //.line(format!("Self({}(native))", native_name));
-        base.from_wasm = Some(from_wasm);
-        let mut from_native = codegen::Impl::new(native_name);
-        from_native
-            .impl_trait(format!("From<{}>", name))
-            .new_fn("from")
-            .arg("wasm", name)
-            .ret("Self")
-            .line("wasm.0");
-        base.from_native = Some(from_native);
-        let mut as_ref = codegen::Impl::new(name);
-        as_ref
-            .impl_trait(format!("AsRef<{}>", native_name))
-            .new_fn("as_ref")
-            .arg_ref_self()
-            .ret(&format!("&{}", native_name))
-            .line("&self.0");
-        base.as_ref = Some(as_ref);
+        base.s.tuple_field(None, native_name);
+        base.add_conversion_methods(&native_name);
     }
     base
 }
@@ -2485,7 +2469,7 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
     let inner_type = ConceptualRustType::name_for_rust_map(&key_type, &value_type, true);
-    wrapper.s.tuple_field(Some("pub(crate)".to_string()), &inner_type);
+    wrapper.s.tuple_field(None, &inner_type);
     // new
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -2560,26 +2544,8 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
         keys.line(format!("{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())", keys_type.for_wasm_return()));
     }
     wrapper.s_impl.push_fn(keys);
-    // to/from
-    let mut from_wasm = codegen::Impl::new(&name.to_string());
-    from_wasm
-        .impl_trait(format!("From<{}>", inner_type))
-        .new_fn("from")
-        .arg("native", &inner_type)
-        .ret("Self")
-        .line("Self(native)");
-    let mut to_wasm = codegen::Impl::new(&inner_type);
-    to_wasm
-        .impl_trait(format!("From<{}>", name.to_string()))
-        .new_fn("from")
-        .arg("wrapper", name.to_string())
-        .ret("Self")
-        .line("wrapper.0");
+    wrapper.add_conversion_methods(&inner_type);
     wrapper.push(gen_scope, types);
-    gen_scope
-        .wasm_lib()
-        .push_impl(from_wasm)
-        .push_impl(to_wasm);
 }
 
 #[derive(Debug)]
