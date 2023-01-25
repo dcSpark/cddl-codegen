@@ -290,7 +290,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                     match control {
                         ControlOperator::Range(min_max) => {
                             match cddl_ident.to_string().as_str() {
-                                "int" | "uint" | "float" => match range_to_primitive(min_max.0, min_max.1) {
+                                "int" | "uint" | "float64" | "float32" => match range_to_primitive(min_max.0, min_max.1) {
                                     Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                     None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
                                 },
@@ -381,7 +381,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
-                                        "int" | "uint" | "float" => match range_to_primitive(min_max.0, min_max.1) {
+                                        "int" | "uint" | "float64" | "float32" => match range_to_primitive(min_max.0, min_max.1) {
                                             Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
@@ -656,7 +656,7 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, parent_visitor: &ParentVi
         },
         Some(ControlOperator::Range(min_max)) => {
             match &type1.type2 {
-                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" || ident.to_string() == "float" => match range_to_primitive(min_max.0, min_max.1) {
+                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" || ident.to_string() == "float32" || ident.to_string() == "float64" => match range_to_primitive(min_max.0, min_max.1) {
                     Some(t) => t.into(),
                     None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                 },
