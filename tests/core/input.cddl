@@ -25,7 +25,6 @@ plain_arrays = [
 ]
 
 table = { * uint => text }
-
 table_arr_members = {
 	tab: { * text => text },
 	arr: [*uint],
@@ -78,3 +77,19 @@ map_with_defaults = {
 
 paren_size = uint .size (1)
 paren_cbor = bytes .cbor (text)
+
+; types below test codegen_table_type
+
+standalone_table = { * uint => text }
+standalone_text = { * text => text }
+
+embedded_table = { * uint => text }
+embedded_text = { * text => text }
+
+table_array_wrapper = [embedded_table]
+table_map_wrapper = { 721: embedded_table }
+
+text_array_wrapper = [embedded_text]
+text_map_wrapper = { 721: embedded_text }
+
+inline_wrapper = [{ * text => text }]

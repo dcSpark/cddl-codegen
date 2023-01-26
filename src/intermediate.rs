@@ -1214,7 +1214,7 @@ impl ConceptualRustType {
 
     // See comment in RustStruct::definite_info(), this is the same, returns a string expression
     // which evaluates to the length.
-    // self_expr is an expresison that evaluates to this RustType (e.g. member, etc) at the point where
+    // self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
     // the return of this function will be used.
     pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes) -> String {
         match self.expanded_field_count(types) {
@@ -1266,7 +1266,16 @@ impl ConceptualRustType {
     pub fn visit_types_excluding<F: FnMut(&Self)>(&self, types: &IntermediateTypes, f: &mut F, already_visited: &mut BTreeSet<RustIdent>) {
         f(self);
         match self {
-            Self::Alias(_ident, ty) => ty.visit_types_excluding(types, f, already_visited),
+            Self::Alias(ident, ty) => {
+                match ident {
+                    AliasIdent::Rust(rust_ident) => {
+                        if already_visited.insert(rust_ident.clone()) {
+                            ty.visit_types_excluding(types, f, already_visited)
+                        }
+                    },
+                    _ => ty.visit_types_excluding(types, f, already_visited)
+                };
+            },
             Self::Array(ty) => ty.conceptual_type.visit_types_excluding(types, f, already_visited),
             Self::Fixed(_) => (),
             Self::Map(k, v) => {
