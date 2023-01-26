@@ -12,7 +12,7 @@ pub struct RuleMetadata {
 }
 
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
-    RuleMetadata {
+    let merged = RuleMetadata {
         name: match (r1.name.as_ref(), r2.name.as_ref()) {
             (Some(val1), Some(val2)) => panic!("Key \"name\" specified twice: {:?} {:?}", val1, val2),
             (val@Some(_), _) => val.cloned(),
@@ -20,7 +20,9 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         },
         is_newtype: r1.is_newtype || r2.is_newtype,
         no_alias: r1.no_alias || r2.no_alias,
-    }
+    };
+    merged.verify();
+    merged
 }
 
 enum ParseResult {
@@ -44,7 +46,15 @@ impl RuleMetadata {
                 ParseResult::DontGenAlias => { base.no_alias = true; },
             }
         }
+        base.verify();
         base
+    }
+
+    fn verify(&self) {
+        if self.is_newtype && self.no_alias {
+            // this would make no sense anyway as with newtype we're already not making an alias
+            panic!("cannot use both @newtype and @no_alias on the same alias");
+        }
     }
 }
 
@@ -139,10 +149,16 @@ fn parse_comment_newtype_and_name_inverse() {
 }
 
 #[test]
-fn parse_comment_all() {
-    assert_eq!(rule_metadata("@no_alias @name foo @newtype"), Ok(("", RuleMetadata {
+fn parse_comment_name_noalias() {
+    assert_eq!(rule_metadata("@no_alias @name foo"), Ok(("", RuleMetadata {
         name: Some("foo".to_string()),
-        is_newtype: true,
+        is_newtype: false,
         no_alias: true,
     })));
+}
+
+#[test]
+#[should_panic]
+fn parse_comment_noalias_newtype() {
+    let _ = rule_metadata("@no_alias @newtype");
 }

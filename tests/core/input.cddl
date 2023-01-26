@@ -86,3 +86,9 @@ no_alias = [
 	no_alias_u32,
 	no_alias_u64
 ]
+
+external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+
+externs = [
+	external_foo
+]

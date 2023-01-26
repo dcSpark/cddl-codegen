@@ -1834,7 +1834,6 @@ impl GenerationScope {
             }
             add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, None);
             wrapper.push(self, types);
-            //push_wasm_wrapper(self, name, s, s_impl);
         }
     }
 
@@ -2097,7 +2096,6 @@ impl<'a> WasmWrapper<'a> {
             .arg("native", native_name)
             .ret("Self")
             .line("Self(native)");
-            //.line(format!("Self({}(native))", native_name));
             self.from_wasm = Some(from_wasm);
         let mut from_native = codegen::Impl::new(native_name);
         from_native
@@ -3580,7 +3578,6 @@ fn codegen_group_choices(gen_scope: &mut GenerationScope, types: &IntermediateTy
         }
         // enum-getters
         add_wasm_enum_getters(&mut wrapper.s_impl, name, &variants, Some(rep));
-        //push_wasm_wrapper(gen_scope, name, s, s_impl);
         wrapper.push(gen_scope, types);
     }
 }

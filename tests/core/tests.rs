@@ -169,4 +169,10 @@ mod tests {
         assert!(!lib_rs.contains("pub type NoAliasU32"));
         assert!(!lib_rs.contains("pub type NoAliasU64"));
     }
+
+    #[test]
+    fn externs() {
+        let externs = Externs::new(ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
+        deser_test(&externs);
+    }
 }
