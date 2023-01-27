@@ -3,7 +3,7 @@ use cddl::{ast::*, token};
 use either::{Either};
 use std::collections::{BTreeMap};
 
-use crate::comment_ast::{RuleMetadata, metadata_from_comments};
+use crate::comment_ast::{RuleMetadata, metadata_from_comments, merge_metadata};
 use crate::intermediate::{
     AliasIdent,
     CDDLIdent,
@@ -37,6 +37,7 @@ enum ControlOperator {
 }
 
 pub const SCOPE_MARKER: &'static str = "_CDDL_CODEGEN_SCOPE_MARKER_";
+pub const EXTERN_MARKER: &'static str = "_CDDL_CODEGEN_EXTERN_TYPE_";
 
 /// Some means it is a scope marker, containing the scope
 pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
@@ -58,20 +59,26 @@ pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
 pub fn parse_rule(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, cddl_rule: &cddl::ast::Rule) {
     match cddl_rule {
         cddl::ast::Rule::Type{ rule, .. } => {
-            // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
-            //     It's used, but used for no reason as it is the initial definition
-            //     (which is also valid cddl), but it would be fine as = instead of /=
-            // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
             let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
-            let generic_params = rule
-                .generic_params
-                .as_ref()
-                .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.param.to_string()))).collect::<Vec<_>>());
-            if rule.value.type_choices.len() == 1 {
-                let choice = &rule.value.type_choices.first().unwrap();
-                parse_type(types, parent_visitor, &rust_ident, choice, None, generic_params);
+            if rule.name.to_string() == EXTERN_MARKER {
+                // ignore - this was inserted by us so that cddl's parsing succeeds
+                // see comments in main.rs
             } else {
-                parse_type_choices(types, parent_visitor, &rust_ident, &rule.value.type_choices, None, generic_params);
+                // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
+                //     It's used, but used for no reason as it is the initial definition
+                //     (which is also valid cddl), but it would be fine as = instead of /=
+                // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
+
+                let generic_params = rule
+                    .generic_params
+                    .as_ref()
+                    .map(|gp| gp.params.iter().map(|id| RustIdent::new(CDDLIdent::new(id.param.to_string()))).collect::<Vec<_>>());
+                if rule.value.type_choices.len() == 1 {
+                    let choice = &rule.value.type_choices.first().unwrap();
+                    parse_type(types, parent_visitor, &rust_ident, choice, None, generic_params);
+                } else {
+                    parse_type_choices(types, parent_visitor, &rust_ident, &rule.value.type_choices, None, generic_params);
+                }
             }
         },
         cddl::ast::Rule::Group{ rule, .. } => {
@@ -121,7 +128,8 @@ fn parse_type_choices(types: &mut IntermediateTypes, parent_visitor: &ParentVisi
             Some(tag) => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag),
             None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
         };
-        types.register_type_alias(name.clone(), final_type, true, true);
+        let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
+        types.register_type_alias(name.clone(), final_type, !rule_metadata.no_alias, !rule_metadata.no_alias);
     } else {
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices);
         let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants);
@@ -272,75 +280,82 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<Conceptua
 
 fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, type_name: &RustIdent, type_choice: &TypeChoice, outer_tag: Option<usize>, generic_params: Option<Vec<RustIdent>>) {
     let type1 = &type_choice.type1;
+    let rule_metadata = merge_metadata(
+        &RuleMetadata::from(type1.comments_after_type.as_ref()),
+        &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
+    );
     match &type1.type2 {
         Type2::Typename{ ident, generic_args, .. } => {
-            // Note: this handles bool constants too, since we apply the type aliases and they resolve
-            // and there's no Type2::BooleanValue
-            let cddl_ident = CDDLIdent::new(ident.to_string());
-            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
-            match control {
-                Some(control) => {
-                    assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
-                    // TODO: what about aliases that resolve to these? is it even possible to know this at this stage?
-                    let field_type = || match cddl_ident.to_string().as_str() {
-                        "tstr" | "text" => ConceptualRustType::Primitive(Primitive::Str),
-                        "bstr" | "bytes" => ConceptualRustType::Primitive(Primitive::Bytes),
-                        other => panic!("range control specifiers not supported for type: {}", other),
-                    };
-                    match control {
-                        ControlOperator::Range(min_max) => {
-                            match cddl_ident.to_string().as_str() {
-                                "int" | "uint" | "float" | "float64" | "float32" | "float16" => match range_to_primitive(min_max.0, min_max.1) {
-                                    Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
-                                    None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
-                                },
-                                _ => types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone().into(), Some(min_max)))
-                            }
-                        },
-                        ControlOperator::CBOR(ty) => match field_type() {
-                            ConceptualRustType::Primitive(Primitive::Bytes) => {
-                                types.register_type_alias(type_name.clone(), ty.as_bytes(), true, true);
+            if ident.ident == EXTERN_MARKER {
+                types.register_rust_struct(parent_visitor, RustStruct::new_extern(type_name.clone()));
+            } else {
+                // Note: this handles bool constants too, since we apply the type aliases and they resolve
+                // and there's no Type2::BooleanValue
+                let cddl_ident = CDDLIdent::new(ident.to_string());
+                let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+                match control {
+                    Some(control) => {
+                        assert!(generic_params.is_none(), "Generics combined with range specifiers not supported");
+                        // TODO: what about aliases that resolve to these? is it even possible to know this at this stage?
+                        let field_type = || match cddl_ident.to_string().as_str() {
+                            "tstr" | "text" => ConceptualRustType::Primitive(Primitive::Str),
+                            "bstr" | "bytes" => ConceptualRustType::Primitive(Primitive::Bytes),
+                            other => panic!("range control specifiers not supported for type: {}", other),
+                        };
+                        match control {
+                            ControlOperator::Range(min_max) => {
+                                match cddl_ident.to_string().as_str() {
+                                    "int" | "uint" | "float" | "float64" | "float32" | "float16"  => match range_to_primitive(min_max.0, min_max.1) {
+                                        Some(t) => types.register_type_alias(type_name.clone(), t.into(), !rule_metadata.no_alias, !rule_metadata.no_alias),
+                                        None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
+                                    },
+                                    _ => types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), outer_tag, field_type().clone().into(), Some(min_max)))
+                                }
                             },
-                            _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
-                        },
-                        ControlOperator::Default(default_value) => {
-                            let default_type = rust_type_from_type2(types, parent_visitor, &type1.type2)
-                                .default(default_value);
-                            types.register_type_alias(type_name.clone(), default_type, true, true);
-                        },
-                    }
-                },
-                None => {
-                    let mut concrete_type = types.new_type(&cddl_ident);
-                    if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type {
-                        concrete_type.conceptual_type = *ty;
-                    };
-                    match &generic_params {
-                        Some(_params) => {
-                            // this should be the only situation where you need this as otherwise the params would be unbound
-                            todo!("generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>");
-                            // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
-                        },
-                        None => {
-                            match generic_args {
-                                Some(arg) => {
-                                    // This is for named generic instances such as:
-                                    // foo = bar<text>
-                                    let generic_args = arg.args.iter().map(|a| rust_type_from_type1(types, parent_visitor, &a.arg)).collect();
-                                    types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
+                            ControlOperator::CBOR(ty) => match field_type() {
+                                ConceptualRustType::Primitive(Primitive::Bytes) => {
+                                    types.register_type_alias(type_name.clone(), ty.as_bytes(), !rule_metadata.no_alias, !rule_metadata.no_alias);
                                 },
-                                None => {
-                                    let rule_metadata = RuleMetadata::from(type1.comments_after_type.as_ref());
-                                    if rule_metadata.is_newtype {
-                                        types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None)); 
-                                    } else {
-                                        types.register_type_alias(type_name.clone(), concrete_type, true, true);
+                                _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
+                            },
+                            ControlOperator::Default(default_value) => {
+                                let default_type = rust_type_from_type2(types, parent_visitor, &type1.type2)
+                                    .default(default_value);
+                                types.register_type_alias(type_name.clone(), default_type,  !rule_metadata.no_alias, !rule_metadata.no_alias);
+                            },
+                        }
+                    },
+                    None => {
+                        let mut concrete_type = types.new_type(&cddl_ident);
+                        if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type {
+                            concrete_type.conceptual_type = *ty;
+                        };
+                        match &generic_params {
+                            Some(_params) => {
+                                // this should be the only situation where you need this as otherwise the params would be unbound
+                                todo!("generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>");
+                                // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
+                            },
+                            None => {
+                                match generic_args {
+                                    Some(arg) => {
+                                        // This is for named generic instances such as:
+                                        // foo = bar<text>
+                                        let generic_args = arg.args.iter().map(|a| rust_type_from_type1(types, parent_visitor, &a.arg)).collect();
+                                        types.register_generic_instance(GenericInstance::new(type_name.clone(), RustIdent::new(cddl_ident.clone()), generic_args))
+                                    },
+                                    None => {
+                                        if rule_metadata.is_newtype {
+                                            types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None));
+                                        } else {
+                                            types.register_type_alias(type_name.clone(), concrete_type, !rule_metadata.no_alias, !rule_metadata.no_alias);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                }
             }
         },
         Type2::Map{ group, .. } => {
@@ -373,16 +388,17 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                 Some(ControlOperator::CBOR(ty)) => {
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
-                                        .expect("should not fail since ordered by dep graph");
+                                        .expect("should not fail since ordered by dep graph")
+                                        .0;
                                     assert_eq!(base_type.conceptual_type, ConceptualRustType::Primitive(Primitive::Bytes));
                                     assert_eq!(base_type.default, None);
                                     assert!(base_type.encodings.is_empty());
-                                    types.register_type_alias(type_name.clone(), ty.as_bytes().tag(tag_unwrap), true, true);
+                                    types.register_type_alias(type_name.clone(), ty.as_bytes().tag(tag_unwrap), !rule_metadata.no_alias, !rule_metadata.no_alias);
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
                                         "int" | "uint" | "float" | "float64" | "float32" | "float16" => match range_to_primitive(min_max.0, min_max.1) {
-                                            Some(t) => types.register_type_alias(type_name.clone(), t.into(), true, true),
+                                            Some(t) => types.register_type_alias(type_name.clone(), t.into(), !rule_metadata.no_alias, !rule_metadata.no_alias),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
                                         _ => types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), *tag, new_type, Some(min_max)))
@@ -392,15 +408,14 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                     let default_tagged_type = rust_type_from_type2(types, parent_visitor, &inner_type.type1.type2)
                                         .default(default_value)
                                         .tag(tag_unwrap);
-                                    types.register_type_alias(type_name.clone(), default_tagged_type, true, true);
+                                    types.register_type_alias(type_name.clone(), default_tagged_type, !rule_metadata.no_alias, !rule_metadata.no_alias);
                                 },
                                 None => {
-                                    // TODO: this would be fixed if we ordered definitions via a dependency graph to begin with
-                                    // which would also allow us to do a single pass instead of many like we do now
                                     let base_type = types
                                         .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(ident.to_string())))
-                                        .expect("should not fail since ordered by dep graph");
-                                    types.register_type_alias(type_name.clone(), base_type.tag(tag_unwrap), true, true);
+                                        .expect("should not fail since ordered by dep graph")
+                                        .0;
+                                    types.register_type_alias(type_name.clone(), base_type.tag(tag_unwrap), !rule_metadata.no_alias, !rule_metadata.no_alias);
                                 },
                             }
                         },
@@ -425,7 +440,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                 },
                 _ => fallback_type
             };
-            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
+            types.register_type_alias(type_name.clone(), base_type.into(), !rule_metadata.no_alias, !rule_metadata.no_alias);
         },
         Type2::UintValue{ value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
@@ -440,10 +455,10 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                 },
                 _ => fallback_type
             };
-            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
+            types.register_type_alias(type_name.clone(), base_type.into(), !rule_metadata.no_alias, !rule_metadata.no_alias);
         },
         Type2::TextValue{ value, .. } => {
-            types.register_type_alias(type_name.clone(), ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(), true, true);
+            types.register_type_alias(type_name.clone(), ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(), !rule_metadata.no_alias, !rule_metadata.no_alias);
         },
         Type2::FloatValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Float(*value));

@@ -3,23 +3,23 @@ mod tests {
     use super::*;
     use cbor_event::StringLenSz;
 
-    fn deser_test<T: Deserialize + ToBytes>(orig: &T) {
-        print_cbor_types("orig", &orig.to_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_bytes()))).unwrap();
-        print_cbor_types("deser", &deser.to_bytes());
-        assert_eq!(orig.to_bytes(), deser.to_bytes());
+    fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
+        print_cbor_types("orig", &orig.to_cbor_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_cbor_bytes()))).unwrap();
+        print_cbor_types("deser", &deser.to_cbor_bytes());
+        assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
     }
 
     #[test]
     fn struct_array() {
         let mut foo = Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);
         deser_test(&foo);
-        let definite_bytes = foo.to_bytes();
+        let definite_bytes = foo.to_cbor_bytes();
         let mut encoding = FooEncoding::default();
         encoding.len_encoding = LenEncoding::Indefinite;
         foo.encodings = Some(encoding);
         deser_test(&foo);
-        let indefinite_bytes = foo.to_bytes();
+        let indefinite_bytes = foo.to_cbor_bytes();
         assert!(definite_bytes != indefinite_bytes);
         assert_eq!(definite_bytes[0], 0xc6u8 + 11 - 6);
         assert_eq!(definite_bytes[1], 0x83u8);
@@ -42,16 +42,16 @@ mod tests {
         // full test with key 5 (but without key "derp")
         bar.key_5 = Some("text".into());
         bar.encodings = Some(bar_encoding.clone());
-        let definite_bytes = bar.to_bytes();
+        let definite_bytes = bar.to_cbor_bytes();
         bar_encoding.len_encoding = LenEncoding::Indefinite;
         bar.encodings = Some(bar_encoding);
         deser_test(&bar);
-        let indefinite_bytes = bar.to_bytes();
+        let indefinite_bytes = bar.to_cbor_bytes();
         let default_indef_bytes = vec![
             vec![MAP_INDEF],
                 cbor_string("foo"),
                     cbor_tag(13),
-                        bar.foo.to_bytes(),
+                        bar.foo.to_cbor_bytes(),
                 vec![0x01u8],
                     vec![NULL],
                 vec![0x05u8],
@@ -69,11 +69,11 @@ mod tests {
                     cbor_string("text"),
                 cbor_string("foo"),
                     cbor_tag(13),
-                        bar.foo.to_bytes(),
+                        bar.foo.to_cbor_bytes(),
                 cbor_string("five"),
                     vec![0x05u8],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let mut bar_canonical: Bar = from_bytes(canonical_bytes.clone()).unwrap();
+        let mut bar_canonical = Bar::from_cbor_bytes(&canonical_bytes).unwrap();
         deser_test(&bar_canonical);
         assert_eq!(bar_canonical.encodings.as_ref().unwrap().len_encoding, LenEncoding::Canonical);
         assert_eq!(bar_canonical.encodings.as_ref().unwrap().orig_deser_order, vec![2, 3, 0, 4]);
@@ -103,7 +103,7 @@ mod tests {
                         [
                             cbor_str_sz("foo", str_3.clone()),
                                 cbor_tag_sz(13, def_enc),
-                                bar.foo.to_bytes(),
+                                bar.foo.to_cbor_bytes(),
                         ].into_iter().flatten().copied().collect::<Vec<u8>>(),
                         if has_5 {
                             [
@@ -137,9 +137,9 @@ mod tests {
                             irregular_encoding.extend_from_slice(&keys[key_order[i]]);
                         }
                         print_cbor_types("irregular_encoding", &irregular_encoding);
-                        let irregular_bar = Bar::from_bytes(irregular_encoding.clone()).unwrap();
-                        print_cbor_types("irregular_bar.to_bytes()", &irregular_bar.to_bytes());
-                        assert_eq!(irregular_bar.to_bytes(), irregular_encoding);
+                        let irregular_bar = Bar::from_cbor_bytes(&irregular_encoding).unwrap();
+                        print_cbor_types("irregular_bar.to_cbor_bytes()", &irregular_bar.to_cbor_bytes());
+                        assert_eq!(irregular_bar.to_cbor_bytes(), irregular_encoding);
                     }
                 }
             }
@@ -177,7 +177,7 @@ mod tests {
                         vec![0x18, 0x20],
                             cbor_string("thirty two"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert_eq!(orig.to_bytes(), expected);
+        assert_eq!(orig.to_cbor_bytes(), expected);
         let indef_other_order = vec![
             vec![MAP_INDEF],
                 cbor_string("arr2"),
@@ -202,8 +202,8 @@ mod tests {
                     vec![BREAK],
             vec![BREAK],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let mut other_order: TableArrMembers = from_bytes(indef_other_order.clone()).unwrap();
-        assert_eq!(other_order.to_bytes(), indef_other_order);
+        let mut other_order = TableArrMembers::from_cbor_bytes(&indef_other_order).unwrap();
+        assert_eq!(other_order.to_cbor_bytes(), indef_other_order);
         deser_test(&other_order);
         
         assert!(orig.encodings.is_none());
@@ -269,8 +269,8 @@ mod tests {
                                     vec![BREAK],
                         vec![BREAK],
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular = DeeplyNested::from_bytes(irregular_bytes.clone()).unwrap();
-                assert_eq!(irregular_bytes, irregular.to_bytes());
+                let irregular = DeeplyNested::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
             }
         }
     }
@@ -285,11 +285,11 @@ mod tests {
         ];
         for str_enc in str_24_encodings {
             let irregular_bytes = cbor_str_sz("-*=[0123456789ABCDEF]=*-", str_enc);
-            let irregular = String64::from_bytes(irregular_bytes.clone()).unwrap();
-            assert_eq!(irregular_bytes, irregular.to_bytes());
+            let irregular = String64::from_cbor_bytes(&irregular_bytes).unwrap();
+            assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
         }
-        let _ = String64::from_bytes(cbor_str_sz(&(0..64).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).unwrap();
-        assert!(String64::from_bytes(cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).is_err());
+        let _ = String64::from_cbor_bytes(&cbor_str_sz(&(0..64).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).unwrap();
+        assert!(String64::from_cbor_bytes(&cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).is_err());
     }
 
     #[test]
@@ -308,23 +308,23 @@ mod tests {
                     cbor_tag_sz(7, *def_enc),
                         cbor_str_sz("-*=[0123456789ABCDEF]=*-", str_enc.clone()),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular = String1632::from_bytes(irregular_bytes.clone()).unwrap();
-                assert_eq!(irregular_bytes, irregular.to_bytes());
+                let irregular = String1632::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
             }
         }
-        let _ = String1632::from_bytes(vec![
+        let _ = String1632::from_cbor_bytes(&vec![
             cbor_tag_sz(7, Sz::One),
             cbor_str_sz(&(0..16).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::One)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).unwrap();
-        let _ = String1632::from_bytes(vec![
+        let _ = String1632::from_cbor_bytes(&vec![
             cbor_tag_sz(7, Sz::Two),
             cbor_str_sz(&(0..32).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).unwrap();
-        assert!(String1632::from_bytes(vec![
+        assert!(String1632::from_cbor_bytes(&vec![
             cbor_tag_sz(7, Sz::Inline),
             cbor_str_sz(&(0..15).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Inline)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
-        assert!(String1632::from_bytes(vec![
+        assert!(String1632::from_cbor_bytes(&vec![
             cbor_tag_sz(7, Sz::Eight),
             cbor_str_sz(&(0..33).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Eight)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
@@ -351,16 +351,16 @@ mod tests {
                             cbor_int(1, *def_enc),
                             cbor_int(3, *def_enc),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular_0 = TypeChoice::from_bytes(irregular_bytes_0.clone()).unwrap();
-                assert_eq!(irregular_bytes_0, irregular_0.to_bytes());
-                let irregular_hello_world = TypeChoice::from_bytes(irregular_bytes_hello_world.clone()).unwrap();
-                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_bytes());
-                let irregular_uint = TypeChoice::from_bytes(irregular_bytes_uint.clone()).unwrap();
-                assert_eq!(irregular_bytes_uint, irregular_uint.to_bytes());
-                let irregular_text = TypeChoice::from_bytes(irregular_bytes_text.clone()).unwrap();
-                assert_eq!(irregular_bytes_text, irregular_text.to_bytes());
-                let irregular_tagged_arr = TypeChoice::from_bytes(irregular_bytes_tagged_arr.clone()).unwrap();
-                assert_eq!(irregular_bytes_tagged_arr, irregular_tagged_arr.to_bytes());
+                let irregular_0 = TypeChoice::from_cbor_bytes(&irregular_bytes_0).unwrap();
+                assert_eq!(irregular_bytes_0, irregular_0.to_cbor_bytes());
+                let irregular_hello_world = TypeChoice::from_cbor_bytes(&irregular_bytes_hello_world).unwrap();
+                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_cbor_bytes());
+                let irregular_uint = TypeChoice::from_cbor_bytes(&irregular_bytes_uint).unwrap();
+                assert_eq!(irregular_bytes_uint, irregular_uint.to_cbor_bytes());
+                let irregular_text = TypeChoice::from_cbor_bytes(&irregular_bytes_text).unwrap();
+                assert_eq!(irregular_bytes_text, irregular_text.to_cbor_bytes());
+                let irregular_tagged_arr = TypeChoice::from_cbor_bytes(&irregular_bytes_tagged_arr).unwrap();
+                assert_eq!(irregular_bytes_tagged_arr, irregular_tagged_arr.to_cbor_bytes());
             }
         }
     }
@@ -406,16 +406,16 @@ mod tests {
                         cbor_tag_sz(9, *def_enc),
                             cbor_str_sz("carrot", str_enc.clone()),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular_3 = GroupChoice::from_bytes(irregular_bytes_3.clone()).unwrap();
-                assert_eq!(irregular_bytes_3, irregular_3.to_bytes());
-                let irregular_tagged_2 = GroupChoice::from_bytes(irregular_bytes_tagged_2.clone()).unwrap();
-                assert_eq!(irregular_bytes_tagged_2, irregular_tagged_2.to_bytes());
-                let irregular_foo = GroupChoice::from_bytes(irregular_bytes_foo.clone()).unwrap();
-                assert_eq!(irregular_bytes_foo, irregular_foo.to_bytes());
-                let irregular_inlined = GroupChoice::from_bytes(irregular_bytes_inlined.clone()).unwrap();
-                assert_eq!(irregular_bytes_inlined, irregular_inlined.to_bytes());
-                let irregular_plain = GroupChoice::from_bytes(irregular_bytes_plain.clone()).unwrap();
-                assert_eq!(irregular_bytes_plain, irregular_plain.to_bytes());
+                let irregular_3 = GroupChoice::from_cbor_bytes(&irregular_bytes_3).unwrap();
+                assert_eq!(irregular_bytes_3, irregular_3.to_cbor_bytes());
+                let irregular_tagged_2 = GroupChoice::from_cbor_bytes(&irregular_bytes_tagged_2).unwrap();
+                assert_eq!(irregular_bytes_tagged_2, irregular_tagged_2.to_cbor_bytes());
+                let irregular_foo = GroupChoice::from_cbor_bytes(&irregular_bytes_foo).unwrap();
+                assert_eq!(irregular_bytes_foo, irregular_foo.to_cbor_bytes());
+                let irregular_inlined = GroupChoice::from_cbor_bytes(&irregular_bytes_inlined).unwrap();
+                assert_eq!(irregular_bytes_inlined, irregular_inlined.to_cbor_bytes());
+                let irregular_plain = GroupChoice::from_cbor_bytes(&irregular_bytes_plain).unwrap();
+                assert_eq!(irregular_bytes_plain, irregular_plain.to_cbor_bytes());
             }
         }
     }
@@ -445,8 +445,8 @@ mod tests {
                         cbor_tag_sz(20, *def_enc),
                             cbor_bytes_sz(irregular_foo_bytes, foo_bytes_enc),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular = CborInCbor::from_bytes(irregular_bytes.clone()).unwrap();
-                assert_eq!(irregular_bytes, irregular.to_bytes());
+                let irregular = CborInCbor::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
             }
         }
     }
@@ -484,8 +484,8 @@ mod tests {
                     cbor_int(i64::MIN as i128, Sz::Eight),
                 vec![BREAK],
             ].into_iter().flatten().clone().collect::<Vec<u8>>();
-            let irregular_min = SignedInts::from_bytes(irregular_bytes_min.clone()).unwrap();
-            assert_eq!(irregular_bytes_min, irregular_min.to_bytes());
+            let irregular_min = SignedInts::from_cbor_bytes(&irregular_bytes_min).unwrap();
+            assert_eq!(irregular_bytes_min, irregular_min.to_cbor_bytes());
             let irregular_bytes_max = vec![
                 arr_sz(11, def_encodings[i]),
                     // uints
@@ -505,8 +505,8 @@ mod tests {
                     // i64 min const
                     cbor_int(i64::MIN as i128, Sz::Eight),
             ].into_iter().flatten().clone().collect::<Vec<u8>>();
-            let irregular_max = SignedInts::from_bytes(irregular_bytes_max.clone()).unwrap();
-            assert_eq!(irregular_bytes_max, irregular_max.to_bytes());
+            let irregular_max = SignedInts::from_cbor_bytes(&irregular_bytes_max).unwrap();
+            assert_eq!(irregular_bytes_max, irregular_max.to_cbor_bytes());
         }
     }
 
@@ -545,8 +545,8 @@ mod tests {
                             },
                         vec![BREAK],
                     ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                    let irregular = MapWithDefaults::from_bytes(irregular_bytes.clone()).unwrap();
-                    assert_eq!(irregular_bytes, irregular.to_bytes());
+                    let irregular = MapWithDefaults::from_cbor_bytes(&irregular_bytes).unwrap();
+                    assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
                     assert_eq!(irregular.key_1, value_1);
                     assert_eq!(irregular.key_2, value_2);
                 }

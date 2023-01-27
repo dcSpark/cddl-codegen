@@ -3,12 +3,6 @@ static BREAK: u8 = 0xff;
 static ARR_INDEF: u8 = 0x9f;
 static MAP_INDEF: u8 = 0xbf;
 
-// to work around JsValue error types (TODO: we should fix this in cddl-codegen)
-fn from_bytes<T: Deserialize + Sized>(data: Vec<u8>) -> Result<T, DeserializeError> {
-    let mut raw = Deserializer::from(std::io::Cursor::new(data));
-    T::deserialize(&mut raw)
-}
-
 fn arr_def(len: u8) -> Vec<u8> {
     assert!(len <= 0x17);
     vec![0x80u8 + len]
@@ -82,7 +76,7 @@ fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
             if let cbor_event::LenSz::Len(n, _) = len {
                 *n -= 1;
             }
-        };
+        }
     };
     let reduce_depth = |lens: &mut Vec<cbor_event::LenSz>| {
         while let Some(cbor_event::LenSz::Len(0, _)) = lens.last() {
