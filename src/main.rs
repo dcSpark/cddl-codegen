@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // to specific structs, and the existing comment parsing ast was not suited for this.
     // If, in the future, cddl released a feature flag to allow partial cddl we can just
     // remove all this and revert back the commit before this one for scope handling.
-    let input_files_content = input_files
+    let mut input_files_content = input_files
         .iter()
         .enumerate()
         .map(|(i, input_file)| {
@@ -67,9 +67,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::fs::read_to_string(input_file)
                 .map(|raw| format!("\n{}{} = \"{}\"\n{}\n", parsing::SCOPE_MARKER, i, scope, raw))
         }).collect::<Result<String, _>>()?;
+    // we also need to mark the extern marker to a placeholder struct that won't get codegened
+    input_files_content.push_str(&format!("{} = [0]", parsing::EXTERN_MARKER));
 
     // Plain group / scope marking
     let cddl = cddl::parser::cddl_from_str(&input_files_content, true)?;
+    //panic!("cddl: {:#?}", cddl);
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
     // mark scope and filter scope markers

@@ -78,6 +78,20 @@ map_with_defaults = {
 paren_size = uint .size (1)
 paren_cbor = bytes .cbor (text)
 
+no_alias_u32 = 0..4294967295 ; @no_alias
+no_alias_u64 = uint .size 8 ; @no_alias
+
+no_alias = [
+	no_alias_u32,
+	no_alias_u64
+]
+
+external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+
+externs = [
+	external_foo
+]
+
 ; types below test codegen_table_type
 
 standalone_table = { * uint => text }
@@ -93,3 +107,4 @@ text_array_wrapper = [embedded_text]
 text_map_wrapper = { 721: embedded_text }
 
 inline_wrapper = [{ * text => text }]
+

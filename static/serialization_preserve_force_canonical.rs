@@ -54,21 +54,23 @@ impl StringEncoding {
 }
 
 pub trait Serialize {
+    fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        let mut buf = Serializer::new_vec();
+        self.serialize(&mut buf, true).unwrap();
+        buf.finalize()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        let mut buf = Serializer::new_vec();
+        self.serialize(&mut buf, false).unwrap();
+        buf.finalize()
+    }
+
     fn serialize<'a, W: Write + Sized>(
         &self,
         serializer: &'a mut Serializer<W>,
         force_canonical: bool,
     ) -> cbor_event::Result<&'a mut Serializer<W>>;
-}
-
-impl<T: cbor_event::se::Serialize> Serialize for T {
-    fn serialize<'a, W: Write + Sized>(
-        &self,
-        serializer: &'a mut Serializer<W>,
-        _force_canonical: bool,
-    ) -> cbor_event::Result<&'a mut Serializer<W>> {
-        <T as cbor_event::se::Serialize>::serialize(self, serializer)
-    }
 }
 
 pub trait SerializeEmbeddedGroup {
@@ -77,17 +79,4 @@ pub trait SerializeEmbeddedGroup {
         serializer: &'a mut Serializer<W>,
         force_canonical: bool,
     ) -> cbor_event::Result<&'a mut Serializer<W>>;
-}
-
-
-pub trait ToBytes {
-    fn to_bytes(&self, force_canonical: bool) -> Vec<u8>;
-}
-
-impl<T: Serialize> ToBytes for T {
-    fn to_bytes(&self, force_canonical: bool) -> Vec<u8> {
-        let mut buf = Serializer::new_vec();
-        self.serialize(&mut buf, force_canonical).unwrap();
-        buf.finalize()
-    }
 }

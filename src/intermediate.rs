@@ -38,7 +38,7 @@ pub struct IntermediateTypes<'a> {
 impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
         let mut rust_structs = BTreeMap::new();
-        rust_structs.insert(RustIdent::new(CDDLIdent::new("int")), RustStruct::new_prelude(RustIdent::new(CDDLIdent::new("int"))));
+        rust_structs.insert(RustIdent::new(CDDLIdent::new("int")), RustStruct::new_extern(RustIdent::new(CDDLIdent::new("int"))));
         Self {
             plain_groups: BTreeMap::new(),
             type_aliases: Self::aliases(),
@@ -110,10 +110,8 @@ impl<'a> IntermediateTypes<'a> {
     pub fn new_type(&mut self, raw: &CDDLIdent) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
         let resolved = match self.apply_type_aliases(&alias_ident) {
-            Some(ty) => match alias_ident {
-                AliasIdent::Reserved(_) => ty,
-                AliasIdent::Rust(_) => ty.as_alias(alias_ident.clone())
-            },
+            Some((ty, true)) => ty,
+            Some((ty, false)) => ty.as_alias(alias_ident.clone()),
             None => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
         };
         let resolved_inner = match &resolved.conceptual_type {
@@ -144,10 +142,13 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see new_type() for why this is mut
-    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<RustType> {
+    /// returns: (base type, if the alias should be substituted)
+    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<(RustType, bool)>  {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some((alias, _, _)) => Some(alias.clone()),
+            Some((alias, gen_alias, _)) => {
+                Some((alias.clone(), !gen_alias))
+            }
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => if reserved == "int" {
@@ -157,7 +158,7 @@ impl<'a> IntermediateTypes<'a> {
                     // we auto-include only the parts of the cddl prelude necessary (and supported)
                     cddl_prelude(reserved).expect(&format!("Reserved ident {} not a part of cddl_prelude?", reserved));
                     self.emit_prelude(reserved.clone());
-                    Some(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))).into())
+                    Some((ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!("prelude_{}", reserved)))).into(), true))
                 },
             },
         }
@@ -613,6 +614,12 @@ mod idents {
     impl std::fmt::Display for RustIdent {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{}", self.0)
+        }
+    }
+
+    impl AsRef<str> for RustIdent {
+        fn as_ref(&self) -> &str {
+            self.0.as_str()
         }
     }
 
@@ -1468,7 +1475,7 @@ pub enum RustStructType {
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
     /// referring to a struct that doesn't exist even after generation.
-    Prelude,
+    Extern,
 }
 
 impl RustStruct {
@@ -1533,11 +1540,11 @@ impl RustStruct {
         }
     }
 
-    pub fn new_prelude(ident: RustIdent) -> Self {
+    pub fn new_extern(ident: RustIdent) -> Self {
         Self {
             ident,
             tag: None,
-            variant: RustStructType::Prelude,
+            variant: RustStructType::Extern,
         }
     }
 
@@ -1568,7 +1575,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::Extern{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1583,7 +1590,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::Extern{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1599,7 +1606,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::Extern{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1612,7 +1619,7 @@ impl RustStruct {
             RustStructType::TypeChoice{ .. } => unreachable!("I don't think type choices should be using length?"),
             RustStructType::GroupChoice{ .. } => unreachable!("I don't think group choices should be using length?"),
             RustStructType::Wrapper{ .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Prelude{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
+            RustStructType::Extern{ .. } => panic!("do we need to look this up ever? will the prelude have structs with fields?"),
         }
     }
 
@@ -1630,7 +1637,7 @@ impl RustStruct {
                 range.conceptual_type.visit_types_excluding(types, f, already_visited);
             },
             RustStructType::Wrapper{ wrapped, .. } => wrapped.conceptual_type.visit_types_excluding(types, f, already_visited),
-            RustStructType::Prelude => (),
+            RustStructType::Extern => (),
         }
     }
 }
@@ -1822,7 +1829,7 @@ impl GenericInstance {
             RustStructType::Wrapper{ .. } => {
                 todo!("should we look this up in types to resolve?");
             },
-            RustStructType::Prelude => panic!("generics should not be used on types in the prelude (e.g. int)"),
+            RustStructType::Extern => panic!("generics should not be used on types in the prelude (e.g. int)"),
         };
         instance
     }

@@ -5,14 +5,14 @@ pub trait SerializeEmbeddedGroup {
     ) -> cbor_event::Result<&'a mut Serializer<W>>;
 }
 
-pub trait ToBytes {
-  fn to_bytes(&self) -> Vec<u8>;
+pub trait ToCBORBytes {
+    fn to_cbor_bytes(&self) -> Vec<u8>;
 }
 
-impl<T: cbor_event::se::Serialize> ToBytes for T {
-  fn to_bytes(&self) -> Vec<u8> {
-      let mut buf = Serializer::new_vec();
-      self.serialize(&mut buf).unwrap();
-      buf.finalize()
-  }
+impl<T: cbor_event::se::Serialize> ToCBORBytes for T {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        let mut buf = Serializer::new_vec();
+        self.serialize(&mut buf).unwrap();
+        buf.finalize()
+    }
 }

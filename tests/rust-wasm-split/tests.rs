@@ -2,11 +2,11 @@
 mod tests {
     use super::*;
 
-    fn deser_test<T: Deserialize + ToBytes>(orig: &T) {
-        print_cbor_types("orig", &orig.to_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_bytes()))).unwrap();
-        print_cbor_types("deser", &deser.to_bytes());
-        assert_eq!(orig.to_bytes(), deser.to_bytes());
+    fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
+        print_cbor_types("orig", &orig.to_cbor_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_cbor_bytes()))).unwrap();
+        print_cbor_types("deser", &deser.to_cbor_bytes());
+        assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
     }
 
     #[test]

@@ -3,11 +3,18 @@ mod tests {
     use super::*;
     use cbor_event::StringLenSz;
 
-    fn deser_test<T: Deserialize + ToBytes>(orig: &T, force_canonical: bool) {
-        print_cbor_types("orig", &orig.to_bytes(force_canonical));
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_bytes(force_canonical)))).unwrap();
-        print_cbor_types("deser", &deser.to_bytes(force_canonical));
-        assert_eq!(orig.to_bytes(force_canonical), deser.to_bytes(force_canonical));
+    fn deser_test_orig<T: Deserialize + Serialize>(orig: &T) {
+        print_cbor_types("orig (original enc)", &orig.to_cbor_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_cbor_bytes()))).unwrap();
+        print_cbor_types("deser", &deser.to_cbor_bytes());
+        assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
+    }
+
+    fn deser_test_canonical<T: Deserialize + Serialize>(orig: &T) {
+        print_cbor_types("orig (canonical)", &orig.to_canonical_cbor_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_canonical_cbor_bytes()))).unwrap();
+        print_cbor_types("deser", &deser.to_canonical_cbor_bytes());
+        assert_eq!(orig.to_canonical_cbor_bytes(), deser.to_canonical_cbor_bytes());
     }
 
     #[test]
@@ -20,8 +27,8 @@ mod tests {
                     vec![0x42, 0xB4, 0xD3],
                 vec![BREAK]
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let foo: Foo = from_bytes(non_canonical_bytes.clone()).unwrap();
-        assert_eq!(foo.to_bytes(false), non_canonical_bytes);
+        let foo = Foo::from_cbor_bytes(&non_canonical_bytes).unwrap();
+        assert_eq!(foo.to_cbor_bytes(), non_canonical_bytes);
         let canonical_bytes = vec![
             cbor_tag(11),
                 arr_def(3),
@@ -29,9 +36,9 @@ mod tests {
                     cbor_string("jdskfjdsfkjad"),
                     vec![0x42, 0xB4, 0xD3],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert_eq!(foo.to_bytes(true), canonical_bytes);
-        deser_test(&foo, true);
-        deser_test(&foo, false);
+        assert_eq!(foo.to_canonical_cbor_bytes(), canonical_bytes);
+        deser_test_canonical(&foo);
+        deser_test_orig(&foo);
     }
 
     #[test]
@@ -55,8 +62,8 @@ mod tests {
                     vec![0x05u8],
             vec![BREAK]
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let bar: Bar = from_bytes(non_canonical_bytes.clone()).unwrap();
-        assert_eq!(bar.to_bytes(false), non_canonical_bytes);
+        let bar = Bar::from_cbor_bytes(&non_canonical_bytes).unwrap();
+        assert_eq!(bar.to_cbor_bytes(), non_canonical_bytes);
         let canonical_bytes = vec![
             map_def(4),
                 vec![0x01u8],
@@ -73,9 +80,9 @@ mod tests {
                 cbor_string("five"),
                     vec![0x05u8],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert_eq!(bar.to_bytes(true), canonical_bytes);
-        deser_test(&bar, true);
-        deser_test(&bar, false);
+        assert_eq!(bar.to_canonical_cbor_bytes(), canonical_bytes);
+        deser_test_canonical(&bar);
+        deser_test_orig(&bar);
 
         // tests for all other possible encodings (new tests after complete encoding preservation)
         let canonical_bytes_all = vec![
@@ -117,7 +124,7 @@ mod tests {
                     } else {
                         3
                     };
-                    let mut canonical_bar = Bar::from_bytes(canonical_bytes_all.clone()).unwrap();
+                    let mut canonical_bar = Bar::from_cbor_bytes(&canonical_bytes_all).unwrap();
                     if !has_5 {
                         canonical_bar.key_5 = None;
                     }
@@ -166,11 +173,11 @@ mod tests {
                             irregular_encoding.extend_from_slice(&keys[key_order[i]]);
                         }
                         print_cbor_types("irregular_encoding", &irregular_encoding);
-                        let irregular_bar = Bar::from_bytes(irregular_encoding.clone()).unwrap();
-                        print_cbor_types("irregular_bar.to_bytes(false)", &irregular_bar.to_bytes(false));
-                        assert_eq!(irregular_bar.to_bytes(false), irregular_encoding);
-                        print_cbor_types("irregular_bar.to_bytes(true)", &irregular_bar.to_bytes(true));
-                        assert_eq!(irregular_bar.to_bytes(true), canonical_bar.to_bytes(false));
+                        let irregular_bar = Bar::from_cbor_bytes(&irregular_encoding).unwrap();
+                        print_cbor_types("irregular_bar.to_cbor_bytes()", &irregular_bar.to_cbor_bytes());
+                        assert_eq!(irregular_bar.to_cbor_bytes(), irregular_encoding);
+                        print_cbor_types("irregular_bar.to_canonical_cbor_bytes()", &irregular_bar.to_canonical_cbor_bytes());
+                        assert_eq!(irregular_bar.to_canonical_cbor_bytes(), canonical_bar.to_cbor_bytes());
                     }
                 }
             }
@@ -207,8 +214,8 @@ mod tests {
             vec![BREAK],
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         print_cbor_types("non_canonical_bytes", &non_canonical_bytes);
-        let table: TableArrMembers = from_bytes(non_canonical_bytes.clone()).unwrap();
-        assert_eq!(table.to_bytes(false), non_canonical_bytes);
+        let table = TableArrMembers::from_cbor_bytes(&non_canonical_bytes).unwrap();
+        assert_eq!(table.to_cbor_bytes(), non_canonical_bytes);
         let canonical_bytes = vec![
             map_def(3),
                 cbor_string("arr"),
@@ -231,9 +238,9 @@ mod tests {
                             cbor_string("Sixteen"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         print_cbor_types("canonical_bytes", &canonical_bytes);
-        assert_eq!(table.to_bytes(true), canonical_bytes);
-        deser_test(&table, true);
-        deser_test(&table, false);
+        assert_eq!(table.to_canonical_cbor_bytes(), canonical_bytes);
+        deser_test_canonical(&table);
+        deser_test_orig(&table);
     }
 
     #[test]
@@ -320,9 +327,9 @@ mod tests {
                                     vec![BREAK],
                         vec![BREAK],
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular = DeeplyNested::from_bytes(irregular_bytes.clone()).unwrap();
-                assert_eq!(irregular_bytes, irregular.to_bytes(false));
-                assert_eq!(canonical_bytes, irregular.to_bytes(true));
+                let irregular = DeeplyNested::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
+                assert_eq!(canonical_bytes, irregular.to_canonical_cbor_bytes());
             }
         }
     }
@@ -358,21 +365,21 @@ mod tests {
                             cbor_int(1, Sz::Inline),
                             cbor_int(3, Sz::Inline),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular_0 = TypeChoice::from_bytes(irregular_bytes_0.clone()).unwrap();
-                assert_eq!(irregular_bytes_0, irregular_0.to_bytes(false));
-                assert_eq!(canonical_bytes_0, irregular_0.to_bytes(true));
-                let irregular_hello_world = TypeChoice::from_bytes(irregular_bytes_hello_world.clone()).unwrap();
-                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_bytes(false));
-                assert_eq!(canonical_bytes_hello_world, irregular_hello_world.to_bytes(true));
-                let irregular_uint = TypeChoice::from_bytes(irregular_bytes_uint.clone()).unwrap();
-                assert_eq!(irregular_bytes_uint, irregular_uint.to_bytes(false));
-                assert_eq!(canonical_bytes_uint, irregular_uint.to_bytes(true));
-                let irregular_text = TypeChoice::from_bytes(irregular_bytes_text.clone()).unwrap();
-                assert_eq!(irregular_bytes_text, irregular_text.to_bytes(false));
-                assert_eq!(canonical_bytes_text, irregular_text.to_bytes(true));
-                let irregular_tagged_arr = TypeChoice::from_bytes(irregular_bytes_tagged_arr.clone()).unwrap();
-                assert_eq!(irregular_bytes_tagged_arr, irregular_tagged_arr.to_bytes(false));
-                assert_eq!(canonical_bytes_tagged_arr, irregular_tagged_arr.to_bytes(true));
+                let irregular_0 = TypeChoice::from_cbor_bytes(&irregular_bytes_0).unwrap();
+                assert_eq!(irregular_bytes_0, irregular_0.to_cbor_bytes());
+                assert_eq!(canonical_bytes_0, irregular_0.to_canonical_cbor_bytes());
+                let irregular_hello_world = TypeChoice::from_cbor_bytes(&irregular_bytes_hello_world).unwrap();
+                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_cbor_bytes());
+                assert_eq!(canonical_bytes_hello_world, irregular_hello_world.to_canonical_cbor_bytes());
+                let irregular_uint = TypeChoice::from_cbor_bytes(&irregular_bytes_uint).unwrap();
+                assert_eq!(irregular_bytes_uint, irregular_uint.to_cbor_bytes());
+                assert_eq!(canonical_bytes_uint, irregular_uint.to_canonical_cbor_bytes());
+                let irregular_text = TypeChoice::from_cbor_bytes(&irregular_bytes_text).unwrap();
+                assert_eq!(irregular_bytes_text, irregular_text.to_cbor_bytes());
+                assert_eq!(canonical_bytes_text, irregular_text.to_canonical_cbor_bytes());
+                let irregular_tagged_arr = TypeChoice::from_cbor_bytes(&irregular_bytes_tagged_arr).unwrap();
+                assert_eq!(irregular_bytes_tagged_arr, irregular_tagged_arr.to_cbor_bytes());
+                assert_eq!(canonical_bytes_tagged_arr, irregular_tagged_arr.to_canonical_cbor_bytes());
             }
         }
     }
@@ -448,21 +455,21 @@ mod tests {
                         cbor_tag(9),
                             cbor_string("carrot"),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular_3 = GroupChoice::from_bytes(irregular_bytes_3.clone()).unwrap();
-                assert_eq!(irregular_bytes_3, irregular_3.to_bytes(false));
-                assert_eq!(canonical_bytes_3, irregular_3.to_bytes(true));
-                let irregular_tagged_2 = GroupChoice::from_bytes(irregular_bytes_tagged_2.clone()).unwrap();
-                assert_eq!(irregular_bytes_tagged_2, irregular_tagged_2.to_bytes(false));
-                assert_eq!(canonical_bytes_tagged_2, irregular_tagged_2.to_bytes(true));
-                let irregular_foo = GroupChoice::from_bytes(irregular_bytes_foo.clone()).unwrap();
-                assert_eq!(irregular_bytes_foo, irregular_foo.to_bytes(false));
-                assert_eq!(canonical_bytes_foo, irregular_foo.to_bytes(true));
-                let irregular_inlined = GroupChoice::from_bytes(irregular_bytes_inlined.clone()).unwrap();
-                assert_eq!(irregular_bytes_inlined, irregular_inlined.to_bytes(false));
-                assert_eq!(canonical_bytes_inlined, irregular_inlined.to_bytes(true));
-                let irregular_plain = GroupChoice::from_bytes(irregular_bytes_plain.clone()).unwrap();
-                assert_eq!(irregular_bytes_plain, irregular_plain.to_bytes(false));
-                assert_eq!(canonical_bytes_plain, irregular_plain.to_bytes(true));
+                let irregular_3 = GroupChoice::from_cbor_bytes(&irregular_bytes_3).unwrap();
+                assert_eq!(irregular_bytes_3, irregular_3.to_cbor_bytes());
+                assert_eq!(canonical_bytes_3, irregular_3.to_canonical_cbor_bytes());
+                let irregular_tagged_2 = GroupChoice::from_cbor_bytes(&irregular_bytes_tagged_2).unwrap();
+                assert_eq!(irregular_bytes_tagged_2, irregular_tagged_2.to_cbor_bytes());
+                assert_eq!(canonical_bytes_tagged_2, irregular_tagged_2.to_canonical_cbor_bytes());
+                let irregular_foo = GroupChoice::from_cbor_bytes(&irregular_bytes_foo).unwrap();
+                assert_eq!(irregular_bytes_foo, irregular_foo.to_cbor_bytes());
+                assert_eq!(canonical_bytes_foo, irregular_foo.to_canonical_cbor_bytes());
+                let irregular_inlined = GroupChoice::from_cbor_bytes(&irregular_bytes_inlined).unwrap();
+                assert_eq!(irregular_bytes_inlined, irregular_inlined.to_cbor_bytes());
+                assert_eq!(canonical_bytes_inlined, irregular_inlined.to_canonical_cbor_bytes());
+                let irregular_plain = GroupChoice::from_cbor_bytes(&irregular_bytes_plain).unwrap();
+                assert_eq!(irregular_bytes_plain, irregular_plain.to_cbor_bytes());
+                assert_eq!(canonical_bytes_plain, irregular_plain.to_canonical_cbor_bytes());
             }
         }
     }
@@ -502,9 +509,9 @@ mod tests {
                         cbor_bytes_sz(irregular_foo_bytes, foo_bytes_enc),
                         cbor_bytes_sz(cbor_int(5, *def_enc), StringLenSz::Len(*def_enc)),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
-                let irregular = CborInCbor::from_bytes(irregular_bytes.clone()).unwrap();
-                assert_eq!(irregular_bytes, irregular.to_bytes(false));
-                assert_eq!(canonical_bytes, irregular.to_bytes(true));
+                let irregular = CborInCbor::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
+                assert_eq!(canonical_bytes, irregular.to_canonical_cbor_bytes());
             }
         }
     }

@@ -1,0 +1,58 @@
+#[derive(Clone, Debug)]
+pub struct ExternalFoo {
+    pub index_0: u64,
+    pub index_1: String,
+    pub index_2: Vec<u8>,
+}
+
+impl ExternalFoo {
+    pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self {
+            index_0,
+            index_1,
+            index_2,
+        }
+    }
+}
+
+impl cbor_event::se::Serialize for ExternalFoo {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
+        serializer.write_bytes(&self.index_2)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ExternalFoo {
+    fn deserialize<R: BufRead + std::io::Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(3)?;
+        (|| -> Result<_, DeserializeError> {
+            let index_0 = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 =
+                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let index_2 =
+                Ok(raw.bytes()? as Vec<u8>).map_err(|e: DeserializeError| e.annotate("index_2"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    CBORSpecial::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ExternalFoo {
+                index_0,
+                index_1,
+                index_2,
+            })
+        })()
+        .map_err(|e| e.annotate("ExternalFoo"))
+    }
+}
