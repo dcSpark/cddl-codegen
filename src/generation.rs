@@ -545,82 +545,96 @@ impl GenerationScope {
         }
 
         // Structs
-        let mut wasm_wrappers_generated = BTreeSet::new();
-        for (rust_ident, rust_struct) in types.rust_structs() {
-            assert_eq!(rust_ident, rust_struct.ident());
-            if CLI_ARGS.wasm {
-                rust_struct.visit_types(types, &mut |ty| {
-                    match ty {
-                        ConceptualRustType::Array(elem) => {
-                            if !ty.directly_wasm_exposable() {
-                                let array_ident = elem.name_as_wasm_array();
-                                if wasm_wrappers_generated.insert(array_ident.clone()) {
-                                    self.generate_array_type(types, *elem.clone(), &RustIdent::new(CDDLIdent::new(array_ident)));
+        {
+            // we can ignore types already handled by the alias
+            // otherwise wasm_wrappers_generated may cause us to pointlessly create aliases to aliases
+            let mut existing_aliases = types.type_aliases().iter().fold(BTreeSet::<RustIdent>::new(), |mut acc, (alias, _)| {
+                match alias {
+                    AliasIdent::Reserved(_) => {},
+                    AliasIdent::Rust(ident) => { acc.insert(ident.clone()); }
+                };
+                acc
+            });
+
+            let mut wasm_wrappers_generated = BTreeSet::new();
+            for (rust_ident, rust_struct) in types.rust_structs() {
+                assert_eq!(rust_ident, rust_struct.ident());
+                if CLI_ARGS.wasm {
+                    rust_struct.visit_types_excluding(types, &mut |ty| {
+                        match ty {
+                            ConceptualRustType::Array(elem) => {
+                                if !ty.directly_wasm_exposable() {
+                                    let array_ident = elem.name_as_wasm_array();
+                                    if wasm_wrappers_generated.insert(array_ident.clone()) {
+                                        self.generate_array_type(types, *elem.clone(), &RustIdent::new(CDDLIdent::new(array_ident)));
+                                    }
                                 }
-                            }
-                        },
-                        ConceptualRustType::Map(k, v) => {
-                            let map_ident = ConceptualRustType::name_for_wasm_map(&k, &v);
-                            if wasm_wrappers_generated.insert(map_ident.to_string()) {
-                                codegen_table_type(self, types, &map_ident, *k.clone(), *v.clone(), None);
-                            }
-                            if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable() {
-                                let keys_ident = k.name_as_wasm_array();
-                                if wasm_wrappers_generated.insert(keys_ident.clone()) {
-                                    self.generate_array_type(types, *k.clone(), &RustIdent::new(CDDLIdent::new(keys_ident)));
+                            },
+                            ConceptualRustType::Map(k, v) => {
+                                let map_ident = ConceptualRustType::name_for_wasm_map(&k, &v);
+                                if wasm_wrappers_generated.insert(map_ident.to_string()) {
+                                    codegen_table_type(self, types, &map_ident, *k.clone(), *v.clone(), None, false);
                                 }
-                            }
-                        },
-                        _ => (),
-                    }
-                });
-            }
-            match rust_struct.variant() {
-                RustStructType::Record(record) => {
-                    codegen_struct(self, types, rust_ident, rust_struct.tag(), record);
-                },
-                RustStructType::Table { domain, range } => {
-                    if CLI_ARGS.wasm {
-                        let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
-                        if wasm_wrappers_generated.insert(map_ident.to_string()) {
-                            codegen_table_type(self, types, rust_ident, domain.clone(), range.clone(), rust_struct.tag());
-                        } else {
-                            self.wasm(types, rust_ident)
-                                .push_type_alias(TypeAlias::new(rust_ident, map_ident));
+                                if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable() {
+                                    let keys_ident = k.name_as_wasm_array();
+                                    if wasm_wrappers_generated.insert(keys_ident.clone()) {
+                                        self.generate_array_type(types, *k.clone(), &RustIdent::new(CDDLIdent::new(keys_ident)));
+                                    }
+                                }
+                            },
+                            _ => (),
                         }
-                    }
-                    //self
-                    //    .rust()
-                    //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
-                },
-                RustStructType::Array { element_type } => {
-                    if CLI_ARGS.wasm {
-                        self.generate_array_type(types, element_type.clone(), rust_ident);
-                    }
-                    //self
-                    //    .rust()
-                    //    .push_type_alias(TypeAlias::new(rust_struct.ident(), element_type.name_as_rust_array(false)));
-                },
-                RustStructType::TypeChoice { variants } => {
-                    self.generate_type_choices_from_variants(types, rust_ident, variants, rust_struct.tag());
-                },
-                RustStructType::GroupChoice { variants, rep } => {
-                    codegen_group_choices(self, types, rust_ident, variants, *rep, rust_struct.tag())
-                },
-                RustStructType::Wrapper{ wrapped, min_max } => {
-                    match rust_struct.tag() {
-                        Some(tag) => generate_wrapper_struct(self, types, rust_ident, &wrapped.clone().tag(tag), min_max.clone()),
-                        None => generate_wrapper_struct(self, types, rust_ident, wrapped, min_max.clone()),
-                    }
-                },
-                RustStructType::Extern => {
-                    match rust_ident.to_string().as_ref() {
-                        "Int" => if types.is_referenced(rust_ident) {
-                            generate_int(self, types)
-                        },
-                        _ => ()/* user-specified external types */,
-                    }
-                },
+                    }, &mut existing_aliases);
+                }
+                match rust_struct.variant() {
+                    RustStructType::Record(record) => {
+                        codegen_struct(self, types, rust_ident, rust_struct.tag(), record);
+                    },
+                    RustStructType::Table { domain, range } => {
+                        if CLI_ARGS.wasm {
+                            let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
+                            // want to use `contains` instead of insert
+                            // since although map_ident may not be required for this struct
+                            // we may still have to generate it later if a table of the same shape is embedded inside different struct
+                            if !wasm_wrappers_generated.contains(&map_ident.to_string()) {
+                                codegen_table_type(self, types, rust_ident, domain.clone(), range.clone(), rust_struct.tag(), true);
+                            } else {
+                                self.wasm(types, rust_ident).push_type_alias(TypeAlias::new(rust_ident, map_ident));
+                            }
+                        }
+                        //self
+                        //    .rust()
+                        //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
+                    },
+                    RustStructType::Array { element_type } => {
+                        if CLI_ARGS.wasm {
+                            self.generate_array_type(types, element_type.clone(), rust_ident);
+                        }
+                        //self
+                        //    .rust()
+                        //    .push_type_alias(TypeAlias::new(rust_struct.ident(), element_type.name_as_rust_array(false)));
+                    },
+                    RustStructType::TypeChoice { variants } => {
+                        self.generate_type_choices_from_variants(types, rust_ident, variants, rust_struct.tag());
+                    },
+                    RustStructType::GroupChoice { variants, rep } => {
+                        codegen_group_choices(self, types, rust_ident, variants, *rep, rust_struct.tag())
+                    },
+                    RustStructType::Wrapper{ wrapped, min_max } => {
+                        match rust_struct.tag() {
+                            Some(tag) => generate_wrapper_struct(self, types, rust_ident, &wrapped.clone().tag(tag), min_max.clone()),
+                            None => generate_wrapper_struct(self, types, rust_ident, wrapped, min_max.clone()),
+                        }
+                    },
+                    RustStructType::Extern => {
+                        match rust_ident.to_string().as_ref() {
+                            "Int" => if types.is_referenced(rust_ident) {
+                                generate_int(self, types)
+                            },
+                            _ => ()/* user-specified external types */,
+                        }
+                    },
+                }
             }
         }
 
@@ -2056,6 +2070,7 @@ fn create_base_rust_struct<'a>(types: &IntermediateTypes<'a>, ident: &RustIdent)
     (s, group_impl)
 }
 
+#[derive(Debug)]
 struct WasmWrapper<'a> {
     ident: &'a RustIdent,
     s: codegen::Struct,
@@ -2457,7 +2472,7 @@ pub fn table_type() -> &'static str {
     }
 }
 
-fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes, name: &RustIdent, key_type: RustType, value_type: RustType, tag: Option<usize>) {
+fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes, name: &RustIdent, key_type: RustType, value_type: RustType, tag: Option<usize>, exists_in_rust: bool) {
     assert!(CLI_ARGS.wasm);
     assert!(tag.is_none(), "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?");
     // this would interfere with loop code generation unless we
@@ -2466,7 +2481,12 @@ fn codegen_table_type(gen_scope: &mut GenerationScope, types: &IntermediateTypes
     // non-break special value once read
     assert!(!key_type.cbor_types().contains(&CBORType::Special));
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
-    let inner_type = ConceptualRustType::name_for_rust_map(&key_type, &value_type, true);
+
+    let inner_type = if exists_in_rust {
+        format!("core::{}", name)
+    } else {
+        ConceptualRustType::name_for_rust_map(&key_type, &value_type, true)
+    };
     wrapper.s.tuple_field(None, &inner_type);
     // new
     let mut new_func = codegen::Function::new("new");
