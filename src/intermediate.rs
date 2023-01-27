@@ -100,6 +100,8 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias("nil", null_type);
         insert_alias("true", ConceptualRustType::Fixed(FixedValue::Bool(true)).into());
         insert_alias("false", ConceptualRustType::Fixed(FixedValue::Bool(false)).into());
+        // Note: defaulting to float64 for "float" (so without precision).
+        insert_alias("float", ConceptualRustType::Primitive(Primitive::F64).into());
         insert_alias("float64", ConceptualRustType::Primitive(Primitive::F64).into());
         insert_alias("float32", ConceptualRustType::Primitive(Primitive::F32).into());
         // What about bingint/other stuff in the standard prelude?
