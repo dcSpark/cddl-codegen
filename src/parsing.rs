@@ -1283,7 +1283,6 @@ fn group_entry_to_type(
     parent_visitor: &ParentVisitor,
     entry: &GroupEntry,
 ) -> RustType {
-    //println!("group_entry_to_typename({:?}) = {:?}\n", entry, ret);
     match entry {
         GroupEntry::ValueMemberKey { ge, .. } => rust_type(types, parent_visitor, &ge.entry_type),
         GroupEntry::TypeGroupname { ge, .. } => {
