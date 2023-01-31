@@ -1,7 +1,9 @@
 extern crate nom;
 use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_while, take_while1},
+    multi::many0,
     IResult,
-    bytes::complete::{tag, take_while1, take_while}, branch::alt, multi::many0,
 };
 
 #[derive(Default, Debug, PartialEq)]
@@ -14,9 +16,11 @@ pub struct RuleMetadata {
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
     let merged = RuleMetadata {
         name: match (r1.name.as_ref(), r2.name.as_ref()) {
-            (Some(val1), Some(val2)) => panic!("Key \"name\" specified twice: {:?} {:?}", val1, val2),
-            (val@Some(_), _) => val.cloned(),
-            (_, val) => val.cloned()
+            (Some(val1), Some(val2)) => {
+                panic!("Key \"name\" specified twice: {:?} {:?}", val1, val2)
+            }
+            (val @ Some(_), _) => val.cloned(),
+            (_, val) => val.cloned(),
         },
         is_newtype: r1.is_newtype || r2.is_newtype,
         no_alias: r1.no_alias || r2.no_alias,
@@ -36,14 +40,20 @@ impl RuleMetadata {
         let mut base = RuleMetadata::default();
         for result in results {
             match result {
-                ParseResult::Name(name) => {
-                    match base.name.as_ref() {
-                        Some(old_name) => panic!("Key \"name\" specified twice: {:?} {:?}", old_name, name),
-                        None => { base.name = Some(name.to_string()); }
+                ParseResult::Name(name) => match base.name.as_ref() {
+                    Some(old_name) => {
+                        panic!("Key \"name\" specified twice: {:?} {:?}", old_name, name)
+                    }
+                    None => {
+                        base.name = Some(name.to_string());
                     }
                 },
-                ParseResult::NewType => { base.is_newtype = true; },
-                ParseResult::DontGenAlias => { base.no_alias = true; },
+                ParseResult::NewType => {
+                    base.is_newtype = true;
+                }
+                ParseResult::DontGenAlias => {
+                    base.no_alias = true;
+                }
             }
         }
         base.verify();
@@ -87,17 +97,15 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
 
 fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, parse_results) = many0(whitespace_then_tag)(input)?;
-    
 
     Ok((input, RuleMetadata::from_parse_results(&parse_results)))
 }
 
-
-impl <'a> From<Option<&'a cddl::ast::Comments<'a>>> for RuleMetadata {
+impl<'a> From<Option<&'a cddl::ast::Comments<'a>>> for RuleMetadata {
     fn from(comments: Option<&'a cddl::ast::Comments<'a>>) -> RuleMetadata {
         match comments {
             None => RuleMetadata::default(),
-            Some(c) => metadata_from_comments(&c.0)
+            Some(c) => metadata_from_comments(&c.0),
         }
     }
 }
@@ -108,53 +116,83 @@ pub fn metadata_from_comments(comments: &[&str]) -> RuleMetadata {
         if let Ok(comment_metadata) = rule_metadata(comment) {
             result = merge_metadata(&result, &comment_metadata.1);
         }
-    };
+    }
     result
 }
 
 #[test]
 fn parse_comment_name() {
-    assert_eq!(rule_metadata("@name foo"), Ok(("", RuleMetadata {
-        name: Some("foo".to_string()),
-        is_newtype: false,
-        no_alias: false,
-    })));
+    assert_eq!(
+        rule_metadata("@name foo"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: Some("foo".to_string()),
+                is_newtype: false,
+                no_alias: false,
+            }
+        ))
+    );
 }
 
 #[test]
 fn parse_comment_newtype() {
-    assert_eq!(rule_metadata("@newtype"), Ok(("", RuleMetadata {
-        name: None,
-        is_newtype: true,
-        no_alias: false,
-    })));
+    assert_eq!(
+        rule_metadata("@newtype"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                is_newtype: true,
+                no_alias: false,
+            }
+        ))
+    );
 }
 
 #[test]
 fn parse_comment_newtype_and_name() {
-    assert_eq!(rule_metadata("@newtype @name foo"), Ok(("", RuleMetadata {
-        name: Some("foo".to_string()),
-        is_newtype: true,
-        no_alias: false,
-    })));
+    assert_eq!(
+        rule_metadata("@newtype @name foo"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: Some("foo".to_string()),
+                is_newtype: true,
+                no_alias: false,
+            }
+        ))
+    );
 }
 
 #[test]
 fn parse_comment_newtype_and_name_inverse() {
-    assert_eq!(rule_metadata("@name foo @newtype"), Ok(("", RuleMetadata {
-        name: Some("foo".to_string()),
-        is_newtype: true,
-        no_alias: false,
-    })));
+    assert_eq!(
+        rule_metadata("@name foo @newtype"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: Some("foo".to_string()),
+                is_newtype: true,
+                no_alias: false,
+            }
+        ))
+    );
 }
 
 #[test]
 fn parse_comment_name_noalias() {
-    assert_eq!(rule_metadata("@no_alias @name foo"), Ok(("", RuleMetadata {
-        name: Some("foo".to_string()),
-        is_newtype: false,
-        no_alias: true,
-    })));
+    assert_eq!(
+        rule_metadata("@no_alias @name foo"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: Some("foo".to_string()),
+                is_newtype: false,
+                no_alias: true,
+            }
+        ))
+    );
 }
 
 #[test]
