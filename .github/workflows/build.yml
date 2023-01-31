@@ -32,28 +32,26 @@ jobs:
           override: true
           components: rustfmt, clippy
 
+      - name: "Format check"
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: "Linter checks"
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --locked --workspace --all-features --all-targets -- --deny "clippy::all"
+
+      - name: "Run cargo build"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --locked --workspace --all-features --all-targets
+
       - name: "Run cargo test"
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --all-features --all-targets
-
-# Uncomment when supported:
-#      - name: "Format check"
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: fmt
-#          args: -- --check
-#      - name: "Linter checks"
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: clippy
-#          args: --all-features --all-targets -- --deny "clippy::all"
-#
-#      - name: "Check"
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: check
-#          args: --all-features --all-targets
-#
-#

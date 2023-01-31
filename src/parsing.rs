@@ -15,14 +15,15 @@ use crate::utils::{
 };
 
 #[derive(Clone, Debug)]
+#[allow(clippy::upper_case_acronyms)]
 enum ControlOperator {
     Range((Option<i128>, Option<i128>)),
     CBOR(RustType),
     Default(FixedValue),
 }
 
-pub const SCOPE_MARKER: &'static str = "_CDDL_CODEGEN_SCOPE_MARKER_";
-pub const EXTERN_MARKER: &'static str = "_CDDL_CODEGEN_EXTERN_TYPE_";
+pub const SCOPE_MARKER: &str = "_CDDL_CODEGEN_SCOPE_MARKER_";
+pub const EXTERN_MARKER: &str = "_CDDL_CODEGEN_EXTERN_TYPE_";
 
 /// Some means it is a scope marker, containing the scope
 pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
@@ -476,7 +477,7 @@ fn parse_type(
                                         RustStruct::new_wrapper(
                                             type_name.clone(),
                                             outer_tag,
-                                            field_type().clone().into(),
+                                            field_type().into(),
                                             Some(min_max),
                                         ),
                                     ),
@@ -588,7 +589,7 @@ fn parse_type(
             );
         }
         Type2::TaggedData { tag, t, .. } => {
-            if let Some(_) = outer_tag {
+            if outer_tag.is_some() {
                 panic!("doubly nested tags are not supported");
             }
             let tag_unwrap = tag.expect("not sure what empty tag here would mean - unsupported");
@@ -800,7 +801,7 @@ fn parse_type(
 pub fn create_variants_from_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
-    type_choices: &Vec<TypeChoice>,
+    type_choices: &[TypeChoice],
 ) -> Vec<EnumVariant> {
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     type_choices
@@ -837,7 +838,7 @@ fn table_domain_range<'a>(
                         Some(MemberKey::Type1 { t1, .. }) => {
                             // TODO: Do we need to handle cuts for what we're doing?
                             // Does the range control operator matter?
-                            return Some((&t1, &ge.entry_type));
+                            return Some((t1, &ge.entry_type));
                         }
                         // has a fixed value - this is just a 1-element struct
                         Some(MemberKey::Value { .. }) => return None,
@@ -877,9 +878,7 @@ fn type_to_field_name(t: &Type) -> Option<String> {
                             GroupEntry::ValueMemberKey { ge, .. } => {
                                 Some(format!("{}s", type_to_field_name(&ge.entry_type)?))
                             }
-                            GroupEntry::TypeGroupname { ge, .. } => {
-                                Some(format!("{}s", ge.name.to_string()))
-                            }
+                            GroupEntry::TypeGroupname { ge, .. } => Some(format!("{}s", ge.name)),
                             GroupEntry::InlineGroup { .. } => None,
                         }
                     }
@@ -913,7 +912,7 @@ fn type_to_field_name(t: &Type) -> Option<String> {
     }
 }
 
-fn _field_name_from_comments<'a>(comments: &Option<Comments<'a>>) -> Option<String> {
+fn _field_name_from_comments(comments: &Option<Comments<'_>>) -> Option<String> {
     comments
         .as_ref()?
         .0
@@ -957,12 +956,12 @@ fn group_entry_to_field_name(
                         RuleMetadata {
                             name: Some(name), ..
                         } => name,
-                        _ => format!("key_{}", value),
+                        _ => format!("key_{value}"),
                     }
                 }
                 MemberKey::Bareword { ident, .. } => ident.to_string(),
                 MemberKey::Type1 { t1, .. } => match t1.type2 {
-                    Type2::UintValue { value, .. } => format!("key_{}", value),
+                    Type2::UintValue { value, .. } => format!("key_{value}"),
                     _ => panic!(
                         "Encountered Type1 member key in multi-field map - not supported: {:?}",
                         entry
@@ -979,7 +978,7 @@ fn group_entry_to_field_name(
                     RuleMetadata {
                         name: Some(name), ..
                     } => name,
-                    _ => format!("index_{}", index),
+                    _ => format!("index_{index}"),
                 }
             }),
         },
@@ -995,7 +994,7 @@ fn group_entry_to_field_name(
                     RuleMetadata {
                         name: Some(name), ..
                     } => name,
-                    _ => format!("index_{}", index),
+                    _ => format!("index_{index}"),
                 }
             }
             false => name.to_string(),
@@ -1005,7 +1004,7 @@ fn group_entry_to_field_name(
             group, group
         ),
     });
-    append_number_if_duplicate(already_generated, field_name.clone())
+    append_number_if_duplicate(already_generated, field_name)
 }
 
 // Only returns Some(String) if there was an explicit field name provided, otherwise None.
@@ -1114,8 +1113,7 @@ fn rust_type_from_type2(
                         .map(|t| t.for_variant().to_string())
                         .collect::<Vec<String>>()
                         .join("_");
-                    let instance_cddl_ident =
-                        CDDLIdent::new(format!("{}_{}", cddl_ident, args_name));
+                    let instance_cddl_ident = CDDLIdent::new(format!("{cddl_ident}_{args_name}"));
                     let instance_ident = RustIdent::new(instance_cddl_ident.clone());
                     let generic_ident = RustIdent::new(cddl_ident);
                     types.register_generic_instance(GenericInstance::new(
@@ -1141,7 +1139,7 @@ fn rust_type_from_type2(
                                 rust_type(types, parent_visitor, &ge.entry_type)
                             }
                             GroupEntry::TypeGroupname { ge, .. } => {
-                                types.new_type(&CDDLIdent::new(&ge.name.to_string()))
+                                types.new_type(&CDDLIdent::new(ge.name.to_string()))
                             }
                             _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
                         }
@@ -1276,10 +1274,7 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
     };
     occur
         .as_ref()
-        .map(|o| match o.occur {
-            Occur::Optional { .. } => true,
-            _ => false,
-        })
+        .map(|o| matches!(o.occur, Occur::Optional { .. }))
         .unwrap_or(false)
 }
 
@@ -1367,10 +1362,10 @@ fn parse_record_from_group_choice(
     RustRecord { rep, fields }
 }
 
-fn parse_group_choice<'a>(
+fn parse_group_choice(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
-    group_choice: &'a GroupChoice,
+    group_choice: &GroupChoice,
     name: &RustIdent,
     rep: Representation,
     tag: Option<usize>,
@@ -1474,9 +1469,7 @@ pub fn parse_group(
                 } else {
                     let rule_metadata =
                         RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref());
-                    let ident_name = rule_metadata
-                        .name
-                        .unwrap_or_else(|| format!("{}{}", name, i));
+                    let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{name}{i}"));
                     // General case, GroupN type identifiers and generate group choice since it's inlined here
                     let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
                     types.mark_plain_group(variant_name.clone(), None);
@@ -1697,13 +1690,11 @@ fn get_comment_after<'a>(
         CDDLType::Value(_) => None,
         CDDLType::ValueMemberKeyEntry(_) => None,
         CDDLType::TypeGroupnameEntry(_) => None,
-        CDDLType::MemberKey(t) => match t {
-            MemberKey::NonMemberKey {
-                comments_after_type_or_group,
-                ..
-            } => comments_after_type_or_group.clone(),
-            _ => None,
-        },
+        CDDLType::MemberKey(MemberKey::NonMemberKey {
+            comments_after_type_or_group,
+            ..
+        }) => comments_after_type_or_group.clone(),
+        CDDLType::MemberKey(_) => None,
         CDDLType::NonMemberKey(_) => get_comment_after(
             parent_visitor,
             cddl_type.parent(parent_visitor).unwrap(),
@@ -1713,9 +1704,10 @@ fn get_comment_after<'a>(
     }
 }
 
-fn get_rule_name<'a, 'b>(
+#[allow(unused)]
+fn get_rule_name<'a>(
     parent_visitor: &'a ParentVisitor,
-    cddl_type: &CDDLType<'a, 'b>,
+    cddl_type: &CDDLType<'a, '_>,
 ) -> Identifier<'a> {
     match cddl_type {
         CDDLType::CDDL(_) => panic!("Cannot get the rule name of a top-level CDDL node"),
