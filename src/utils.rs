@@ -1,5 +1,5 @@
 use cbor_event::Type as CBORType;
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::cli::CLI_ARGS;
 
@@ -22,10 +22,10 @@ pub fn convert_to_snake_case(ident: &str) -> String {
         match c {
             '-' => {
                 snake_case.push('_');
-            },
+            }
             '$' | '@' => {
                 // ignored
-            },
+            }
             c => {
                 if c.is_ascii_uppercase() && !snake_case.is_empty() {
                     snake_case.push('_')
@@ -44,10 +44,10 @@ pub fn convert_to_camel_case(ident: &str) -> String {
         match c {
             '_' | '-' => {
                 uppercase = true;
-            },
+            }
             '$' | '@' => {
                 // ignored
-            },
+            }
             c => {
                 if uppercase {
                     camel_case.push(c.to_ascii_uppercase());
@@ -55,7 +55,7 @@ pub fn convert_to_camel_case(ident: &str) -> String {
                 } else {
                     camel_case.push(c);
                 }
-            },
+            }
         }
     }
     camel_case
@@ -101,6 +101,7 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
     }
 }
 
+#[rustfmt::skip]
 pub fn is_identifier_reserved(name: &str) -> bool {
     match name {
         // These are all possible reserved identifiers, even if we don't support them
@@ -148,6 +149,7 @@ pub fn is_identifier_reserved(name: &str) -> bool {
 }
 
 // as we also support our own identifiers for selecting integer precision, we need this too
+#[rustfmt::skip]
 pub fn is_identifier_in_our_prelude(name: &str) -> bool {
     match name {
         "u8" |

@@ -1,4 +1,4 @@
-use clap::{Parser};
+use clap::Parser;
 use once_cell::sync::Lazy;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
