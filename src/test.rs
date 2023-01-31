@@ -9,11 +9,11 @@ fn run_test(
 ) {
     use std::str::FromStr;
     let export_path = match export_suffix {
-        Some(suffix) => format!("export_{}", suffix),
+        Some(suffix) => format!("export_{suffix}"),
         None => "export".to_owned(),
     };
     let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
-    println!("--------- running test: {} ---------", dir);
+    println!("--------- running test: {dir} ---------");
     // build and run to generate code
     let mut cargo_run = std::process::Command::new("cargo");
     cargo_run
@@ -40,12 +40,12 @@ fn run_test(
     let mut lib_rs = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
-        .open(test_path.join(format!("{}/core/src/lib.rs", export_path)))
+        .open(test_path.join(format!("{export_path}/core/src/lib.rs")))
         .unwrap();
     // copy external file in too (if needed) too
     if let Some(external_core_file_path) = external_core_file_path {
         let extern_rs = std::fs::read_to_string(external_core_file_path).unwrap();
-        lib_rs.write("\n\n".as_bytes()).unwrap();
+        lib_rs.write_all("\n\n".as_bytes()).unwrap();
         lib_rs.write_all(extern_rs.as_bytes()).unwrap();
     }
     let deser_test_rs = std::fs::read_to_string(
@@ -54,17 +54,17 @@ fn run_test(
             .join("deser_test"),
     )
     .unwrap();
-    lib_rs.write("\n\n".as_bytes()).unwrap();
+    lib_rs.write_all("\n\n".as_bytes()).unwrap();
     lib_rs.write_all(deser_test_rs.as_bytes()).unwrap();
     let test_rs = std::fs::read_to_string(test_path.join("tests.rs")).unwrap();
-    lib_rs.write("\n\n".as_bytes()).unwrap();
+    lib_rs.write_all("\n\n".as_bytes()).unwrap();
     lib_rs.write_all(test_rs.as_bytes()).unwrap();
     std::mem::drop(lib_rs);
     // run tests in generated code
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
         .arg("test")
-        .current_dir(test_path.join(format!("{}/core", export_path)))
+        .current_dir(test_path.join(format!("{export_path}/core")))
         .output()
         .unwrap();
     if !cargo_test.status.success() {
@@ -80,18 +80,18 @@ fn run_test(
     assert!(cargo_test.status.success());
 
     // wasm
-    let wasm_export_dir = test_path.join(format!("{}/wasm", export_path));
+    let wasm_export_dir = test_path.join(format!("{export_path}/wasm"));
     let wasm_test_dir = test_path.join("tests_wasm.rs");
     // copy external wasm defs if they exist
     if let Some(external_wasm_file_path) = external_wasm_file_path {
-        println!("trying to open: {:?}", external_wasm_file_path);
+        println!("trying to open: {external_wasm_file_path:?}");
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .write(true)
             .append(true)
-            .open(test_path.join(format!("{}/wasm/src/lib.rs", export_path)))
+            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
             .unwrap();
         let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
-        wasm_lib_rs.write("\n\n".as_bytes()).unwrap();
+        wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
         wasm_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
     }
     if wasm_test_dir.exists() {

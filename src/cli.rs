@@ -51,4 +51,4 @@ pub struct Cli {
     pub package_json: bool,
 }
 
-pub static CLI_ARGS: Lazy<Cli> = Lazy::new(|| Cli::parse());
+pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);

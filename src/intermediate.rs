@@ -52,8 +52,9 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn has_ident(&self, ident: &RustIdent) -> bool {
-        let foo: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
+        let idents: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
             match alias {
                 AliasIdent::Reserved(_) => {}
                 AliasIdent::Rust(ident) => acc.push(ident.clone()),
@@ -64,7 +65,7 @@ impl<'a> IntermediateTypes<'a> {
             "{:?}",
             self.plain_groups
                 .keys()
-                .chain(foo.iter())
+                .chain(idents.iter())
                 .chain(self.rust_structs.keys())
                 .chain(self.generic_defs.keys())
                 .chain(self.generic_instances.keys())
@@ -91,7 +92,7 @@ impl<'a> IntermediateTypes<'a> {
         let mut aliases = BTreeMap::<AliasIdent, (RustType, bool, bool)>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident.clone(), (rust_type, false, false));
+            aliases.insert(ident, (rust_type, false, false));
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
@@ -193,15 +194,16 @@ impl<'a> IntermediateTypes<'a> {
                         None
                     } else {
                         // we auto-include only the parts of the cddl prelude necessary (and supported)
-                        cddl_prelude(reserved).expect(&format!(
-                            "Reserved ident {} not a part of cddl_prelude?",
-                            reserved
-                        ));
+                        cddl_prelude(reserved).unwrap_or_else(|| {
+                            panic!(
+                                "{}",
+                                "Reserved ident {reserved} not a part of cddl_prelude?"
+                            )
+                        });
                         self.emit_prelude(reserved.clone());
                         Some((
                             ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!(
-                                "prelude_{}",
-                                reserved
+                                "prelude_{reserved}"
                             ))))
                             .into(),
                             true,
@@ -334,9 +336,9 @@ impl<'a> IntermediateTypes<'a> {
                 used_as_key.insert(ident.clone());
             }
         }
-        fn check_used_as_key<'a>(
+        fn check_used_as_key(
             ty: &ConceptualRustType,
-            types: &IntermediateTypes<'a>,
+            types: &IntermediateTypes<'_>,
             used_as_key: &mut BTreeSet<RustIdent>,
         ) {
             if let ConceptualRustType::Map(k, _v) = ty {
@@ -362,13 +364,12 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn is_referenced(&self, ident: &RustIdent) -> bool {
         let mut found = false;
-        self.visit_types(&mut |ty| match ty {
-            ConceptualRustType::Rust(id) => {
+        self.visit_types(&mut |ty| {
+            if let ConceptualRustType::Rust(id) = ty {
                 if id == ident {
                     found = true
                 }
             }
-            _ => (),
         });
         found
     }
@@ -387,7 +388,7 @@ impl<'a> IntermediateTypes<'a> {
     ) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
-            if let Some(group) = plain_group.as_ref().map(|g| g.clone()) {
+            if let Some(group) = plain_group.as_ref().cloned() {
                 // we are defined via .cddl and thus need to register a concrete
                 // representation of the plain group
                 if let Some(rust_struct) = self.rust_structs.get(ident) {
@@ -463,28 +464,28 @@ impl<'a> IntermediateTypes<'a> {
         if !self.type_aliases.is_empty() {
             println!("\n\nAliases:");
             for (alias_name, alias_type) in self.type_aliases.iter() {
-                println!("{:?} -> {:?}", alias_name, alias_type);
+                println!("{alias_name:?} -> {alias_type:?}");
             }
         }
 
         if !self.generic_defs.is_empty() {
             println!("\n\nGeneric Definitions:");
             for (ident, def) in self.generic_defs.iter() {
-                println!("{} -> {:?}", ident, def);
+                println!("{ident} -> {def:?}");
             }
         }
 
         if !self.generic_instances.is_empty() {
             println!("\n\nGeneric Instances:");
             for (ident, def) in self.generic_instances.iter() {
-                println!("{} -> {:?}", ident, def);
+                println!("{ident} -> {def:?}");
             }
         }
 
         if !self.rust_structs.is_empty() {
             println!("\n\nRustStructs:");
             for (ident, rust_struct) in self.rust_structs.iter() {
-                println!("{} -> {:?}\n", ident, rust_struct);
+                println!("{ident} -> {rust_struct:?}\n");
             }
         }
     }
@@ -541,11 +542,11 @@ impl FixedValue {
                 true => "True",
                 false => "False",
             }),
-            FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{}", i)),
-            FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
-            FixedValue::Float(f) => VariantIdent::new_custom(format!("F{}", f)),
+            FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{i}")),
+            FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{u}")),
+            FixedValue::Float(f) => VariantIdent::new_custom(format!("F{f}")),
             FixedValue::Text(s) => {
-                VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s)))
+                VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(s)))
             }
         }
     }
@@ -573,7 +574,7 @@ impl FixedValue {
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
             FixedValue::Float(f) => f.to_string(),
-            FixedValue::Text(s) => format!("\"{}\".to_owned()", s),
+            FixedValue::Text(s) => format!("\"{s}\".to_owned()"),
         }
     }
 
@@ -581,7 +582,7 @@ impl FixedValue {
     /// e.g. Text can be &str to avoid creating a String
     pub fn to_primitive_str_compare(&self) -> String {
         match self {
-            FixedValue::Text(s) => format!("\"{}\"", s),
+            FixedValue::Text(s) => format!("\"{s}\""),
             _ => self.to_primitive_str_assign(),
         }
     }
@@ -614,9 +615,8 @@ pub enum Primitive {
     Bytes,
 }
 
-// TODO: impl display or fmt or whatever rust uses
-impl Primitive {
-    pub fn to_string(&self) -> String {
+impl ToString for Primitive {
+    fn to_string(&self) -> String {
         String::from(match self {
             Primitive::Bool => "bool",
             Primitive::F32 => "f32",
@@ -634,7 +634,9 @@ impl Primitive {
             Primitive::Bytes => "Vec<u8>",
         })
     }
-
+}
+// TODO: impl display or fmt or whatever rust uses
+impl Primitive {
     pub fn to_variant(&self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
@@ -676,11 +678,7 @@ impl Primitive {
 }
 
 mod idents {
-    use crate::{
-        cli::CLI_ARGS,
-        rust_reserved::STD_TYPES,
-        utils::{is_identifier_in_our_prelude, is_identifier_reserved},
-    };
+    use crate::{rust_reserved::STD_TYPES, utils::is_identifier_reserved};
 
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
@@ -775,7 +773,7 @@ mod idents {
     impl std::fmt::Display for VariantIdent {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                VariantIdent::Custom(name) => write!(f, "{}", name),
+                VariantIdent::Custom(name) => write!(f, "{name}"),
                 VariantIdent::RustStruct(ident) => ident.fmt(f),
             }
         }
@@ -809,7 +807,7 @@ mod idents {
     impl std::fmt::Display for AliasIdent {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                AliasIdent::Reserved(name) => write!(f, "{}", name),
+                AliasIdent::Reserved(name) => write!(f, "{name}"),
                 AliasIdent::Rust(ident) => ident.fmt(f),
             }
         }
@@ -854,6 +852,7 @@ impl RustType {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_alias(mut self, alias_ident: AliasIdent) -> Self {
         self.conceptual_type =
             ConceptualRustType::Alias(alias_ident, Box::new(self.conceptual_type));
@@ -891,6 +890,7 @@ impl RustType {
         self
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_bytes(mut self) -> Self {
         self.encodings.push(CBOREncodingOperation::CBORBytes);
         self
@@ -1011,7 +1011,7 @@ impl ConceptualRustType {
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
             Self::Array(ty) => {
                 let inner = match &ty.conceptual_type {
-                    Self::Alias(_ident, ty) => &*ty,
+                    Self::Alias(_ident, ty) => ty,
                     Self::Optional(ty) => &ty.conceptual_type,
                     ty => ty,
                 };
@@ -1078,13 +1078,13 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("&{}", ident),
+            Self::Rust(ident) => format!("&{ident}"),
             Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(false)),
             Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read()),
             Self::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
-                Self::Rust(_) => format!("&{}", ident),
+                Self::Rust(_) => format!("&{ident}"),
                 _ => ident.to_string(),
             },
         }
@@ -1103,7 +1103,7 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("{}{}", opt_ref, ident),
+            Self::Rust(ident) => format!("{opt_ref}{ident}"),
             Self::Array(ty) => {
                 if self.directly_wasm_exposable() {
                     ty.conceptual_type.name_as_wasm_array()
@@ -1120,7 +1120,7 @@ impl ConceptualRustType {
             Self::Alias(ident, ty) => match &**ty {
                 Self::Rust(_) |
                 Self::Array(_) |
-                Self::Map(_, _) if !self.directly_wasm_exposable() => format!("{}{}", opt_ref, ident),
+                Self::Map(_, _) if !self.directly_wasm_exposable() => format!("{opt_ref}{ident}"),
                 Self::Optional(_) |
                 // no special handling if for some reason nested aliases, just strip all to avoid hassle
                 Self::Alias(_, _) => ty.for_wasm_param_impl(force_not_ref),
@@ -1182,7 +1182,7 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("{}{}", core, ident),
+            Self::Rust(ident) => format!("{core}{ident}"),
             Self::Array(ty) => ty.conceptual_type.name_as_rust_array(from_wasm),
             Self::Optional(ty) => {
                 format!("Option<{}>", ty.conceptual_type.for_rust_member(from_wasm))
@@ -1193,7 +1193,7 @@ impl ConceptualRustType {
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_rust_member(from_wasm),
                 // but other aliases are generated and should be used.
-                AliasIdent::Rust(_) => format!("{}{}", core, ident),
+                AliasIdent::Rust(_) => format!("{core}{ident}"),
             },
         }
     }
@@ -1222,6 +1222,7 @@ impl ConceptualRustType {
     /// for parameter TYPES from wasm that take ownership (via cloning here)
     /// can_fail is for cases where checks (e.g. range checks) are done if there
     /// is a type transformation (i.e. wrapper types) like text (wasm) -> #6.14(text) (rust)
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_clone(
         &self,
         expr: &str,
@@ -1230,7 +1231,7 @@ impl ConceptualRustType {
         let expr_cloned = if self.is_copy() {
             expr.to_owned()
         } else {
-            format!("{}.clone()", expr)
+            format!("{expr}.clone()")
         };
         let mut ops = match self {
             Self::Rust(_ident) => vec![
@@ -1263,6 +1264,7 @@ impl ConceptualRustType {
         ops
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_wasm_boundary_clone_optional(
         &self,
         expr: &str,
@@ -1288,6 +1290,7 @@ impl ConceptualRustType {
     }
 
     /// for non-owning parameter TYPES from wasm
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_ref(&self, expr: &str) -> String {
         match self {
             Self::Rust(_ident) => expr.to_owned(),
@@ -1301,7 +1304,7 @@ impl ConceptualRustType {
                 }
             }
             Self::Map(_k, _v) => expr.to_owned(),
-            _ => format!("&{}", expr),
+            _ => format!("&{expr}"),
         }
     }
 
@@ -1312,25 +1315,25 @@ impl ConceptualRustType {
             Self::Primitive(_p) => {
                 if self.is_copy() {
                     if is_ref {
-                        format!("*{}", expr)
+                        format!("*{expr}")
                     } else {
                         expr.to_owned()
                     }
                 } else {
-                    format!("{}.clone()", expr)
+                    format!("{expr}.clone()")
                 }
             }
-            Self::Rust(_ident) => format!("{}.clone().into()", expr),
+            Self::Rust(_ident) => format!("{expr}.clone().into()"),
             //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
             //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
             Self::Array(_ty) => {
                 if self.directly_wasm_exposable() {
-                    format!("{}.clone()", expr)
+                    format!("{expr}.clone()")
                 } else {
-                    format!("{}.clone().into()", expr)
+                    format!("{expr}.clone().into()")
                 }
             }
-            Self::Map(_k, _v) => format!("{}.clone().into()", expr),
+            Self::Map(_k, _v) => format!("{expr}.clone().into()"),
             Self::Optional(ty) => ty.conceptual_type.to_wasm_boundary_optional(expr, is_ref),
             Self::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
         }
@@ -1342,7 +1345,7 @@ impl ConceptualRustType {
         if self.directly_wasm_exposable() {
             self.to_wasm_boundary(expr, is_ref)
         } else {
-            format!("{}.clone().map(std::convert::Into::into)", expr)
+            format!("{expr}.clone().map(std::convert::Into::into)")
         }
     }
 
@@ -1377,7 +1380,7 @@ impl ConceptualRustType {
         if self.is_copy() {
             expr.to_owned()
         } else {
-            format!("{}.clone()", expr)
+            format!("{expr}.clone()")
         }
     }
 
@@ -1395,7 +1398,7 @@ impl ConceptualRustType {
             // but on the final pass (the one we export) this should't be an issue
             Self::Rust(ident) => {
                 if types.is_plain_group(ident) {
-                    types.rust_structs.get(&ident)?.fixed_field_count(types)
+                    types.rust_structs.get(ident)?.fixed_field_count(types)
                 } else {
                     Some(1)
                 }
@@ -1420,7 +1423,7 @@ impl ConceptualRustType {
                 ),
                 Self::Rust(ident) => {
                     if types.is_plain_group(ident) {
-                        match types.rust_structs.get(&ident) {
+                        match types.rust_structs.get(ident) {
                             Some(rs) => rs.definite_info(types),
                             None => panic!(
                                 "rust struct {} not found but referenced by {:?}",
@@ -1448,8 +1451,8 @@ impl ConceptualRustType {
             },
             Self::Rust(ident) => {
                 if types.is_plain_group(ident) {
-                    println!("ident: {}", ident);
-                    match types.rust_structs.get(&ident) {
+                    println!("ident: {ident}");
+                    match types.rust_structs.get(ident) {
                         Some(x) => x.expanded_mandatory_field_count(types),
                         None => panic!("could not find ident: {}", ident),
                     }
@@ -1502,9 +1505,9 @@ impl ConceptualRustType {
             Self::Primitive(_) => (),
             Self::Rust(ident) => {
                 if already_visited.insert(ident.clone()) {
-                    types
-                        .rust_struct(ident)
-                        .map(|t| t.visit_types_excluding(types, f, already_visited));
+                    if let Some(t) = types.rust_struct(ident) {
+                        t.visit_types_excluding(types, f, already_visited)
+                    }
                 }
             }
         }
@@ -1546,18 +1549,18 @@ impl ToWasmBoundaryOperations {
         }
     }
 
-    pub fn format(mut operations: impl Iterator<Item = Self>) -> String {
+    pub fn format(operations: impl Iterator<Item = Self>) -> String {
         use std::fmt::Write;
         let mut buf = String::new();
         let mut current: Option<Self> = None;
-        while let Some(to_apply) = operations.next() {
+        for to_apply in operations {
             match current {
                 Some(c) => match c.merge(&to_apply) {
                     Some(merged) => {
                         current = Some(merged);
                     }
                     None => {
-                        write!(buf, "{}", c).unwrap();
+                        write!(buf, "{c}").unwrap();
                         current = Some(to_apply);
                     }
                 },
@@ -1567,7 +1570,7 @@ impl ToWasmBoundaryOperations {
             }
         }
         if let Some(c) = current {
-            write!(buf, "{}", c).unwrap();
+            write!(buf, "{c}").unwrap();
         }
         buf
     }
@@ -1576,7 +1579,7 @@ impl ToWasmBoundaryOperations {
 impl std::fmt::Display for ToWasmBoundaryOperations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Code(code) => write!(f, "{}", code),
+            Self::Code(code) => write!(f, "{code}"),
             Self::Into => write!(f, ".into()"),
             Self::TryInto => write!(f, ".try_into()"),
             Self::MapInto => write!(f, ".map(Into::into)"),
@@ -1997,11 +2000,7 @@ impl RustRecord {
                     }
                 }
                 if conditional_field_expr.is_empty() || fixed_field_count != 0 {
-                    format!(
-                        "{} + {}",
-                        fixed_field_count.to_string(),
-                        conditional_field_expr
-                    )
+                    format!("{fixed_field_count} + {conditional_field_expr}")
                 } else {
                     conditional_field_expr
                 }
@@ -2145,12 +2144,13 @@ impl GenericInstance {
     }
 }
 
+#[allow(unused)]
 fn try_ident_with_id(
     intermediate_types: &IntermediateTypes,
     name: &CDDLIdent,
     value: u32,
 ) -> CDDLIdent {
-    let new_ident = CDDLIdent::new(format!("{}{}", name, value));
+    let new_ident = CDDLIdent::new(format!("{name}{value}"));
     let rust_ident = RustIdent::new(new_ident.clone());
     match intermediate_types.has_ident(&rust_ident) {
         false => new_ident,

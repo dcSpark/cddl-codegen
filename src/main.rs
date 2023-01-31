@@ -85,8 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .filter(|cddl_rule| {
             // We inserted string constants with specific prefixes earlier to mark scope
-            if let Some(new_scope) = rule_is_scope_marker(*cddl_rule) {
-                println!("Switching from scope '{}' to '{}'", scope, new_scope);
+            if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
+                println!("Switching from scope '{scope}' to '{new_scope}'");
                 scope = new_scope;
                 false
             } else {
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        println!("\n\n------------------------------------------\n- Handling rule: {}\n------------------------------------", scope);
+        println!("\n\n------------------------------------------\n- Handling rule: {scope}\n------------------------------------");
         parse_rule(&mut types, &pv, cddl_rule);
     }
     types.finalize(&pv);

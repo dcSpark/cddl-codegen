@@ -1,8 +1,6 @@
 use cbor_event::Type as CBORType;
 use std::collections::BTreeMap;
 
-use crate::cli::CLI_ARGS;
-
 pub fn _cbor_type_code_str(cbor_type: CBORType) -> &'static str {
     match cbor_type {
         CBORType::UnsignedInteger => "CBORType::UnsignedInteger",
@@ -150,8 +148,9 @@ pub fn is_identifier_reserved(name: &str) -> bool {
 
 // as we also support our own identifiers for selecting integer precision, we need this too
 #[rustfmt::skip]
+#[allow(unused)]
 pub fn is_identifier_in_our_prelude(name: &str) -> bool {
-    match name {
+    matches!(name,
         "u8" |
         "i8" |
         "u16" |
@@ -161,9 +160,8 @@ pub fn is_identifier_in_our_prelude(name: &str) -> bool {
         "f32" |
         "u64" |
         "i64" |
-        "f64" => true,
-        _ => false,
-    }
+        "f64"
+    )
 }
 
 pub fn is_identifier_user_defined(name: &str) -> bool {

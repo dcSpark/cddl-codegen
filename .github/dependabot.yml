@@ -3,11 +3,6 @@ updates:
 - package-ecosystem: cargo
   directory: "/"
   schedule:
-    interval: monthly
-    timezone: PST8PDT
+    interval: weekly
   open-pull-requests-limit: 99
-  ignore:
-  - dependency-name: cddl
-    versions:
-    - 0.8.5
   rebase-strategy: disabled

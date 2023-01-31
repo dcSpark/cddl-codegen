@@ -2,19 +2,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cddl::ast::*;
 
-pub fn topological_rule_order<'a>(rules: &'a Vec<&'a Rule<'a>>) -> Vec<&'a Rule<'a>> {
+pub fn topological_rule_order<'a>(rules: &'a [&'a Rule<'a>]) -> Vec<&'a Rule<'a>> {
     let mut adj_list = BTreeMap::new();
     for cddl_rule in rules.iter() {
         let (ident, refs) = find_references(cddl_rule);
         adj_list.insert(ident.ident, (*cddl_rule, refs));
     }
-    let mut unvisited = adj_list
-        .iter()
-        .map(|(k, _v)| *k)
-        .collect::<BTreeSet<&str>>();
+    let mut unvisited = adj_list.keys().copied().collect::<BTreeSet<&str>>();
     let mut topo_order = Vec::new();
     let mut processing: BTreeSet<&'a str> = BTreeSet::new();
-    while let Some(u) = unvisited.iter().next().map(|u| *u) {
+    while let Some(u) = unvisited.iter().next().copied() {
         dfs_visit(
             &mut topo_order,
             &mut unvisited,
@@ -37,7 +34,7 @@ fn dfs_visit<'a>(
     let (rule, neighbors) = adj_list.get(u).unwrap();
     for v in neighbors.iter() {
         if processing.contains(v.ident) {
-            eprintln!("Recursive type: '{}' / '{}' - code will possibly need to be edited by hand to use Box/etc", u, v);
+            eprintln!("Recursive type: '{u}' / '{v}' - code will possibly need to be edited by hand to use Box/etc");
             continue;
         }
         if unvisited.contains(v.ident) {
