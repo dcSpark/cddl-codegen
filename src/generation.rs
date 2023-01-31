@@ -3517,12 +3517,12 @@ fn encoding_var_names_str(field_name: &str, rust_type: &RustType) -> String {
     for enc in encoding_fields(field_name, &resolved_rust_type, false).into_iter() {
         var_names.push(enc.field_name);
     }
-    let var_names_str = if var_names.len() > 1 {
+
+    if var_names.len() > 1 {
         format!("({})", var_names.join(", "))
     } else {
         var_names.join(", ")
-    };
-    var_names_str
+    }
 }
 
 fn tuple_str(strs: Vec<String>) -> String {

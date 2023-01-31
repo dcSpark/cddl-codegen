@@ -1283,7 +1283,8 @@ fn group_entry_to_type(
     parent_visitor: &ParentVisitor,
     entry: &GroupEntry,
 ) -> RustType {
-    let ret = match entry {
+    //println!("group_entry_to_typename({:?}) = {:?}\n", entry, ret);
+    match entry {
         GroupEntry::ValueMemberKey { ge, .. } => rust_type(types, parent_visitor, &ge.entry_type),
         GroupEntry::TypeGroupname { ge, .. } => {
             if ge.generic_args.is_some() {
@@ -1297,9 +1298,7 @@ fn group_entry_to_type(
             types.new_type(&cddl_ident)
         }
         GroupEntry::InlineGroup { .. } => panic!("inline group entries are not implemented"),
-    };
-    //println!("group_entry_to_typename({:?}) = {:?}\n", entry, ret);
-    ret
+    }
 }
 
 fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
