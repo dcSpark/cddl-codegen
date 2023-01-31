@@ -252,6 +252,7 @@ impl EncodingVarIsCopy for FixedValue {
             Self::Bool(_) |
             Self::Nint(_) |
             Self::Null |
+            Self::Float(_) |
             Self::Uint(_) => true,
             Self::Text(_) => false,
         }
@@ -269,6 +270,8 @@ impl EncodingVarIsCopy for ConceptualRustType {
             Self::Primitive(p) => match p {
                 // bool has no encoding var
                 Primitive::Bool |
+                Primitive::F64 |
+                Primitive::F32 |
                 Primitive::I8 |
                 Primitive::I16 |
                 Primitive::I32 |
@@ -526,6 +529,7 @@ impl GenerationScope {
                             FixedValue::Bool(b) => ("bool", b.to_string()),
                             FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
+                            FixedValue::Float(f) => ("f64", f.to_string()),
                             FixedValue::Text(s) => ("String", format!("\"{}\".to_owned()", s)),
                         };
                         self
@@ -928,6 +932,9 @@ impl GenerationScope {
                         write_using_sz(body, "write_negative_integer", serializer_use, &i.to_string(), &format!("({}i128 + 1).abs() as u64", i), line_ender, &encoding_var_deref);
                     }
                 },
+                FixedValue::Float(f) => {
+                    body.line(&format!("{}.write_special(CBORSpecial::Float({})){}", serializer_use, f, line_ender));
+                }
                 FixedValue::Text(s) => {
                     write_string_sz(body, "write_text", serializer_use, &format!("\"{}\"", s), line_ender, &encoding_var);
                 },
@@ -935,6 +942,12 @@ impl GenerationScope {
             SerializingRustType::Root(ConceptualRustType::Primitive(primitive)) => match primitive {
                 Primitive::Bool => {
                     body.line(&format!("{}.write_special(cbor_event::Special::Bool({})){}", serializer_use, expr_deref, line_ender));
+                },
+                Primitive::F32 => {
+                    body.line(&format!("{}.write_special(cbor_event::Special::Float({} as f64)){}", serializer_use, expr_deref, line_ender));
+                },
+                Primitive::F64 => {
+                    body.line(&format!("{}.write_special(cbor_event::Special::Float({})){}", serializer_use, expr_deref, line_ender));
                 },
                 Primitive::Bytes => {
                     write_string_sz(body, "write_bytes", serializer_use, &config.expr, line_ender, &encoding_var);
@@ -1273,6 +1286,15 @@ impl GenerationScope {
                             deser_code.content.line(&format!("{}{}{}", before_after.before_str(false), final_expr(config.final_exprs, None), before_after.after_str(false)));
                         }
                     },
+                    FixedValue::Float(x) => {
+                        deser_code.content.line(&format!("let {}_value = {}.float()?;", config.var_name, deserializer_name));
+                        let mut compare_block = Block::new(&format!("if {}_value != {}", config.var_name, x));
+                        compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, x));
+                        deser_code.content.push_block(compare_block);
+                        if CLI_ARGS.preserve_encodings {
+                            unimplemented!("preserve_encodings is not implemented for float")
+                        }
+                    },
                     _ => unimplemented!(),
                 };
                 deser_code.throws = true;
@@ -1363,6 +1385,18 @@ impl GenerationScope {
                     Primitive::Bool => {
                         // no encoding differences for bool
                         deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "raw.bool()"));
+                    },
+                    Primitive::F32 => {
+                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f32::deserialize(raw)"));
+                        if CLI_ARGS.preserve_encodings {
+                            unimplemented!("preserve_encodings is not implemented for float")
+                        }
+                    },
+                    Primitive::F64 => {
+                        deser_code.content.line(&final_result_expr_complete(&mut deser_code.throws, config.final_exprs, "f64::deserialize(raw)"));
+                        if CLI_ARGS.preserve_encodings {
+                            unimplemented!("preserve_encodings is not implemented for float")
+                        }
                     },
                 };
             },
@@ -2699,7 +2733,9 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             Primitive::U8 |
             Primitive::U16 |
             Primitive::U32 |
-            Primitive::U64 => vec![
+            Primitive::U64 |
+            Primitive::F32 |
+            Primitive::F64 => vec![
                 EncodingField {
                     field_name: format!("{}_encoding", name),
                     type_name: "Option<cbor_event::Sz>".to_owned(),
@@ -2714,6 +2750,7 @@ fn encoding_fields_impl(name: &str, ty: SerializingRustType) -> Vec<EncodingFiel
             FixedValue::Null => vec![],
             FixedValue::Nint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::I64)).into()),
             FixedValue::Uint(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::U64)).into()),
+            FixedValue::Float(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::F64)).into()),
             FixedValue::Text(_) => encoding_fields_impl(name, (&ConceptualRustType::Primitive(Primitive::Str)).into()),
         },
         SerializingRustType::Root(ConceptualRustType::Alias(_, _)) => panic!("resolve types before calling this"),
@@ -3404,6 +3441,7 @@ fn codegen_struct(gen_scope: &mut GenerationScope, types: &IntermediateTypes, na
                         FixedValue::Bool(_) |
                         FixedValue::Nint(_) |
                         FixedValue::Null |
+                        FixedValue::Float(_) |
                         FixedValue::Uint(_) => {
                             deser_code.content.line(&format!(
                                 "let {} = {}.unwrap_or({});",
@@ -4247,6 +4285,8 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                     Primitive::Bytes |
                     Primitive::Str => "inner.len()",
                     Primitive::Bool |
+                    Primitive::F32 |
+                    Primitive::F64 |
                     Primitive::U8 |
                     Primitive::U16 |
                     Primitive::U32 |
@@ -4277,7 +4317,9 @@ fn generate_wrapper_struct(gen_scope: &mut GenerationScope, types: &Intermediate
                         Primitive::I16 |
                         Primitive::I32 |
                         Primitive::I64 |
-                        Primitive::N64 => false,
+                        Primitive::N64 |
+                        Primitive::F32 |
+                        Primitive::F64 => false,
                     },
                     _ => unimplemented!(),
                 };
