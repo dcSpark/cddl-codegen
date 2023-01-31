@@ -144,6 +144,7 @@ fn type2_to_number_literal(type2: &Type2) -> isize {
     match type2 {
         Type2::UintValue{ value, .. } => *value as isize,
         Type2::IntValue{ value, .. } => *value,
+        Type2::FloatValue{ value, .. } => *value as isize,
         _ => panic!("Value specified: {:?} must be a number literal to be used here", type2),
     }
 }
@@ -152,6 +153,7 @@ fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
     match type2 {
         Type2::UintValue{ value, .. } => FixedValue::Uint(*value),
         Type2::IntValue{ value, .. } => FixedValue::Nint(*value),
+        Type2::FloatValue{ value, .. } => FixedValue::Float(*value),
         Type2::TextValue{ value, .. } => FixedValue::Text(value.to_string()),
         _ => panic!("Type2: {:?} does not correspond to a supported FixedValue", type2),
     }
@@ -169,11 +171,13 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
             let range_start = match type2 {
                 Type2::UintValue{ value, .. } => *value as isize,
                 Type2::IntValue{ value, .. } => *value,
+                Type2::FloatValue{ value, .. } => *value as isize,
                 _ => panic!("Number expected as range start. Found {:?}", type2)
             };
             let range_end = match operator.type2 {
                 Type2::UintValue{ value, .. } => value as isize,
                 Type2::IntValue{ value, ..} => value,
+                Type2::FloatValue{ value, .. } => value as isize,
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
             ControlOperator::Range((Some(range_start as i128), Some(if is_inclusive { range_end  as i128 } else { (range_end + 1)  as i128 })))
@@ -196,12 +200,14 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                 let base_range = match &operator.type2 {
                     Type2::UintValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::IntValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
+                    Type2::FloatValue{ value, .. } => ControlOperator::Range((None, Some(*value as i128))),
                     Type2::ParenthesizedType{ pt, .. } => {
                         assert_eq!(pt.type_choices.len(), 1);
                         let inner_type = &pt.type_choices.first().unwrap().type1;
                         let min = match inner_type.type2 {
                             Type2::UintValue{ value, .. } => Some(value as i128),
                             Type2::IntValue{ value, .. } => Some(value as i128),
+                            Type2::FloatValue{ value, .. } => Some(value as i128),
                             _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                         };
                         match &inner_type.operator {
@@ -213,6 +219,7 @@ fn parse_control_operator(types: &mut IntermediateTypes, parent_visitor: &Parent
                                     let value = match op.type2 {
                                         Type2::UintValue{ value, .. } => value as i128,
                                         Type2::IntValue{ value, ..} => value as i128,
+                                        Type2::FloatValue{ value, .. } => value as i128,
                                         _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
                                     };
                                     let max = Some(if is_inclusive { value } else { value + 1 });
@@ -265,6 +272,8 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>) -> Option<Conceptua
         (Some(l), Some(h)) if l == i32::MIN as i128 && h == i32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I32)),
         (Some(l), Some(h)) if l == u64::MIN as i128 && h == u64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::U64)),
         (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::I64)),
+        (Some(l), Some(h)) if l == f32::MIN as i128 && h == f32::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::F32)),
+        (Some(l), Some(h)) if l == f64::MIN as i128 && h == f64::MAX as i128 => Some(ConceptualRustType::Primitive(Primitive::F64)),
         _ => None
     }
 }
@@ -296,7 +305,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                         match control {
                             ControlOperator::Range(min_max) => {
                                 match cddl_ident.to_string().as_str() {
-                                    "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                    "int" | "uint" | "float" | "float64" | "float32" | "float16"  => match range_to_primitive(min_max.0, min_max.1) {
                                         Some(t) => types.register_type_alias(type_name.clone(), t.into(), !rule_metadata.no_alias, !rule_metadata.no_alias),
                                         None => panic!("unsupported range for {:?}: {:?}", cddl_ident.to_string().as_str(), control)
                                     },
@@ -337,7 +346,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                     },
                                     None => {
                                         if rule_metadata.is_newtype {
-                                            types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None)); 
+                                            types.register_rust_struct(parent_visitor, RustStruct::new_wrapper(type_name.clone(), None, concrete_type, None));
                                         } else {
                                             types.register_type_alias(type_name.clone(), concrete_type, !rule_metadata.no_alias, !rule_metadata.no_alias);
                                         }
@@ -388,7 +397,7 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
                                 },
                                 Some(ControlOperator::Range(min_max)) => {
                                     match ident.to_string().as_str() {
-                                        "int" | "uint" => match range_to_primitive(min_max.0, min_max.1) {
+                                        "int" | "uint" | "float" | "float64" | "float32" | "float16" => match range_to_primitive(min_max.0, min_max.1) {
                                             Some(t) => types.register_type_alias(type_name.clone(), t.into(), !rule_metadata.no_alias, !rule_metadata.no_alias),
                                             None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                                         },
@@ -450,6 +459,21 @@ fn parse_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, typ
         },
         Type2::TextValue{ value, .. } => {
             types.register_type_alias(type_name.clone(), ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(), !rule_metadata.no_alias, !rule_metadata.no_alias);
+        },
+        Type2::FloatValue { value, .. } => {
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Float(*value));
+
+            let control = type1.operator.as_ref().map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+            let base_type = match control {
+                Some(ControlOperator::Range(min_max)) => {
+                    match range_to_primitive(min_max.0, min_max.1) {
+                        Some(t) => t,
+                        _ => fallback_type
+                    }
+                },
+                _ => fallback_type
+            };
+            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
         },
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
@@ -647,7 +671,7 @@ fn rust_type_from_type1(types: &mut IntermediateTypes, parent_visitor: &ParentVi
         },
         Some(ControlOperator::Range(min_max)) => {
             match &type1.type2 {
-                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" => match range_to_primitive(min_max.0, min_max.1) {
+                Type2::Typename{ ident, .. } if ident.to_string() == "uint" || ident.to_string() == "int" || ident.to_string() == "float" || ident.to_string() == "float16" || ident.to_string() == "float32" || ident.to_string() == "float64" => match range_to_primitive(min_max.0, min_max.1) {
                     Some(t) => t.into(),
                     None => panic!("unsupported range for {:?}: {:?}", ident.to_string().as_str(), control)
                 },
@@ -664,7 +688,7 @@ fn rust_type_from_type2(types: &mut IntermediateTypes, parent_visitor: &ParentVi
     match &type2 {
         Type2::UintValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Uint(*value)).into(),
         Type2::IntValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Nint(*value)).into(),
-        //Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)),
+        Type2::FloatValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Float(*value)).into(),
         Type2::TextValue{ value, .. } => ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
         Type2::Typename{ ident, generic_args, .. } => {
             let cddl_ident = CDDLIdent::new(ident.ident);
@@ -835,6 +859,7 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
                     cddl::token::Value::UINT(x) => Some(FixedValue::Uint(*x)),
                     cddl::token::Value::INT(x) => Some(FixedValue::Nint(*x)),
                     cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.to_string())),
+                    cddl::token::Value::FLOAT(x) => Some(FixedValue::Float(*x)),
                     _ => panic!("unsupported map identifier(1): {:?}", value),
                 },
                 MemberKey::Bareword{ ident, .. } => Some(FixedValue::Text(ident.to_string())),
@@ -842,6 +867,7 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
                     Type2::UintValue{ value, .. } => Some(FixedValue::Uint(*value)),
                     Type2::IntValue{ value, .. } => Some(FixedValue::Nint(*value)),
                     Type2::TextValue{ value, .. } => Some(FixedValue::Text(value.to_string())),
+                    Type2::FloatValue { value, .. } => Some(FixedValue::Float(*value)),
                     _ => panic!("unsupported map identifier(2): {:?}", entry),
                 },
                 MemberKey::NonMemberKey{ .. } => panic!("Please open a github issue with repro steps"),

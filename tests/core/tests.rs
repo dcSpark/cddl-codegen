@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(&Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None));
+        deser_test(&Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None, 3.3));
     }
 
     #[test]

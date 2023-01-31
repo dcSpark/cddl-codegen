@@ -19,6 +19,7 @@ bar = {
 	1 : uint / null,
 	? 5: text,
 	five: 5,
+	pi: 3.14159,
 }
 
 plain = (d: #6.23(uint), e: tagged_text)

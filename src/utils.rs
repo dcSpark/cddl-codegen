@@ -66,8 +66,13 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         // custom implemented types like uint, bool, etc
         // are handled in the alias system and shouldn't reach here
         "uint" | "nint" | "int" | "bool" | "tstr" | "text" |
-        "bstr" | "bytes" | "null" | "nil" | "true"  | "false"
-        => unreachable!("{} should be handled by the alias system instead", name),
+        "bstr" | "bytes" | "null" | "nil" | "true"  | "false" |
+        "float16" | // #7.25
+        "float32" | // #7.26
+        "float64" | // #7.27
+        "float16-32" | // float16 / float32
+        "float32-64" | // float32 / float64
+        "float" => unreachable!("{} should be handled by the alias system instead", name),
         "tdate" => Some("#6.0(tstr)"),
         "time" => Some("#6.1(number)"),
         "number" => Some("int / float"),
@@ -91,14 +96,7 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         "eb64legacy" | // #6.22(any)
         "eb16" | // #6.23(any)"),
         // TODO: nor undefined (yet)
-        "undefined" | // #7.23
-        // nor floats (cbor_event restriction)
-        "float16" | // #7.25
-        "float32" | // #7.26
-        "float64" | // #7.27
-        "float16-32" | // float16 / float32
-        "float32-64" | // float32 / float64
-        "float" => panic!("unsupported cddl prelude type: {}", name), // float16-32 / float64
+        "undefined" => panic!("unsupported cddl prelude type: {}", name), // #7.23
         _ => None,
     }
 }
@@ -158,8 +156,10 @@ pub fn is_identifier_in_our_prelude(name: &str) -> bool {
         "i16" |
         "u32" |
         "i32" |
+        "f32" |
         "u64" |
-        "i64" => true,
+        "i64" |
+        "f64" => true,
         _ => false,
     }
 }

@@ -5,6 +5,7 @@ use std::io::{BufRead, Seek};
 pub enum Key {
     Str(String),
     Uint(u64),
+    Float(f64),
 }
 
 impl std::fmt::Display for Key {
@@ -12,6 +13,7 @@ impl std::fmt::Display for Key {
         match self {
             Key::Str(x) => write!(f, "\"{}\"", x),
             Key::Uint(x) => write!(f, "{}", x),
+            Key::Float(x) => write!(f, "{}", x),
         }
     }
 }

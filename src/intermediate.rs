@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use cbor_event::Type as CBORType;
+use cbor_event::{Special, Type as CBORType};
 use cbor_event::Special as CBORSpecial;
 use cddl::ast::parent::ParentVisitor;
 
@@ -100,6 +100,10 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias("nil", null_type);
         insert_alias("true", ConceptualRustType::Fixed(FixedValue::Bool(true)).into());
         insert_alias("false", ConceptualRustType::Fixed(FixedValue::Bool(false)).into());
+        // Note: defaulting to float64 for "float" (so without precision).
+        insert_alias("float", ConceptualRustType::Primitive(Primitive::F64).into());
+        insert_alias("float64", ConceptualRustType::Primitive(Primitive::F64).into());
+        insert_alias("float32", ConceptualRustType::Primitive(Primitive::F32).into());
         // What about bingint/other stuff in the standard prelude?
         aliases
     }
@@ -412,14 +416,13 @@ pub enum Representation {
     Map,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FixedValue {
     Null,
     Bool(bool),
     Nint(isize),
     Uint(usize),
-    // float not supported right now - doesn't appear to be in cbor_event
-    //Float(f64),
+    Float(f64),
     Text(String),
     // UTF byte types not supported
 }
@@ -438,7 +441,7 @@ impl FixedValue {
             }),
             FixedValue::Nint(i) => VariantIdent::new_custom(format!("U{}", i)),
             FixedValue::Uint(u) => VariantIdent::new_custom(format!("I{}", u)),
-            //FixedValue::Float(f) => format!("F{}", f),
+            FixedValue::Float(f) => VariantIdent::new_custom(format!("F{}", f)),
             FixedValue::Text(s) => VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(&s))),
         }
     }
@@ -450,6 +453,7 @@ impl FixedValue {
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
             FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
+            FixedValue::Float(f) => buf.write_special(Special::Float(*f)),
             FixedValue::Text(s) => buf.write_text(s),
         }.expect("Unable to serialize key for canonical ordering");
         buf.finalize()
@@ -463,6 +467,7 @@ impl FixedValue {
             FixedValue::Bool(b) => b.to_string(),
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
+            FixedValue::Float(f) => f.to_string(),
             FixedValue::Text(s) => format!("\"{}\".to_owned()", s),
         }
     }
@@ -480,6 +485,8 @@ impl FixedValue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
+    F64,
+    F32,
     // u8 in our cddl
     U8,
     // i8 in our cddl
@@ -507,6 +514,8 @@ impl Primitive {
     pub fn to_string(&self) -> String {
         String::from(match self {
             Primitive::Bool => "bool",
+            Primitive::F32 => "f32",
+            Primitive::F64 => "f64",
             Primitive::U8 => "u8",
             Primitive::I8 => "i8",
             Primitive::U16 => "u16",
@@ -524,6 +533,8 @@ impl Primitive {
     pub fn to_variant(&self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
+            Primitive::F32 => "F32",
+            Primitive::F64 => "F64",
             Primitive::U8 => "U8",
             Primitive::I8 => "I8",
             Primitive::U16 => "U16",
@@ -542,6 +553,8 @@ impl Primitive {
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
+            Primitive::F32 => vec![CBORType::Special],
+            Primitive::F64 => vec![CBORType::Special],
             Primitive::U8 => vec![CBORType::UnsignedInteger],
             Primitive::I8 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
             Primitive::U16 => vec![CBORType::UnsignedInteger],
@@ -697,7 +710,7 @@ pub enum CBOREncodingOperation {
 }
 
 /// A complete rust type, including serialization options that don't impact other areas
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RustType {
     /// Conceptual type i.e. how it's used in non-serialization contexts
     pub conceptual_type: ConceptualRustType,
@@ -741,6 +754,7 @@ impl RustType {
                 FixedValue::Bool(_) => p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
+                FixedValue::Float(_) => p == Primitive::F64 || p == Primitive::F32,
                 FixedValue::Null => false,
                 FixedValue::Text(_) => p == Primitive::Str,
             }
@@ -776,6 +790,7 @@ impl RustType {
                 ConceptualRustType::Fixed(f) => vec![match f {
                     FixedValue::Uint(_) => CBORType::UnsignedInteger,
                     FixedValue::Nint(_) => CBORType::NegativeInteger,
+                    FixedValue::Float(_) => CBORType::Special,
                     FixedValue::Text(_) => CBORType::Text,
                     FixedValue::Null => CBORType::Special,
                     FixedValue::Bool(_) => CBORType::Special,
@@ -827,7 +842,7 @@ impl std::convert::From<ConceptualRustType> for RustType {
 }
 
 /// How a type will be represented in rust outside of a serialization context
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ConceptualRustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm
@@ -877,6 +892,8 @@ impl ConceptualRustType {
                     Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
                         Primitive::Bool |
+                        Primitive::F32 |
+                        Primitive::F64 |
                         Primitive::I8 |
                         Primitive::U8 |
                         Primitive::I16 |
@@ -1169,6 +1186,8 @@ impl ConceptualRustType {
             Self::Fixed(_f) => unreachable!(),
             Self::Primitive(p) => match p {
                 Primitive::Bool |
+                Primitive::F32 |
+                Primitive::F64 |
                 Primitive::I8 |
                 Primitive::I16 |
                 Primitive::I32 |
@@ -1404,6 +1423,8 @@ impl EnumVariant {
         String::from(match snake.as_str() {
             "u8" | "u16" | "u32" | "u64" => "uint",
             "i8" | "i16" | "i32" | "i64" => "int",
+            "f32" => "float32",
+            "f64" => "float64",
             x => x,
         })
     }
