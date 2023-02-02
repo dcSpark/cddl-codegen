@@ -14,6 +14,17 @@ pub struct Cli {
     #[clap(short, long, value_parser, value_name = "OUTPUT_DIR")]
     pub output: std::path::PathBuf,
 
+    /// Name to use for exported library.
+    /// Will be used directly for rust lib and will have -wasm appended for the wasm bindings.
+    /// This will appear EXACTLY as-is in the Cargo.toml's. use Cli::lib_name_code() for use in rust code
+    #[clap(
+        long,
+        value_parser,
+        value_name = "EXPORT_LIB_NAME",
+        default_value = "cddl-lib"
+    )]
+    pub lib_name: String,
+
     /// Include additional information about where deserialization errors are encountered. This will slightly increase code size.
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = true)]
     pub annotate_fields: bool,
@@ -49,6 +60,13 @@ pub struct Cli {
     /// Generates a npm package.json along with build scripts
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub package_json: bool,
+}
+
+impl Cli {
+    /// lib name from code i.e. with underscores
+    pub fn lib_name_code(&self) -> String {
+        self.lib_name.replace('-', "_")
+    }
 }
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
