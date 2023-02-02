@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 
 use crate::cli::CLI_ARGS;
 
@@ -496,8 +497,11 @@ impl GenerationScope {
                 .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
                 .push_import("wasm_bindgen::prelude", "JsValue", None);
             if CLI_ARGS.preserve_encodings {
-                self.wasm_lib()
-                    .push_import("core::ordered_hash_map", "OrderedHashMap", None);
+                self.wasm_lib().push_import(
+                    format!("{}::ordered_hash_map", CLI_ARGS.lib_name_code()),
+                    "OrderedHashMap",
+                    None,
+                );
             } else {
                 self.wasm_lib()
                     .push_import("std::collections", "BTreeMap", None);
@@ -691,7 +695,8 @@ impl GenerationScope {
 
         // JSON export
         if CLI_ARGS.json_schema_export {
-            self.json_scope.push_import("cddl_lib_core", "*", None);
+            self.json_scope
+                .push_import(CLI_ARGS.lib_name_code(), "*", None);
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
             let mut macro_match = Block::new("($name:ident) => ");
             macro_match
@@ -745,7 +750,7 @@ impl GenerationScope {
         };
 
         // lib.rs / other files (if input is a directory)
-        std::fs::create_dir_all(rust_dir.join("core/src"))?;
+        std::fs::create_dir_all(rust_dir.join("rust/src"))?;
         let scope_names = self
             .rust_scopes
             .keys()
@@ -765,13 +770,13 @@ impl GenerationScope {
             } else {
                 content.push_import("super", "*", None);
                 std::fs::write(
-                    rust_dir.join(format!("core/src/{scope}.rs")),
+                    rust_dir.join(format!("rust/src/{scope}.rs")),
                     rustfmt_generated_string(&content.to_string())?.as_ref(),
                 )?;
             }
         }
         std::fs::write(
-            rust_dir.join("core/src/lib.rs"),
+            rust_dir.join("rust/src/lib.rs"),
             rustfmt_generated_string(&merged_rust_scope.to_string())?.as_ref(),
         )?;
 
@@ -792,7 +797,7 @@ impl GenerationScope {
         let mut serialize_contents = concat_files(serialize_paths)?;
         serialize_contents.push_str(&self.rust_serialize().to_string());
         std::fs::write(
-            rust_dir.join("core/src/serialization.rs"),
+            rust_dir.join("rust/src/serialization.rs"),
             rustfmt_generated_string(&serialize_contents)?.as_ref(),
         )?;
 
@@ -809,15 +814,18 @@ impl GenerationScope {
         if CLI_ARGS.json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
         }
-        std::fs::write(rust_dir.join("core/Cargo.toml"), rust_cargo_toml)?;
+        std::fs::write(
+            rust_dir.join("rust/Cargo.toml"),
+            rust_cargo_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
+        )?;
 
         // prelude.rs
-        std::fs::copy("static/prelude.rs", rust_dir.join("core/src/prelude.rs"))?;
+        std::fs::copy("static/prelude.rs", rust_dir.join("rust/src/prelude.rs"))?;
 
         // cbor_encodings.rs + ordered_hash_map.rs
         if CLI_ARGS.preserve_encodings {
             std::fs::write(
-                rust_dir.join("core/src/cbor_encodings.rs"),
+                rust_dir.join("rust/src/cbor_encodings.rs"),
                 rustfmt_generated_string(&self.cbor_encodings().to_string())?.as_ref(),
             )?;
             let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
@@ -831,7 +839,7 @@ impl GenerationScope {
                 )?);
             }
             std::fs::write(
-                rust_dir.join("core/src/ordered_hash_map.rs"),
+                rust_dir.join("rust/src/ordered_hash_map.rs"),
                 rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
             )?;
         }
@@ -872,18 +880,25 @@ impl GenerationScope {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
                 wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
             }
-            std::fs::write(rust_dir.join("wasm/Cargo.toml"), wasm_toml)?;
+            std::fs::write(
+                rust_dir.join("wasm/Cargo.toml"),
+                wasm_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
+            )?;
         }
 
         // json-gen crate for exporting JSON schemas
         if CLI_ARGS.json_schema_export {
-            std::fs::create_dir_all(rust_dir.join("json-gen/src"))?;
-            std::fs::copy(
-                "static/Cargo_json_gen.toml",
-                rust_dir.join("json-gen/Cargo.toml"),
+            std::fs::create_dir_all(rust_dir.join("wasm/json-gen/src"))?;
+            let json_gen_toml = std::fs::read_to_string(
+                std::path::PathBuf::from_str("static/Cargo_json_gen.toml").unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                rust_dir.join("wasm/json-gen/Cargo.toml"),
+                json_gen_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
             )?;
             std::fs::write(
-                rust_dir.join("json-gen/src/main.rs"),
+                rust_dir.join("wasm/json-gen/src/main.rs"),
                 rustfmt_generated_string(&self.json().to_string())?.as_ref(),
             )?;
         }
@@ -1944,10 +1959,7 @@ impl GenerationScope {
                     deser_code
                         .content
                         .line(&format!("let len = {deserializer_name}.array_sz()?;"))
-                        .line(&format!(
-                            "let mut {}_encoding = len.into();",
-                            config.var_name
-                        ));
+                        .line(&format!("let {}_encoding = len.into();", config.var_name));
                     if !elem_encs.is_empty() {
                         deser_code.content.line(&format!(
                             "let mut {}_elem_encodings = Vec::new();",
@@ -2408,7 +2420,8 @@ impl GenerationScope {
                 }
                 if variant.rust_type.is_fixed_value() {
                     new_func.line(format!(
-                        "Self(core::{}::new_{}())",
+                        "Self({}::{}::new_{}())",
+                        CLI_ARGS.lib_name_code(),
                         name,
                         variant.name_as_var()
                     ));
@@ -2417,7 +2430,8 @@ impl GenerationScope {
                         .rust_type
                         .from_wasm_boundary_clone(&variant_arg, can_fail);
                     new_func.line(format!(
-                        "Self(core::{}::new_{}({}))",
+                        "Self({}::{}::new_{}({}))",
+                        CLI_ARGS.lib_name_code(),
                         name,
                         variant.name_as_var(),
                         ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
@@ -2788,7 +2802,10 @@ fn create_base_wasm_struct<'a>(
             let mut to_bytes = codegen::Function::new("to_cbor_bytes");
             to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
             if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-                to_bytes.line("core::serialization::Serialize::to_cbor_bytes(&self.0)");
+                to_bytes.line(format!(
+                    "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
+                    CLI_ARGS.lib_name_code()
+                ));
                 let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
                 to_canonical_bytes
                     .ret("Vec<u8>")
@@ -2796,7 +2813,10 @@ fn create_base_wasm_struct<'a>(
                     .vis("pub")
                     .line("Serialize::to_canonical_cbor_bytes(&self.0)");
             } else {
-                to_bytes.line("core::serialization::ToCBORBytes::to_cbor_bytes(&self.0)");
+                to_bytes.line(format!(
+                    "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
+                    CLI_ARGS.lib_name_code()
+                ));
             }
             s_impl.push_fn(to_bytes);
             if gen_scope.deserialize_generated(ident) {
@@ -2805,7 +2825,9 @@ fn create_base_wasm_struct<'a>(
                     .ret(format!("Result<{name}, JsValue>"))
                     .arg("cbor_bytes", "&[u8]")
                     .vis("pub")
-                    .line("core::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {}\", e)))");
+                    .line(format!(
+                        "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
+                        CLI_ARGS.lib_name_code()));
             }
         }
         if CLI_ARGS.json_serde_derives {
@@ -2841,7 +2863,7 @@ fn create_base_wasm_struct<'a>(
     }
 }
 
-/// default_structure will have it be a DIRECT wrapper with a tuple field of core::{ident}
+/// default_structure will have it be a DIRECT wrapper with a tuple field of rust_lib::{ident}
 /// this will include generating to/from traits automatically
 fn create_base_wasm_wrapper<'a>(
     gen_scope: &GenerationScope,
@@ -2852,7 +2874,7 @@ fn create_base_wasm_wrapper<'a>(
     let mut base = create_base_wasm_struct(gen_scope, ident, true);
     let name = &ident.to_string();
     if default_structure {
-        let native_name = &format!("core::{name}");
+        let native_name = &format!("{}::{}", CLI_ARGS.lib_name_code(), name);
         base.s.tuple_field(None, native_name);
         base.add_conversion_methods(native_name);
     }
@@ -3183,7 +3205,7 @@ fn codegen_table_type(
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
 
     let inner_type = if exists_in_rust {
-        format!("core::{name}")
+        format!("{}::{}", CLI_ARGS.lib_name_code(), name)
     } else {
         ConceptualRustType::name_for_rust_map(&key_type, &value_type, true)
     };
@@ -3255,7 +3277,7 @@ fn codegen_table_type(
         ));
     } else {
         getter.line(format!(
-            "self.0.get(&{}.0){}",
+            "self.0.get({}.as_ref()){}",
             key_type.from_wasm_boundary_ref("key"),
             if value_type.is_copy() {
                 ".copied()"
@@ -3627,7 +3649,8 @@ fn codegen_struct(
             }
         }
         wasm_new.line(format!(
-            "Self(core::{}::new({}))",
+            "Self({}::{}::new({}))",
+            CLI_ARGS.lib_name_code(),
             name,
             wasm_new_args.join(", ")
         ));
@@ -4575,7 +4598,8 @@ fn codegen_group_choices(
                     match ctor_fields.len() {
                         0 => {
                             new_func.line(format!(
-                                "Self(core::{}::new_{}())",
+                                "Self({}::{}::new_{}())",
+                                CLI_ARGS.lib_name_code(),
                                 name,
                                 variant.name_as_var()
                             ));
@@ -4591,8 +4615,12 @@ fn codegen_group_choices(
                         // multi-field struct, so for convenience we let you pass the parameters directly here
                         // instead of having to separately construct the variant to pass in
                         _ => {
-                            let mut ctor =
-                                format!("Self(core::{}::new_{}(", name, variant.name_as_var());
+                            let mut ctor = format!(
+                                "Self({}::{}::new_{}(",
+                                CLI_ARGS.lib_name_code(),
+                                name,
+                                variant.name_as_var()
+                            );
                             for field in ctor_fields {
                                 if output_comma {
                                     ctor.push_str(", ");
@@ -4617,7 +4645,8 @@ fn codegen_group_choices(
                     // just directly pass in the variant's type
                     if variant.rust_type.is_fixed_value() {
                         new_func.line(format!(
-                            "Self(core::{}::new_{}())",
+                            "Self({}::{}::new_{}())",
+                            CLI_ARGS.lib_name_code(),
                             name,
                             variant.name_as_var()
                         ));
@@ -4626,7 +4655,8 @@ fn codegen_group_choices(
                         new_func
                             .arg(&field_name, variant.rust_type.for_wasm_param())
                             .line(format!(
-                                "Self(core::{}::new_{}({}))",
+                                "Self({}::{}::new_{}({}))",
+                                CLI_ARGS.lib_name_code(),
                                 name,
                                 variant.name_as_var(),
                                 ToWasmBoundaryOperations::format(
@@ -4663,7 +4693,8 @@ fn add_wasm_enum_getters(
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(variant, rep);
         get_kind_match.line(format!(
-            "core::{}::{}{} => {}::{},",
+            "{}::{}::{}{} => {}::{},",
+            CLI_ARGS.lib_name_code(),
             name,
             variant.name,
             enum_gen_info.capture_ignore_all(),
@@ -4685,7 +4716,8 @@ fn add_wasm_enum_getters(
                 .ret(&format!("Option<{}>", variant.rust_type.for_wasm_return()));
             let mut variant_match = codegen::Block::new("match &self.0");
             variant_match.line(format!(
-                "core::{}::{}{} => Some({}),",
+                "{}::{}::{}{} => Some({}),",
+                CLI_ARGS.lib_name_code(),
                 name,
                 variant.name,
                 enum_gen_info.capture_ignore_encodings(),
@@ -5642,8 +5674,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         let mut wasm_new = codegen::Function::new("new");
         let mut new_if = codegen::Block::new("if x >= 0");
         let mut new_else = codegen::Block::new("else");
-        new_if.line("Self(core::Int::new_uint(x as u64))");
-        new_else.line("Self(core::Int::new_nint((x + 1).abs() as u64))");
+        new_if.line(format!(
+            "Self({}::Int::new_uint(x as u64))",
+            CLI_ARGS.lib_name_code()
+        ));
+        new_else.line(format!(
+            "Self({}::Int::new_nint((x + 1).abs() as u64))",
+            CLI_ARGS.lib_name_code()
+        ));
         wasm_new
             .ret("Self")
             .vis("pub")

@@ -1175,7 +1175,11 @@ impl ConceptualRustType {
 
     /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
     pub fn for_rust_member(&self, from_wasm: bool) -> String {
-        let core = if from_wasm { "core::" } else { "" };
+        let core = if from_wasm {
+            format!("{}::", CLI_ARGS.lib_name_code())
+        } else {
+            "".to_owned()
+        };
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
