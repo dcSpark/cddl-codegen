@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
-    AliasIdent, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef,
+    AliasIdent, AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef,
     GenericInstance, IntermediateTypes, Primitive, Representation, RustField, RustIdent,
     RustRecord, RustStruct, RustType, VariantIdent,
 };
@@ -160,9 +160,7 @@ fn parse_type_choices(
         let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
         types.register_type_alias(
             name.clone(),
-            final_type,
-            !rule_metadata.no_alias,
-            !rule_metadata.no_alias,
+            AliasInfo::new(final_type, !rule_metadata.no_alias, !rule_metadata.no_alias),
         );
     } else {
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices);
@@ -462,9 +460,11 @@ fn parse_type(
                                     | "float16" => match range_to_primitive(min_max.0, min_max.1) {
                                         Some(t) => types.register_type_alias(
                                             type_name.clone(),
-                                            t.into(),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
+                                            AliasInfo::new(
+                                                t.into(),
+                                                !rule_metadata.no_alias,
+                                                !rule_metadata.no_alias,
+                                            ),
                                         ),
                                         None => panic!(
                                             "unsupported range for {:?}: {:?}",
@@ -487,9 +487,11 @@ fn parse_type(
                                 ConceptualRustType::Primitive(Primitive::Bytes) => {
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        ty.as_bytes(),
-                                        !rule_metadata.no_alias,
-                                        !rule_metadata.no_alias,
+                                        AliasInfo::new(
+                                            ty.as_bytes(),
+                                            !rule_metadata.no_alias,
+                                            !rule_metadata.no_alias,
+                                        ),
                                     );
                                 }
                                 _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
@@ -500,9 +502,11 @@ fn parse_type(
                                         .default(default_value);
                                 types.register_type_alias(
                                     type_name.clone(),
-                                    default_type,
-                                    !rule_metadata.no_alias,
-                                    !rule_metadata.no_alias,
+                                    AliasInfo::new(
+                                        default_type,
+                                        !rule_metadata.no_alias,
+                                        !rule_metadata.no_alias,
+                                    ),
                                 );
                             }
                         }
@@ -551,9 +555,11 @@ fn parse_type(
                                         } else {
                                             types.register_type_alias(
                                                 type_name.clone(),
-                                                concrete_type,
-                                                !rule_metadata.no_alias,
-                                                !rule_metadata.no_alias,
+                                                AliasInfo::new(
+                                                    concrete_type,
+                                                    !rule_metadata.no_alias,
+                                                    !rule_metadata.no_alias,
+                                                ),
                                             );
                                         }
                                     }
@@ -639,9 +645,11 @@ fn parse_type(
                                     assert!(base_type.encodings.is_empty());
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        ty.as_bytes().tag(tag_unwrap),
-                                        !rule_metadata.no_alias,
-                                        !rule_metadata.no_alias,
+                                        AliasInfo::new(
+                                            ty.as_bytes().tag(tag_unwrap),
+                                            !rule_metadata.no_alias,
+                                            !rule_metadata.no_alias,
+                                        ),
                                     );
                                 }
                                 Some(ControlOperator::Range(min_max)) => {
@@ -651,9 +659,11 @@ fn parse_type(
                                             match range_to_primitive(min_max.0, min_max.1) {
                                                 Some(t) => types.register_type_alias(
                                                     type_name.clone(),
-                                                    t.into(),
-                                                    !rule_metadata.no_alias,
-                                                    !rule_metadata.no_alias,
+                                                    AliasInfo::new(
+                                                        t.into(),
+                                                        !rule_metadata.no_alias,
+                                                        !rule_metadata.no_alias,
+                                                    ),
                                                 ),
                                                 None => panic!(
                                                     "unsupported range for {:?}: {:?}",
@@ -683,9 +693,11 @@ fn parse_type(
                                     .tag(tag_unwrap);
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        default_tagged_type,
-                                        !rule_metadata.no_alias,
-                                        !rule_metadata.no_alias,
+                                        AliasInfo::new(
+                                            default_tagged_type,
+                                            !rule_metadata.no_alias,
+                                            !rule_metadata.no_alias,
+                                        ),
                                     );
                                 }
                                 None => {
@@ -697,9 +709,11 @@ fn parse_type(
                                         .0;
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        base_type.tag(tag_unwrap),
-                                        !rule_metadata.no_alias,
-                                        !rule_metadata.no_alias,
+                                        AliasInfo::new(
+                                            base_type.tag(tag_unwrap),
+                                            !rule_metadata.no_alias,
+                                            !rule_metadata.no_alias,
+                                        ),
                                     );
                                 }
                             }
@@ -737,9 +751,11 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                base_type.into(),
-                !rule_metadata.no_alias,
-                !rule_metadata.no_alias,
+                AliasInfo::new(
+                    base_type.into(),
+                    !rule_metadata.no_alias,
+                    !rule_metadata.no_alias,
+                ),
             );
         }
         Type2::UintValue { value, .. } => {
@@ -760,17 +776,21 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                base_type.into(),
-                !rule_metadata.no_alias,
-                !rule_metadata.no_alias,
+                AliasInfo::new(
+                    base_type.into(),
+                    !rule_metadata.no_alias,
+                    !rule_metadata.no_alias,
+                ),
             );
         }
         Type2::TextValue { value, .. } => {
             types.register_type_alias(
                 type_name.clone(),
-                ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
-                !rule_metadata.no_alias,
-                !rule_metadata.no_alias,
+                AliasInfo::new(
+                    ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
+                    !rule_metadata.no_alias,
+                    !rule_metadata.no_alias,
+                ),
             );
         }
         Type2::FloatValue { value, .. } => {
@@ -789,7 +809,10 @@ fn parse_type(
                 }
                 _ => fallback_type,
             };
-            types.register_type_alias(type_name.clone(), base_type.into(), true, true);
+            types.register_type_alias(
+                type_name.clone(),
+                AliasInfo::new(base_type.into(), true, true),
+            );
         }
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);

@@ -4,7 +4,7 @@ fn run_test(
     dir: &str,
     options: &[&str],
     export_suffix: Option<&str>,
-    external_core_file_path: Option<std::path::PathBuf>,
+    external_rust_file_path: Option<std::path::PathBuf>,
     external_wasm_file_path: Option<std::path::PathBuf>,
 ) {
     use std::str::FromStr;
@@ -40,11 +40,11 @@ fn run_test(
     let mut lib_rs = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
-        .open(test_path.join(format!("{export_path}/core/src/lib.rs")))
+        .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
         .unwrap();
     // copy external file in too (if needed) too
-    if let Some(external_core_file_path) = external_core_file_path {
-        let extern_rs = std::fs::read_to_string(external_core_file_path).unwrap();
+    if let Some(external_rust_file_path) = external_rust_file_path {
+        let extern_rs = std::fs::read_to_string(external_rust_file_path).unwrap();
         lib_rs.write_all("\n\n".as_bytes()).unwrap();
         lib_rs.write_all(extern_rs.as_bytes()).unwrap();
     }
@@ -64,7 +64,7 @@ fn run_test(
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
         .arg("test")
-        .current_dir(test_path.join(format!("{export_path}/core")))
+        .current_dir(test_path.join(format!("{export_path}/rust")))
         .output()
         .unwrap();
     if !cargo_test.status.success() {
@@ -131,9 +131,9 @@ fn run_test(
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;
-    let extern_core_path = std::path::PathBuf::from_str("tests")
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_core_defs");
+        .join("external_rust_defs");
     let extern_wasm_path = std::path::PathBuf::from_str("tests")
         .unwrap()
         .join("external_wasm_defs");
@@ -141,7 +141,7 @@ fn core_with_wasm() {
         "core",
         &[],
         Some("wasm"),
-        Some(extern_core_path),
+        Some(extern_rust_path),
         Some(extern_wasm_path),
     );
 }
@@ -149,14 +149,14 @@ fn core_with_wasm() {
 #[test]
 fn core_no_wasm() {
     use std::str::FromStr;
-    let extern_core_path = std::path::PathBuf::from_str("tests")
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_core_defs");
+        .join("external_rust_defs");
     run_test(
         "core",
         &["--wasm=false"],
         None,
-        Some(extern_core_path),
+        Some(extern_rust_path),
         None,
     );
 }
