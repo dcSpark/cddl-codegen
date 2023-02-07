@@ -1,0 +1,11 @@
+bar = {
+	foo: #6.1337(foo),
+	? derp: uint,
+	1 : uint / null,
+	? 5: text,
+	five: 5,
+	float: float64,
+}
+
+; test refs too
+bar_typedef = bar
