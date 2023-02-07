@@ -6,6 +6,7 @@ fn run_test(
     export_suffix: Option<&str>,
     external_rust_file_path: Option<std::path::PathBuf>,
     external_wasm_file_path: Option<std::path::PathBuf>,
+    input_is_dir: bool,
 ) {
     use std::str::FromStr;
     let export_path = match export_suffix {
@@ -16,17 +17,21 @@ fn run_test(
     println!("--------- running test: {dir} ---------");
     // build and run to generate code
     let mut cargo_run = std::process::Command::new("cargo");
-    cargo_run
-        .arg("run")
-        .arg("--")
-        .arg(format!(
+    cargo_run.arg("run").arg("--").arg(format!(
+        "--output={}",
+        test_path.join(&export_path).to_str().unwrap()
+    ));
+    if input_is_dir {
+        cargo_run.arg(format!(
+            "--input={}",
+            test_path.join("inputs").to_str().unwrap()
+        ));
+    } else {
+        cargo_run.arg(format!(
             "--input={}",
             test_path.join("input.cddl").to_str().unwrap()
-        ))
-        .arg(format!(
-            "--output={}",
-            test_path.join(&export_path).to_str().unwrap()
         ));
+    }
     for option in options {
         cargo_run.arg(option);
     }
@@ -143,6 +148,7 @@ fn core_with_wasm() {
         Some("wasm"),
         Some(extern_rust_path),
         Some(extern_wasm_path),
+        false,
     );
 }
 
@@ -158,6 +164,7 @@ fn core_no_wasm() {
         None,
         Some(extern_rust_path),
         None,
+        false,
     );
 }
 
@@ -169,6 +176,7 @@ fn comment_dsl() {
         Some("wasm"),
         None,
         None,
+        false,
     );
 }
 
@@ -180,6 +188,7 @@ fn preserve_encodings() {
         None,
         None,
         None,
+        false,
     );
 }
 
@@ -191,10 +200,30 @@ fn canonical() {
         None,
         None,
         None,
+        false,
     );
 }
 
 #[test]
 fn rust_wasm_split() {
-    run_test("rust-wasm-split", &[], None, None, None);
+    run_test("rust-wasm-split", &[], None, None, None, false);
+}
+
+#[test]
+fn multifile() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_rust_defs");
+    let extern_wasm_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_wasm_defs");
+    run_test(
+        "multifile",
+        &[],
+        None,
+        Some(extern_rust_path),
+        Some(extern_wasm_path),
+        true,
+    );
 }
