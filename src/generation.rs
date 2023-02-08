@@ -1,4 +1,3 @@
-use cbor_event::Type as CBORType;
 use codegen::{Block, TypeAlias};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -229,6 +228,7 @@ fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
     Ok(buf)
 }
 
+#[derive(Debug)]
 enum SerializingRustType<'a> {
     EncodingOperation(&'a CBOREncodingOperation, Box<SerializingRustType<'a>>),
     Root(&'a ConceptualRustType),
@@ -465,10 +465,6 @@ impl GenerationScope {
             .push_import("std::io", "Write", None)
             .push_import("std::io", "Write", None)
             .push_import("prelude", "*", None)
-            .push_import("cbor_event", "Type", Some("CBORType"))
-            .push_import("cbor_event", "Special", Some("CBORSpecial"))
-            .push_import("serialization", "*", None)
-            .push_import("std::collections", "BTreeMap", None)
             .push_import("std::convert", "From", None)
             .push_import("std::convert", "TryFrom", None)
             .raw("pub mod prelude;")
@@ -476,17 +472,16 @@ impl GenerationScope {
         if CLI_ARGS.preserve_encodings {
             self.rust_lib()
                 .raw("pub mod ordered_hash_map;")
-                .push_import("ordered_hash_map", "OrderedHashMap", None)
-                .push_import("cbor_event", "Sz", None)
                 .raw("pub mod cbor_encodings;")
-                .push_import("cbor_encodings", "*", None)
-                .push_import("derivative", "Derivative", None)
                 .raw("extern crate derivative;");
+            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             self.cbor_encodings().push_import("super", "*", None);
+            self.rust_serialize()
+                .push_import("crate::cbor_encodings", "*", None);
         }
-        self.rust_serialize().push_import("super", "*", None);
-        self.rust_serialize().push_import("std::io", "Seek", None);
         self.rust_serialize()
+            .push_import("super", "*", None)
+            .push_import("std::io", "Seek", None)
             .push_import("std::io", "SeekFrom", None);
 
         // Wasm (populate wasm_lib() - used for top of file before structs)
@@ -686,10 +681,8 @@ impl GenerationScope {
 
         // JSON export
         if CLI_ARGS.json_schema_export {
-            self.json_scope
-                .push_import(CLI_ARGS.lib_name_code(), "*", None);
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
-            let mut macro_match = Block::new("($name:ident) => ");
+            let mut macro_match = Block::new("($name:ty) => ");
             macro_match
                 .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
                 .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
@@ -700,13 +693,31 @@ impl GenerationScope {
             let mut path_exists = codegen::Block::new("if !schema_path.exists()");
             path_exists.line("std::fs::create_dir(schema_path).unwrap();");
             main.push_block(path_exists);
+            let mut main_lines_by_file: BTreeMap<String, Vec<String>> = BTreeMap::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 let is_typedef = matches!(
                     rust_struct.variant(),
                     RustStructType::Array { .. } | RustStructType::Table { .. }
                 );
-                if !is_typedef {
-                    main.line(format!("gen_json_schema!({rust_ident});"));
+                // the is_referenced check is for things like Int which are included by default
+                // in order for the CDDL to parse but might not be used.
+                if !is_typedef && types.is_referenced(rust_ident) {
+                    main_lines_by_file
+                        .entry(types.scope(rust_ident).to_owned())
+                        .or_default()
+                        .push(format!(
+                            "gen_json_schema!({});",
+                            rust_crate_struct_from_wasm(types, rust_ident)
+                        ));
+                }
+            }
+            let multiple_files = main_lines_by_file.len() > 1;
+            for (scope_name, lines) in main_lines_by_file {
+                if multiple_files {
+                    main.line(format!("// {scope_name}.rs"));
+                }
+                for line in lines {
+                    main.line(line);
                 }
             }
             self.json_scope.push_fn(main);
@@ -754,9 +765,34 @@ impl GenerationScope {
         }
         let mut merged_rust_scope = codegen::Scope::new();
         merged_rust_scope.append(self.rust_lib());
-        for (scope, content) in self.rust_scopes.iter_mut() {
+        // import encoding structs
+        if CLI_ARGS.preserve_encodings {
+            for (rust_ident, rust_struct) in types.rust_structs() {
+                if matches!(
+                    rust_struct.variant(),
+                    RustStructType::Record(_) | RustStructType::Wrapper { .. }
+                ) {
+                    // ALL records have an encoding struct since at minimum they contian
+                    // the array or map encoding details so no need to check fields
+                    let cbor_encodings_scope = match types.scope(rust_ident) {
+                        "lib" => "cbor_encodings",
+                        _other_scope => "crate::cbor_encodings",
+                    };
+                    self.rust(types, rust_ident).push_import(
+                        cbor_encodings_scope,
+                        format!("{rust_ident}Encoding"),
+                        None,
+                    );
+                }
+            }
+        }
+        fn add_imports_from_scope_refs(
+            scope: &String,
+            content: &mut codegen::Scope,
+            imports: &BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+        ) {
             // might not exist if we don't use stuff from other scopes
-            if let Some(scope_imports) = rust_imports.get(scope) {
+            if let Some(scope_imports) = imports.get(scope) {
                 for (import_scope, idents) in scope_imports.iter() {
                     let import_scope = if import_scope == "lib" {
                         Cow::from("super")
@@ -786,6 +822,21 @@ impl GenerationScope {
                             None,
                         );
                     }
+                }
+            }
+        }
+        // imports and write to file
+        for (scope, content) in self.rust_scopes.iter_mut() {
+            add_imports_from_scope_refs(scope, content, &rust_imports);
+            // TODO: we blindly add these two map imports. Ideally we would only do it when needed
+            // but the code to figure that out would be potentially complex.
+            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
+            content.push_import("std::collections", "BTreeMap", None);
+            if CLI_ARGS.preserve_encodings {
+                if scope == "lib" {
+                    content.push_import("ordered_hash_map", "OrderedHashMap", None);
+                } else {
+                    content.push_import("crate::ordered_hash_map", "OrderedHashMap", None);
                 }
             }
             if scope == "lib" {
@@ -875,45 +926,14 @@ impl GenerationScope {
                 .filter(|scope| *scope != "lib")
                 .cloned()
                 .collect::<Vec<_>>();
+            let wasm_imports = types.scope_references(true);
             for scope in scope_names {
                 self.wasm_lib().raw(&format!("pub mod {scope};"));
             }
             let mut merged_wasm_scope = codegen::Scope::new();
             merged_wasm_scope.append(self.wasm_lib());
             for (scope, content) in self.wasm_scopes.iter_mut() {
-                // might not exist if we don't use stuff from other scopes
-                if let Some(scope_imports) = rust_imports.get(scope) {
-                    for (import_scope, idents) in scope_imports.iter() {
-                        let import_scope = if import_scope == "lib" {
-                            Cow::from("super")
-                        } else if scope == "lib" {
-                            Cow::from(import_scope)
-                        } else {
-                            Cow::from(format!("crate::{import_scope}"))
-                        };
-                        #[allow(clippy::comparison_chain)]
-                        if idents.len() > 1 {
-                            content.push_import(
-                                import_scope,
-                                format!(
-                                    "{{{}}}",
-                                    idents
-                                        .iter()
-                                        .map(|i| i.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                ),
-                                None,
-                            );
-                        } else if idents.len() == 1 {
-                            content.push_import(
-                                import_scope,
-                                idents.first().unwrap().to_string(),
-                                None,
-                            );
-                        }
-                    }
-                }
+                add_imports_from_scope_refs(scope, content, &wasm_imports);
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
                     .push_import("wasm_bindgen::prelude", "JsValue", None);
@@ -1095,12 +1115,12 @@ impl GenerationScope {
             SerializingRustType::Root(ConceptualRustType::Fixed(value)) => match value {
                 FixedValue::Null => {
                     body.line(&format!(
-                        "{serializer_use}.write_special(CBORSpecial::Null){line_ender}"
+                        "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
                     ));
                 }
                 FixedValue::Bool(b) => {
                     body.line(&format!(
-                        "{serializer_use}.write_special(CBORSpecial::Bool({b})){line_ender}"
+                        "{serializer_use}.write_special(cbor_event::Special::Bool({b})){line_ender}"
                     ));
                 }
                 FixedValue::Uint(u) => {
@@ -1153,7 +1173,7 @@ impl GenerationScope {
                 }
                 FixedValue::Float(f) => {
                     body.line(&format!(
-                        "{serializer_use}.write_special(CBORSpecial::Float({f})){line_ender}"
+                        "{serializer_use}.write_special(cbor_event::Special::Float({f})){line_ender}"
                     ));
                 }
                 FixedValue::Text(s) => {
@@ -1496,7 +1516,7 @@ impl GenerationScope {
                 some_block.after(",");
                 opt_block.push_block(some_block);
                 opt_block.line(&format!(
-                    "None => {serializer_use}.write_special(CBORSpecial::Null),"
+                    "None => {serializer_use}.write_special(cbor_event::Special::Null),"
                 ));
                 if !config.is_end {
                     opt_block.after("?;");
@@ -1580,7 +1600,7 @@ impl GenerationScope {
                 match f {
                     FixedValue::Null => {
                         let mut special_block = Block::new(format!(
-                            "if {deserializer_name}.special()? != CBORSpecial::Null"
+                            "if {deserializer_name}.special()? != cbor_event::Special::Null"
                         ));
                         special_block.line("return Err(DeserializeFailure::ExpectedNull.into());");
                         deser_code.content.push_block(special_block);
@@ -1882,18 +1902,18 @@ impl GenerationScope {
                     config.optional_field || (ty.expanded_field_count(types) != Some(1));
                 // codegen crate doesn't support if/else or appending a block after a block, only strings
                 // so we need to create a local bool var and use a match instead
-                let if_label = if ty.cbor_types().contains(&CBORType::Special) {
+                let if_label = if ty.cbor_types().contains(&cbor_event::Type::Special) {
                     let is_some_check_var = format!("{}_is_some", config.var_name);
                     let mut is_some_check =
                         Block::new(format!("let {is_some_check_var} = match cbor_type()?"));
-                    let mut special_block = Block::new("CBORType::Special =>");
+                    let mut special_block = Block::new("cbor_event::Type::Special =>");
                     special_block.line(&format!("let special = {deserializer_name}.special()?;"));
                     special_block.line(&format!(
                         "{deserializer_name}.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();"
                     ));
                     let mut special_match = Block::new("match special");
                     // TODO: we need to check that we don't have null / null somewhere
-                    special_match.line("CBORSpecial::Null => false,");
+                    special_match.line("cbor_event::Special::Null => false,");
                     // no need to error check - would happen in generated deserialize code
                     special_match.line("_ => true,");
                     special_block.push_block(special_match);
@@ -1908,7 +1928,7 @@ impl GenerationScope {
                     is_some_check_var
                 } else {
                     String::from(&format!(
-                        "{deserializer_name}.cbor_type()? != CBORType::Special"
+                        "{deserializer_name}.cbor_type()? != cbor_event::Type::Special"
                     ))
                 };
                 let mut deser_block = Block::new(format!(
@@ -1972,7 +1992,7 @@ impl GenerationScope {
                 // we don't use this to avoid the new (true) if CLI_ARGS.preserve_encodings is set
                 //self.generate_deserialize(types, &ConceptualRustType::Fixed(FixedValue::Null), var_name, "", "", in_embedded, false, add_parens, &mut none_block);
                 let mut check_null = Block::new(format!(
-                    "if {deserializer_name}.special()? != CBORSpecial::Null"
+                    "if {deserializer_name}.special()? != cbor_event::Special::Null"
                 ));
                 check_null.line("return Err(DeserializeFailure::ExpectedNull.into());");
                 none_block.push_block(check_null);
@@ -3093,7 +3113,7 @@ fn add_deserialize_final_len_check(
                 "{} => match raw.special()?",
                 cbor_event_len_indef()
             ));
-            indefinite_check.line(format!("CBORSpecial::Break => {ending_check},"));
+            indefinite_check.line(format!("cbor_event::Special::Break => {ending_check},"));
             indefinite_check
                 .line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
             indefinite_check.after(",");
@@ -3250,9 +3270,9 @@ fn make_deser_loop(len_var: &str, len_expr: &str) -> Block {
 }
 
 fn make_deser_loop_break_check() -> Block {
-    let mut break_check = Block::new("if raw.cbor_type()? == CBORType::Special");
+    let mut break_check = Block::new("if raw.cbor_type()? == cbor_event::Type::Special");
     // TODO: read special and go back 1 character
-    break_check.line("assert_eq!(raw.special()?, CBORSpecial::Break);");
+    break_check.line("assert_eq!(raw.special()?, cbor_event::Special::Break);");
     break_check.line("break;");
     break_check
 }
@@ -3280,7 +3300,7 @@ fn codegen_table_type(
     // specially handle this case since you wouldn't know whether you hit a break
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
-    assert!(!key_type.cbor_types().contains(&CBORType::Special));
+    assert!(!key_type.cbor_types().contains(&cbor_event::Type::Special));
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false);
 
     let inner_type = if exists_in_rust {
@@ -3826,7 +3846,7 @@ fn codegen_struct(
         let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
         encoding_struct.field("pub len_encoding", "LenEncoding");
         if tag.is_some() {
-            encoding_struct.field("pub tag_encoding", "Option<Sz>");
+            encoding_struct.field("pub tag_encoding", "Option<cbor_event::Sz>");
         }
         if record.rep == Representation::Map {
             encoding_struct.field("pub orig_deser_order", "Vec<usize>");
@@ -4409,12 +4429,14 @@ fn codegen_struct(
             let mut deser_loop = make_deser_loop("len", "read");
             let mut type_match = Block::new("match raw.cbor_type()?");
             if uint_field_deserializers.is_empty() {
-                type_match.line("CBORType::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),");
+                type_match.line("cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),");
             } else {
                 let mut uint_match = if CLI_ARGS.preserve_encodings {
-                    Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer_sz()?")
+                    Block::new(
+                        "cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()?",
+                    )
                 } else {
-                    Block::new("CBORType::UnsignedInteger => match raw.unsigned_integer()?")
+                    Block::new("cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()?")
                 };
                 for case in uint_field_deserializers {
                     uint_match.push_block(case);
@@ -4431,9 +4453,9 @@ fn codegen_struct(
             // we can't map text_sz() with String::as_str() to match it since that would return a reference to a temporary
             // so we need to store it in a local and have an extra block to declare it
             if text_field_deserializers.is_empty() {
-                type_match.line("CBORType::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
+                type_match.line("cbor_event::Type::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
             } else if CLI_ARGS.preserve_encodings {
-                let mut outer_match = Block::new("CBORType::Text =>");
+                let mut outer_match = Block::new("cbor_event::Type::Text =>");
                 outer_match.line("let (text_key, key_enc) = raw.text_sz()?;");
                 let mut text_match = Block::new("match text_key.as_str()");
                 for case in text_field_deserializers {
@@ -4444,7 +4466,8 @@ fn codegen_struct(
                 outer_match.push_block(text_match);
                 type_match.push_block(outer_match);
             } else {
-                let mut text_match = Block::new("CBORType::Text => match raw.text()?.as_str()");
+                let mut text_match =
+                    Block::new("cbor_event::Type::Text => match raw.text()?.as_str()");
                 for case in text_field_deserializers {
                     text_match.push_block(case);
                 }
@@ -4452,7 +4475,7 @@ fn codegen_struct(
                 text_match.after(",");
                 type_match.push_block(text_match);
             }
-            let mut special_match = Block::new("CBORType::Special => match len");
+            let mut special_match = Block::new("cbor_event::Type::Special => match len");
             special_match.line(format!(
                 "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
                 cbor_event_len_n("_")
@@ -4462,7 +4485,7 @@ fn codegen_struct(
                 "{} => match raw.special()?",
                 cbor_event_len_indef()
             ));
-            break_check.line("CBORSpecial::Break => break,");
+            break_check.line("cbor_event::Special::Break => break,");
             break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
             break_check.after(",");
             special_match.push_block(break_check);
@@ -5240,7 +5263,7 @@ fn generate_enum(
                         .is_end(!write_break),
                 );
                 if write_break {
-                    case_block.line("serializer.write_special(CBORSpecial::Break)");
+                    case_block.line("serializer.write_special(cbor_event::Special::Break)");
                 }
             }
             case_block.after(",");
@@ -5767,7 +5790,7 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
             data_type.derive(&format!(
-                "Derivative)]\n#[derivative({}",
+                "derivative::Derivative)]\n#[derivative({}",
                 key_derives(false)
                     .iter()
                     .map(|tr| match *tr {
