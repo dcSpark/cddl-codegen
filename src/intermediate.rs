@@ -12,6 +12,23 @@ use crate::utils::{
 };
 
 #[derive(Debug)]
+pub struct AliasInfo {
+    pub base_type: RustType,
+    pub gen_rust_alias: bool,
+    pub gen_wasm_alias: bool,
+}
+
+impl AliasInfo {
+    pub fn new(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
+        Self {
+            base_type,
+            gen_rust_alias,
+            gen_wasm_alias,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
     // This is since in order to generate plain groups we must have a representation, which isn't
@@ -21,8 +38,7 @@ pub struct IntermediateTypes<'a> {
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group<'a>>>,
-    // (Type, whether to generate a rust type alias statement, whether to generate it for wasm)
-    type_aliases: BTreeMap<AliasIdent, (RustType, bool, bool)>,
+    type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
     generic_defs: BTreeMap<RustIdent, GenericDef>,
@@ -79,7 +95,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.generic_instances.contains_key(ident)
     }
 
-    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, (RustType, bool, bool)> {
+    pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, AliasInfo> {
         &self.type_aliases
     }
 
@@ -87,12 +103,122 @@ impl<'a> IntermediateTypes<'a> {
         &self.rust_structs
     }
 
-    fn aliases() -> BTreeMap<idents::AliasIdent, (RustType, bool, bool)> {
+    /// For each scope, which other scopes are referenced, and which structs are referenced
+    pub fn scope_references(
+        &self,
+        wasm: bool,
+    ) -> BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>> {
+        // we only want to mark TOP-LEVEL references without recursing into those types
+        // which is why we don't use visit_types() here
+        let mut refs = BTreeMap::new();
+        fn set_ref(
+            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            current_scope: &str,
+            rust_ident: &RustIdent,
+        ) {
+            let ref_scope = types.scope(rust_ident);
+            if current_scope != ref_scope {
+                refs.entry(current_scope.to_owned())
+                    .or_default()
+                    .entry(ref_scope.to_owned())
+                    .or_default()
+                    .insert(rust_ident.clone());
+            }
+        }
+        fn mark_refs(
+            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            wasm: bool,
+            current_scope: &str,
+            ty: &RustType,
+        ) {
+            match &ty.conceptual_type {
+                ConceptualRustType::Alias(alias_ident, _alias_ty) => {
+                    if let AliasIdent::Rust(rust_ident) = alias_ident {
+                        set_ref(refs, types, current_scope, rust_ident);
+                    }
+                }
+                ConceptualRustType::Rust(rust_ident) => {
+                    set_ref(refs, types, current_scope, rust_ident)
+                }
+                ConceptualRustType::Array(elem_ty) => {
+                    if wasm && !elem_ty.directly_wasm_exposable() {
+                        // TODO: we should be doing array wrappers where they are declared or used
+                        // but for the latter, what to do if multiple places use it? default to lib?
+                        if current_scope != "lib" {
+                            let arr_wrapper_ident =
+                                RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array()));
+                            refs.entry(current_scope.to_owned())
+                                .or_default()
+                                .entry("lib".to_owned())
+                                .or_default()
+                                .insert(arr_wrapper_ident);
+                        }
+                    } else {
+                        mark_refs(refs, types, wasm, current_scope, elem_ty);
+                    }
+                }
+                ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => {
+                    // nothing to import
+                }
+                ConceptualRustType::Map(key, value) => {
+                    if wasm {
+                        // TODO: we should be doing map wrappers where they are declared or used
+                        // but for the latter, what to do if multiple places use it? default to lib?
+                        if current_scope != "lib" {
+                            let map_wrapper_ident =
+                                ConceptualRustType::name_for_wasm_map(key, value);
+                            refs.entry(current_scope.to_owned())
+                                .or_default()
+                                .entry("lib".to_owned())
+                                .or_default()
+                                .insert(map_wrapper_ident);
+                        }
+                    } else {
+                        mark_refs(refs, types, wasm, current_scope, key);
+                        mark_refs(refs, types, wasm, current_scope, value);
+                    }
+                }
+                ConceptualRustType::Optional(inner_ty) => {
+                    mark_refs(refs, types, wasm, current_scope, inner_ty)
+                }
+            }
+        }
+        for rust_struct in self.rust_structs().values() {
+            let current_scope = self.scope(&rust_struct.ident);
+            match rust_struct.variant() {
+                RustStructType::Array { element_type } => {
+                    mark_refs(&mut refs, self, wasm, current_scope, element_type)
+                }
+                RustStructType::GroupChoice { variants, .. }
+                | RustStructType::TypeChoice { variants, .. } => variants
+                    .iter()
+                    .for_each(|ev| mark_refs(&mut refs, self, wasm, current_scope, &ev.rust_type)),
+                RustStructType::Record(record) => record.fields.iter().for_each(|field| {
+                    mark_refs(&mut refs, self, wasm, current_scope, &field.rust_type)
+                }),
+                RustStructType::Table { domain, range } => {
+                    mark_refs(&mut refs, self, wasm, current_scope, domain);
+                    mark_refs(&mut refs, self, wasm, current_scope, range);
+                }
+                RustStructType::Wrapper { wrapped, .. } => {
+                    mark_refs(&mut refs, self, wasm, current_scope, wrapped)
+                }
+                RustStructType::Extern => {
+                    // impossible to know what this refers to - will have to be done afterwards by user
+                }
+            }
+        }
+        refs
+    }
+
+    fn aliases() -> BTreeMap<idents::AliasIdent, AliasInfo> {
         // TODO: write the rest of the reserved keywords here from the CDDL RFC
-        let mut aliases = BTreeMap::<AliasIdent, (RustType, bool, bool)>::new();
+        let mut aliases = BTreeMap::<AliasIdent, AliasInfo>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident, (rust_type, false, false));
+            aliases.insert(ident, AliasInfo::new(rust_type, false, false));
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
@@ -185,7 +311,7 @@ impl<'a> IntermediateTypes<'a> {
     pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<(RustType, bool)> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
-            Some((alias, gen_alias, _)) => Some((alias.clone(), !gen_alias)),
+            Some(alias) => Some((alias.base_type.clone(), !alias.gen_rust_alias)),
             None => match alias_ident {
                 AliasIdent::Rust(_rust_ident) => None,
                 AliasIdent::Reserved(reserved) => {
@@ -214,20 +340,11 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    pub fn register_type_alias(
-        &mut self,
-        alias: RustIdent,
-        base_type: RustType,
-        generate_rust_alias: bool,
-        generate_wasm_alias: bool,
-    ) {
-        if let ConceptualRustType::Alias(_ident, _ty) = &base_type.conceptual_type {
-            panic!("register_type_alias*({}, {:?}) wrap automatically in Alias, no need to provide it.", alias, base_type);
+    pub fn register_type_alias(&mut self, alias: RustIdent, info: AliasInfo) {
+        if let ConceptualRustType::Alias(_ident, _ty) = &info.base_type.conceptual_type {
+            panic!("register_type_alias*({}, {:?}) wraps automatically in Alias, no need to provide it.", alias, info.base_type);
         }
-        self.type_aliases.insert(
-            alias.into(),
-            (base_type, generate_rust_alias, generate_wasm_alias),
-        );
+        self.type_aliases.insert(alias.into(), info);
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {
@@ -254,7 +371,10 @@ impl<'a> IntermediateTypes<'a> {
                 if let Some(tag) = rust_struct.tag {
                     map_type = map_type.tag(tag);
                 }
-                self.register_type_alias(rust_struct.ident.clone(), map_type, true, false)
+                self.register_type_alias(
+                    rust_struct.ident.clone(),
+                    AliasInfo::new(map_type, true, false),
+                )
             }
             RustStructType::Array { element_type } => {
                 let mut array_type: RustType =
@@ -262,7 +382,10 @@ impl<'a> IntermediateTypes<'a> {
                 if let Some(tag) = rust_struct.tag {
                     array_type = array_type.tag(tag);
                 }
-                self.register_type_alias(rust_struct.ident.clone(), array_type, true, false)
+                self.register_type_alias(
+                    rust_struct.ident.clone(),
+                    AliasInfo::new(array_type, true, false),
+                )
             }
             RustStructType::Wrapper {
                 min_max: Some(_), ..
@@ -463,8 +586,8 @@ impl<'a> IntermediateTypes<'a> {
 
         if !self.type_aliases.is_empty() {
             println!("\n\nAliases:");
-            for (alias_name, alias_type) in self.type_aliases.iter() {
-                println!("{alias_name:?} -> {alias_type:?}");
+            for (alias_name, alias_info) in self.type_aliases.iter() {
+                println!("{alias_name:?} -> {alias_info:?}");
             }
         }
 
@@ -1057,21 +1180,21 @@ impl ConceptualRustType {
         if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable() {
             format!("Vec<{}>", self.for_wasm_member())
         } else {
-            format!("{}s", self.for_variant())
+            format!("{}List", self.for_variant())
         }
     }
 
-    pub fn name_as_rust_array(&self, from_wasm: bool) -> String {
-        format!("Vec<{}>", self.for_rust_member(from_wasm))
+    pub fn name_as_rust_array(&self, types: &IntermediateTypes, from_wasm: bool) -> String {
+        format!("Vec<{}>", self.for_rust_member(types, from_wasm))
     }
 
     /// Function parameter TYPE that will be moved in
-    pub fn for_rust_move(&self) -> String {
-        self.for_rust_member(false)
+    pub fn for_rust_move(&self, types: &IntermediateTypes) -> String {
+        self.for_rust_member(types, false)
     }
 
     /// Function parameter TYPE by-non-mut-reference for read-only
-    pub fn _for_rust_read(&self) -> String {
+    pub fn _for_rust_read(&self, types: &IntermediateTypes) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type, only here for serialization: {:?}",
@@ -1079,9 +1202,9 @@ impl ConceptualRustType {
             ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => format!("&{ident}"),
-            Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(false)),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read()),
-            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(false)),
+            Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(types, false)),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read(types)),
+            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(types, false)),
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
                 Self::Rust(_) => format!("&{ident}"),
@@ -1142,12 +1265,17 @@ impl ConceptualRustType {
         )))
     }
 
-    pub fn name_for_rust_map(k: &RustType, v: &RustType, from_wasm: bool) -> String {
+    pub fn name_for_rust_map(
+        types: &IntermediateTypes,
+        k: &RustType,
+        v: &RustType,
+        from_wasm: bool,
+    ) -> String {
         format!(
             "{}<{}, {}>",
             table_type(),
-            k.conceptual_type.for_rust_member(from_wasm),
-            v.conceptual_type.for_rust_member(from_wasm)
+            k.conceptual_type.for_rust_member(types, from_wasm),
+            v.conceptual_type.for_rust_member(types, from_wasm)
         )
     }
 
@@ -1174,26 +1302,40 @@ impl ConceptualRustType {
     }
 
     /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
-    pub fn for_rust_member(&self, from_wasm: bool) -> String {
-        let core = if from_wasm { "core::" } else { "" };
+    pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("{core}{ident}"),
-            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(from_wasm),
-            Self::Optional(ty) => {
-                format!("Option<{}>", ty.conceptual_type.for_rust_member(from_wasm))
+            Self::Rust(ident) => {
+                if from_wasm {
+                    crate::generation::rust_crate_struct_from_wasm(types, ident)
+                } else {
+                    ident.to_string()
+                }
             }
-            Self::Map(k, v) => Self::name_for_rust_map(k, v, from_wasm),
+            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(types, from_wasm),
+            Self::Optional(ty) => {
+                format!(
+                    "Option<{}>",
+                    ty.conceptual_type.for_rust_member(types, from_wasm)
+                )
+            }
+            Self::Map(k, v) => Self::name_for_rust_map(types, k, v, from_wasm),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_rust_member(from_wasm),
+                AliasIdent::Reserved(_) => ty.for_rust_member(types, from_wasm),
                 // but other aliases are generated and should be used.
-                AliasIdent::Rust(_) => format!("{core}{ident}"),
+                AliasIdent::Rust(rust_ident) => {
+                    if from_wasm {
+                        crate::generation::rust_crate_struct_from_wasm(types, rust_ident)
+                    } else {
+                        ident.to_string()
+                    }
+                }
             },
         }
     }

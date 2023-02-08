@@ -1,0 +1,10 @@
+external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+
+everything = [
+	foo,
+	external_foo,
+	; test using in arrays too
+	bars: [* bar],
+	; and maps
+	table: { * uint => bar_typedef }
+]
