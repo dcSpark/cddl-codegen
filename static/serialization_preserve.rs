@@ -52,11 +52,11 @@ pub trait DeserializeEmbeddedGroup {
 #[inline]
 fn sz_max(sz: cbor_event::Sz) -> u64 {
     match sz {
-        Sz::Inline => 23u64,
-        Sz::One => u8::MAX as u64,
-        Sz::Two => u16::MAX as u64,
-        Sz::Four => u32::MAX as u64,
-        Sz::Eight => u64::MAX,
+        cbor_event::Sz::Inline => 23u64,
+        cbor_event::Sz::One => u8::MAX as u64,
+        cbor_event::Sz::Two => u16::MAX as u64,
+        cbor_event::Sz::Four => u32::MAX as u64,
+        cbor_event::Sz::Eight => u64::MAX,
     }
 }
 
@@ -89,8 +89,8 @@ impl From<cbor_event::LenSz> for LenEncoding {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum StringEncoding {
     Canonical,
-    Indefinite(Vec<(u64, Sz)>),
-    Definite(Sz),
+    Indefinite(Vec<(u64, cbor_event::Sz)>),
+    Definite(cbor_event::Sz),
 }
 
 impl Default for StringEncoding {
