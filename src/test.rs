@@ -47,6 +47,10 @@ fn run_test(
         .append(true)
         .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
         .unwrap();
+    // some external files/tests pasted in might need this
+    lib_rs
+        .write_all("\nuse serialization::*;\n".as_bytes())
+        .unwrap();
     // copy external file in too (if needed) too
     if let Some(external_rust_file_path) = external_rust_file_path {
         let extern_rs = std::fs::read_to_string(external_rust_file_path).unwrap();
@@ -131,6 +135,22 @@ fn run_test(
         }
         assert!(cargo_build_wasm.status.success());
     }
+    // check that the JSON schema export crate builds
+    let json_export_dir = test_path.join(format!("{export_path}/wasm/json-gen"));
+    if json_export_dir.exists() {
+        let cargo_build_json = std::process::Command::new("cargo")
+            .arg("build")
+            .current_dir(json_export_dir)
+            .output()
+            .unwrap();
+        if !cargo_build_json.status.success() {
+            eprintln!(
+                "wasm build stderr:\n{}",
+                String::from_utf8(cargo_build_json.stderr).unwrap()
+            );
+        }
+        assert!(cargo_build_json.status.success());
+    }
 }
 
 #[test]
@@ -214,13 +234,21 @@ fn multifile() {
     use std::str::FromStr;
     let extern_rust_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_rust_defs");
+        .join("external_rust_defs_multifile");
     let extern_wasm_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_wasm_defs");
+        .join("external_wasm_defs_multifile");
+    // json-schema-export / preserve-encodings to ensure that imports/scoping works in both:
+    // 1) cbor_encodings.rs
+    // 2) json-gen schema export crate
     run_test(
         "multifile",
-        &[],
+        &[
+            "--lib-name=multi-chain-test",
+            "--preserve-encodings=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
         None,
         Some(extern_rust_path),
         Some(extern_wasm_path),

@@ -1,12 +1,12 @@
 #[inline]
-fn fit_sz(len: u64, sz: Option<cbor_event::Sz>, force_canonical: bool) -> Sz {
+fn fit_sz(len: u64, sz: Option<cbor_event::Sz>, force_canonical: bool) -> cbor_event::Sz {
     match sz {
         Some(sz) => if !force_canonical && len <= sz_max(sz) {
             sz
         } else {
-            Sz::canonical(len)
+            cbor_event::Sz::canonical(len)
         },
-        None => Sz::canonical(len),
+        None => cbor_event::Sz::canonical(len),
     }
 }
 
@@ -29,7 +29,7 @@ impl LenEncoding {
 
     pub fn end<'a, W: Write + Sized>(&self, serializer: &'a mut Serializer<W>, force_canonical: bool) -> cbor_event::Result<&'a mut Serializer<W>> {
         if !force_canonical && *self == Self::Indefinite {
-            serializer.write_special(CBORSpecial::Break)?;
+            serializer.write_special(cbor_event::Special::Break)?;
         }
         Ok(serializer)
     }

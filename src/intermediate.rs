@@ -143,18 +143,17 @@ impl<'a> IntermediateTypes<'a> {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    if wasm && !elem_ty.directly_wasm_exposable() {
-                        // TODO: we should be doing array wrappers where they are declared or used
+                    if wasm && !elem_ty.directly_wasm_exposable() && current_scope != "lib" {
+                        // TODO: we should be doing array wrappers where they are declared or used,
                         // but for the latter, what to do if multiple places use it? default to lib?
-                        if current_scope != "lib" {
-                            let arr_wrapper_ident =
-                                RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array()));
-                            refs.entry(current_scope.to_owned())
-                                .or_default()
-                                .entry("lib".to_owned())
-                                .or_default()
-                                .insert(arr_wrapper_ident);
-                        }
+                        // issue: https://github.com/dcSpark/cddl-codegen/issues/138
+                        let arr_wrapper_ident =
+                            RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array()));
+                        refs.entry(current_scope.to_owned())
+                            .or_default()
+                            .entry("lib".to_owned())
+                            .or_default()
+                            .insert(arr_wrapper_ident);
                     } else {
                         mark_refs(refs, types, wasm, current_scope, elem_ty);
                     }
@@ -163,18 +162,17 @@ impl<'a> IntermediateTypes<'a> {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
-                    if wasm {
-                        // TODO: we should be doing map wrappers where they are declared or used
-                        // but for the latter, what to do if multiple places use it? default to lib?
-                        if current_scope != "lib" {
-                            let map_wrapper_ident =
-                                ConceptualRustType::name_for_wasm_map(key, value);
-                            refs.entry(current_scope.to_owned())
-                                .or_default()
-                                .entry("lib".to_owned())
-                                .or_default()
-                                .insert(map_wrapper_ident);
-                        }
+                    if wasm && current_scope != "lib" {
+                        // TODO: we should be doing map wrappers where they are declared or used,
+                        // but for the former what if the key/value types are in different modules,
+                        // and for the latter, what to do if multiple places use it? default to lib?
+                        // issue: https://github.com/dcSpark/cddl-codegen/issues/138
+                        let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
+                        refs.entry(current_scope.to_owned())
+                            .or_default()
+                            .entry("lib".to_owned())
+                            .or_default()
+                            .insert(map_wrapper_ident);
                     } else {
                         mark_refs(refs, types, wasm, current_scope, key);
                         mark_refs(refs, types, wasm, current_scope, value);
