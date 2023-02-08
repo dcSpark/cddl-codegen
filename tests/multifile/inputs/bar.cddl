@@ -1,10 +1,10 @@
 bar = {
-	foo: #6.1337(foo),
+	foo: #6.1337([* foo]),
 	? derp: uint,
 	1 : uint / null,
 	? 5: text,
 	five: 5,
-	float: float64,
+	foo_map: { * foo => foo },
 }
 
 ; test refs too

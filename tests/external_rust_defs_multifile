@@ -1,4 +1,7 @@
-#[derive(Clone, Debug)]
+// doesn't actually preserve encodings - just different so that it compiles
+// also contains JSON schemas
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ExternalFoo {
     pub index_0: u64,
     pub index_1: String,
@@ -31,7 +34,7 @@ impl cbor_event::se::Serialize for ExternalFoo {
 impl Deserialize for ExternalFoo {
     fn deserialize<R: BufRead + std::io::Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::new(cbor_event::LenSz::Indefinite);
         read_len.read_elems(3)?;
         (|| -> Result<_, DeserializeError> {
             let index_0 = Ok(raw.unsigned_integer()? as u64)
