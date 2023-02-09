@@ -1,5 +1,5 @@
-// doesn't actually preserve encodings - just different so that it compiles
-// also contains JSON schemas
+// same as external_rust_defs, but with JSON traits + serialization code compiles with --preserve-encodings=true
+// as this changes the API for CBORReadLen. This code does NOT support preserving encodings - just compiles with it.
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ExternalFoo {
@@ -19,10 +19,10 @@ impl ExternalFoo {
 }
 
 impl cbor_event::se::Serialize for ExternalFoo {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se, W: std::io::Write>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer<W>,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
         serializer.write_array(cbor_event::Len::Len(3))?;
         serializer.write_unsigned_integer(self.index_0)?;
         serializer.write_text(&self.index_1)?;
@@ -31,23 +31,23 @@ impl cbor_event::se::Serialize for ExternalFoo {
     }
 }
 
-impl Deserialize for ExternalFoo {
-    fn deserialize<R: BufRead + std::io::Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+impl serialization::Deserialize for ExternalFoo {
+    fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {
         let len = raw.array()?;
         let mut read_len = CBORReadLen::new(cbor_event::LenSz::Indefinite);
         read_len.read_elems(3)?;
-        (|| -> Result<_, DeserializeError> {
+        (|| -> Result<_, error::DeserializeError> {
             let index_0 = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+                .map_err(|e: error::DeserializeError| e.annotate("index_0"))?;
             let index_1 =
-                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+                Ok(raw.text()? as String).map_err(|e: error::DeserializeError| e.annotate("index_1"))?;
             let index_2 =
-                Ok(raw.bytes()? as Vec<u8>).map_err(|e: DeserializeError| e.annotate("index_2"))?;
+                Ok(raw.bytes()? as Vec<u8>).map_err(|e: error::DeserializeError| e.annotate("index_2"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
                     cbor_event::Special::Break => (),
-                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    _ => return Err(error::DeserializeFailure::EndingBreakMissing.into()),
                 },
             }
             Ok(ExternalFoo {
