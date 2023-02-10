@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cbor_event::{Sz, StringLenSz};
+    use cbor_event::{de::Deserializer, Sz, StringLenSz};
+    use serialization::Deserialize;
 
     fn deser_test_orig<T: Deserialize + Serialize>(orig: &T) {
         print_cbor_types("orig (original enc)", &orig.to_cbor_bytes());

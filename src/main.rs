@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
     let mut gen_scope = GenerationScope::new();
     gen_scope.generate(&types);
-    gen_scope.export(&types)?;
+    gen_scope.export()?;
     types.print_info();
 
     gen_scope.print_structs_without_deserialize();
