@@ -413,10 +413,11 @@ impl<'a> DeserializeBeforeAfter<'a> {
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<String, codegen::Scope>,
-    serialize_scope: codegen::Scope,
+    rust_serialize_lib_scope: codegen::Scope,
+    serialize_scopes: BTreeMap<String, codegen::Scope>,
     wasm_lib_scope: codegen::Scope,
     wasm_scopes: BTreeMap<String, codegen::Scope>,
-    cbor_encodings_scope: codegen::Scope,
+    cbor_encodings_scopes: BTreeMap<String, codegen::Scope>,
     json_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
@@ -427,10 +428,11 @@ impl GenerationScope {
         Self {
             rust_lib_scope: codegen::Scope::new(),
             rust_scopes: BTreeMap::new(),
-            serialize_scope: codegen::Scope::new(),
+            rust_serialize_lib_scope: codegen::Scope::new(),
+            serialize_scopes: BTreeMap::new(),
             wasm_lib_scope: codegen::Scope::new(),
             wasm_scopes: BTreeMap::new(),
-            cbor_encodings_scope: codegen::Scope::new(),
+            cbor_encodings_scopes: BTreeMap::new(),
             json_scope: codegen::Scope::new(),
             already_generated: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
@@ -440,57 +442,6 @@ impl GenerationScope {
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes) {
-        // Rust (populate rust_lib() - used for top of file before structs)
-        self
-            .rust_lib()
-            .raw("#![allow(clippy::too_many_arguments)]\n")
-            .raw("// This library was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n");
-        // We can't generate groups of imports with codegen::Import so we just output this as raw text
-        // since we don't need it to be dynamic so it's fine. codegen::Impl::new("a", "{z::b, z::c}")
-        // does not work.
-        if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
-            self.rust_lib()
-                .push_import("cbor_event", "self", None)
-                .push_import("cbor_event::de", "Deserializer", None)
-                .push_import("cbor_event::se", "Serializer", None);
-        } else {
-            self.rust_lib()
-                .push_import("cbor_event", "self", None)
-                .push_import("cbor_event::de", "Deserializer", None)
-                .push_import("cbor_event::se", "Serialize", None)
-                .push_import("cbor_event::se", "Serializer", None);
-        }
-        self.rust_lib()
-            .push_import("std::io", "BufRead", None)
-            .push_import("std::io", "Write", None)
-            .push_import("std::io", "Write", None)
-            .push_import("prelude", "*", None)
-            .push_import("std::convert", "From", None)
-            .push_import("std::convert", "TryFrom", None)
-            .raw("pub mod prelude;")
-            .raw("pub mod serialization;");
-        if CLI_ARGS.preserve_encodings {
-            self.rust_lib()
-                .raw("pub mod ordered_hash_map;")
-                .raw("pub mod cbor_encodings;")
-                .raw("extern crate derivative;");
-            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
-            self.cbor_encodings().push_import("super", "*", None);
-            self.rust_serialize()
-                .push_import("crate::cbor_encodings", "*", None);
-        }
-        self.rust_serialize()
-            .push_import("super", "*", None)
-            .push_import("std::io", "Seek", None)
-            .push_import("std::io", "SeekFrom", None);
-
-        // Wasm (populate wasm_lib() - used for top of file before structs)
-        if CLI_ARGS.wasm {
-            self
-                .wasm_lib()
-                .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
-        }
-
         // Type aliases
         for (alias_ident, alias_info) in types.type_aliases() {
             // only generate user-defined ones
@@ -679,7 +630,7 @@ impl GenerationScope {
             }
         }
 
-        // JSON export
+        // JSON export crate
         if CLI_ARGS.json_schema_export {
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
             let mut macro_match = Block::new("($name:ty) => ");
@@ -722,50 +673,72 @@ impl GenerationScope {
             }
             self.json_scope.push_fn(main);
         }
-    }
 
-    /// Exports all already-generated state to the provided directory.
-    /// Call generate() first to populate the generation state.
-    pub fn export(&mut self, types: &IntermediateTypes) -> std::io::Result<()> {
-        // package.json / scripts
-        let rust_dir = if CLI_ARGS.package_json {
-            if CLI_ARGS.json_schema_export {
-                std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
-                std::fs::copy(
-                    "static/run-json2ts.js",
-                    CLI_ARGS.output.join("scripts/run-json2ts.js"),
-                )?;
-                std::fs::copy(
-                    "static/json-ts-types.js",
-                    CLI_ARGS.output.join("scripts/json-ts-types.js"),
-                )?;
-                std::fs::copy(
-                    "static/package_json_schemas.json",
-                    CLI_ARGS.output.join("package.json"),
-                )?;
-            } else {
-                std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
-            }
-            CLI_ARGS.output.join("rust")
-        } else {
-            CLI_ARGS.output.clone()
-        };
+        // imports / module declarations
+        // this is done at the end so we already know all information about output code
 
-        // lib.rs / other files (if input is a directory)
-        std::fs::create_dir_all(rust_dir.join("rust/src"))?;
+        // rust
+        self.rust_lib()
+            .raw("#![allow(clippy::too_many_arguments)]\n");
+        let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
+        for content in self.rust_scopes.values_mut() {
+            content.raw(codegen_comment);
+        }
+        for content in self.cbor_encodings_scopes.values_mut() {
+            content.raw(codegen_comment);
+        }
+        for content in self.serialize_scopes.values_mut() {
+            content.raw(codegen_comment);
+        }
+        for content in self.wasm_scopes.values_mut() {
+            content.raw(codegen_comment);
+        }
+
+        // declare modules (root lib specific)
+        self.rust_lib().raw("pub mod error;");
+        if CLI_ARGS.preserve_encodings {
+            self.rust_lib()
+                .raw("pub mod ordered_hash_map;")
+                .raw("extern crate derivative;");
+        }
         let scope_names = self
             .rust_scopes
             .keys()
             .filter(|scope| *scope != "lib")
             .cloned()
             .collect::<Vec<_>>();
-        let rust_imports = types.scope_references(false);
         for scope in scope_names {
             self.rust_lib().raw(&format!("pub mod {scope};"));
         }
-        let mut merged_rust_scope = codegen::Scope::new();
-        merged_rust_scope.append(self.rust_lib());
-        // import encoding structs
+
+        // declare common modules in each module (struct files)
+        for content in self.rust_scopes.values_mut() {
+            content.raw("pub mod serialization;");
+            if CLI_ARGS.preserve_encodings {
+                content.raw("pub mod cbor_encodings;");
+            }
+        }
+
+        // general common imports (struct files)
+        for content in self.rust_scopes.values_mut() {
+            // needed if there's any params that can fail
+            content
+                .push_import("std::convert", "TryFrom", None)
+                .push_import("crate::error", "*", None);
+        }
+
+        // cbor_encodings imports
+        if CLI_ARGS.preserve_encodings {
+            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
+            for content in self.cbor_encodings_scopes.values_mut() {
+                content
+                    .push_import("std::collections", "BTreeMap", None)
+                    .push_import("crate::serialization", "LenEncoding", None)
+                    .push_import("crate::serialization", "StringEncoding", None);
+            }
+        }
+
+        // import encoding structs (struct files)
         if CLI_ARGS.preserve_encodings {
             for (rust_ident, rust_struct) in types.rust_structs() {
                 if matches!(
@@ -774,18 +747,15 @@ impl GenerationScope {
                 ) {
                     // ALL records have an encoding struct since at minimum they contian
                     // the array or map encoding details so no need to check fields
-                    let cbor_encodings_scope = match types.scope(rust_ident) {
-                        "lib" => "cbor_encodings",
-                        _other_scope => "crate::cbor_encodings",
-                    };
                     self.rust(types, rust_ident).push_import(
-                        cbor_encodings_scope,
+                        "cbor_encodings",
                         format!("{rust_ident}Encoding"),
                         None,
                     );
                 }
             }
         }
+
         fn add_imports_from_scope_refs(
             scope: &String,
             content: &mut codegen::Scope,
@@ -825,7 +795,8 @@ impl GenerationScope {
                 }
             }
         }
-        // imports and write to file
+        // imports for generated structs from other files (struct files)
+        let rust_imports = types.scope_references(false);
         for (scope, content) in self.rust_scopes.iter_mut() {
             add_imports_from_scope_refs(scope, content, &rust_imports);
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
@@ -839,21 +810,139 @@ impl GenerationScope {
                     content.push_import("crate::ordered_hash_map", "OrderedHashMap", None);
                 }
             }
-            if scope == "lib" {
-                merged_rust_scope.append(&content.clone());
+        }
+
+        // serialization
+        // generic imports (serialization)
+        for (scope, content) in self.serialize_scopes.iter_mut() {
+            let error_scope = if scope == "lib" {
+                "error"
             } else {
-                std::fs::write(
-                    rust_dir.join(format!("rust/src/{scope}.rs")),
-                    rustfmt_generated_string(&content.to_string())?.as_ref(),
-                )?;
+                "crate::error"
+            };
+            content
+                .push_import("super", "*", None)
+                .push_import("std::io", "BufRead", None)
+                .push_import("std::io", "Seek", None)
+                .push_import("std::io", "SeekFrom", None)
+                .push_import("std::io", "Write", None)
+                .push_import("cbor_event::de", "Deserializer", None)
+                .push_import("cbor_event::se", "Serializer", None)
+                .push_import(error_scope, "*", None);
+            if CLI_ARGS.preserve_encodings {
+                content.push_import("super::cbor_encodings", "*", None);
+            }
+            if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+                content.push_import("cbor_event", "self", None);
+            } else {
+                content.push_import("cbor_event", "self", None).push_import(
+                    "cbor_event::se",
+                    "Serialize",
+                    None,
+                );
+            }
+            if scope != "lib" {
+                content.push_import("crate::serialization", "*", None);
             }
         }
-        std::fs::write(
-            rust_dir.join("rust/src/lib.rs"),
-            rustfmt_generated_string(&merged_rust_scope.to_string())?.as_ref(),
+
+        // wasm
+        if CLI_ARGS.wasm {
+            self
+            .wasm_lib()
+            .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
+            // wasm module declarations
+            let wasm_scope_names = self
+                .wasm_scopes
+                .keys()
+                .filter(|scope| *scope != "lib")
+                .cloned()
+                .collect::<Vec<_>>();
+            for scope in wasm_scope_names {
+                self.wasm_lib().raw(&format!("pub mod {scope};"));
+            }
+            // wasm imports
+            let wasm_imports = types.scope_references(true);
+            for (scope, content) in self.wasm_scopes.iter_mut() {
+                add_imports_from_scope_refs(scope, content, &wasm_imports);
+                content
+                    .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
+                    .push_import("wasm_bindgen::prelude", "JsValue", None);
+                if CLI_ARGS.preserve_encodings {
+                    content.push_import(
+                        format!("{}::ordered_hash_map", CLI_ARGS.lib_name_code()),
+                        "OrderedHashMap",
+                        None,
+                    );
+                } else {
+                    content.push_import("std::collections", "BTreeMap", None);
+                }
+            }
+        }
+    }
+
+    /// Exports all already-generated state to the provided directory.
+    /// Call generate() first to populate the generation state.
+    pub fn export(&self) -> std::io::Result<()> {
+        // package.json / scripts
+        let rust_dir = if CLI_ARGS.package_json {
+            if CLI_ARGS.json_schema_export {
+                std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
+                std::fs::copy(
+                    "static/run-json2ts.js",
+                    CLI_ARGS.output.join("scripts/run-json2ts.js"),
+                )?;
+                std::fs::copy(
+                    "static/json-ts-types.js",
+                    CLI_ARGS.output.join("scripts/json-ts-types.js"),
+                )?;
+                std::fs::copy(
+                    "static/package_json_schemas.json",
+                    CLI_ARGS.output.join("package.json"),
+                )?;
+            } else {
+                std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
+            }
+            CLI_ARGS.output.join("rust")
+        } else {
+            CLI_ARGS.output.clone()
+        };
+
+        fn merge_scopes_and_export(
+            src_dir: std::path::PathBuf,
+            mut merged_scope: codegen::Scope,
+            other_scopes: &BTreeMap<String, codegen::Scope>,
+            root_name: &str,
+            inner_name: &str,
+        ) -> std::io::Result<()> {
+            std::fs::create_dir_all(&src_dir)?;
+            for (scope, content) in other_scopes {
+                if scope == "lib" {
+                    merged_scope.append(&content.clone());
+                } else {
+                    let mod_dir = src_dir.join(scope);
+                    std::fs::create_dir_all(&mod_dir)?;
+                    std::fs::write(
+                        mod_dir.join(inner_name),
+                        rustfmt_generated_string(&content.to_string())?.as_ref(),
+                    )?;
+                }
+            }
+            std::fs::write(
+                src_dir.join(root_name),
+                rustfmt_generated_string(&merged_scope.to_string())?.as_ref(),
+            )
+        }
+        // lib.rs / {module}/mod.rs files (if input is a directory)
+        merge_scopes_and_export(
+            rust_dir.join("rust/src"),
+            self.rust_lib_scope.clone(),
+            &self.rust_scopes,
+            "lib.rs",
+            "mod.rs",
         )?;
 
-        // serialiation.rs
+        // serialiation.rs / {module}/serialization.rs files (if input is a directory)
         let mut serialize_paths = vec!["static/serialization.rs"];
         if CLI_ARGS.preserve_encodings {
             serialize_paths.push("static/serialization_preserve.rs");
@@ -867,12 +956,31 @@ impl GenerationScope {
             serialize_paths.push("static/serialization_non_preserve.rs");
             serialize_paths.push("static/serialization_non_force_canonical.rs");
         }
-        let mut serialize_contents = concat_files(serialize_paths)?;
-        serialize_contents.push_str(&self.rust_serialize().to_string());
-        std::fs::write(
-            rust_dir.join("rust/src/serialization.rs"),
-            rustfmt_generated_string(&serialize_contents)?.as_ref(),
+        let mut merged_rust_serialize_scope = codegen::Scope::new();
+        merged_rust_serialize_scope.raw(concat_files(serialize_paths)?);
+        merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
+        merge_scopes_and_export(
+            rust_dir.join("rust/src"),
+            merged_rust_serialize_scope,
+            &self.serialize_scopes,
+            "serialization.rs",
+            "serialization.rs",
         )?;
+
+        // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
+        if CLI_ARGS.preserve_encodings {
+            for (scope, contents) in self.cbor_encodings_scopes.iter() {
+                let path = if scope == "lib" {
+                    Cow::from("rust/src/cbor_encodings.rs")
+                } else {
+                    Cow::from(format!("rust/src/{scope}/cbor_encodings.rs"))
+                };
+                std::fs::write(
+                    rust_dir.join(path.as_ref()),
+                    rustfmt_generated_string(&contents.to_string())?.as_ref(),
+                )?;
+            }
+        }
 
         // Cargo.toml
         let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
@@ -892,15 +1000,11 @@ impl GenerationScope {
             rust_cargo_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
         )?;
 
-        // prelude.rs
-        std::fs::copy("static/prelude.rs", rust_dir.join("rust/src/prelude.rs"))?;
+        // error.rs
+        std::fs::copy("static/error.rs", rust_dir.join("rust/src/error.rs"))?;
 
-        // cbor_encodings.rs + ordered_hash_map.rs
+        // ordered_hash_map.rs
         if CLI_ARGS.preserve_encodings {
-            std::fs::write(
-                rust_dir.join("rust/src/cbor_encodings.rs"),
-                rustfmt_generated_string(&self.cbor_encodings().to_string())?.as_ref(),
-            )?;
             let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
             if CLI_ARGS.json_serde_derives {
                 ordered_hash_map_rs
@@ -919,46 +1023,15 @@ impl GenerationScope {
 
         // wasm crate
         if CLI_ARGS.wasm {
-            std::fs::create_dir_all(rust_dir.join("wasm/src"))?;
-            let scope_names = self
-                .wasm_scopes
-                .keys()
-                .filter(|scope| *scope != "lib")
-                .cloned()
-                .collect::<Vec<_>>();
-            let wasm_imports = types.scope_references(true);
-            for scope in scope_names {
-                self.wasm_lib().raw(&format!("pub mod {scope};"));
-            }
-            let mut merged_wasm_scope = codegen::Scope::new();
-            merged_wasm_scope.append(self.wasm_lib());
-            for (scope, content) in self.wasm_scopes.iter_mut() {
-                add_imports_from_scope_refs(scope, content, &wasm_imports);
-                content
-                    .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
-                    .push_import("wasm_bindgen::prelude", "JsValue", None);
-                if CLI_ARGS.preserve_encodings {
-                    content.push_import(
-                        format!("{}::ordered_hash_map", CLI_ARGS.lib_name_code()),
-                        "OrderedHashMap",
-                        None,
-                    );
-                } else {
-                    content.push_import("std::collections", "BTreeMap", None);
-                }
-                if scope == "lib" {
-                    merged_wasm_scope.append(&content.clone());
-                } else {
-                    std::fs::write(
-                        rust_dir.join(format!("wasm/src/{scope}.rs")),
-                        rustfmt_generated_string(&content.to_string())?.as_ref(),
-                    )?;
-                }
-            }
-            std::fs::write(
-                rust_dir.join("wasm/src/lib.rs"),
-                rustfmt_generated_string(&merged_wasm_scope.to_string())?.as_ref(),
+            // main files
+            merge_scopes_and_export(
+                rust_dir.join("wasm/src"),
+                self.wasm_lib_scope.clone(),
+                &self.wasm_scopes,
+                "lib.rs",
+                "mod.rs",
             )?;
+            // Cargo.toml
             let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
             if CLI_ARGS.json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
@@ -983,7 +1056,7 @@ impl GenerationScope {
             )?;
             std::fs::write(
                 rust_dir.join("wasm/json-gen/src/main.rs"),
-                rustfmt_generated_string(&self.json().to_string())?.as_ref(),
+                rustfmt_generated_string(&self.json_scope.to_string())?.as_ref(),
             )?;
         }
 
@@ -1006,10 +1079,22 @@ impl GenerationScope {
         &mut self.rust_lib_scope
     }
 
-    /// We dump all serialization into a "serialization" scope as these details
-    /// aren't very helpful to users as long as they work so we don't clutter other files.
-    pub fn rust_serialize(&mut self) -> &mut codegen::Scope {
-        &mut self.serialize_scope
+    /// Serialization scope for `ident`
+    pub fn rust_serialize(
+        &mut self,
+        types: &IntermediateTypes,
+        ident: &RustIdent,
+    ) -> &mut codegen::Scope {
+        let scope_name = types.scope(ident).to_owned();
+        self.serialize_scopes
+            .entry(scope_name)
+            .or_insert(codegen::Scope::new())
+    }
+
+    /// Serialization scope for lib.cddl
+    /// e.g. for core stuff, or things without an explicit scope like WASM arrays
+    pub fn rust_serialize_lib(&mut self) -> &mut codegen::Scope {
+        &mut self.rust_serialize_lib_scope
     }
 
     /// Generates in the appropriate scope for `ident`
@@ -1028,14 +1113,16 @@ impl GenerationScope {
         &mut self.wasm_lib_scope
     }
 
-    /// If used, all associated *Encoding structs.
-    pub fn cbor_encodings(&mut self) -> &mut codegen::Scope {
-        &mut self.cbor_encodings_scope
-    }
-
-    /// If used, scope for json-gen crate's main.rs
-    pub fn json(&mut self) -> &mut codegen::Scope {
-        &mut self.json_scope
+    /// CBOR encoding scope for `ident` (i.e. *Encoding structs)
+    pub fn cbor_encodings(
+        &mut self,
+        types: &IntermediateTypes,
+        ident: &RustIdent,
+    ) -> &mut codegen::Scope {
+        let scope_name = types.scope(ident).to_owned();
+        self.cbor_encodings_scopes
+            .entry(scope_name)
+            .or_insert(codegen::Scope::new())
     }
 
     /// Write code for serializing {serializing_rust_type} directly into {body}
@@ -2812,7 +2899,6 @@ fn create_base_rust_struct(
 
 /// Formatted string for fully scoped rust crate struct for use from wasm crate
 pub fn rust_crate_struct_from_wasm(types: &IntermediateTypes<'_>, ident: &RustIdent) -> String {
-    println!("scope for [{}]: {}", ident.as_ref(), types.scope(ident));
     match types.scope(ident) {
         "lib" => format!("{}::{}", CLI_ARGS.lib_name_code(), ident),
         other_scope => format!("{}::{}::{}", CLI_ARGS.lib_name_code(), other_scope, ident),
@@ -3243,9 +3329,9 @@ fn push_rust_struct(
     ser_embedded_impl: Option<codegen::Impl>,
 ) {
     gen_scope.rust(types, name).push_struct(s).push_impl(s_impl);
-    gen_scope.rust_serialize().push_impl(ser_impl);
+    gen_scope.rust_serialize(types, name).push_impl(ser_impl);
     if let Some(s) = ser_embedded_impl {
-        gen_scope.rust_serialize().push_impl(s);
+        gen_scope.rust_serialize(types, name).push_impl(s);
     }
 }
 
@@ -3870,7 +3956,9 @@ fn codegen_struct(
             }
         }
 
-        gen_scope.cbor_encodings().push_struct(encoding_struct);
+        gen_scope
+            .cbor_encodings(types, name)
+            .push_struct(encoding_struct);
 
         Some("len_encoding")
     } else {
@@ -4674,9 +4762,11 @@ fn codegen_struct(
     }
     // TODO: generic deserialize (might need backtracking)
     if gen_scope.deserialize_generated(name) {
-        gen_scope.rust_serialize().push_impl(deser_impl);
+        gen_scope.rust_serialize(types, name).push_impl(deser_impl);
         if let Some(deser_embedded_impl) = deser_embedded_impl {
-            gen_scope.rust_serialize().push_impl(deser_embedded_impl);
+            gen_scope
+                .rust_serialize(types, name)
+                .push_impl(deser_embedded_impl);
         }
     }
 }
@@ -5350,7 +5440,7 @@ fn generate_enum(
     // however, clients expanding upon the generated lib might find it of use to change.
     gen_scope.rust(types, name).push_enum(e).push_impl(e_impl);
     gen_scope
-        .rust_serialize()
+        .rust_serialize(types, name)
         .push_impl(ser_impl)
         .push_impl(deser_impl);
 }
@@ -5472,7 +5562,9 @@ fn generate_wrapper_struct(
                     &field_enc.type_name,
                 );
             }
-            gen_scope.cbor_encodings().push_struct(encoding_struct);
+            gen_scope
+                .cbor_encodings(types, type_name)
+                .push_struct(encoding_struct);
         }
         Some(enc_fields)
     } else {
@@ -5754,7 +5846,7 @@ fn generate_wrapper_struct(
         .push_impl(from_impl)
         .push_impl(from_inner_impl);
     gen_scope
-        .rust_serialize()
+        .rust_serialize(types, type_name)
         .push_impl(ser_impl)
         .push_impl(deser_impl);
 }
@@ -6009,7 +6101,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .push_impl(from_str)
         .push_impl(try_from_i128);
     gen_scope
-        .rust_serialize()
+        .rust_serialize_lib()
         .push_impl(ser_impl)
         .push_impl(deser_impl);
 }

@@ -50,7 +50,7 @@ pub trait DeserializeEmbeddedGroup {
 }
 
 #[inline]
-fn sz_max(sz: cbor_event::Sz) -> u64 {
+pub(crate) fn sz_max(sz: cbor_event::Sz) -> u64 {
     match sz {
         cbor_event::Sz::Inline => 23u64,
         cbor_event::Sz::One => u8::MAX as u64,

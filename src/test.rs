@@ -1,5 +1,7 @@
 use std::io::Write;
 
+/// If you have multiple tests that use the same directory, please use different export_suffix
+/// for each one or else the tests will be flaky as they are run concurrently.
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -101,7 +103,18 @@ fn run_test(
             .unwrap();
         let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
         wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
-        wasm_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
+        // we must replace the lib name if it's not the default
+        if let Some(custom_lib_name) = options.iter().find_map(|arg: &&str| {
+            arg.split_once("--lib-name=")
+                .map(|(_, lib_name)| lib_name.replace('-', "_"))
+        }) {
+            let replaced_extern_rs = extern_rs.replace("cddl_lib", &custom_lib_name);
+            wasm_lib_rs
+                .write_all(replaced_extern_rs.as_bytes())
+                .unwrap();
+        } else {
+            wasm_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
+        }
     }
     if wasm_test_dir.exists() {
         println!("   ------ testing (wasm) ------");
@@ -234,10 +247,30 @@ fn multifile() {
     use std::str::FromStr;
     let extern_rust_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_rust_defs_multifile");
+        .join("external_rust_defs");
     let extern_wasm_path = std::path::PathBuf::from_str("tests")
         .unwrap()
-        .join("external_wasm_defs_multifile");
+        .join("external_wasm_defs");
+    // this tests without preserve-encodings as that can affect imports
+    run_test(
+        "multifile",
+        &[],
+        None,
+        Some(extern_rust_path),
+        Some(extern_wasm_path),
+        true,
+    );
+}
+
+#[test]
+fn multifile_json_preserve() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_rust_defs_compiles_with_json_preserve");
+    let extern_wasm_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_wasm_defs");
     // json-schema-export / preserve-encodings to ensure that imports/scoping works in both:
     // 1) cbor_encodings.rs
     // 2) json-gen schema export crate
@@ -249,7 +282,7 @@ fn multifile() {
             "--json-serde-derives=true",
             "--json-schema-export=true",
         ],
-        None,
+        Some("json_preserve"),
         Some(extern_rust_path),
         Some(extern_wasm_path),
         true,

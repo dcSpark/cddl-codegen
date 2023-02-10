@@ -14,13 +14,13 @@ fn map_def(len: u8) -> Vec<u8> {
 }
 
 fn arr_sz(len: u64, sz: cbor_event::Sz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_array_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
     buf.finalize()
 }
 
 fn map_sz(len: u64, sz: cbor_event::Sz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_map_sz(cbor_event::LenSz::Len(len, sz)).unwrap();
     buf.finalize()
 }
@@ -40,7 +40,7 @@ fn cbor_tag(t: u8) -> Vec<u8> {
 }
 
 fn cbor_int(x: i128, sz: cbor_event::Sz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     if x >= 0 {
         buf.write_unsigned_integer_sz(x as u64, sz).unwrap();
     } else {
@@ -50,26 +50,26 @@ fn cbor_int(x: i128, sz: cbor_event::Sz) -> Vec<u8> {
 }
 
 fn cbor_tag_sz(tag: u64, sz: cbor_event::Sz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_tag_sz(tag, sz).unwrap();
     buf.finalize()
 }
 
 fn cbor_str_sz(s: &str, sz: cbor_event::StringLenSz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_text_sz(s, sz).unwrap();
     buf.finalize()
 }
 
 fn cbor_bytes_sz(bytes: Vec<u8>, sz: cbor_event::StringLenSz) -> Vec<u8> {
-    let mut buf = Serializer::new_vec();
+    let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_bytes_sz(bytes, sz).unwrap();
     buf.finalize()
 }
 
 fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
     use cbor_event::Type;
-    let mut raw = Deserializer::from(std::io::Cursor::new(vec));
+    let mut raw = cbor_event::de::Deserializer::from(std::io::Cursor::new(vec));
     let mut lens = Vec::new();
     let consume_elem = |lens: &mut Vec<cbor_event::LenSz>| {
         if let Some(len) = lens.last_mut() {

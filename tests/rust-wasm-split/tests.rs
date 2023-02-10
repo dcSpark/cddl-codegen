@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cbor_event::de::Deserializer;
+    use serialization::Deserialize;
 
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         print_cbor_types("orig", &orig.to_cbor_bytes());
