@@ -106,7 +106,7 @@ fn run_test(
         // we must replace the lib name if it's not the default
         if let Some(custom_lib_name) = options.iter().find_map(|arg: &&str| {
             arg.split_once("--lib-name=")
-                .and_then(|(_, lib_name)| Some(lib_name.replace('-', "_")))
+                .map(|(_, lib_name)| lib_name.replace('-', "_"))
         }) {
             let replaced_extern_rs = extern_rs.replace("cddl_lib", &custom_lib_name);
             wasm_lib_rs
