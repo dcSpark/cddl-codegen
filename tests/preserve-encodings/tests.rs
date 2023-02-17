@@ -367,6 +367,23 @@ mod tests {
     }
 
     #[test]
+    fn enums() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let enum_values = vec![3, 1, 4];
+        for def_enc in &def_encodings {
+            for enum_value in &enum_values {
+                let irregular_bytes = vec![
+                    arr_sz(2, *def_enc),
+                        // CEnum
+                        cbor_int(*enum_value, *def_enc),
+                        // TypeChoice
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            }
+        }
+    }
+
+    #[test]
     fn group_choice() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let str_6_encodings = vec![
