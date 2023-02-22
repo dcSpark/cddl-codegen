@@ -7,7 +7,7 @@ use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef,
     GenericInstance, IntermediateTypes, Primitive, Representation, RustField, RustIdent,
-    RustRecord, RustStruct, RustType, VariantIdent,
+    RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -1067,7 +1067,7 @@ fn rust_type_from_type1(
     match control {
         Some(ControlOperator::CBOR(ty)) => {
             assert!(matches!(
-                base_type.conceptual_type.resolve_aliases(),
+                base_type.conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Primitive(Primitive::Bytes)
             ));
             ty.as_bytes()
@@ -1278,7 +1278,7 @@ fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &
                 combined_name.push_str("Or");
             }
             // due to undercase primitive names, we need to convert here
-            combined_name.push_str(&variant.rust_type.for_variant().to_string());
+            combined_name.push_str(&variant.rust_type().for_variant().to_string());
         }
         let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
         types.register_rust_struct(
@@ -1503,11 +1503,18 @@ pub fn parse_group(
                         None,
                         generic_params.clone(),
                     );
-                    EnumVariant::new(
-                        VariantIdent::new_rust(variant_name.clone()),
-                        ConceptualRustType::Rust(variant_name).into(),
-                        true,
-                    )
+                    let name = VariantIdent::new_rust(variant_name.clone());
+                    let variant_ident = ConceptualRustType::Rust(variant_name.clone());
+                    if EnumVariant::can_embed_fields(types, &variant_ident) {
+                        let embedded_record =
+                            match types.remove_rust_struct(&variant_name).unwrap().variant {
+                                RustStructType::Record(record) => record,
+                                _ => unreachable!(),
+                            };
+                        EnumVariant::new_embedded(name, embedded_record)
+                    } else {
+                        EnumVariant::new(name, variant_ident.into(), true)
+                    }
                 }
             })
             .collect();

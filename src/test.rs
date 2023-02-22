@@ -206,7 +206,7 @@ fn comment_dsl() {
     run_test(
         "comment-dsl",
         &["--preserve-encodings=true"],
-        Some("wasm"),
+        None,
         None,
         None,
         false,

@@ -8,8 +8,8 @@ use std::str::FromStr;
 use crate::cli::CLI_ARGS;
 
 use crate::intermediate::{
-    AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
-    IntermediateTypes, Primitive, Representation, RustField, RustIdent, RustRecord,
+    AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
+    FixedValue, IntermediateTypes, Primitive, Representation, RustField, RustIdent, RustRecord,
     RustStructCBORLen, RustStructType, RustType, ToWasmBoundaryOperations, VariantIdent,
 };
 use crate::utils::convert_to_snake_case;
@@ -286,9 +286,13 @@ impl EncodingVarIsCopy for ConceptualRustType {
                 if let RustStructType::CStyleEnum { variants } =
                     types.rust_struct(ident).unwrap().variant()
                 {
-                    variants
-                        .iter()
-                        .all(|ev| ev.rust_type.encoding_var_is_copy(types))
+                    variants.iter().all(|ev| match &ev.data {
+                        EnumVariantData::RustType(ty) => ty.encoding_var_is_copy(types),
+                        EnumVariantData::Inlined(record) => record
+                            .fields
+                            .iter()
+                            .all(|f| f.rust_type.encoding_var_is_copy(types)),
+                    })
                 } else {
                     // technically no encoding var
                     true
@@ -316,7 +320,7 @@ impl<'a> std::convert::From<&'a ConceptualRustType> for SerializingRustType<'a> 
 }
 
 /// Output code for deserialization. Includes meta information for better usage to prevent warnings.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct DeserializationCode {
     content: BlocksOrLines,
     read_len_used: bool,
@@ -738,6 +742,12 @@ impl GenerationScope {
             content
                 .push_import("std::convert", "TryFrom", None)
                 .push_import("crate::error", "*", None);
+            // in case we store these in enums we're just going to dump them in everywhere
+            if CLI_ARGS.preserve_encodings {
+                content
+                    .push_import("crate::serialization", "LenEncoding", None)
+                    .push_import("crate::serialization", "StringEncoding", None);
+            }
         }
 
         // cbor_encodings imports
@@ -1426,7 +1436,7 @@ impl GenerationScope {
                             codegen::Block::new(format!("{}::{} =>", t, variant.name));
                         self.generate_serialize(
                             types,
-                            (&variant.rust_type).into(),
+                            (variant.rust_type()).into(),
                             &mut variant_match,
                             config.clone().is_end(true),
                         );
@@ -1999,12 +2009,13 @@ impl GenerationScope {
                 {
                     // if let Some(common) = enum_variants_common_constant_type(variants) {
                     //     // TODO: potentially simplified deserialization some day
+                    //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                     // } else {
                     deser_code.content.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
                     let mut variant_final_exprs = config.final_exprs.clone();
                     if CLI_ARGS.preserve_encodings {
                         for enc_var in
-                            encoding_fields(types, config.var_name, &variants[0].rust_type, false)
+                            encoding_fields(types, config.var_name, variants[0].rust_type(), false)
                         {
                             variant_final_exprs.push(enc_var.field_name);
                         }
@@ -2681,10 +2692,10 @@ impl GenerationScope {
                 } else {
                     new_func.ret("Self");
                 }
-                if !variant.rust_type.is_fixed_value() {
-                    new_func.arg(&variant_arg, &variant.rust_type.for_wasm_param(types));
+                if !variant.rust_type().is_fixed_value() {
+                    new_func.arg(&variant_arg, &variant.rust_type().for_wasm_param(types));
                 }
-                if variant.rust_type.is_fixed_value() {
+                if variant.rust_type().is_fixed_value() {
                     new_func.line(format!(
                         "Self({}::new_{}())",
                         rust_crate_struct_from_wasm(types, name),
@@ -2693,7 +2704,7 @@ impl GenerationScope {
                 } else {
                     let from_wasm_expr =
                         variant
-                            .rust_type
+                            .rust_type()
                             .from_wasm_boundary_clone(types, &variant_arg, can_fail);
                     new_func.line(format!(
                         "Self({}::new_{}({}))",
@@ -2880,12 +2891,13 @@ fn write_string_sz(
     }
 }
 
+#[derive(Debug)]
 enum BlockOrLine {
     Line(String),
     Block(codegen::Block),
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct BlocksOrLines(Vec<BlockOrLine>);
 
 impl BlocksOrLines {
@@ -3814,7 +3826,7 @@ fn encoding_fields_impl(
             {
                 // earlier we are guaranteed that all variants will have the same encoding types
                 // or else it wouldn't end up as a c-style enum in the first place in IntermediateTypes
-                encoding_fields(types, name, &variants[0].rust_type, false)
+                encoding_fields(types, name, variants[0].rust_type(), false)
             } else {
                 vec![]
             }
@@ -3868,6 +3880,230 @@ fn tuple_str(strs: Vec<String>) -> String {
         format!("({})", strs.join(", "))
     } else {
         strs.join(", ")
+    }
+}
+
+// generates serialization code for an array-encoded record into ser_func EXCEPT FOR array length
+fn generate_array_struct_serialization(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    vars_in_self: bool,
+    ser_func: &mut dyn CodeBlock,
+) {
+    assert_eq!(record.rep, Representation::Array);
+    let opt_self = if vars_in_self { "self." } else { "" };
+    for field in record.fields.iter() {
+        let field_expr = format!("{}{}", opt_self, field.name);
+        if field.optional {
+            let (optional_field_check, field_expr, expr_is_ref) = if let Some(default_value) =
+                &field.rust_type.default
+            {
+                (
+                    if CLI_ARGS.preserve_encodings {
+                        if vars_in_self {
+                            format!("if {} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)", field_expr, default_value.to_primitive_str_compare(), field.name)
+                        } else {
+                            format!(
+                                "if {} != {} || {}_default_present",
+                                field_expr,
+                                default_value.to_primitive_str_compare(),
+                                field.name
+                            )
+                        }
+                    } else {
+                        format!(
+                            "if {}{} != {}",
+                            opt_self,
+                            field.name,
+                            default_value.to_primitive_str_compare()
+                        )
+                    },
+                    field_expr.as_str(),
+                    !vars_in_self,
+                )
+            } else {
+                (
+                    if vars_in_self {
+                        format!("if let Some(field) = &self.{}", field.name)
+                    } else {
+                        format!("if let Some(field) = {}", field.name)
+                    },
+                    "field",
+                    true,
+                )
+            };
+            let mut optional_array_ser_block = Block::new(&optional_field_check);
+            let mut config = SerializeConfig::new(field_expr, &field.name).expr_is_ref(expr_is_ref);
+            if vars_in_self {
+                config = config.encoding_var_in_option_struct("self.encodings")
+            } else {
+                config = config.expr_is_ref(true).encoding_var_is_ref(true)
+            }
+            gen_scope.generate_serialize(
+                types,
+                (&field.rust_type).into(),
+                &mut optional_array_ser_block,
+                config,
+            );
+            ser_func.push_block(optional_array_ser_block);
+        } else {
+            let mut config = SerializeConfig::new(&field_expr, &field.name);
+            if vars_in_self {
+                config = config.encoding_var_in_option_struct("self.encodings")
+            } else {
+                config = config.expr_is_ref(true).encoding_var_is_ref(true)
+            }
+            gen_scope.generate_serialize(types, (&field.rust_type).into(), ser_func, config);
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+struct ArrayStructDeserializeCode {
+    deser_code: DeserializationCode,
+    // (var, expr)
+    deser_ctor_fields: Vec<(String, String)>,
+    // (var, expr)
+    encoding_struct_ctor_fields: Vec<(String, String)>,
+}
+
+// generates deserialization code for an array-encoded record into deser_code EXCEPT FOR:
+// 1) any final length check (so it can be used for generating embedded deserialization impls)
+// 2) the final constructor block is not added to deser_code but has the vars/exprs returned in two vectors:
+//    i) all root-level vars/exprs
+//    ii) if Some, all vars/exprs that need to be put inside of an *Encodings struct's constructor
+// so you will need to construct the constructor expression from these
+fn generate_array_struct_deserialization(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    record: &RustRecord,
+    tag: Option<usize>,
+    in_embedded: bool,
+    vars_in_self: bool,
+) -> ArrayStructDeserializeCode {
+    assert_eq!(record.rep, Representation::Array);
+    let mut deser_code = DeserializationCode::default();
+    let mut deser_ctor_fields = vec![];
+    let mut encoding_struct_ctor_fields = vec![];
+    for field in record.fields.iter() {
+        if field.optional {
+            gen_scope.dont_generate_deserialize(
+                name,
+                format!(
+                    "Array with optional field {}: {}",
+                    field.name,
+                    field.rust_type.for_rust_member(types, false)
+                ),
+            );
+        } else {
+            if CLI_ARGS.preserve_encodings {
+                let var_names_str = encoding_var_names_str(types, &field.name, &field.rust_type);
+                if CLI_ARGS.annotate_fields {
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new("", "", true),
+                            DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                        )
+                        .annotate(&field.name, &format!("let {var_names_str} = "), "?;")
+                        .add_to_code(&mut deser_code);
+                } else {
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {var_names_str} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                        )
+                        .add_to_code(&mut deser_code);
+                }
+            } else if field.rust_type.is_fixed_value() {
+                // don't set anything, only verify data
+                if CLI_ARGS.annotate_fields {
+                    let mut err_deser = gen_scope.generate_deserialize(
+                        types,
+                        (&field.rust_type).into(),
+                        DeserializeBeforeAfter::new("", "", true),
+                        DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                    );
+                    // this block needs to evaluate to a Result even though it has no value
+                    err_deser.content.line("Ok(())");
+                    err_deser
+                        .annotate(&field.name, "", "?;")
+                        .add_to_code(&mut deser_code);
+                } else {
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new("", "", false),
+                            DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                        )
+                        .add_to_code(&mut deser_code);
+                }
+            } else if CLI_ARGS.annotate_fields {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        (&field.rust_type).into(),
+                        DeserializeBeforeAfter::new("", "", true),
+                        DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                    )
+                    .annotate(&field.name, &format!("let {} = ", field.name), "?;")
+                    .add_to_code(&mut deser_code);
+            } else {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        (&field.rust_type).into(),
+                        DeserializeBeforeAfter::new(&format!("let {} = ", field.name), ";", false),
+                        DeserializeConfig::new(&field.name).in_embedded(in_embedded),
+                    )
+                    .add_to_code(&mut deser_code);
+            }
+            if !field.rust_type.is_fixed_value() {
+                deser_ctor_fields.push((field.name.clone(), field.name.clone()));
+            }
+        }
+    }
+    if CLI_ARGS.preserve_encodings {
+        let encoding_vars_output = if vars_in_self {
+            &mut encoding_struct_ctor_fields
+        } else {
+            // no explicit encoding struct - dump in with other regular fields
+            &mut deser_ctor_fields
+        };
+        encoding_vars_output.push(("len_encoding".to_owned(), "len_encoding".to_owned()));
+        if tag.is_some() {
+            encoding_vars_output.push(("tag_encoding".to_owned(), "Some(tag_encoding)".to_owned()));
+        }
+        for field in record.fields.iter() {
+            // we don't support deserialization for optional fields so don't even bother
+            if !field.optional {
+                for field_enc in encoding_fields(
+                    types,
+                    &field.name,
+                    &field.rust_type.clone().resolve_aliases(),
+                    true,
+                ) {
+                    encoding_vars_output.push((field_enc.field_name.clone(), field_enc.field_name.clone()));
+                }
+            }
+        }
+    }
+    // length checked inside of deserialize() - it causes problems for plain groups nested
+    // in other groups otherwise
+    ArrayStructDeserializeCode {
+        deser_code,
+        deser_ctor_fields,
+        encoding_struct_ctor_fields,
     }
 }
 
@@ -4108,167 +4344,41 @@ fn codegen_struct(
     let in_embedded = types.is_plain_group(name);
     let ctor_block = match record.rep {
         Representation::Array => {
-            let mut deser_ret = Block::new(&format!("Ok({name}"));
-            for field in record.fields.iter() {
-                if field.optional {
-                    let (optional_field_check, field_expr, expr_is_ref) = if let Some(
-                        default_value,
-                    ) =
-                        &field.rust_type.default
-                    {
-                        (
-                            if CLI_ARGS.preserve_encodings {
-                                format!("if self.{} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)", field.name, default_value.to_primitive_str_compare(), field.name)
-                            } else {
-                                format!(
-                                    "if self.{} != {}",
-                                    field.name,
-                                    default_value.to_primitive_str_compare()
-                                )
-                            },
-                            format!("self.{}", field.name),
-                            false,
-                        )
-                    } else {
-                        (
-                            format!("if let Some(field) = &self.{}", field.name),
-                            "field".to_owned(),
-                            true,
-                        )
-                    };
-                    let mut optional_array_ser_block = Block::new(&optional_field_check);
-                    gen_scope.generate_serialize(
-                        types,
-                        (&field.rust_type).into(),
-                        &mut optional_array_ser_block,
-                        SerializeConfig::new(&field_expr, &field.name)
-                            .expr_is_ref(expr_is_ref)
-                            .encoding_var_in_option_struct("self.encodings"),
-                    );
-                    ser_func.push_block(optional_array_ser_block);
-                    gen_scope.dont_generate_deserialize(
-                        name,
-                        format!(
-                            "Array with optional field {}: {}",
-                            field.name,
-                            field.rust_type.for_rust_member(types, false)
-                        ),
-                    );
+            generate_array_struct_serialization(gen_scope, types, record, true, &mut ser_func);
+            let code =
+                generate_array_struct_deserialization(
+                    gen_scope,
+                    types,
+                    name,
+                    record,
+                    tag,
+                    in_embedded,
+                    true,
+                );
+            code.deser_code.add_to_code(&mut deser_code);
+            let mut deser_ctor = Block::new(&format!("Ok({name}"));
+            for (var, expr) in code.deser_ctor_fields {
+                if var == expr {
+                    deser_ctor.line(format!("{var},"));
                 } else {
-                    gen_scope.generate_serialize(
-                        types,
-                        (&field.rust_type).into(),
-                        &mut ser_func,
-                        SerializeConfig::new(format!("self.{}", field.name), &field.name)
-                            .encoding_var_in_option_struct("self.encodings"),
-                    );
-                    if CLI_ARGS.preserve_encodings {
-                        let var_names_str =
-                            encoding_var_names_str(types, &field.name, &field.rust_type);
-                        if CLI_ARGS.annotate_fields {
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new("", "", true),
-                                    DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                                )
-                                .annotate(&field.name, &format!("let {var_names_str} = "), "?;")
-                                .add_to_code(&mut deser_code);
-                        } else {
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new(
-                                        &format!("let {var_names_str} = "),
-                                        ";",
-                                        false,
-                                    ),
-                                    DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                                )
-                                .add_to_code(&mut deser_code);
-                        }
-                    } else if field.rust_type.is_fixed_value() {
-                        // don't set anything, only verify data
-                        if CLI_ARGS.annotate_fields {
-                            let mut err_deser = gen_scope.generate_deserialize(
-                                types,
-                                (&field.rust_type).into(),
-                                DeserializeBeforeAfter::new("", "", true),
-                                DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                            );
-                            // this block needs to evaluate to a Result even though it has no value
-                            err_deser.content.line("Ok(())");
-                            err_deser
-                                .annotate(&field.name, "", "?;")
-                                .add_to_code(&mut deser_code);
-                        } else {
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new("", "", false),
-                                    DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                                )
-                                .add_to_code(&mut deser_code);
-                        }
-                    } else if CLI_ARGS.annotate_fields {
-                        gen_scope
-                            .generate_deserialize(
-                                types,
-                                (&field.rust_type).into(),
-                                DeserializeBeforeAfter::new("", "", true),
-                                DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                            )
-                            .annotate(&field.name, &format!("let {} = ", field.name), "?;")
-                            .add_to_code(&mut deser_code);
-                    } else {
-                        gen_scope
-                            .generate_deserialize(
-                                types,
-                                (&field.rust_type).into(),
-                                DeserializeBeforeAfter::new(
-                                    &format!("let {} = ", field.name),
-                                    ";",
-                                    false,
-                                ),
-                                DeserializeConfig::new(&field.name).in_embedded(in_embedded),
-                            )
-                            .add_to_code(&mut deser_code);
-                    }
-                    if !field.rust_type.is_fixed_value() {
-                        deser_ret.line(&format!("{},", field.name));
-                    }
+                    deser_ctor.line(format!("{var}: {expr},"));
                 }
             }
-            if CLI_ARGS.preserve_encodings {
-                let mut encoding_ctor =
+            if !code.encoding_struct_ctor_fields.is_empty() {
+                let mut encoding_ctor_block =
                     codegen::Block::new(&format!("encodings: Some({name}Encoding"));
-                encoding_ctor.line("len_encoding,");
-                if tag.is_some() {
-                    encoding_ctor.line("tag_encoding: Some(tag_encoding),");
-                }
-                for field in record.fields.iter() {
-                    // we don't support deserialization for optional fields so don't even bother
-                    if !field.optional {
-                        for field_enc in encoding_fields(
-                            types,
-                            &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
-                            true,
-                        ) {
-                            encoding_ctor.line(format!("{},", field_enc.field_name));
-                        }
+                encoding_ctor_block.after("),");
+                for (var, expr) in code.encoding_struct_ctor_fields {
+                    if var == expr {
+                        encoding_ctor_block.line(format!("{var},"));
+                    } else {
+                        encoding_ctor_block.line(format!("{var}: {expr},"));
                     }
                 }
-                encoding_ctor.after("),");
-                deser_ret.push_block(encoding_ctor);
+                deser_ctor.push_block(encoding_ctor_block);
             }
-            // length checked inside of deserialize() - it causes problems for plain groups nested
-            // in other groups otherwise
-            deser_ret.after(")");
-            deser_ret
+            deser_ctor.after(")");
+            deser_ctor
         }
         Representation::Map => {
             let mut uint_field_deserializers = Vec::new();
@@ -4907,22 +5017,26 @@ fn codegen_group_choices(
             // TODO: verify if variant.serialize_as_embedded_group impacts ctor generation
             let mut new_func = codegen::Function::new(&format!("new_{}", variant.name_as_var()));
             new_func.ret("Self").vis("pub");
+
+    
             let mut output_comma = false;
             // We only want to generate Variant::new() calls when we created a special struct
             // for the variant, which happens in the general case for multi-field group choices
-            let fields = match &variant.rust_type.conceptual_type {
-                // we need to check for sanity here, as if we're referring to the ident
-                // it should at this stage be registered
-                ConceptualRustType::Rust(ident) => {
-                    match types.rust_struct(ident).unwrap().variant() {
-                        RustStructType::Record(record) => Some(&record.fields),
+            let fields = match &variant.data {
+                EnumVariantData::RustType(ty) => {
+                    match ty.conceptual_type.resolve_alias_shallow() {
+                        // we need to check for sanity here, as if we're referring to the ident
+                        // it should at this stage be registered
+                        ConceptualRustType::Rust(ident) => {
+                            match types.rust_struct(ident).unwrap().variant() {
+                                RustStructType::Record(record) => Some(&record.fields),
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     }
-                }
-                ConceptualRustType::Alias(_, _) => {
-                    unimplemented!("TODO: do we need to handle aliases here?")
-                }
-                _ => None,
+                },
+                EnumVariantData::Inlined(record) => Some(&record.fields),
             };
             match fields {
                 Some(fields) => {
@@ -4960,7 +5074,10 @@ fn codegen_group_choices(
                                 } else {
                                     output_comma = true;
                                 }
-                                new_func.arg(&field.name, field.rust_type.for_wasm_param(types));
+                                new_func.arg(
+                                    &field.name,
+                                    field.rust_type.for_wasm_param(types),
+                                );
                                 ctor.push_str(&ToWasmBoundaryOperations::format(
                                     field
                                         .rust_type
@@ -4976,7 +5093,7 @@ fn codegen_group_choices(
                 }
                 None => {
                     // just directly pass in the variant's type
-                    if variant.rust_type.is_fixed_value() {
+                    if variant.rust_type().is_fixed_value() {
                         new_func.line(format!(
                             "Self({}::new_{}())",
                             rust_crate_struct_from_wasm(types, name),
@@ -4985,15 +5102,13 @@ fn codegen_group_choices(
                     } else {
                         let field_name = variant.name.to_string();
                         new_func
-                            .arg(&field_name, variant.rust_type.for_wasm_param(types))
+                            .arg(&field_name, variant.rust_type().for_wasm_param(types))
                             .line(format!(
                                 "Self({}::new_{}({}))",
                                 rust_crate_struct_from_wasm(types, name),
                                 variant.name_as_var(),
                                 ToWasmBoundaryOperations::format(
-                                    variant
-                                        .rust_type
-                                        .from_wasm_boundary_clone(types, &field_name, false)
+                                    variant.rust_type().from_wasm_boundary_clone(types, &field_name, false)
                                         .into_iter()
                                 )
                             ));
@@ -5038,26 +5153,47 @@ fn add_wasm_enum_getters(
 
     // as_{variant} conversions (returns None -> undefined when not the type)
     for variant in variants.iter() {
-        if !variant.rust_type.is_fixed_value() {
+        let mut add_variant_functions = |ty: &RustType| {
             let enum_gen_info = EnumVariantInRust::new(types, variant, rep);
-            let mut as_variant = codegen::Function::new(&format!("as_{}", variant.name_as_var()));
-            as_variant.arg_ref_self().vis("pub").ret(&format!(
-                "Option<{}>",
-                variant.rust_type.for_wasm_return(types)
-            ));
+            let mut as_variant = codegen::Function::new(format!("as_{}", variant.name_as_var()));
+            as_variant
+                .arg_ref_self()
+                .vis("pub")
+                .ret(&format!("Option<{}>", ty.for_wasm_return(types)));
             let mut variant_match = codegen::Block::new("match &self.0");
             variant_match.line(format!(
                 "{}::{}{} => Some({}),",
                 rust_crate_struct_from_wasm(types, name),
                 variant.name,
                 enum_gen_info.capture_ignore_encodings(),
-                variant
-                    .rust_type
-                    .to_wasm_boundary(types, &enum_gen_info.names[0], true)
+                ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
             ));
             variant_match.line("_ => None,");
             as_variant.push_block(variant_match);
             s_impl.push_fn(as_variant);
+        };
+        match &variant.data {
+            EnumVariantData::RustType(ty) => {
+                if !ty.is_fixed_value() {
+                    add_variant_functions(ty);
+                }
+            }
+            EnumVariantData::Inlined(record) => {
+                let non_fixed_types = record
+                    .fields
+                    .iter()
+                    .filter(|field| !field.rust_type.is_fixed_value())
+                    .collect::<Vec<_>>();
+                // we don't even embed in this case and instead crate a new variant but this is here in case someone
+                // tries to add that in the future so they hit this assert.
+                assert!(
+                    non_fixed_types.len() <= 1,
+                    "multiple non-fixed not allowed right now for embedding into enums"
+                );
+                if let Some(&field) = non_fixed_types.first() {
+                    add_variant_functions(&field.rust_type);
+                }
+            }
         }
     }
 }
@@ -5094,46 +5230,84 @@ struct EnumVariantInRust {
 impl EnumVariantInRust {
     fn new(types: &IntermediateTypes, variant: &EnumVariant, rep: Option<Representation>) -> Self {
         let name = variant.name_as_var();
-        let mut enc_fields = if CLI_ARGS.preserve_encodings {
-            encoding_fields(
-                types,
-                &name,
-                &variant.rust_type.clone().resolve_aliases(),
-                true,
-            )
-        } else {
-            vec![]
-        };
-        let (mut types, mut names) = if variant.rust_type.is_fixed_value() {
-            (vec![], vec![])
-        } else {
-            (
-                vec![variant.rust_type.for_rust_member(types, false)],
-                vec![name],
-            )
-        };
-        let mut outer_vars = 0;
-        // TOOD: for tags too?
-        if CLI_ARGS.preserve_encodings && rep.is_some() && !variant.serialize_as_embedded_group {
-            enc_fields.push(EncodingField {
-                field_name: "outer_len_encoding".to_owned(),
-                type_name: "LenEncoding".to_owned(),
-                default_expr: "LenEncoding::default()",
-                inner: Vec::new(),
-            });
-            outer_vars += 1;
-        }
-        for enc_field in &enc_fields {
-            types.push(enc_field.type_name.clone());
-            names.push(enc_field.field_name.clone());
-        }
-        assert_eq!(types.len(), names.len());
-        Self {
-            name: variant.name.clone(),
-            enc_fields,
-            names,
-            types,
-            outer_vars,
+        match &variant.data {
+            EnumVariantData::RustType(ty) => {
+                let mut enc_fields = if CLI_ARGS.preserve_encodings {
+                    encoding_fields(types, &name, &ty.clone().resolve_aliases(), true)
+                } else {
+                    vec![]
+                };
+                let (mut enum_types, mut names) = if ty.is_fixed_value() {
+                    (vec![], vec![])
+                } else {
+                    (vec![ty.for_rust_member(types, false)], vec![name])
+                };
+                let mut outer_vars = 0;
+                // TOOD: for tags too?
+                if CLI_ARGS.preserve_encodings
+                    && rep.is_some()
+                    && !variant.serialize_as_embedded_group
+                {
+                    enc_fields.push(EncodingField {
+                        field_name: "len_encoding".to_owned(),
+                        type_name: "LenEncoding".to_owned(),
+                        default_expr: "LenEncoding::default()",
+                        inner: Vec::new(),
+                    });
+                    outer_vars += 1;
+                }
+                for enc_field in &enc_fields {
+                    enum_types.push(enc_field.type_name.clone());
+                    names.push(enc_field.field_name.clone());
+                }
+                assert_eq!(enum_types.len(), names.len());
+                Self {
+                    name: variant.name.clone(),
+                    enc_fields,
+                    names,
+                    types: enum_types,
+                    outer_vars,
+                }
+            }
+            EnumVariantData::Inlined(record) => {
+                let mut enc_fields = vec![];
+                let mut enum_types = vec![];
+                let mut names = vec![];
+                if CLI_ARGS.preserve_encodings {
+                    enc_fields.push(EncodingField {
+                        field_name: "len_encoding".to_owned(),
+                        type_name: "LenEncoding".to_owned(),
+                        default_expr: "LenEncoding::default()",
+                        inner: Vec::new(),
+                    });
+                    for field in record.fields.iter() {
+                        enc_fields.extend(encoding_fields(
+                            types,
+                            &field.name,
+                            &field.rust_type.clone().resolve_aliases(),
+                            true,
+                        ));
+                    }
+                }
+                for field in record.fields.iter() {
+                    if !field.rust_type.is_fixed_value() {
+                        names.push(field.name.clone());
+                        enum_types.push(field.rust_type.for_rust_member(types, false));
+                    }
+                }
+                for enc_field in &enc_fields {
+                    enum_types.push(enc_field.type_name.clone());
+                    names.push(enc_field.field_name.clone());
+                }
+                assert_eq!(enum_types.len(), names.len());
+                Self {
+                    name: variant.name.clone(),
+                    enc_fields,
+                    names,
+                    types: enum_types,
+                    outer_vars: 0,
+                }
+            }
         }
     }
 
@@ -5243,9 +5417,9 @@ fn generate_c_style_enum(
     }
     if variants.iter().any(|ev: &EnumVariant| {
         ev.serialize_as_embedded_group
-            || (CLI_ARGS.preserve_encodings && !ev.rust_type.encodings.is_empty())
+            || (CLI_ARGS.preserve_encodings && !ev.rust_type().encodings.is_empty())
             || !matches!(
-                ev.rust_type.conceptual_type.clone().resolve_aliases(),
+                ev.rust_type().conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Fixed(_)
             )
     }) {
@@ -5284,7 +5458,7 @@ fn make_enum_variant_return_if_deserialized(
     let variant_deser_code = if no_enum_types {
         let mut code = gen_scope.generate_deserialize(
             types,
-            (&variant.rust_type).into(),
+            (variant.rust_type()).into(),
             DeserializeBeforeAfter::new("", "", false),
             DeserializeConfig::new(&variant.name_as_var()),
         );
@@ -5293,7 +5467,7 @@ fn make_enum_variant_return_if_deserialized(
     } else {
         gen_scope.generate_deserialize(
             types,
-            (&variant.rust_type).into(),
+            (variant.rust_type()).into(),
             DeserializeBeforeAfter::new("", "", true),
             DeserializeConfig::new(&variant.name_as_var()),
         )
@@ -5383,7 +5557,7 @@ fn generate_enum(
                 .iter()
                 .any(|variant| !variant.serialize_as_embedded_group)
         {
-            Some("outer_len_encoding")
+            Some("len_encoding")
         } else {
             None
         };
@@ -5423,54 +5597,69 @@ fn generate_enum(
         let mut new_func = codegen::Function::new(&format!("new_{variant_var_name}"));
         new_func.ret("Self").vis("pub");
         let mut output_comma = false;
-        // We only want to generate Variant::new() calls when we created a special struct
-        // for the variant, which happens in the general case for multi-field group choices
-        let fields = match &variant.rust_type.conceptual_type {
-            // we need to check for sanity here, as if we're referring to the ident
-            // it should at this stage be registered
-            ConceptualRustType::Rust(ident) => {
-                match types
-                    .rust_struct(ident)
-                    .unwrap_or_else(|| panic!("{}", "{name} refers to undefined ident: {ident}"))
-                    .variant()
-                {
-                    RustStructType::Record(record) => Some(&record.fields),
-                    _ => None,
-                }
-            }
-            _ => None,
-        };
-        let mut init_fields = match rep.and(fields) {
-            Some(fields) => {
-                let ctor_fields: Vec<&RustField> = fields
-                    .iter()
-                    .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
-                    .collect();
-                let mut ctor = format!("{}::new(", variant.name);
-                for field in ctor_fields {
-                    if output_comma {
-                        ctor.push_str(", ");
-                    } else {
-                        output_comma = true;
+        let mut init_fields = match &variant.data {
+            EnumVariantData::RustType(ty) => {
+                // We only want to generate Variant::new() calls when we created a special struct
+                // for the variant, which happens in the general case for multi-field group choices
+                let fields = match &ty.conceptual_type {
+                    // we need to check for sanity here, as if we're referring to the ident
+                    // it should at this stage be registered
+                    ConceptualRustType::Rust(ident) => {
+                        match types
+                            .rust_struct(ident)
+                            .unwrap_or_else(|| {
+                                panic!("{}", "{name} refers to undefined ident: {ident}")
+                            })
+                            .variant()
+                        {
+                            RustStructType::Record(record) => Some(&record.fields),
+                            _ => None,
+                        }
                     }
+                    _ => None,
+                };
+                match rep.and(fields) {
+                    Some(fields) => {
+                        let ctor_fields: Vec<&RustField> = fields
+                            .iter()
+                            .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                            .collect();
+                        let mut ctor = format!("{}::new(", variant.name);
+                        for field in ctor_fields {
+                            if output_comma {
+                                ctor.push_str(", ");
+                            } else {
+                                output_comma = true;
+                            }
+                            new_func.arg(&field.name, field.rust_type.for_rust_move(types));
+                            ctor.push_str(&field.name);
+                            // ^ TODO: check types.can_new_fail(&field.name)?
+                        }
+                        ctor.push(')');
+                        vec![ctor]
+                    }
+                    None => {
+                        if ty.is_fixed_value() {
+                            vec![]
+                        } else {
+                            // just directly pass in the variant's type
+                            let field_name = variant.name_as_var();
+                            new_func.arg(&field_name, variant.rust_type().for_rust_move(types));
+                            vec![field_name]
+                            // ^ TODO: check types.can_new_fail(&field.name)?
+                        }
+                    }
+                }
+            }
+            EnumVariantData::Inlined(record) => record
+                .fields
+                .iter()
+                .filter(|field| !field.rust_type.is_fixed_value())
+                .map(|field| {
                     new_func.arg(&field.name, field.rust_type.for_rust_move(types));
-                    ctor.push_str(&field.name);
-                    // ^ TODO: check types.can_new_fail(&field.name)?
-                }
-                ctor.push(')');
-                vec![ctor]
-            }
-            None => {
-                if variant.rust_type.is_fixed_value() {
-                    vec![]
-                } else {
-                    // just directly pass in the variant's type
-                    let field_name = variant.name_as_var();
-                    new_func.arg(&field_name, variant.rust_type.for_rust_move(types));
-                    vec![field_name]
-                    // ^ TODO: check types.can_new_fail(&field.name)?
-                }
-            }
+                    field.name.clone()
+                })
+                .collect(),
         };
         for enc_field in enum_gen_info.enc_fields.iter() {
             init_fields.push(enc_field.default_expr.to_owned());
@@ -5498,71 +5687,95 @@ fn generate_enum(
                 variant.name,
                 enum_gen_info.capture_all()
             ));
-            if CLI_ARGS.preserve_encodings {
-                if let Some(r) = rep {
-                    // group choice
-                    let n = variant.rust_type.expanded_field_count(types).expect(
-                        "preserve-encodings=true not supported with varying-size group choice",
-                    );
+            match &variant.data {
+                EnumVariantData::RustType(ty) => {
+                    if CLI_ARGS.preserve_encodings {
+                        if let Some(r) = rep {
+                            // group choice
+                            let n = ty.expanded_field_count(types).expect(
+                                "preserve-encodings=true not supported with varying-size group choice",
+                            );
+                            start_len(
+                                &mut case_block,
+                                r,
+                                "serializer",
+                                "len_encoding",
+                                &n.to_string(),
+                            );
+                            gen_scope.generate_serialize(
+                                types,
+                                ty.into(),
+                                &mut case_block,
+                                SerializeConfig::new(&variant_var_name, &variant_var_name)
+                                    .expr_is_ref(true)
+                                    .encoding_var_is_ref(true),
+                            );
+                            end_len(&mut case_block, "serializer", "len_encoding", false);
+                            case_block.line("Ok(serializer)");
+                        } else {
+                            // type choice
+                            gen_scope.generate_serialize(
+                                types,
+                                ty.into(),
+                                &mut case_block,
+                                SerializeConfig::new(&variant_var_name, &variant_var_name)
+                                    .expr_is_ref(true)
+                                    .is_end(true)
+                                    .encoding_var_is_ref(true),
+                            );
+                        }
+                    } else {
+                        let write_break = match rep {
+                            // group choice
+                            Some(r) => {
+                                let (len_str, indefinite) = match ty.expanded_field_count(types)
+                                {
+                                    Some(n) => (cbor_event_len_n(&n.to_string()), false),
+                                    None => (String::from(cbor_event_len_indef()), true),
+                                };
+                                let func_str = match r {
+                                    Representation::Array => "write_array",
+                                    Representation::Map => "write_map",
+                                };
+                                case_block.line(format!("serializer.{func_str}({len_str})?;"));
+                                indefinite
+                            },
+                            // type choice
+                            None => false,
+                        };
+                        // TODO: only generate a block if the serialize is more than 1 line
+                        // Problem: generate_serialize() works in terms of line() and push_block()
+                        //          but we'd just want to inline the single one inside of a line...
+                        gen_scope.generate_serialize(
+                            types,
+                            ty.into(),
+                            &mut case_block,
+                            SerializeConfig::new(&variant_var_name, &variant_var_name)
+                                .expr_is_ref(true)
+                                .is_end(!write_break),
+                        );
+                        if write_break {
+                            case_block.line("serializer.write_special(cbor_event::Special::Break)");
+                        }
+                    }
+                }
+                EnumVariantData::Inlined(record) => {
                     start_len(
                         &mut case_block,
-                        r,
+                        rep.expect("can't inline in type choices"),
                         "serializer",
-                        "outer_len_encoding",
-                        &n.to_string(),
+                        "len_encoding",
+                        &record.definite_info(types),
                     );
-                    gen_scope.generate_serialize(
+                    generate_array_struct_serialization(
+                        gen_scope,
                         types,
-                        (&variant.rust_type).into(),
+                        record,
+                        false,
                         &mut case_block,
-                        SerializeConfig::new(&variant_var_name, &variant_var_name)
-                            .expr_is_ref(true)
-                            .encoding_var_is_ref(true),
                     );
-                    end_len(&mut case_block, "serializer", "outer_len_encoding", false);
+                    end_len(&mut case_block, "serializer", "len_encoding", false);
                     case_block.line("Ok(serializer)");
-                } else {
-                    // type choice
-                    gen_scope.generate_serialize(
-                        types,
-                        (&variant.rust_type).into(),
-                        &mut case_block,
-                        SerializeConfig::new(&variant_var_name, &variant_var_name)
-                            .expr_is_ref(true)
-                            .is_end(true)
-                            .encoding_var_is_ref(true),
-                    );
-                }
-            } else {
-                let write_break = match rep {
-                    Some(r) => {
-                        let (len_str, indefinite) =
-                            match variant.rust_type.expanded_field_count(types) {
-                                Some(n) => (cbor_event_len_n(&n.to_string()), false),
-                                None => (String::from(cbor_event_len_indef()), true),
-                            };
-                        let func_str = match r {
-                            Representation::Array => "write_array",
-                            Representation::Map => "write_map",
-                        };
-                        case_block.line(format!("serializer.{func_str}({len_str})?;"));
-                        indefinite
-                    }
-                    None => false,
-                };
-                // TODO: only generate a block if the serialize is more than 1 line
-                // Problem: generate_serialize() works in terms of line() and push_block()
-                //          but we'd just want to inline the single one inside of a line...
-                gen_scope.generate_serialize(
-                    types,
-                    (&variant.rust_type).into(),
-                    &mut case_block,
-                    SerializeConfig::new(&variant_var_name, &variant_var_name)
-                        .expr_is_ref(true)
-                        .is_end(!write_break),
-                );
-                if write_break {
-                    case_block.line("serializer.write_special(cbor_event::Special::Break)");
                 }
             }
             case_block.after(",");
@@ -5570,30 +5783,77 @@ fn generate_enum(
         }
         // deserialize
         // TODO: don't backtrack if variants begin with non-overlapping cbor types
+        // issue: https://github.com/dcSpark/cddl-codegen/issues/145
         // TODO: how to detect when a greedy match won't work? (ie choice with choices in a choice possibly)
-        let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
-            gen_scope,
-            types,
-            variant,
-            enum_gen_info.types.is_empty(),
-            deser_body,
-        );
-        let names_without_outer = enum_gen_info.names_without_outer();
-        if names_without_outer.is_empty() {
-            return_if_deserialized
-                .line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
-        } else {
-            enum_gen_info.generate_constructor(
-                &mut return_if_deserialized,
-                &if names_without_outer.len() > 1 {
-                    format!("Ok(({})) => return Ok(", names_without_outer.join(", "))
+        let mut return_if_deserialized = match &variant.data {
+            EnumVariantData::RustType(_) => {
+                let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
+                    gen_scope,
+                    types,
+                    variant,
+                    enum_gen_info.types.is_empty(),
+                    deser_body,
+                );
+                let names_without_outer = enum_gen_info.names_without_outer();
+                if names_without_outer.is_empty() {
+                    return_if_deserialized
+                        .line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
                 } else {
-                    format!("Ok({}) => return Ok(", names_without_outer.join(", "))
-                },
-                "),",
-                None,
-            );
-        }
+                    enum_gen_info.generate_constructor(
+                        &mut return_if_deserialized,
+                        &if names_without_outer.len() > 1 {
+                            format!("Ok(({})) => return Ok(", names_without_outer.join(", "))
+                        } else {
+                            format!("Ok({}) => return Ok(", names_without_outer.join(", "))
+                        },
+                        "),",
+                        None,
+                    );
+                }
+                return_if_deserialized
+            }
+            EnumVariantData::Inlined(record) => {
+                let mut variant_deser_code =
+                    generate_array_struct_deserialization(
+                        gen_scope,
+                        types,
+                        name,
+                        record,
+                        tag,
+                        false,
+                        false,
+                    );
+                add_deserialize_final_len_check(
+                    &mut variant_deser_code.deser_code.content,
+                    Some(record.rep),
+                    record.cbor_len_info(types),
+                );
+                // generate_constructor zips the expressions with the names in the enum_gen_info
+                // so just make sure we're in the same order as returned above
+                assert_eq!(enum_gen_info.names.len(), variant_deser_code.deser_ctor_fields.len() + variant_deser_code.encoding_struct_ctor_fields.len());
+                let ctor_exprs = variant_deser_code.deser_ctor_fields.into_iter().chain(variant_deser_code.encoding_struct_ctor_fields.into_iter()).zip(enum_gen_info.names.iter()).map(
+                    |((var, expr), name)| {
+                        assert_eq!(var, *name);
+                        expr
+                    }
+                ).collect();
+                enum_gen_info.generate_constructor(
+                    &mut variant_deser_code.deser_code.content,
+                    "Ok(",
+                    ")",
+                    Some(&ctor_exprs),
+                );
+                let mut variant_deser =
+                    Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+                variant_deser.after(")(raw)");
+                variant_deser.push_all(variant_deser_code.deser_code.content);
+                deser_body.push_block(variant_deser);
+                // can't chain blocks so we just put them one after the other
+                let mut return_if_deserialized = Block::new("");
+                return_if_deserialized.line("Ok(variant) => return Ok(variant),");
+                return_if_deserialized
+            }
+        };
         return_if_deserialized
             .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
         return_if_deserialized.after(";");
