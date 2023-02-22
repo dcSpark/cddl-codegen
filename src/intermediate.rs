@@ -143,12 +143,12 @@ impl<'a> IntermediateTypes<'a> {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    if wasm && !elem_ty.directly_wasm_exposable() && current_scope != "lib" {
+                    if wasm && !elem_ty.directly_wasm_exposable(types) && current_scope != "lib" {
                         // TODO: we should be doing array wrappers where they are declared or used,
                         // but for the latter, what to do if multiple places use it? default to lib?
                         // issue: https://github.com/dcSpark/cddl-codegen/issues/138
                         let arr_wrapper_ident =
-                            RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array()));
+                            RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array(types)));
                         refs.entry(current_scope.to_owned())
                             .or_default()
                             .entry("lib".to_owned())
@@ -205,6 +205,9 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 RustStructType::Extern => {
                     // impossible to know what this refers to - will have to be done afterwards by user
+                }
+                RustStructType::CStyleEnum { .. } => {
+                    // should only refer to constants
                 }
             }
         }
@@ -296,10 +299,10 @@ impl<'a> IntermediateTypes<'a> {
         // or are reading a key here, unless we check, but then you'd need to store the
         // non-break special value once read
         if let ConceptualRustType::Array(ty) = resolved_inner {
-            assert!(!ty.cbor_types().contains(&CBORType::Special));
+            assert!(!ty.cbor_types(self).contains(&CBORType::Special));
         }
         if let ConceptualRustType::Map(key_type, _val_type) = resolved_inner {
-            assert!(!key_type.cbor_types().contains(&CBORType::Special));
+            assert!(!key_type.cbor_types(self).contains(&CBORType::Special));
         }
         resolved
     }
@@ -349,6 +352,14 @@ impl<'a> IntermediateTypes<'a> {
         self.rust_structs.get(ident)
     }
 
+    /// mostly for convenience since this is checked in so many places
+    pub fn is_enum(&self, ident: &RustIdent) -> bool {
+        matches!(
+            self.rust_struct(ident).unwrap().variant(),
+            RustStructType::CStyleEnum { .. }
+        )
+    }
+
     // this is called by register_table_type / register_array_type automatically
     pub fn register_rust_struct(
         &mut self,
@@ -361,7 +372,7 @@ impl<'a> IntermediateTypes<'a> {
                 self.create_and_register_array_type(
                     parent_visitor,
                     domain.clone(),
-                    &domain.conceptual_type.name_as_wasm_array(),
+                    &domain.conceptual_type.name_as_wasm_array(self),
                 );
                 let mut map_type: RustType =
                     ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
@@ -407,7 +418,7 @@ impl<'a> IntermediateTypes<'a> {
     ) -> RustType {
         let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
-        if raw_arr_type.directly_wasm_exposable() {
+        if raw_arr_type.directly_wasm_exposable(self) {
             return raw_arr_type.into();
         }
         let array_type_ident = RustIdent::new(CDDLIdent::new(array_type_name));
@@ -1026,7 +1037,7 @@ impl RustType {
     }
 
     /// All POSSIBLE outermost CBOR types this can encode to
-    pub fn cbor_types(&self) -> Vec<CBORType> {
+    pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
         match self.encodings.last() {
             Some(CBOREncodingOperation::Tagged(_)) => vec![CBORType::Tag],
             Some(CBOREncodingOperation::CBORBytes) => vec![CBORType::Bytes],
@@ -1040,20 +1051,44 @@ impl RustType {
                     FixedValue::Bool(_) => CBORType::Special,
                 }],
                 ConceptualRustType::Primitive(p) => p.cbor_types(),
-                ConceptualRustType::Rust(_ident) => {
-                    //panic!("TODO: store first cbor tag somewhere")
-                    vec![CBORType::Array, CBORType::Map]
+                ConceptualRustType::Rust(ident) => {
+                    let rust_struct = types.rust_struct(ident).unwrap();
+                    if rust_struct.tag.is_some() {
+                        vec![CBORType::Tag]
+                    } else {
+                        match rust_struct.variant() {
+                            RustStructType::Wrapper { wrapped, .. } => wrapped.cbor_types(types),
+                            // we can't know this unless there's a way to provide this info
+                            RustStructType::Extern => vec![CBORType::Array, CBORType::Map],
+                            RustStructType::Record(record) => match record.rep {
+                                Representation::Array => vec![CBORType::Array],
+                                Representation::Map => vec![CBORType::Map],
+                            },
+                            RustStructType::CStyleEnum { variants }
+                            | RustStructType::TypeChoice { variants } => {
+                                let mut variant_cbor_types = variants
+                                    .iter()
+                                    .flat_map(|ev| ev.rust_type.cbor_types(types))
+                                    .collect::<Vec<CBORType>>();
+                                variant_cbor_types.dedup();
+                                variant_cbor_types
+                            }
+                            _ => panic!(),
+                        }
+                    }
                 }
                 ConceptualRustType::Array(_) => vec![CBORType::Array],
                 ConceptualRustType::Map(_k, _v) => vec![CBORType::Map],
                 ConceptualRustType::Optional(ty) => {
-                    let mut inner_types = ty.cbor_types();
+                    let mut inner_types = ty.cbor_types(types);
                     if !inner_types.contains(&CBORType::Special) {
                         inner_types.push(CBORType::Special);
                     }
                     inner_types
                 }
-                ConceptualRustType::Alias(_ident, ty) => Self::new((**ty).clone()).cbor_types(),
+                ConceptualRustType::Alias(_ident, ty) => {
+                    Self::new((**ty).clone()).cbor_types(types)
+                }
             },
         }
     }
@@ -1062,17 +1097,17 @@ impl RustType {
         unimplemented!()
     }
 
-    fn _is_serialize_multiline(&self) -> bool {
+    fn _is_serialize_multiline(&self, types: &IntermediateTypes) -> bool {
         if self.encodings.is_empty() {
             match &self.conceptual_type {
                 ConceptualRustType::Fixed(_) => false,
                 ConceptualRustType::Primitive(_) => false,
-                ConceptualRustType::Rust(_) => false,
+                ConceptualRustType::Rust(ident) => types.is_enum(ident),
                 ConceptualRustType::Array(_) => true,
                 ConceptualRustType::Optional(_) => false,
                 ConceptualRustType::Map(_, _) => false,
                 ConceptualRustType::Alias(_ident, ty) => {
-                    Self::new((**ty).clone())._is_serialize_multiline()
+                    Self::new((**ty).clone())._is_serialize_multiline(types)
                 }
             }
         } else {
@@ -1093,7 +1128,7 @@ pub enum ConceptualRustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm
     Primitive(Primitive),
-    // Rust-defined type that cannot be put in arrays/etc
+    // Rust-defined type that cannot be put in arrays/etc. Can be an enum, etc too.
     Rust(RustIdent),
     // Array-wrapped type. Passed as Vec<T> if T is Primitive
     Array(Box<RustType>),
@@ -1124,11 +1159,11 @@ impl ConceptualRustType {
         }
     }
 
-    pub fn directly_wasm_exposable(&self) -> bool {
+    pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
-            Self::Rust(_) => false,
+            Self::Rust(ident) => types.is_enum(ident),
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
             Self::Array(ty) => {
                 let inner = match &ty.conceptual_type {
@@ -1157,12 +1192,12 @@ impl ConceptualRustType {
                         Primitive::Str => false,
                     },
                     Self::Array(_) => false,
-                    _ => ty.conceptual_type.directly_wasm_exposable(),
+                    _ => ty.conceptual_type.directly_wasm_exposable(types),
                 }
             }
-            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(),
+            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(types),
             Self::Map(_, _) => false,
-            Self::Alias(_ident, ty) => ty.directly_wasm_exposable(),
+            Self::Alias(_ident, ty) => ty.directly_wasm_exposable(types),
         }
     }
 
@@ -1174,9 +1209,9 @@ impl ConceptualRustType {
         }
     }
 
-    pub fn name_as_wasm_array(&self) -> String {
-        if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable() {
-            format!("Vec<{}>", self.for_wasm_member())
+    pub fn name_as_wasm_array(&self, types: &IntermediateTypes) -> String {
+        if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable(types) {
+            format!("Vec<{}>", self.for_wasm_member(types))
         } else {
             format!("{}List", self.for_variant())
         }
@@ -1199,7 +1234,13 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("&{ident}"),
+            Self::Rust(ident) => {
+                if types.is_enum(ident) {
+                    ident.to_string()
+                } else {
+                    format!("&{ident}")
+                }
+            }
             Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(types, false)),
             Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read(types)),
             Self::Map(_k, _v) => format!("&{}", self.for_rust_member(types, false)),
@@ -1212,11 +1253,11 @@ impl ConceptualRustType {
     }
 
     /// Function parameter TYPE from wasm (i.e. ref for non-primitives, value for supported primitives)
-    pub fn for_wasm_param(&self) -> String {
-        self.for_wasm_param_impl(false)
+    pub fn for_wasm_param(&self, types: &IntermediateTypes) -> String {
+        self.for_wasm_param_impl(types, false)
     }
 
-    fn for_wasm_param_impl(&self, force_not_ref: bool) -> String {
+    fn for_wasm_param_impl(&self, types: &IntermediateTypes, force_not_ref: bool) -> String {
         let opt_ref = if force_not_ref { "" } else { "&" };
         match self {
             Self::Fixed(_) => panic!(
@@ -1224,35 +1265,48 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => format!("{opt_ref}{ident}"),
-            Self::Array(ty) => {
-                if self.directly_wasm_exposable() {
-                    ty.conceptual_type.name_as_wasm_array()
+            Self::Rust(ident) => {
+                if types.is_enum(ident) {
+                    ident.to_string()
                 } else {
-                    format!("{}{}", opt_ref, ty.conceptual_type.name_as_wasm_array())
+                    format!("{opt_ref}{ident}")
+                }
+            }
+            Self::Array(ty) => {
+                if self.directly_wasm_exposable(types) {
+                    ty.conceptual_type.name_as_wasm_array(types)
+                } else {
+                    format!(
+                        "{}{}",
+                        opt_ref,
+                        ty.conceptual_type.name_as_wasm_array(types)
+                    )
                 }
             }
             Self::Optional(ty) => {
-                format!("Option<{}>", ty.conceptual_type.for_wasm_param_impl(true))
+                format!(
+                    "Option<{}>",
+                    ty.conceptual_type.for_wasm_param_impl(types, true)
+                )
             }
-            Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member()),
+            Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member(types)),
             // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
             Self::Alias(ident, ty) => match &**ty {
                 Self::Rust(_) |
                 Self::Array(_) |
-                Self::Map(_, _) if !self.directly_wasm_exposable() => format!("{opt_ref}{ident}"),
+                Self::Map(_, _) if !self.directly_wasm_exposable(types) => format!("{opt_ref}{ident}"),
                 Self::Optional(_) |
                 // no special handling if for some reason nested aliases, just strip all to avoid hassle
-                Self::Alias(_, _) => ty.for_wasm_param_impl(force_not_ref),
+                Self::Alias(_, _) => ty.for_wasm_param_impl(types, force_not_ref),
                 _ => ident.to_string(),
             },
         }
     }
 
     /// Return TYPE for wasm
-    pub fn for_wasm_return(&self) -> String {
-        self.for_wasm_member()
+    pub fn for_wasm_return(&self, types: &IntermediateTypes) -> String {
+        self.for_wasm_member(types)
     }
 
     pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
@@ -1278,7 +1332,7 @@ impl ConceptualRustType {
     }
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used.
-    pub fn for_wasm_member(&self) -> String {
+    pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
@@ -1286,13 +1340,13 @@ impl ConceptualRustType {
             ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => ident.to_string(),
-            Self::Array(ty) => ty.conceptual_type.name_as_wasm_array(),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_member()),
+            Self::Array(ty) => ty.conceptual_type.name_as_wasm_array(types),
+            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_member(types)),
             Self::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_wasm_member(),
+                AliasIdent::Reserved(_) => ty.for_wasm_member(types),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
@@ -1308,7 +1362,7 @@ impl ConceptualRustType {
             ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => {
-                if from_wasm {
+                if from_wasm && !types.is_enum(ident) {
                     crate::generation::rust_crate_struct_from_wasm(types, ident)
                 } else {
                     ident.to_string()
@@ -1365,10 +1419,11 @@ impl ConceptualRustType {
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_clone(
         &self,
+        types: &IntermediateTypes,
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
-        let expr_cloned = if self.is_copy() {
+        let expr_cloned = if self.is_copy(types) {
             expr.to_owned()
         } else {
             format!("{expr}.clone()")
@@ -1378,13 +1433,14 @@ impl ConceptualRustType {
                 ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
             ],
-            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(expr, can_fail),
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(types, expr, can_fail),
             Self::Optional(ty) => ty
                 .conceptual_type
-                .from_wasm_boundary_clone_optional(expr, can_fail),
+                .from_wasm_boundary_clone_optional(types, expr, can_fail),
             Self::Array(ty) => {
-                if self.directly_wasm_exposable() {
-                    ty.conceptual_type.from_wasm_boundary_clone(expr, can_fail)
+                if self.directly_wasm_exposable(types) {
+                    ty.conceptual_type
+                        .from_wasm_boundary_clone(types, expr, can_fail)
                 } else {
                     vec![
                         ToWasmBoundaryOperations::Code(expr_cloned),
@@ -1407,12 +1463,16 @@ impl ConceptualRustType {
     #[allow(clippy::wrong_self_convention)]
     fn from_wasm_boundary_clone_optional(
         &self,
+        types: &IntermediateTypes,
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
         let mut ops = match self {
-            Self::Primitive(_p) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
-            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(expr, can_fail),
+            Self::Primitive(_) => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
+            Self::Rust(ident) if types.is_enum(ident) => {
+                vec![ToWasmBoundaryOperations::Code(expr.to_owned())]
+            }
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(types, expr, can_fail),
             Self::Array(..) | Self::Rust(..) | Self::Map(..) => vec![
                 ToWasmBoundaryOperations::Code(expr.to_owned()),
                 if can_fail {
@@ -1431,14 +1491,14 @@ impl ConceptualRustType {
 
     /// for non-owning parameter TYPES from wasm
     #[allow(clippy::wrong_self_convention)]
-    pub fn from_wasm_boundary_ref(&self, expr: &str) -> String {
+    pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
         match self {
             Self::Rust(_ident) => expr.to_owned(),
-            Self::Alias(_ident, ty) => ty.from_wasm_boundary_ref(expr),
-            Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(expr),
+            Self::Alias(_ident, ty) => ty.from_wasm_boundary_ref(types, expr),
+            Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(types, expr),
             Self::Array(ty) => {
-                if self.directly_wasm_exposable() {
-                    ty.conceptual_type.from_wasm_boundary_ref(expr)
+                if self.directly_wasm_exposable(types) {
+                    ty.conceptual_type.from_wasm_boundary_ref(types, expr)
                 } else {
                     expr.to_owned()
                 }
@@ -1449,48 +1509,62 @@ impl ConceptualRustType {
     }
 
     /// FROM rust TO wasm (with cloning/wrapping) (for arguments)
-    pub fn to_wasm_boundary(&self, expr: &str, is_ref: bool) -> String {
+    pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
+        let primitive_impl = || {
+            if self.is_copy(types) {
+                if is_ref {
+                    format!("*{expr}")
+                } else {
+                    expr.to_owned()
+                }
+            } else {
+                format!("{expr}.clone()")
+            }
+        };
         match self {
             Self::Fixed(_) => panic!("fixed types are a serialization detail"),
-            Self::Primitive(_p) => {
-                if self.is_copy() {
-                    if is_ref {
-                        format!("*{expr}")
-                    } else {
-                        expr.to_owned()
-                    }
+            Self::Primitive(_) => primitive_impl(),
+            Self::Rust(ident) => {
+                if types.is_enum(ident) {
+                    primitive_impl()
                 } else {
-                    format!("{expr}.clone()")
+                    format!("{expr}.clone().into()")
                 }
             }
-            Self::Rust(_ident) => format!("{expr}.clone().into()"),
-            //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(), expr),
+            //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(types), expr),
             //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
             Self::Array(_ty) => {
-                if self.directly_wasm_exposable() {
+                if self.directly_wasm_exposable(types) {
                     format!("{expr}.clone()")
                 } else {
                     format!("{expr}.clone().into()")
                 }
             }
             Self::Map(_k, _v) => format!("{expr}.clone().into()"),
-            Self::Optional(ty) => ty.conceptual_type.to_wasm_boundary_optional(expr, is_ref),
-            Self::Alias(_ident, ty) => ty.to_wasm_boundary(expr, is_ref),
+            Self::Optional(ty) => ty
+                .conceptual_type
+                .to_wasm_boundary_optional(types, expr, is_ref),
+            Self::Alias(_ident, ty) => ty.to_wasm_boundary(types, expr, is_ref),
         }
     }
 
     /// FROM rust TO wasm as Option<T>. This is separate as we can have optional fields
     /// that act identical to Self::Optional(ty)
-    pub fn to_wasm_boundary_optional(&self, expr: &str, is_ref: bool) -> String {
-        if self.directly_wasm_exposable() {
-            self.to_wasm_boundary(expr, is_ref)
+    pub fn to_wasm_boundary_optional(
+        &self,
+        types: &IntermediateTypes,
+        expr: &str,
+        is_ref: bool,
+    ) -> String {
+        if self.directly_wasm_exposable(types) {
+            self.to_wasm_boundary(types, expr, is_ref)
         } else {
             format!("{expr}.clone().map(std::convert::Into::into)")
         }
     }
 
     // if it impements the Copy trait in rust
-    pub fn is_copy(&self) -> bool {
+    pub fn is_copy(&self, types: &IntermediateTypes) -> bool {
         match self {
             Self::Fixed(_f) => unreachable!(),
             Self::Primitive(p) => match p {
@@ -1508,16 +1582,16 @@ impl ConceptualRustType {
                 | Primitive::U64 => true,
                 Primitive::Str | Primitive::Bytes => false,
             },
-            Self::Rust(_ident) => false,
+            Self::Rust(ident) => types.is_enum(ident),
             Self::Array(_) => false,
             Self::Map(_k, _v) => false,
-            Self::Optional(ty) => ty.conceptual_type.is_copy(),
-            Self::Alias(_ident, ty) => ty.is_copy(),
+            Self::Optional(ty) => ty.conceptual_type.is_copy(types),
+            Self::Alias(_ident, ty) => ty.is_copy(types),
         }
     }
 
-    pub fn clone_if_not_copy(&self, expr: &str) -> String {
-        if self.is_copy() {
+    pub fn clone_if_not_copy(&self, types: &IntermediateTypes, expr: &str) -> String {
+        if self.is_copy(types) {
             expr.to_owned()
         } else {
             format!("{expr}.clone()")
@@ -1826,6 +1900,9 @@ pub enum RustStructType {
     /// e.g. `int` from not being resolved while still being able to detect it when
     /// referring to a struct that doesn't exist even after generation.
     Extern,
+    CStyleEnum {
+        variants: Vec<EnumVariant>,
+    },
 }
 
 impl RustStruct {
@@ -1858,15 +1935,39 @@ impl RustStruct {
         }
     }
 
+    /// This will automatically check if it's a c-stlye enum and use that instead if possible
     pub fn new_type_choice(
         ident: RustIdent,
         tag: Option<usize>,
         variants: Vec<EnumVariant>,
     ) -> Self {
-        Self {
-            ident,
-            tag,
-            variant: RustStructType::TypeChoice { variants },
+        // we could potentially push these encoding vars out too but this is extremely low priority
+        // unless people want to have tagged c-style enums encoded in different ways
+        let cant_store_tag = tag.is_some() && CLI_ARGS.preserve_encodings;
+        let not_fixed_or_cant_store_enc_vars_or_outer_len =
+            variants.iter().any(|ev: &EnumVariant| {
+                ev.serialize_as_embedded_group
+                    || (CLI_ARGS.preserve_encodings && !ev.rust_type.encodings.is_empty())
+                    || !matches!(
+                        ev.rust_type.clone().resolve_aliases().conceptual_type,
+                        ConceptualRustType::Fixed(_)
+                    )
+            });
+        if cant_store_tag
+            || not_fixed_or_cant_store_enc_vars_or_outer_len
+            || (CLI_ARGS.preserve_encodings && !enum_variants_have_same_encoding_var(&variants))
+        {
+            Self {
+                ident,
+                tag,
+                variant: RustStructType::TypeChoice { variants },
+            }
+        } else {
+            Self {
+                ident,
+                tag,
+                variant: RustStructType::CStyleEnum { variants },
+            }
         }
     }
 
@@ -1941,6 +2042,7 @@ impl RustStruct {
             RustStructType::Extern { .. } => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
+            RustStructType::CStyleEnum { .. } => Some(1),
         }
     }
 
@@ -1962,6 +2064,7 @@ impl RustStruct {
             RustStructType::Extern { .. } => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
+            RustStructType::CStyleEnum { .. } => "1".into(),
         }
     }
 
@@ -1984,6 +2087,7 @@ impl RustStruct {
             RustStructType::Extern { .. } => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
+            RustStructType::CStyleEnum { .. } => 1,
         }
     }
 
@@ -2003,6 +2107,7 @@ impl RustStruct {
             RustStructType::Extern { .. } => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
+            RustStructType::CStyleEnum { .. } => RustStructCBORLen::Fixed(1),
         }
     }
 
@@ -2020,7 +2125,8 @@ impl RustStruct {
                 .conceptual_type
                 .visit_types_excluding(types, f, already_visited),
             RustStructType::GroupChoice { variants, .. }
-            | RustStructType::TypeChoice { variants, .. } => variants.iter().for_each(|v| {
+            | RustStructType::TypeChoice { variants, .. }
+            | RustStructType::CStyleEnum { variants } => variants.iter().for_each(|v| {
                 v.rust_type
                     .conceptual_type
                     .visit_types_excluding(types, f, already_visited)
@@ -2253,7 +2359,7 @@ impl GenericInstance {
             RustStructType::Array { element_type } => {
                 *element_type = Self::resolve_type(&resolved_args, element_type);
             }
-            RustStructType::TypeChoice { variants } => {
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
                 for variant in variants.iter_mut() {
                     variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
                 }
@@ -2282,6 +2388,64 @@ impl GenericInstance {
         }
         orig.clone()
     }
+}
+
+fn enum_variant_constant(variant: &EnumVariant) -> Option<FixedValue> {
+    if let ConceptualRustType::Fixed(constant) =
+        variant.rust_type.clone().resolve_aliases().conceptual_type
+    {
+        Some(constant)
+    } else {
+        None
+    }
+}
+
+pub fn enum_variants_have_same_encoding_var(variants: &[EnumVariant]) -> bool {
+    variants
+        .iter()
+        .fold(
+            variants.first().and_then(enum_variant_constant),
+            |acc: Option<FixedValue>, ev: &EnumVariant| -> Option<FixedValue> {
+                match (&acc, enum_variant_constant(ev)) {
+                    // all these share the same encoding var type (Option<Sz>)
+                    (
+                        Some(FixedValue::Uint(_) | FixedValue::Nint(_) | FixedValue::Float(_)),
+                        Some(FixedValue::Uint(_) | FixedValue::Nint(_) | FixedValue::Float(_)),
+                    ) => acc,
+                    // bytes would go here once it's supported
+                    (Some(FixedValue::Text(_)), Some(FixedValue::Text(_))) => acc,
+                    // these don't have any encoding vars
+                    (
+                        Some(FixedValue::Bool(_) | FixedValue::Null),
+                        Some(FixedValue::Bool(_) | FixedValue::Null),
+                    ) => acc,
+                    _ => None,
+                }
+            },
+        )
+        .is_some()
+}
+
+/// Some when all variants have the same FixedValue variant (e.g. all Uint, all Nint, all Text, etc)
+/// or None if they differ in any way (including encoding details)
+pub fn _enum_variants_common_constant_type(variants: &[EnumVariant]) -> Option<FixedValue> {
+    variants.iter().fold(
+        variants.first().and_then(enum_variant_constant),
+        |acc: Option<FixedValue>, ev: &EnumVariant| -> Option<FixedValue> {
+            if !ev.rust_type.encodings.is_empty() {
+                return None;
+            }
+            match (&acc, enum_variant_constant(ev)) {
+                (Some(FixedValue::Uint(_)), Some(FixedValue::Uint(_))) => acc,
+                (Some(FixedValue::Nint(_)), Some(FixedValue::Nint(_))) => acc,
+                (Some(FixedValue::Bool(_)), Some(FixedValue::Bool(_))) => acc,
+                (Some(FixedValue::Float(_)), Some(FixedValue::Float(_))) => acc,
+                (Some(FixedValue::Null), Some(FixedValue::Null)) => acc,
+                (Some(FixedValue::Text(_)), Some(FixedValue::Text(_))) => acc,
+                _ => None,
+            }
+        },
+    )
 }
 
 #[allow(unused)]

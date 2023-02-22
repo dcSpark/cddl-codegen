@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        println!("\n\n------------------------------------------\n- Handling rule: {scope}\n------------------------------------");
+        println!("\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------", scope, cddl_rule.name());
         parse_rule(&mut types, &pv, cddl_rule);
     }
     types.finalize(&pv);
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
     let mut gen_scope = GenerationScope::new();
     gen_scope.generate(&types);
-    gen_scope.export()?;
+    gen_scope.export(&types)?;
     types.print_info();
 
     gen_scope.print_structs_without_deserialize();

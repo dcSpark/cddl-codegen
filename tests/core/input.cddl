@@ -32,7 +32,14 @@ table_arr_members = {
 	arr2: [*foo],
 }
 
+c_enum = 3 / 1 / 4
+
 type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint])
+
+enums = [
+	c_enum,
+	type_choice,
+]
 
 group_choice = [ foo // 0, x: uint // plain ]
 
@@ -108,4 +115,3 @@ text_array_wrapper = [embedded_text]
 text_map_wrapper = { 721: embedded_text }
 
 inline_wrapper = [{ * text => text }]
-

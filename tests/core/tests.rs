@@ -101,6 +101,11 @@ mod tests {
     }
 
     #[test]
+    fn enums() {
+        let enums = Enums::new(CEnum::I3, TypeChoice::U64(53435364));
+    }
+
+    #[test]
     fn group_choice_foo() {
         deser_test(&GroupChoice::new_foo(0, String::new(), vec![]));
     }
