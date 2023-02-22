@@ -190,9 +190,18 @@ impl<'a> IntermediateTypes<'a> {
                     mark_refs(&mut refs, self, wasm, current_scope, element_type)
                 }
                 RustStructType::GroupChoice { variants, .. }
-                | RustStructType::TypeChoice { variants, .. } => variants
-                    .iter()
-                    .for_each(|ev| mark_refs(&mut refs, self, wasm, current_scope, &ev.rust_type)),
+                | RustStructType::TypeChoice { variants, .. } => {
+                    variants.iter().for_each(|ev| match &ev.data {
+                        EnumVariantData::RustType(ty) => {
+                            mark_refs(&mut refs, self, wasm, current_scope, ty)
+                        }
+                        EnumVariantData::Inlined(record) => {
+                            record.fields.iter().for_each(|field| {
+                                mark_refs(&mut refs, self, wasm, current_scope, &field.rust_type)
+                            })
+                        }
+                    })
+                }
                 RustStructType::Record(record) => record.fields.iter().for_each(|field| {
                     mark_refs(&mut refs, self, wasm, current_scope, &field.rust_type)
                 }),
@@ -579,6 +588,14 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn scope(&self, ident: &RustIdent) -> &str {
         self.scopes.get(ident).map(|s| s.as_str()).unwrap_or("lib")
+    }
+
+    // we need to do this for some generated intermediate structures as the parsing code
+    // doesn't allow to just generate a rust struct but instead inserts everything needed
+    pub fn remove_rust_struct(&mut self, ident: &RustIdent) -> Option<RustStruct> {
+        self.plain_groups.remove(ident);
+        self.scopes.remove(ident);
+        self.rust_structs.remove(ident)
     }
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
@@ -999,15 +1016,15 @@ impl RustType {
     pub fn default(mut self, default_value: FixedValue) -> Self {
         assert!(self.default.is_none());
         let matches = if let ConceptualRustType::Primitive(p) =
-            self.conceptual_type.clone().resolve_aliases()
+            self.conceptual_type.resolve_alias_shallow()
         {
             match &default_value {
-                FixedValue::Bool(_) => p == Primitive::Bool,
+                FixedValue::Bool(_) => *p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
-                FixedValue::Float(_) => p == Primitive::F64 || p == Primitive::F32,
+                FixedValue::Float(_) => *p == Primitive::F64 || *p == Primitive::F32,
                 FixedValue::Null => false,
-                FixedValue::Text(_) => p == Primitive::Str,
+                FixedValue::Text(_) => *p == Primitive::Str,
             }
         } else {
             false
@@ -1028,6 +1045,7 @@ impl RustType {
         self
     }
 
+    // deep resolve aliases
     pub fn resolve_aliases(self) -> Self {
         Self {
             conceptual_type: self.conceptual_type.resolve_aliases(),
@@ -1068,11 +1086,15 @@ impl RustType {
                             | RustStructType::TypeChoice { variants } => {
                                 let mut variant_cbor_types = variants
                                     .iter()
-                                    .flat_map(|ev| ev.rust_type.cbor_types(types))
+                                    .flat_map(|ev| ev.rust_type().cbor_types(types))
                                     .collect::<Vec<CBORType>>();
                                 variant_cbor_types.dedup();
                                 variant_cbor_types
                             }
+                            RustStructType::GroupChoice { rep, .. } => match rep {
+                                Representation::Array => vec![CBORType::Array],
+                                Representation::Map => vec![CBORType::Map],
+                            },
                             _ => panic!(),
                         }
                     }
@@ -1146,6 +1168,7 @@ pub enum ConceptualRustType {
 }
 
 impl ConceptualRustType {
+    // deep resolve aliases - does it inside of options, maps, arrays, etc
     pub fn resolve_aliases(self) -> Self {
         match self {
             Self::Array(ty) => Self::Array(Box::new(ty.resolve_aliases())),
@@ -1155,6 +1178,17 @@ impl ConceptualRustType {
                 Box::new(value.resolve_aliases()),
             ),
             Self::Optional(ty) => Self::Optional(Box::new(ty.resolve_aliases())),
+            _ => self,
+        }
+    }
+
+    // shallow resolve aliases. use this when you only need to strip direct aliases
+    // to check the type more easily e.g. to figure out if a ConceptualRustType
+    // is a Rust, a Primitive, etc
+    // This avoids the clone in this case
+    pub fn resolve_alias_shallow(&self) -> &Self {
+        match self {
+            Self::Alias(_, ty) => ty.resolve_alias_shallow(),
             _ => self,
         }
     }
@@ -1802,11 +1836,17 @@ impl std::fmt::Display for ToWasmBoundaryOperations {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum EnumVariantData {
+    Inlined(RustRecord),
+    RustType(RustType),
+}
+
 // rep is Optional - None means we just serialize raw, ie for type choices
 #[derive(Clone, Debug)]
 pub struct EnumVariant {
     pub name: VariantIdent,
-    pub rust_type: RustType,
+    pub data: EnumVariantData,
     pub serialize_as_embedded_group: bool,
 }
 
@@ -1814,8 +1854,27 @@ impl EnumVariant {
     pub fn new(name: VariantIdent, rust_type: RustType, serialize_as_embedded_group: bool) -> Self {
         Self {
             name,
-            rust_type,
+            data: EnumVariantData::RustType(rust_type),
             serialize_as_embedded_group,
+        }
+    }
+
+    pub fn new_embedded(name: VariantIdent, embedded_record: RustRecord) -> Self {
+        Self {
+            name,
+            data: EnumVariantData::Inlined(embedded_record),
+            serialize_as_embedded_group: false,
+        }
+    }
+
+    // Can only be used on RustType variants, panics otherwise.
+    // So don't call this when we're embedding the variant types
+    pub fn rust_type(&self) -> &RustType {
+        match &self.data {
+            EnumVariantData::RustType(ty) => ty,
+            EnumVariantData::Inlined(_) => {
+                panic!("only call rust_type() when you know it can't be inlined")
+            }
         }
     }
 
@@ -1830,6 +1889,25 @@ impl EnumVariant {
             "f64" => "float64",
             x => x,
         })
+    }
+
+    pub fn can_embed_fields(types: &IntermediateTypes, ty: &ConceptualRustType) -> bool {
+        match ty {
+            ConceptualRustType::Rust(ident) => {
+                if let RustStructType::Record(record) = types.rust_struct(ident).unwrap().variant()
+                {
+                    return record
+                        .fields
+                        .iter()
+                        .filter(|field| !field.rust_type.is_fixed_value())
+                        .count()
+                        <= 1;
+                }
+                false
+            }
+            ConceptualRustType::Alias(_, ty) => Self::can_embed_fields(types, ty),
+            _ => false,
+        }
     }
 }
 
@@ -1872,7 +1950,7 @@ pub enum RustStructCBORLen {
 pub struct RustStruct {
     ident: RustIdent,
     tag: Option<usize>,
-    variant: RustStructType,
+    pub(crate) variant: RustStructType,
 }
 
 #[derive(Clone, Debug)]
@@ -1947,9 +2025,9 @@ impl RustStruct {
         let not_fixed_or_cant_store_enc_vars_or_outer_len =
             variants.iter().any(|ev: &EnumVariant| {
                 ev.serialize_as_embedded_group
-                    || (CLI_ARGS.preserve_encodings && !ev.rust_type.encodings.is_empty())
+                    || (CLI_ARGS.preserve_encodings && !ev.rust_type().encodings.is_empty())
                     || !matches!(
-                        ev.rust_type.clone().resolve_aliases().conceptual_type,
+                        ev.rust_type().conceptual_type.resolve_alias_shallow(),
                         ConceptualRustType::Fixed(_)
                     )
             });
@@ -2126,11 +2204,19 @@ impl RustStruct {
                 .visit_types_excluding(types, f, already_visited),
             RustStructType::GroupChoice { variants, .. }
             | RustStructType::TypeChoice { variants, .. }
-            | RustStructType::CStyleEnum { variants } => variants.iter().for_each(|v| {
-                v.rust_type
-                    .conceptual_type
-                    .visit_types_excluding(types, f, already_visited)
-            }),
+            | RustStructType::CStyleEnum { variants } => {
+                variants.iter().for_each(|v| match &v.data {
+                    EnumVariantData::RustType(ty) => {
+                        ty.conceptual_type
+                            .visit_types_excluding(types, f, already_visited)
+                    }
+                    EnumVariantData::Inlined(record) => record.fields.iter().for_each(|field| {
+                        field
+                            .rust_type
+                            .visit_types_excluding(types, f, already_visited)
+                    }),
+                })
+            }
             RustStructType::Record(record) => record.fields.iter().for_each(|field| {
                 field
                     .rust_type
@@ -2361,7 +2447,12 @@ impl GenericInstance {
             }
             RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
                 for variant in variants.iter_mut() {
-                    variant.rust_type = Self::resolve_type(&resolved_args, &variant.rust_type);
+                    match &mut variant.data {
+                        EnumVariantData::RustType(ty) => {
+                            *ty = Self::resolve_type(&resolved_args, ty);
+                        }
+                        EnumVariantData::Inlined(_) => unreachable!(),
+                    }
                 }
             }
             RustStructType::GroupChoice { .. } => {
@@ -2391,13 +2482,12 @@ impl GenericInstance {
 }
 
 fn enum_variant_constant(variant: &EnumVariant) -> Option<FixedValue> {
-    if let ConceptualRustType::Fixed(constant) =
-        variant.rust_type.clone().resolve_aliases().conceptual_type
-    {
-        Some(constant)
-    } else {
-        None
+    if let EnumVariantData::RustType(ty) = &variant.data {
+        if let ConceptualRustType::Fixed(constant) = ty.conceptual_type.resolve_alias_shallow() {
+            return Some(constant.clone());
+        }
     }
+    None
 }
 
 pub fn enum_variants_have_same_encoding_var(variants: &[EnumVariant]) -> bool {
@@ -2432,8 +2522,13 @@ pub fn _enum_variants_common_constant_type(variants: &[EnumVariant]) -> Option<F
     variants.iter().fold(
         variants.first().and_then(enum_variant_constant),
         |acc: Option<FixedValue>, ev: &EnumVariant| -> Option<FixedValue> {
-            if !ev.rust_type.encodings.is_empty() {
-                return None;
+            match &ev.data {
+                EnumVariantData::Inlined(_) => return None,
+                EnumVariantData::RustType(ty) => {
+                    if !ty.encodings.is_empty() {
+                        return None;
+                    }
+                }
             }
             match (&acc, enum_variant_constant(ev)) {
                 (Some(FixedValue::Uint(_)), Some(FixedValue::Uint(_))) => acc,

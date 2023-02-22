@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn group_choice_0() {
-        deser_test(&GroupChoice::GroupChoice1(GroupChoice1::new(37)));
+        deser_test(&GroupChoice::GroupChoice1(37));
     }
 
     #[test]

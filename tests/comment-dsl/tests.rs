@@ -33,12 +33,12 @@ mod tests {
         // just checking these fields exist with the expected name
         let ebb_block = Block::new_ebb_block_wrapper(vec![]);
         match &ebb_block {
-            Block::EbbBlockWrapper(wrapper) => { wrapper.ebb_block_cbor.clone(); },
+            Block::EbbBlockWrapper{ ebb_block_cbor, .. } => { ebb_block_cbor.clone(); },
             _ => {}
         };
         let main_block = Block::new_main_block_wrapper(vec![]);
         match &main_block {
-            Block::MainBlockWrapper(wrapper) => { wrapper.main_block_cbor.clone(); },
+            Block::MainBlockWrapper{ main_block_cbor, .. } => { main_block_cbor.clone(); },
             _ => {}
         };
         assert!(true);
