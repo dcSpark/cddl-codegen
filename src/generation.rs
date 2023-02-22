@@ -4093,7 +4093,8 @@ fn generate_array_struct_deserialization(
                     &field.rust_type.clone().resolve_aliases(),
                     true,
                 ) {
-                    encoding_vars_output.push((field_enc.field_name.clone(), field_enc.field_name.clone()));
+                    encoding_vars_output
+                        .push((field_enc.field_name.clone(), field_enc.field_name.clone()));
                 }
             }
         }
@@ -4345,16 +4346,15 @@ fn codegen_struct(
     let ctor_block = match record.rep {
         Representation::Array => {
             generate_array_struct_serialization(gen_scope, types, record, true, &mut ser_func);
-            let code =
-                generate_array_struct_deserialization(
-                    gen_scope,
-                    types,
-                    name,
-                    record,
-                    tag,
-                    in_embedded,
-                    true,
-                );
+            let code = generate_array_struct_deserialization(
+                gen_scope,
+                types,
+                name,
+                record,
+                tag,
+                in_embedded,
+                true,
+            );
             code.deser_code.add_to_code(&mut deser_code);
             let mut deser_ctor = Block::new(&format!("Ok({name}"));
             for (var, expr) in code.deser_ctor_fields {
@@ -5018,7 +5018,6 @@ fn codegen_group_choices(
             let mut new_func = codegen::Function::new(&format!("new_{}", variant.name_as_var()));
             new_func.ret("Self").vis("pub");
 
-    
             let mut output_comma = false;
             // We only want to generate Variant::new() calls when we created a special struct
             // for the variant, which happens in the general case for multi-field group choices
@@ -5035,7 +5034,7 @@ fn codegen_group_choices(
                         }
                         _ => None,
                     }
-                },
+                }
                 EnumVariantData::Inlined(record) => Some(&record.fields),
             };
             match fields {
@@ -5074,10 +5073,7 @@ fn codegen_group_choices(
                                 } else {
                                     output_comma = true;
                                 }
-                                new_func.arg(
-                                    &field.name,
-                                    field.rust_type.for_wasm_param(types),
-                                );
+                                new_func.arg(&field.name, field.rust_type.for_wasm_param(types));
                                 ctor.push_str(&ToWasmBoundaryOperations::format(
                                     field
                                         .rust_type
@@ -5108,7 +5104,9 @@ fn codegen_group_choices(
                                 rust_crate_struct_from_wasm(types, name),
                                 variant.name_as_var(),
                                 ToWasmBoundaryOperations::format(
-                                    variant.rust_type().from_wasm_boundary_clone(types, &field_name, false)
+                                    variant
+                                        .rust_type()
+                                        .from_wasm_boundary_clone(types, &field_name, false)
                                         .into_iter()
                                 )
                             ));
@@ -5728,8 +5726,7 @@ fn generate_enum(
                         let write_break = match rep {
                             // group choice
                             Some(r) => {
-                                let (len_str, indefinite) = match ty.expanded_field_count(types)
-                                {
+                                let (len_str, indefinite) = match ty.expanded_field_count(types) {
                                     Some(n) => (cbor_event_len_n(&n.to_string()), false),
                                     None => (String::from(cbor_event_len_indef()), true),
                                 };
@@ -5739,7 +5736,7 @@ fn generate_enum(
                                 };
                                 case_block.line(format!("serializer.{func_str}({len_str})?;"));
                                 indefinite
-                            },
+                            }
                             // type choice
                             None => false,
                         };
@@ -5813,16 +5810,9 @@ fn generate_enum(
                 return_if_deserialized
             }
             EnumVariantData::Inlined(record) => {
-                let mut variant_deser_code =
-                    generate_array_struct_deserialization(
-                        gen_scope,
-                        types,
-                        name,
-                        record,
-                        tag,
-                        false,
-                        false,
-                    );
+                let mut variant_deser_code = generate_array_struct_deserialization(
+                    gen_scope, types, name, record, tag, false, false,
+                );
                 add_deserialize_final_len_check(
                     &mut variant_deser_code.deser_code.content,
                     Some(record.rep),
@@ -5830,13 +5820,21 @@ fn generate_enum(
                 );
                 // generate_constructor zips the expressions with the names in the enum_gen_info
                 // so just make sure we're in the same order as returned above
-                assert_eq!(enum_gen_info.names.len(), variant_deser_code.deser_ctor_fields.len() + variant_deser_code.encoding_struct_ctor_fields.len());
-                let ctor_exprs = variant_deser_code.deser_ctor_fields.into_iter().chain(variant_deser_code.encoding_struct_ctor_fields.into_iter()).zip(enum_gen_info.names.iter()).map(
-                    |((var, expr), name)| {
+                assert_eq!(
+                    enum_gen_info.names.len(),
+                    variant_deser_code.deser_ctor_fields.len()
+                        + variant_deser_code.encoding_struct_ctor_fields.len()
+                );
+                let ctor_exprs = variant_deser_code
+                    .deser_ctor_fields
+                    .into_iter()
+                    .chain(variant_deser_code.encoding_struct_ctor_fields.into_iter())
+                    .zip(enum_gen_info.names.iter())
+                    .map(|((var, expr), name)| {
                         assert_eq!(var, *name);
                         expr
-                    }
-                ).collect();
+                    })
+                    .collect();
                 enum_gen_info.generate_constructor(
                     &mut variant_deser_code.deser_code.content,
                     "Ok(",
