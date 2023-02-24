@@ -282,10 +282,8 @@ impl EncodingVarIsCopy for ConceptualRustType {
                 | Primitive::N64 => true,
                 Primitive::Bytes | Primitive::Str => false,
             },
-            Self::Rust(ident) => {
-                if let RustStructType::CStyleEnum { variants } =
-                    types.rust_struct(ident).unwrap().variant()
-                {
+            Self::Rust(ident) => match types.rust_struct(ident).unwrap().variant() {
+                RustStructType::CStyleEnum { variants } => {
                     variants.iter().all(|ev| match &ev.data {
                         EnumVariantData::RustType(ty) => ty.encoding_var_is_copy(types),
                         EnumVariantData::Inlined(record) => record
@@ -293,11 +291,13 @@ impl EncodingVarIsCopy for ConceptualRustType {
                             .iter()
                             .all(|f| f.rust_type.encoding_var_is_copy(types)),
                     })
-                } else {
+                }
+                RustStructType::RawBytesType => false,
+                _ => {
                     // technically no encoding var
                     true
                 }
-            }
+            },
             Self::Alias(_, ty) => ty.encoding_var_is_copy(types),
         }
     }
@@ -642,6 +642,9 @@ impl GenerationScope {
                     }
                     RustStructType::CStyleEnum { variants } => {
                         generate_c_style_enum(self, types, rust_ident, variants, rust_struct.tag());
+                    }
+                    RustStructType::RawBytesType => {
+                        // nothing to do, user specified
                     }
                 }
             }
@@ -1427,41 +1430,54 @@ impl GenerationScope {
                 }
             }
             SerializingRustType::Root(ConceptualRustType::Rust(t)) => {
-                if let RustStructType::CStyleEnum { variants } =
-                    &types.rust_struct(t).unwrap().variant()
-                {
-                    let mut enum_body = codegen::Block::new(format!("match {expr_ref}"));
-                    for variant in variants {
-                        let mut variant_match =
-                            codegen::Block::new(format!("{}::{} =>", t, variant.name));
-                        self.generate_serialize(
-                            types,
-                            (variant.rust_type()).into(),
-                            &mut variant_match,
-                            config.clone().is_end(true),
+                match &types.rust_struct(t).unwrap().variant() {
+                    RustStructType::CStyleEnum { variants } => {
+                        let mut enum_body = codegen::Block::new(format!("match {expr_ref}"));
+                        for variant in variants {
+                            let mut variant_match =
+                                codegen::Block::new(format!("{}::{} =>", t, variant.name));
+                            self.generate_serialize(
+                                types,
+                                (variant.rust_type()).into(),
+                                &mut variant_match,
+                                config.clone().is_end(true),
+                            );
+                            enum_body.push_block(variant_match);
+                        }
+                        if !config.is_end {
+                            enum_body.after("?;");
+                        }
+                        body.push_block(enum_body);
+                    }
+                    RustStructType::RawBytesType => {
+                        write_string_sz(
+                            body,
+                            "write_bytes",
+                            serializer_use,
+                            &format!("{}.to_raw_bytes()", config.expr),
+                            line_ender,
+                            &config.encoding_var(None, false),
                         );
-                        enum_body.push_block(variant_match);
                     }
-                    if !config.is_end {
-                        enum_body.after("?;");
+                    _ => {
+                        if types.is_plain_group(t) {
+                            body.line(&format!(
+                                "{}.serialize_as_embedded_group({}{}){}",
+                                config.expr,
+                                serializer_pass,
+                                canonical_param(),
+                                line_ender
+                            ));
+                        } else {
+                            body.line(&format!(
+                                "{}.serialize({}{}){}",
+                                config.expr,
+                                serializer_pass,
+                                canonical_param(),
+                                line_ender
+                            ));
+                        }
                     }
-                    body.push_block(enum_body);
-                } else if types.is_plain_group(t) {
-                    body.line(&format!(
-                        "{}.serialize_as_embedded_group({}{}){}",
-                        config.expr,
-                        serializer_pass,
-                        canonical_param(),
-                        line_ender
-                    ));
-                } else {
-                    body.line(&format!(
-                        "{}.serialize({}{}){}",
-                        config.expr,
-                        serializer_pass,
-                        canonical_param(),
-                        line_ender
-                    ));
                 }
             }
             SerializingRustType::Root(ConceptualRustType::Array(ty)) => {
@@ -2003,10 +2019,12 @@ impl GenerationScope {
                     }
                 };
             }
-            SerializingRustType::Root(ConceptualRustType::Rust(ident)) => {
-                if let RustStructType::CStyleEnum { variants } =
-                    &types.rust_struct(ident).unwrap().variant()
-                {
+            SerializingRustType::Root(ConceptualRustType::Rust(ident)) => match &types
+                .rust_struct(ident)
+                .unwrap()
+                .variant()
+            {
+                RustStructType::CStyleEnum { variants } => {
                     // if let Some(common) = enum_variants_common_constant_type(variants) {
                     //     // TODO: potentially simplified deserialization some day
                     //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
@@ -2039,39 +2057,75 @@ impl GenerationScope {
                     deser_code.content.line(&format!(
                         "Err(DeserializeError::new(\"{ident}\", DeserializeFailure::NoVariantMatched))"
                     ));
-                } else if types.is_plain_group(ident) {
-                    // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.
-                    // To have this work (if it's valid) you'd either need to generate 2 embedded deserialize methods or pass
-                    // a parameter whether it was an optional field, and if so, read_len.read_elems(embedded mandatory fields)?;
-                    // since otherwise it'd only length check the optional fields within the type.
-                    assert!(!config.optional_field);
-                    deser_code.read_len_used = true;
-                    let final_expr_value = format!(
-                        "{}::deserialize_as_embedded_group({}, {}, len)",
-                        ident,
-                        deserializer_name,
-                        config.pass_read_len()
-                    );
-
-                    deser_code.content.line(&final_result_expr_complete(
-                        &mut deser_code.throws,
-                        config.final_exprs,
-                        &final_expr_value,
-                    ));
-                } else {
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                        deser_code.throws = true;
-                    }
-                    let final_expr_value = format!("{ident}::deserialize({deserializer_name})");
-                    deser_code.content.line(&final_result_expr_complete(
-                        &mut deser_code.throws,
-                        config.final_exprs,
-                        &final_expr_value,
-                    ));
                 }
-            }
+                RustStructType::RawBytesType => {
+                    let error_convert = ".map_err(Into::<DeserializeError>::into)";
+                    if CLI_ARGS.preserve_encodings {
+                        config
+                            .final_exprs
+                            .push("StringEncoding::from(enc)".to_owned());
+                        let from_raw_bytes_with_conversions = format!(
+                            "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
+                            ident,
+                            final_expr(config.final_exprs, Some("bytes".to_owned()))
+                        );
+                        deser_code.content.line(&format!(
+                            "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
+                            before_after.before_str(true),
+                            deserializer_name,
+                            error_convert,
+                            from_raw_bytes_with_conversions,
+                            before_after.after_str(true)
+                        ));
+                    } else {
+                        let from_raw_bytes_with_conversions = format!(
+                            "{ident}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
+                        );
+                        deser_code.content.line(&format!(
+                            "{}{}.bytes(){}.and_then(|bytes| {}){}",
+                            before_after.before_str(false),
+                            deserializer_name,
+                            error_convert,
+                            from_raw_bytes_with_conversions,
+                            before_after.after_str(false)
+                        ));
+                    }
+                }
+                _ => {
+                    if types.is_plain_group(ident) {
+                        // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.
+                        // To have this work (if it's valid) you'd either need to generate 2 embedded deserialize methods or pass
+                        // a parameter whether it was an optional field, and if so, read_len.read_elems(embedded mandatory fields)?;
+                        // since otherwise it'd only length check the optional fields within the type.
+                        assert!(!config.optional_field);
+                        deser_code.read_len_used = true;
+                        let final_expr_value = format!(
+                            "{}::deserialize_as_embedded_group({}, {}, len)",
+                            ident,
+                            deserializer_name,
+                            config.pass_read_len()
+                        );
+
+                        deser_code.content.line(&final_result_expr_complete(
+                            &mut deser_code.throws,
+                            config.final_exprs,
+                            &final_expr_value,
+                        ));
+                    } else {
+                        if config.optional_field {
+                            deser_code.content.line("read_len.read_elems(1)?;");
+                            deser_code.read_len_used = true;
+                            deser_code.throws = true;
+                        }
+                        let final_expr_value = format!("{ident}::deserialize({deserializer_name})");
+                        deser_code.content.line(&final_result_expr_complete(
+                            &mut deser_code.throws,
+                            config.final_exprs,
+                            &final_expr_value,
+                        ));
+                    }
+                }
+            },
             SerializingRustType::Root(ConceptualRustType::Optional(ty)) => {
                 let read_len_check =
                     config.optional_field || (ty.expanded_field_count(types) != Some(1));
@@ -3820,15 +3874,21 @@ fn encoding_fields_impl(
             encoding_fields(types, name, ty, false)
         }
         SerializingRustType::Root(ConceptualRustType::Rust(rust_ident)) => {
-            // for c-style enums we push those up to where they are used instead of self-containing
-            if let RustStructType::CStyleEnum { variants } =
-                &types.rust_struct(rust_ident).unwrap().variant()
-            {
-                // earlier we are guaranteed that all variants will have the same encoding types
-                // or else it wouldn't end up as a c-style enum in the first place in IntermediateTypes
-                encoding_fields(types, name, variants[0].rust_type(), false)
-            } else {
-                vec![]
+            match &types.rust_struct(rust_ident).unwrap().variant() {
+                // for c-style enums we push those up to where they are used instead of self-containing
+                RustStructType::CStyleEnum { variants } => {
+                    // earlier we are guaranteed that all variants will have the same encoding types
+                    // or else it wouldn't end up as a c-style enum in the first place in IntermediateTypes
+                    encoding_fields(types, name, variants[0].rust_type(), false)
+                }
+                // also push them out for RawBytesType as they're not stored there, as if we had `bytes` directly here
+                RustStructType::RawBytesType => encoding_fields_impl(
+                    types,
+                    name,
+                    (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
+                ),
+                // no encodings here. they're contained inside the struct
+                _ => vec![],
             }
         }
         SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(tag), child) => {
