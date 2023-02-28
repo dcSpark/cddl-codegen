@@ -24,6 +24,7 @@ enum ControlOperator {
 
 pub const SCOPE_MARKER: &str = "_CDDL_CODEGEN_SCOPE_MARKER_";
 pub const EXTERN_MARKER: &str = "_CDDL_CODEGEN_EXTERN_TYPE_";
+pub const RAW_BYTES_MARKER: &str = "_CDDL_CODEGEN_RAW_BYTES_TYPE_";
 
 /// Some means it is a scope marker, containing the scope
 pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
@@ -58,7 +59,10 @@ pub fn parse_rule(
     match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => {
             let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
-            if rule.name.to_string() == EXTERN_MARKER {
+            if matches!(
+                rule.name.to_string().as_str(),
+                EXTERN_MARKER | RAW_BYTES_MARKER
+            ) {
                 // ignore - this was inserted by us so that cddl's parsing succeeds
                 // see comments in main.rs
             } else {
@@ -430,6 +434,11 @@ fn parse_type(
                 types.register_rust_struct(
                     parent_visitor,
                     RustStruct::new_extern(type_name.clone()),
+                );
+            } else if ident.ident == RAW_BYTES_MARKER {
+                types.register_rust_struct(
+                    parent_visitor,
+                    RustStruct::new_raw_bytes(type_name.clone()),
                 );
             } else {
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve

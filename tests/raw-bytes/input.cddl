@@ -1,0 +1,6 @@
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+foo = [
+    0,
+    pub_key,
+]

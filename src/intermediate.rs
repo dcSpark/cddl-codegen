@@ -212,7 +212,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Wrapper { wrapped, .. } => {
                     mark_refs(&mut refs, self, wasm, current_scope, wrapped)
                 }
-                RustStructType::Extern => {
+                RustStructType::Extern | RustStructType::RawBytesType => {
                     // impossible to know what this refers to - will have to be done afterwards by user
                 }
                 RustStructType::CStyleEnum { .. } => {
@@ -1095,6 +1095,7 @@ impl RustType {
                                 Representation::Array => vec![CBORType::Array],
                                 Representation::Map => vec![CBORType::Map],
                             },
+                            RustStructType::RawBytesType => vec![CBORType::Bytes],
                             _ => panic!(),
                         }
                     }
@@ -1981,6 +1982,7 @@ pub enum RustStructType {
     CStyleEnum {
         variants: Vec<EnumVariant>,
     },
+    RawBytesType,
 }
 
 impl RustStruct {
@@ -2086,6 +2088,14 @@ impl RustStruct {
         }
     }
 
+    pub fn new_raw_bytes(ident: RustIdent) -> Self {
+        Self {
+            ident,
+            tag: None,
+            variant: RustStructType::RawBytesType,
+        }
+    }
+
     pub fn ident(&self) -> &RustIdent {
         &self.ident
     }
@@ -2117,10 +2127,11 @@ impl RustStruct {
                 unreachable!("I don't think group choices should be using length?")
             }
             RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Extern { .. } => panic!(
+            RustStructType::Extern => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => Some(1),
+            RustStructType::RawBytesType => Some(1),
         }
     }
 
@@ -2143,6 +2154,7 @@ impl RustStruct {
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => "1".into(),
+            RustStructType::RawBytesType { .. } => "1".into(),
         }
     }
 
@@ -2166,6 +2178,7 @@ impl RustStruct {
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => 1,
+            RustStructType::RawBytesType => 1,
         }
     }
 
@@ -2186,6 +2199,7 @@ impl RustStruct {
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => RustStructCBORLen::Fixed(1),
+            RustStructType::RawBytesType => RustStructCBORLen::Fixed(1),
         }
     }
 
@@ -2235,6 +2249,7 @@ impl RustStruct {
                 .conceptual_type
                 .visit_types_excluding(types, f, already_visited),
             RustStructType::Extern => (),
+            RustStructType::RawBytesType => (),
         }
     }
 }
@@ -2466,6 +2481,9 @@ impl GenericInstance {
             }
             RustStructType::Extern => {
                 panic!("generics should not be used on types in the prelude (e.g. int)")
+            }
+            RustStructType::RawBytesType => {
+                panic!("generics not supported on raw bytes types")
             }
         };
         instance

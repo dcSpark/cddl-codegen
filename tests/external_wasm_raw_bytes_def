@@ -1,0 +1,21 @@
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PubKey(cddl_lib::PubKey);
+
+impl From<cddl_lib::PubKey> for PubKey {
+    fn from(native: cddl_lib::PubKey) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PubKey> for cddl_lib::PubKey {
+    fn from(wasm: PubKey) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PubKey> for PubKey {
+    fn as_ref(&self) -> &cddl_lib::PubKey {
+        &self.0
+    }
+}

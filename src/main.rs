@@ -72,6 +72,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Result<String, _>>()?;
     // we also need to mark the extern marker to a placeholder struct that won't get codegened
     input_files_content.push_str(&format!("{} = [0]", parsing::EXTERN_MARKER));
+    // and a raw bytes one too
+    input_files_content.push_str(&format!("{} = [1]", parsing::RAW_BYTES_MARKER));
 
     // Plain group / scope marking
     let cddl = cddl::parser::cddl_from_str(&input_files_content, true)?;
