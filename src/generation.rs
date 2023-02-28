@@ -2083,11 +2083,11 @@ impl GenerationScope {
                         );
                         deser_code.content.line(&format!(
                             "{}{}.bytes(){}.and_then(|bytes| {}){}",
-                            before_after.before_str(false),
+                            before_after.before_str(true),
                             deserializer_name,
                             error_convert,
                             from_raw_bytes_with_conversions,
-                            before_after.after_str(false)
+                            before_after.after_str(true)
                         ));
                     }
                 }

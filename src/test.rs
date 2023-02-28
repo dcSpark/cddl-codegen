@@ -288,3 +288,41 @@ fn multifile_json_preserve() {
         true,
     );
 }
+
+#[test]
+fn raw_bytes() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_rust_raw_bytes_def");
+    let extern_wasm_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_wasm_raw_bytes_def");
+    run_test(
+        "raw-bytes",
+        &[],
+        None,
+        Some(extern_rust_path),
+        Some(extern_wasm_path),
+        false,
+    );
+}
+
+#[test]
+fn raw_bytes_preserve() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_rust_raw_bytes_def");
+    let extern_wasm_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_wasm_raw_bytes_def");
+    run_test(
+        "raw-bytes-preserve",
+        &["--preserve-encodings=true"],
+        None,
+        Some(extern_rust_path),
+        Some(extern_wasm_path),
+        false,
+    );
+}

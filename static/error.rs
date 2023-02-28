@@ -30,6 +30,8 @@ pub enum DeserializeFailure {
         found: Key,
         expected: Key,
     },
+    /// Invalid internal structure imposed on top of the CBOR format
+    InvalidStructure(Box<dyn std::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
     RangeCheck{
@@ -88,6 +90,9 @@ impl std::fmt::Display for DeserializeError {
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
+            DeserializeFailure::InvalidStructure(e) => {
+                write!(f, "Invalid internal structure: {}", e)
+            }
             DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
             DeserializeFailure::RangeCheck{ found, min, max } => match (min, max) {
