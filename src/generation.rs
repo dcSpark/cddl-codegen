@@ -5544,7 +5544,7 @@ fn make_enum_variant_return_if_deserialized(
         }
         _ => {
             let mut variant_deser =
-                Block::new("match (|raw: &mut Deserializer -> Result<_, DeserializeError>");
+                Block::new("match (|raw: &mut Deserializer| -> Result<_, DeserializeError>");
             variant_deser.after(")(raw)");
             variant_deser.push_all(variant_deser_code.content);
             deser_body.push_block(variant_deser);
