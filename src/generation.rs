@@ -699,7 +699,8 @@ impl GenerationScope {
 
         // rust
         self.rust_lib()
-            .raw("#![allow(clippy::too_many_arguments)]\n");
+            .raw("#![allow(clippy::too_many_arguments)]\n")
+            .raw("#![no_std]\n");
         let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
         for content in self.rust_scopes.values_mut() {
             content.raw(codegen_comment);
@@ -2047,7 +2048,7 @@ impl GenerationScope {
                             &mut deser_code.content,
                         );
                         return_if_deserialized
-                            .line(format!("Ok(({})) => return Ok({}),", 
+                            .line(format!("Ok(({})) => return Ok({}),",
                             variant_final_exprs.join(", "),
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
                             .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
