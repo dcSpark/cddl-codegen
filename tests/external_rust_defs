@@ -18,8 +18,8 @@ impl ExternalFoo {
 impl cbor_event::se::Serialize for ExternalFoo {
     fn serialize<'se, W: std::io::Write>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_array(cbor_event::Len::Len(3))?;
         serializer.write_unsigned_integer(self.index_0)?;
         serializer.write_text(&self.index_1)?;
@@ -29,7 +29,7 @@ impl cbor_event::se::Serialize for ExternalFoo {
 }
 
 impl serialization::Deserialize for ExternalFoo {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {
+    fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {
         let len = raw.array()?;
         let mut read_len = CBORReadLen::new(len);
         read_len.read_elems(3)?;

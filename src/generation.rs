@@ -716,7 +716,10 @@ impl GenerationScope {
         }
 
         // declare modules (root lib specific)
-        self.rust_lib().raw("pub mod error;");
+        self.rust_lib()
+            .raw("pub mod error;")
+            .raw("extern crate alloc;")
+            .push_import("alloc::string", "String", None);
         if CLI_ARGS.preserve_encodings {
             self.rust_lib()
                 .raw("pub mod ordered_hash_map;")
@@ -744,7 +747,7 @@ impl GenerationScope {
         for content in self.rust_scopes.values_mut() {
             // needed if there's any params that can fail
             content
-                .push_import("std::convert", "TryFrom", None)
+                .push_import("core::convert", "TryFrom", None)
                 .push_import("crate::error", "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if CLI_ARGS.preserve_encodings {
@@ -759,7 +762,7 @@ impl GenerationScope {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
-                    .push_import("std::collections", "BTreeMap", None)
+                    .push_import("alloc::collections", "BTreeMap", None)
                     .push_import("crate::serialization", "LenEncoding", None)
                     .push_import("crate::serialization", "StringEncoding", None);
             }
@@ -829,7 +832,7 @@ impl GenerationScope {
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
             // but the code to figure that out would be potentially complex.
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
-            content.push_import("std::collections", "BTreeMap", None);
+            content.push_import("alloc::collections", "BTreeMap", None);
             if CLI_ARGS.preserve_encodings {
                 if scope == "lib" {
                     content.push_import("ordered_hash_map", "OrderedHashMap", None);
@@ -849,10 +852,9 @@ impl GenerationScope {
             };
             content
                 .push_import("super", "*", None)
-                .push_import("std::io", "BufRead", None)
-                .push_import("std::io", "Seek", None)
-                .push_import("std::io", "SeekFrom", None)
-                .push_import("std::io", "Write", None)
+                .push_import("alloc", "fmt", None)
+                .push_import("alloc::string", "String", None)
+                .push_import("alloc::vec", "Vec", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(error_scope, "*", None);
@@ -902,7 +904,7 @@ impl GenerationScope {
                         None,
                     );
                 } else {
-                    content.push_import("std::collections", "BTreeMap", None);
+                    content.push_import("alloc::collections", "BTreeMap", None);
                 }
             }
         }
@@ -5542,7 +5544,7 @@ fn make_enum_variant_return_if_deserialized(
         }
         _ => {
             let mut variant_deser =
-                Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+                Block::new("match (|raw: &mut Deserializer -> Result<_, DeserializeError>");
             variant_deser.after(")(raw)");
             variant_deser.push_all(variant_deser_code.content);
             deser_body.push_block(variant_deser);
@@ -5903,7 +5905,7 @@ fn generate_enum(
                     Some(&ctor_exprs),
                 );
                 let mut variant_deser =
-                    Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+                    Block::new("match (|raw: &mut Deserializer| -> Result<_, DeserializeError>");
                 variant_deser.after(")(raw)");
                 variant_deser.push_all(variant_deser_code.deser_code.content);
                 deser_body.push_block(variant_deser);
@@ -5947,9 +5949,9 @@ fn generate_enum(
 fn make_serialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f.generic("'se, W: Write")
-        .ret("cbor_event::Result<&'se mut Serializer<W>>")
+        .ret("cbor_event::Result<&'se mut Serializer>")
         .arg_ref_self()
-        .arg("serializer", "&'se mut Serializer<W>");
+        .arg("serializer", "&'se mut Serializer");
     if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
         f.arg("force_canonical", "bool");
     }
@@ -5970,7 +5972,7 @@ fn make_deserialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f.generic("R: BufRead + Seek")
         .ret("Result<Self, DeserializeError>")
-        .arg("raw", "&mut Deserializer<R>");
+        .arg("raw", "&mut Deserializer");
     f
 }
 
@@ -6554,7 +6556,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
             .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
     }
     display
-        .impl_trait("std::fmt::Display")
+        .impl_trait("core::fmt::Display")
         .new_fn("fmt")
         .arg_ref_self()
         .arg("f", "&mut std::fmt::Formatter<'_>")
