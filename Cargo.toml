@@ -9,7 +9,7 @@ default = ["which-rustfmt"]
 which-rustfmt = ["which"]
 
 [dependencies]
-cbor_event = "2.4.0"
+cbor_event = { git = "https://github.com/SimonIT/cbor_event", branch = "no_std" }
 cddl = "0.9.1"
 clap = { version = "4.1.4", features = ["derive"] }
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
