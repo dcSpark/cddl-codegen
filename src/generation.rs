@@ -701,7 +701,8 @@ impl GenerationScope {
         self.rust_lib()
             .raw("#![allow(clippy::too_many_arguments)]\n")
             .raw("#![no_std]\n")
-            .raw("#![feature(error_in_core)]\n");
+            .raw("#![feature(error_in_core)]\n")
+            .raw("#![cfg_attr(not(test), no_std)]\n");
         let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
         for content in self.rust_scopes.values_mut() {
             content.raw(codegen_comment);
@@ -720,7 +721,10 @@ impl GenerationScope {
         self.rust_lib()
             .raw("pub mod error;")
             .raw("extern crate alloc;")
-            .push_import("alloc::string", "String", None);
+            .push_import("alloc::borrow", "ToOwned", None)
+            .push_import("alloc::string", "String", None)
+            .push_import("alloc", "vec", None)
+            .push_import("alloc::vec", "Vec", None);
         if CLI_ARGS.preserve_encodings {
             self.rust_lib()
                 .raw("pub mod ordered_hash_map;")
@@ -749,7 +753,9 @@ impl GenerationScope {
             // needed if there's any params that can fail
             content
                 .push_import("core::convert", "TryFrom", None)
-                .push_import("crate::error", "*", None);
+                .push_import("crate::error", "*", None)
+                .push_import("alloc::string", "String", None)
+                .push_import("alloc::vec", "Vec", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if CLI_ARGS.preserve_encodings {
                 content
@@ -853,6 +859,7 @@ impl GenerationScope {
             };
             content
                 .push_import("super", "*", None)
+                .push_import("alloc::borrow", "ToOwned", None)
                 .push_import("alloc", "fmt", None)
                 .push_import("alloc::string", "String", None)
                 .push_import("alloc::vec", "Vec", None)
@@ -2600,7 +2607,7 @@ impl GenerationScope {
                 };
                 let name_overload = "inner_de";
                 deser_code.content.line(&format!(
-                    "let {} = &mut Deserializer::from(std::io::Cursor::new({}_bytes));",
+                    "let {} = &mut Deserializer::from({}_bytes);",
                     name_overload, config.var_name
                 ));
                 self.generate_deserialize(

@@ -6,10 +6,10 @@ mod tests {
 
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         let orig_bytes = orig.to_cbor_bytes();
-        print_cbor_types("orig", &orig_bytes);
-        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        print_cbor_types("orig", orig_bytes);
+        let mut deserializer = Deserializer::from(orig_bytes.clone());
         let deser = T::deserialize(&mut deserializer).unwrap();
-        print_cbor_types("deser", &deser.to_cbor_bytes());
+        print_cbor_types("deser", deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
         assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
@@ -28,7 +28,10 @@ mod tests {
 
     #[test]
     fn foo2_some() {
-        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe").into())));
+        deser_test(&Foo2::new(
+            143546,
+            Some(String::from("afdjfkjsiefefe").into()),
+        ));
     }
 
     #[test]
@@ -38,7 +41,11 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(&Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None, 3.3));
+        deser_test(&Bar::new(
+            Foo::new(436, String::from("jfkdf"), vec![6, 4]),
+            None,
+            3.3,
+        ));
     }
 
     #[test]
@@ -54,12 +61,15 @@ mod tests {
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
+        deser_test(&Outer::new(
+            2143254,
+            Plain::new(7576, String::from("wiorurri34h").into()),
+        ));
     }
 
     #[test]
     fn table_arr_members() {
-        let mut tab = std::collections::BTreeMap::new();
+        let mut tab = core::collections::BTreeMap::new();
         tab.insert(String::from("43266556"), String::from("2k2j343"));
         tab.insert(String::from("213543254546565"), String::from("!!fjdj"));
         let mut foos = vec![
@@ -79,7 +89,7 @@ mod tests {
     fn type_choice_hello_world() {
         deser_test(&TypeChoice::Helloworld);
     }
-    
+
     #[test]
     fn type_choice_uint() {
         deser_test(&TypeChoice::U64(53435364));
@@ -117,7 +127,10 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg").into())));
+        deser_test(&GroupChoice::Plain(Plain::new(
+            354545,
+            String::from("fdsfdsfdg").into(),
+        )));
     }
 
     #[test]
@@ -138,9 +151,29 @@ mod tests {
 
     #[test]
     fn signed_ints() {
-        let min = SignedInts::new(u8::MIN, u16::MIN, u32::MIN, u64::MIN, i8::MIN, i16::MIN, i32::MIN, i64::MIN, u64::MIN);
+        let min = SignedInts::new(
+            u8::MIN,
+            u16::MIN,
+            u32::MIN,
+            u64::MIN,
+            i8::MIN,
+            i16::MIN,
+            i32::MIN,
+            i64::MIN,
+            u64::MIN,
+        );
         deser_test(&min);
-        let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
+        let max = SignedInts::new(
+            u8::MAX,
+            u16::MAX,
+            u32::MAX,
+            u64::MAX,
+            i8::MAX,
+            i16::MAX,
+            i32::MAX,
+            i64::MAX,
+            u64::MAX,
+        );
         deser_test(&max);
     }
 
@@ -160,7 +193,9 @@ mod tests {
         // we can use this test compiling as a test for the presence of an alias by referencing e.g. I8::MIN
         // but we need to read the actual code to test that we're NOT using an alias somewhere and are indeed
         // using a raw rust primitive instead
-        let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
+        let lib_rs_with_tests =
+            std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs"))
+                .unwrap();
         // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
         let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
         // these don't have @no_alias
@@ -179,7 +214,11 @@ mod tests {
 
     #[test]
     fn externs() {
-        let externs = Externs::new(ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
+        let externs = Externs::new(ExternalFoo::new(
+            436,
+            String::from("jfkdsjfd"),
+            vec![1, 1, 1],
+        ));
         deser_test(&externs);
     }
 }

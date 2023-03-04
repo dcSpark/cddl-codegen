@@ -67,9 +67,9 @@ fn cbor_bytes_sz(bytes: Vec<u8>, sz: cbor_event::StringLenSz) -> Vec<u8> {
     buf.finalize()
 }
 
-fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
+fn print_cbor_types(obj_name: &str, vec: Vec<u8>) {
     use cbor_event::Type;
-    let mut raw = cbor_event::de::Deserializer::from(std::io::Cursor::new(vec));
+    let mut raw = cbor_event::de::Deserializer::from(vec);
     let mut lens = Vec::new();
     let consume_elem = |lens: &mut Vec<cbor_event::LenSz>| {
         if let Some(len) = lens.last_mut() {

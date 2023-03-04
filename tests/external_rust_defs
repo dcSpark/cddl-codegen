@@ -16,7 +16,7 @@ impl ExternalFoo {
 }
 
 impl cbor_event::se::Serialize for ExternalFoo {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
         serializer: &'se mut cbor_event::se::Serializer,
     ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {

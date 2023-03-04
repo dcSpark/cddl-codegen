@@ -5,9 +5,9 @@ mod tests {
     use serialization::Deserialize;
 
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
-        print_cbor_types("orig", &orig.to_cbor_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_cbor_bytes()))).unwrap();
-        print_cbor_types("deser", &deser.to_cbor_bytes());
+        print_cbor_types("orig", orig.to_cbor_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(orig.to_cbor_bytes())).unwrap();
+        print_cbor_types("deser", deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
     }
 
@@ -28,7 +28,10 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(&Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None));
+        deser_test(&Bar::new(
+            Foo::new(436, String::from("jfkdf"), vec![6, 4]),
+            None,
+        ));
     }
 
     #[test]
@@ -38,7 +41,10 @@ mod tests {
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h"))));
+        deser_test(&Outer::new(
+            2143254,
+            Plain::new(7576, String::from("wiorurri34h")),
+        ));
     }
 
     #[test]
@@ -50,7 +56,7 @@ mod tests {
     fn type_choice_hello_world() {
         deser_test(&TypeChoice::Helloworld);
     }
-    
+
     #[test]
     fn type_choice_uint() {
         deser_test(&TypeChoice::U64(53435364));
@@ -83,6 +89,9 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg"))));
+        deser_test(&GroupChoice::Plain(Plain::new(
+            354545,
+            String::from("fdsfdsfdg"),
+        )));
     }
 }
