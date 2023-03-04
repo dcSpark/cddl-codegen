@@ -5956,7 +5956,7 @@ fn generate_enum(
 
 fn make_serialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("'se, W: Write")
+    f.generic("'se")
         .ret("cbor_event::Result<&'se mut Serializer>")
         .arg_ref_self()
         .arg("serializer", "&'se mut Serializer");
@@ -5978,8 +5978,7 @@ fn make_serialization_impl(name: &str) -> codegen::Impl {
 
 fn make_deserialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("R: BufRead + Seek")
-        .ret("Result<Self, DeserializeError>")
+    f.ret("Result<Self, DeserializeError>")
         .arg("raw", "&mut Deserializer");
     f
 }
