@@ -35,7 +35,7 @@ impl LenEncoding {
         }
     }
 
-    pub fn end<'a, W: Write + Sized>(
+    pub fn end<'a>(
         &self,
         serializer: &'a mut Serializer,
         force_canonical: bool,
@@ -80,7 +80,7 @@ pub trait Serialize {
         buf.finalize()
     }
 
-    fn serialize<'a, W: Write + Sized>(
+    fn serialize<'a>(
         &self,
         serializer: &'a mut Serializer,
         force_canonical: bool,
@@ -88,7 +88,7 @@ pub trait Serialize {
 }
 
 pub trait SerializeEmbeddedGroup {
-    fn serialize_as_embedded_group<'a, W: Write + Sized>(
+    fn serialize_as_embedded_group<'a>(
         &self,
         serializer: &'a mut Serializer,
         force_canonical: bool,

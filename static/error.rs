@@ -11,7 +11,7 @@ pub enum Key {
 }
 
 impl core::fmt::Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Key::Str(x) => write!(f, "\"{}\"", x),
             Key::Uint(x) => write!(f, "{}", x),
@@ -33,7 +33,7 @@ pub enum DeserializeFailure {
         expected: Key,
     },
     /// Invalid internal structure imposed on top of the CBOR format
-    InvalidStructure(Box<dyn std::error::Error>),
+    InvalidStructure(Box<dyn core::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
     RangeCheck {
@@ -73,7 +73,7 @@ impl DeserializeError {
 }
 
 impl core::fmt::Display for DeserializeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match &self.location {
             Some(loc) => write!(f, "Deserialization failed in {} because: ", loc),
             None => write!(f, "Deserialization: "),

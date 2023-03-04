@@ -700,7 +700,8 @@ impl GenerationScope {
         // rust
         self.rust_lib()
             .raw("#![allow(clippy::too_many_arguments)]\n")
-            .raw("#![no_std]\n");
+            .raw("#![no_std]\n")
+            .raw("#![feature(error_in_core)]\n");
         let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
         for content in self.rust_scopes.values_mut() {
             content.raw(codegen_comment);
@@ -6559,13 +6560,13 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .impl_trait("core::fmt::Display")
         .new_fn("fmt")
         .arg_ref_self()
-        .arg("f", "&mut std::fmt::Formatter<'_>")
-        .ret("std::fmt::Result")
+        .arg("f", "&mut core::fmt::Formatter<'_>")
+        .ret("core::fmt::Result")
         .push_block(display_match);
 
     let mut from_str = codegen::Impl::new("Int");
     from_str
-        .impl_trait("std::str::FromStr")
+        .impl_trait("core::str::FromStr")
         .associate_type("Err", "IntError")
         .new_fn("from_str")
         .arg("s", "&str")
@@ -6586,7 +6587,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     }
     try_from_i128
         .impl_trait("TryFrom<i128>")
-        .associate_type("Error", "std::num::TryFromIntError")
+        .associate_type("Error", "core::num::TryFromIntError")
         .new_fn("try_from")
         .arg("x", "i128")
         .ret("Result<Self, Self::Error>")

@@ -27,7 +27,7 @@ impl LenEncoding {
         }
     }
 
-    pub fn end<'a, W: Write + Sized>(
+    pub fn end<'a>(
         &self,
         serializer: &'a mut Serializer,
     ) -> cbor_event::Result<&'a mut Serializer> {
