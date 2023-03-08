@@ -7,7 +7,7 @@ where
     where
         S: serde::Serializer,
     {
-        let map = self.iter().collect::<core::collections::BTreeMap<_, _>>();
+        let map = self.iter().collect::<alloc::collections::BTreeMap<_, _>>();
         map.serialize(serializer)
     }
 }
@@ -21,7 +21,7 @@ where
     where
         D: serde::de::Deserializer<'de>,
     {
-        let map = <core::collections::BTreeMap<_, _> as serde::de::Deserialize>::deserialize(
+        let map = <alloc::collections::BTreeMap<_, _> as serde::de::Deserialize>::deserialize(
             deserializer,
         )?;
         Ok(Self(map.into_iter().collect()))

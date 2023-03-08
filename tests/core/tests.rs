@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn table_arr_members() {
-        let mut tab = core::collections::BTreeMap::new();
+        let mut tab = alloc::collections::BTreeMap::new();
         tab.insert(String::from("43266556"), String::from("2k2j343"));
         tab.insert(String::from("213543254546565"), String::from("!!fjdj"));
         let mut foos = vec![
