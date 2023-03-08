@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn signed_ints() {
-        use std::cmp::min;
+        use core::cmp::min;
         let umins = [
             0i128,
             u8::MIN as i128,
