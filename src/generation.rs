@@ -770,6 +770,7 @@ impl GenerationScope {
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
                     .push_import("alloc::collections", "BTreeMap", None)
+                    .push_import("alloc::vec", "Vec", None)
                     .push_import("crate::serialization", "LenEncoding", None)
                     .push_import("crate::serialization", "StringEncoding", None);
             }
