@@ -861,6 +861,7 @@ impl GenerationScope {
             content
                 .push_import("super", "*", None)
                 .push_import("alloc::borrow", "ToOwned", None)
+                .push_import("alloc::boxed", "Box", None)
                 .push_import("alloc", "fmt", None)
                 .push_import("alloc::string", "String", None)
                 .push_import("alloc::vec", "Vec", None)
@@ -1599,7 +1600,7 @@ impl GenerationScope {
                         let mut key_order_sort_match =
                             codegen::Block::new("match lhs_bytes.len().cmp(&rhs_bytes.len())");
                         key_order_sort_match
-                            .line("std::cmp::Ordering::Equal => lhs_bytes.cmp(rhs_bytes),")
+                            .line("core::cmp::Ordering::Equal => lhs_bytes.cmp(rhs_bytes),")
                             .line("diff_ord => diff_ord,");
                         key_order_sort.push_block(key_order_sort_match).after(");");
                         key_order_if.push_block(key_order_sort);
