@@ -1,5 +1,7 @@
 ; this is a minimal example that tries to show all supported features
 
+; pay attention to the @name comment placement as it can be finicky
+
 ; type alias
 hash = bytes
 ; create a newtype around another type instead of an alias
@@ -17,14 +19,14 @@ hashes = [
 limitations = [
   ; integer restrictions that map to rust types are directly translated
   ; u8 in rust
-	u_8: uint .size 1,
+  u_8: uint .size 1,
   ; u16 in rust
-	u_16: uint .le 65535,
+  u_16: uint .le 65535,
   ; u32, etc...
-	u_32: 0..4294967295,
-	u_64: uint .size 8,
-	i_8: -128..127,
-	i_64: int .size 8,
+  u_32: 0..4294967295,
+  u_64: uint .size 8,
+  i_8: -128..127,
+  i_64: int .size 8,
   ; you can also limit strings (text or bytes) to a specific length
   hash32: bytes .size 32,
   ; or to a range e.g. between 10 and 20 bytes
@@ -45,24 +47,25 @@ foo = [
 ]
 
 ; mark as externally defined. user has to insert/import code for this type after generation
+; so this file as a whole won't compile until you provide an ExternFoo that implements Serialize/Deserialize
 extern_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 
 ; map struct + tagged fields + .cbor + optional fields + constants + .default
 bar = {
   ; fields can be tagged and this remains a serialization detail (hidden from API)
-	foo: #6.1337(foo),
+  foo: #6.1337(foo),
   ; they can also be encoded as CBOR bytes which remains a serialization detail (hidden from API)
   ; this can be combined with tags as well i.e. #6.42(bytes .cbor extern_foo)
   extern_foo: bytes .cbor extern_foo
   ; optional field (generates as Option<T>)
-	? derp: uint,
+  ? derp: uint,
   ; type choice with null will result in Option<T> too for the API
   ; also, you can give explicit names that differ from the key value for maps like this:
-	1 : uint / null, ; @name explicitly_named_1
-	; optional string constant (no field generated)
-  ? 5: "five",
+  1 : uint / null, ; @name explicitly_named_1
+  ; string constant (no field generated)
+  5: "five",
   ; integer constant (no field generated)
-	five: 5,
+  five: 5,
   ; this will not be an optional field in rust, as when it is not present, it will be set to 0
   ? 100: uint .default 0,
 }
@@ -98,9 +101,9 @@ outer_map = {
 
 table_arr_members = {
   ; you can directly define homogeneous maps as fields (or define them at top-level)
-	tab: { * text => text },
+  tab: { * text => text },
   ; you can also define homogenous arrays as fields (or define them at top-level)
-	arr: [*uint],
+  arr: [*uint],
 }
 
 type_choice = 
@@ -110,6 +113,7 @@ type_choice =
   / text           ; @name variants
   / bytes          ; @name like
   / #6.64([*uint]) ; @name this
+  / foo ; otherwise they try and take the variant name from the type e.g. Foo here
 
 ; if a type choice only has constants it will generate as a c-style enum (directly wasm-exposable)
 c_style_enum =
@@ -118,12 +122,17 @@ c_style_enum =
   / 2 ; @name baz
 
 group_choice = [
-  foo //                  ; @name these
+  ; @name these
+  foo //
   ; if there is only one non-constant field in the inlined group then that will be inlined in the enum
-  0, x: uint //           ; @name are
+  ; @name are
+  0, x: uint //
   ; but if there are multiple then a new struct will be generated from this variant
-  1, x: uint, y: text //  ; @name also
-  basic                   ; @name nameable
+  ; @name also
+  1, x: uint, y: text //
+  ; basic groups can be embedded into group choices, taking on the format of the outer group
+  ; @name nameable
+  basic
 ]
 
 choices = [
