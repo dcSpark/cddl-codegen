@@ -23,7 +23,7 @@ The output format can change slightly if you pass in different command line flag
 * `--lib-name` - Specify the rust crate name for the output library. The wasm crate will have `-wasm` appended.
 * `--to-from-bytes-methods` - Generates `to_cbor_bytes()` / `from_cbor_bytes()` methods on all WASM objects. The rust code doesn't need this as you can directly use the `Serialize`/`Deserialize` traits on them.
 * `--wasm` - Whether to output a wasm crate. On by default.
-* `--preserve-encdoings` - Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering. For each module this will also create a `cbor_encodings.rs` file to potentially store any structs for storing these encodings. This option is useful if you need to preserve the deserialized format for round-tripping (e.g. hashes) or if you want to modify the format to conincide with a specific tool for hashing.
+* `--preserve-encodings` - Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering. For each module this will also create a `cbor_encodings.rs` file to potentially store any structs for storing these encodings. This option is useful if you need to preserve the deserialized format for round-tripping (e.g. hashes) or if you want to modify the format to conincide with a specific tool for hashing.
 * `--canonical-form` - Used primarily with `--preserve-encodings` to provide a way to override the specific deserialization format and to instead output canonical CBOR. This will have `Serialize`'s trait have an extra `to_canonical_cbor_bytes()` method. Likewise the wasm wrappers (with `--to-from-bytes-methods`) will contain one too.
 * `--json-serde-derives` - Derives serde::Serialize/serde::Deserialize for types to allow to/from JSON
 * `--json-schema-export` - Tags types with sonSchema derives and generates a crate (in wasm/json-gen) to export them. This requires `--json-serde-derives`.
@@ -50,6 +50,7 @@ The output format can change slightly if you pass in different command line flag
 * Length bounds - `foo = bytes .size (0..32)`
 * cbor in bytes - `foo_bytes = bytes .cbor foo`
 * Support for the CDDL standard prelude (using raw CDDL from the RFC) - `biguint`, etc
+* default values - `? key : uint .default 0`
 
 We generate getters for all fields, and setters for optional fields. Mandatory fields are set via the generated constructor. All wasm-facing functions are set to take references for non-primitives and clone when needed. Returns are also cloned. This helps make usage from wasm more memory safe.
 
@@ -58,7 +59,7 @@ Identifiers and fields are also changed to rust style. ie `foo_bar = { Field-Nam
 #### Group choices
 
 Group choices are handled as an enum with each choice being a variant. This enum is then wrapped around a wasm-exposed struct as `wasm_bindgen` does not support rust enums with members/values.
-Group choices that are a single field use just that field as the enum variant, otherwise we create a `GroupN` for the `Nth` variant enum with the fields of that group choice.
+Group choices that have only a single non-fixed-value field use just that field as the enum variant, otherwise we create a `GroupN` for the `Nth` variant enum with the fields of that group choice. Any fixed values are resolved purely in serialization code, so `0, "hello", uint` puts the `uint` in the enum variant directly instead of creating a new struct.
 
 #### Type choices
 
