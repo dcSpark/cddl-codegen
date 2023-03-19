@@ -110,7 +110,7 @@ checksum = "0d261e256854913907f67ed06efbc3338dfe6179796deefc1ff763fc1aee5535"
 [[package]]
 name = "cbor_event"
 version = "2.4.0"
-source = "git+https://github.com/SimonIT/cbor_event?branch=no_std#c3c36ab13d3efe3c960bae5ff7b65cb1d7032aac"
+source = "git+https://github.com/SimonIT/cbor_event?branch=no_std#78c0ba4eff9a0d20443e48431ac886a802d9b6b8"
 
 [[package]]
 name = "cc"

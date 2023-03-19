@@ -864,6 +864,7 @@ impl GenerationScope {
                 .push_import("alloc::boxed", "Box", None)
                 .push_import("alloc", "fmt", None)
                 .push_import("alloc::string", "String", None)
+                .push_import("alloc::string", "ToString", None)
                 .push_import("alloc::vec", "Vec", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
@@ -2042,7 +2043,6 @@ impl GenerationScope {
                     //     // TODO: potentially simplified deserialization some day
                     //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                     // } else {
-                    deser_code.content.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
                     let mut variant_final_exprs = config.final_exprs.clone();
                     if CLI_ARGS.preserve_encodings {
                         for enc_var in
@@ -2060,10 +2060,15 @@ impl GenerationScope {
                             &mut deser_code.content,
                         );
                         return_if_deserialized
-                            .line(format!("Ok(({})) => return Ok({}),",
-                            variant_final_exprs.join(", "),
-                            final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
-                            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
+                            .line(format!(
+                                "Ok(({})) => return Ok({}),",
+                                variant_final_exprs.join(", "),
+                                final_expr(
+                                    variant_final_exprs.clone(),
+                                    Some(format!("{}::{}", ident, variant.name))
+                                )
+                            ))
+                            .line("Err(_) => raw.to_string(),")
                             .after(";");
                         deser_code.content.push_block(return_if_deserialized);
                     }
@@ -5643,7 +5648,6 @@ fn generate_enum(
         );
         deser_impl
     };
-    deser_body.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep);
         let variant_var_name = variant.name_as_var();
@@ -5925,8 +5929,7 @@ fn generate_enum(
                 return_if_deserialized
             }
         };
-        return_if_deserialized
-            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
+        return_if_deserialized.line("Err(_) => raw.to_string(),");
         return_if_deserialized.after(";");
         deser_body.push_block(return_if_deserialized);
     }
