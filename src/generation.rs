@@ -915,7 +915,7 @@ impl GenerationScope {
                         None,
                     );
                 } else {
-                    content.push_import("alloc::collections", "BTreeMap", None);
+                    content.push_import("std::collections", "BTreeMap", None);
                 }
             }
         }

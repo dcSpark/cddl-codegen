@@ -10,6 +10,6 @@ where
         alloc::collections::BTreeMap::<K, V>::json_schema(gen)
     }
     fn is_referenceable() -> bool {
-        std::collections::BTreeMap::<K, V>::is_referenceable()
+        alloc::collections::BTreeMap::<K, V>::is_referenceable()
     }
 }
