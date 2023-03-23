@@ -721,6 +721,7 @@ impl GenerationScope {
         self.rust_lib()
             .raw("pub mod error;")
             .raw("extern crate alloc;")
+            .raw("#[cfg(test)]\nextern crate std;")
             .push_import("alloc::borrow", "ToOwned", None)
             .push_import("alloc::string", "String", None)
             .push_import("alloc", "vec", None)
