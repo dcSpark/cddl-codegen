@@ -103,7 +103,7 @@ mod tests {
         let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
-        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
+        assert_eq!(deserializer.as_ref(), &orig_bytes);
     }
 
     #[test]
