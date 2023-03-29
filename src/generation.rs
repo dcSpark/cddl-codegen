@@ -2858,7 +2858,7 @@ fn canonical_param() -> &'static str {
 fn encoding_var_macros(used_in_key: bool) -> String {
     let mut ret = if used_in_key {
         format!(
-            "#[derivative({})]\n",
+            "#[cfg_attr(feature = \"std\", derivative({}))]\n",
             key_derives(true)
                 .iter()
                 .map(|derive| format!("{derive}=\"ignore\""))
@@ -3044,17 +3044,27 @@ impl CodeBlock for BlocksOrLines {
 
 trait DataType {
     fn derive(&mut self, derive: &str) -> &mut Self;
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self;
 }
 
 impl DataType for codegen::Struct {
     fn derive(&mut self, derive: &str) -> &mut Self {
         self.derive(derive)
     }
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self {
+        self.cfg_attr(cfg_attr)
+    }
 }
 
 impl DataType for codegen::Enum {
     fn derive(&mut self, derive: &str) -> &mut Self {
         self.derive(derive)
+    }
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self {
+        self.cfg_attr(cfg_attr)
     }
 }
 
@@ -6388,15 +6398,18 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
             .derive("serde::Deserialize")
             .derive("serde::Serialize");
     }
+    let mut std_derives = vec![];
+    let mut std_predicates = vec![];
     if CLI_ARGS.json_schema_export {
-        data_type.derive("schemars::JsonSchema");
+        std_derives.push("schemars::JsonSchema".to_string());
     }
     if used_in_key {
         if CLI_ARGS.preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
-            data_type.derive(&format!(
-                "derivative::Derivative)]\n#[derivative({}",
+            std_derives.push("derivative::Derivative".to_string());
+            std_predicates.push(format!(
+                "derivative({})",
                 key_derives(false)
                     .iter()
                     .map(|tr| match *tr {
@@ -6413,6 +6426,15 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
                 data_type.derive(key_derive);
             }
         }
+    }
+    if !std_derives.is_empty() {
+        std_predicates.insert(0, format!("derive({})", std_derives.join(", ")).to_string());
+    }
+    if !std_predicates.is_empty() {
+        data_type.cfg_attr(&*format!(
+            "feature = \"std\", {}",
+            std_predicates.join(", ")
+        ));
     }
 }
 

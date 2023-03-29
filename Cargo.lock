@@ -294,7 +294,7 @@ dependencies = [
 [[package]]
 name = "codegen"
 version = "0.2.0"
-source = "git+https://github.com/dcSpark/codegen?branch=master#a31b2eff7adfd65dfdb10d6a4d7a83bd2f5d6010"
+source = "git+https://github.com/SimonIT/codegen?branch=cfg_attr#70d7b3888be76fdd649c63456f842463b181beea"
 dependencies = [
  "indexmap",
  "quote",

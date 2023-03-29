@@ -3,5 +3,8 @@ name = "cddl-lib"
 version = "0.1.0"
 edition = "2018"
 
+[features]
+std = []
+
 [dependencies]
 cbor_event = { git = "https://github.com/SimonIT/cbor_event", branch = "no_std" }

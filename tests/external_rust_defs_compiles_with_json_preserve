@@ -1,7 +1,8 @@
 // same as external_rust_defs, but with JSON traits + serialization code compiles with --preserve-encodings=true
 // as this changes the API for CBORReadLen. This code does NOT support preserving encodings - just compiles with it.
 
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "std", derive(schemars::JsonSchema))]
 pub struct ExternalFoo {
     pub index_0: u64,
     pub index_1: String,
