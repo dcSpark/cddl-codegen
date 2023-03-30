@@ -264,7 +264,7 @@ mod tests {
                         for i in 0..5 {
                             irregular_encoding.extend_from_slice(&keys[key_order[i]]);
                         }
-                        print_cbor_types("irregular_encoding", irregular_encoding);
+                        print_cbor_types("irregular_encoding", irregular_encoding.clone());
                         let irregular_bar = Bar::from_cbor_bytes(&irregular_encoding).unwrap();
                         print_cbor_types(
                             "irregular_bar.to_cbor_bytes()",

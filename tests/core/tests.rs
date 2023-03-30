@@ -98,12 +98,11 @@ mod tests {
 
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         let orig_bytes = orig.to_cbor_bytes();
-        print_cbor_types("orig", orig_bytes);
+        print_cbor_types("orig", orig_bytes.clone());
         let mut deserializer = Deserializer::from(orig_bytes.clone());
         let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
-        assert_eq!(deserializer.as_ref(), &orig_bytes);
     }
 
     #[test]

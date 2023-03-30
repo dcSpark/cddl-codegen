@@ -315,7 +315,7 @@ mod tests {
                         for i in 0..5 {
                             irregular_encoding.extend_from_slice(&keys[key_order[i]]);
                         }
-                        print_cbor_types("irregular_encoding", irregular_encoding);
+                        print_cbor_types("irregular_encoding", irregular_encoding.clone());
                         let irregular_bar = Bar::from_cbor_bytes(&irregular_encoding).unwrap();
                         print_cbor_types(
                             "irregular_bar.to_cbor_bytes()",
@@ -378,7 +378,7 @@ mod tests {
         .flatten()
         .clone()
         .collect::<Vec<u8>>();
-        print_cbor_types("non_canonical_bytes", non_canonical_bytes);
+        print_cbor_types("non_canonical_bytes", non_canonical_bytes.clone());
         let table = TableArrMembers::from_cbor_bytes(&non_canonical_bytes).unwrap();
         assert_eq!(table.to_cbor_bytes(), non_canonical_bytes);
         let canonical_bytes = vec![
@@ -406,7 +406,7 @@ mod tests {
         .flatten()
         .clone()
         .collect::<Vec<u8>>();
-        print_cbor_types("canonical_bytes", canonical_bytes);
+        print_cbor_types("canonical_bytes", canonical_bytes.clone());
         assert_eq!(table.to_canonical_cbor_bytes(), canonical_bytes);
         deser_test_canonical(&table);
         deser_test_orig(&table);
