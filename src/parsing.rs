@@ -865,9 +865,10 @@ fn homogeneous_array_element<'a>(
                 GroupEntry::ValueMemberKey { ge, .. } => {
                     (rust_type(types, parent_visitor, &ge.entry_type), &ge.occur)
                 }
-                GroupEntry::TypeGroupname { ge, .. } => {
-                    (types.new_type(&CDDLIdent::new(ge.name.to_string())), &ge.occur)
-                }
+                GroupEntry::TypeGroupname { ge, .. } => (
+                    types.new_type(&CDDLIdent::new(ge.name.to_string())),
+                    &ge.occur,
+                ),
                 _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
             };
             let bounds = occur.as_ref().map(|o| match o.occur {
@@ -1202,14 +1203,25 @@ fn rust_type_from_type2(
             match group.group_choices.len() {
                 1 => {
                     let choice = &group.group_choices.first().unwrap();
-                    match homogeneous_array_element(types, parent_visitor, choice, Representation::Array) {
+                    match homogeneous_array_element(
+                        types,
+                        parent_visitor,
+                        choice,
+                        Representation::Array,
+                    ) {
                         // special case for homogenous arrays
                         Some(element_type) => {
-                            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
-                                types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array);
+                            if let ConceptualRustType::Rust(element_ident) =
+                                &element_type.conceptual_type
+                            {
+                                types.set_rep_if_plain_group(
+                                    parent_visitor,
+                                    element_ident,
+                                    Representation::Array,
+                                );
                             }
                             ConceptualRustType::Array(Box::new(element_type)).into()
-                        },
+                        }
                         // general case if not homogeneous
                         None => {
                             let rule_metadata = RuleMetadata::from(
@@ -1436,7 +1448,9 @@ fn parse_group_choice(
         let key_type = rust_type_from_type1(types, parent_visitor, domain);
         let value_type = rust_type(types, parent_visitor, range);
         RustStruct::new_table(name.clone(), tag, key_type, value_type)
-    } else if let Some(element_type) = homogeneous_array_element(types, parent_visitor, group_choice, rep) {
+    } else if let Some(element_type) =
+        homogeneous_array_element(types, parent_visitor, group_choice, rep)
+    {
         // Array - homogeneous element type with proper occurence operator
         RustStruct::new_array(name.clone(), tag, element_type)
     } else {
