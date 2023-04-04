@@ -115,3 +115,6 @@ text_array_wrapper = [embedded_text]
 text_map_wrapper = { 721: embedded_text }
 
 inline_wrapper = [{ * text => text }]
+
+top_level_array = [* uint]
+top_level_single_elem = [uint]

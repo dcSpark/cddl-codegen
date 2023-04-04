@@ -182,4 +182,17 @@ mod tests {
         let externs = Externs::new(ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
         deser_test(&externs);
     }
+
+    #[test]
+    fn top_level_arrays() {
+        // this part of the test just tests that the resulting code compiles
+        // e.g. the presence of the typedef instead of a new array struct by being able to asign to it.
+        let arr: TopLevelArray = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5];
+
+        // this part is to make sure that single-element arrays still work too and aren't vecs
+        let mut arr2 = TopLevelSingleElem::new(9);
+        deser_test(&arr2);
+        arr2.index_0 *= arr2.index_0;
+        assert_eq!(arr2.index_0, 81);
+    }
 }
