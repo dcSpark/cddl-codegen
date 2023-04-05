@@ -852,6 +852,46 @@ pub fn create_variants_from_type_choices(
         .collect()
 }
 
+fn homogeneous_array_element<'a>(
+    types: &mut IntermediateTypes,
+    parent_visitor: &'a ParentVisitor,
+    group_choice: &'a GroupChoice<'a>,
+    rep: Representation,
+) -> Option<RustType> {
+    if let Representation::Array = rep {
+        if group_choice.group_entries.len() == 1 {
+            let (entry, _has_comma) = &group_choice.group_entries[0];
+            let (elem_type, occur) = match entry {
+                GroupEntry::ValueMemberKey { ge, .. } => {
+                    (rust_type(types, parent_visitor, &ge.entry_type), &ge.occur)
+                }
+                GroupEntry::TypeGroupname { ge, .. } => (
+                    types.new_type(&CDDLIdent::new(ge.name.to_string())),
+                    &ge.occur,
+                ),
+                _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
+            };
+            let bounds = occur.as_ref().map(|o| match o.occur {
+                Occur::ZeroOrMore { .. } => (None, None),
+                Occur::Exact { lower, upper, .. } => (lower.filter(|l| *l != 0), upper),
+                Occur::Optional { .. } => (None, Some(1)),
+                Occur::OneOrMore { .. } => (Some(1), None),
+            });
+            match bounds {
+                // no bounds - only supported case so far
+                Some((None, None)) => return Some(elem_type),
+                None |
+                Some((Some(1), Some(1))) => {
+                    // fall-through generic case. this is a 1-element struct
+                },
+                Some((lower, upper)) => unimplemented!("special bounds on homogenous arrays not supported [{:?} - {:?}]. Issue: https://github.com/dcSpark/cddl-codegen/issues/167", lower, upper),
+            }
+        }
+    }
+    // must be a heterogenous struct or 1-element fixed struct
+    None
+}
+
 fn table_domain_range<'a>(
     group_choice: &'a GroupChoice<'a>,
     rep: Representation,
@@ -1160,55 +1200,57 @@ fn rust_type_from_type2(
         }
         Type2::Array { group, .. } => {
             // TODO: support for group choices in arrays?
-            let element_type = match group.group_choices.len() {
+            match group.group_choices.len() {
                 1 => {
                     let choice = &group.group_choices.first().unwrap();
-                    // special case for homogenous arrays
-                    if choice.group_entries.len() == 1 {
-                        let (entry, _has_comma) = choice.group_entries.first().unwrap();
-                        match entry {
-                            GroupEntry::ValueMemberKey { ge, .. } => {
-                                rust_type(types, parent_visitor, &ge.entry_type)
+                    match homogeneous_array_element(
+                        types,
+                        parent_visitor,
+                        choice,
+                        Representation::Array,
+                    ) {
+                        // special case for homogenous arrays
+                        Some(element_type) => {
+                            if let ConceptualRustType::Rust(element_ident) =
+                                &element_type.conceptual_type
+                            {
+                                types.set_rep_if_plain_group(
+                                    parent_visitor,
+                                    element_ident,
+                                    Representation::Array,
+                                );
                             }
-                            GroupEntry::TypeGroupname { ge, .. } => {
-                                types.new_type(&CDDLIdent::new(ge.name.to_string()))
-                            }
-                            _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
+                            ConceptualRustType::Array(Box::new(element_type)).into()
                         }
-                    } else {
-                        let rule_metadata = RuleMetadata::from(
-                            get_comment_after(parent_visitor, &CDDLType::from(type2), None)
-                                .as_ref(),
-                        );
-                        let name = match rule_metadata.name.as_ref() {
-                            Some(name) => name,
-                            None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
-                        };
-                        let cddl_ident = CDDLIdent::new(name);
-                        let rust_ident = RustIdent::new(cddl_ident.clone());
-                        parse_group(
-                            types,
-                            parent_visitor,
-                            group,
-                            &rust_ident,
-                            Representation::Array,
-                            None,
-                            None,
-                        );
-                        // we aren't returning an array, but rather a struct where the fields are ordered
-                        return types.new_type(&cddl_ident);
+                        // general case if not homogeneous
+                        None => {
+                            let rule_metadata = RuleMetadata::from(
+                                get_comment_after(parent_visitor, &CDDLType::from(type2), None)
+                                    .as_ref(),
+                            );
+                            let name = match rule_metadata.name.as_ref() {
+                                Some(name) => name,
+                                None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
+                            };
+                            let cddl_ident = CDDLIdent::new(name);
+                            let rust_ident = RustIdent::new(cddl_ident.clone());
+                            parse_group(
+                                types,
+                                parent_visitor,
+                                group,
+                                &rust_ident,
+                                Representation::Array,
+                                None,
+                                None,
+                            );
+                            // we aren't returning an array, but rather a struct where the fields are ordered
+                            types.new_type(&cddl_ident)
+                        }
                     }
                 }
                 // array of elements with choices: enums?
                 _ => unimplemented!("group choices in array type not supported"),
-            };
-
-            //let array_wrapper_name = element_type.name_as_wasm_array();
-            //types.create_and_register_array_type(element_type, &array_wrapper_name)
-            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
-                types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array);
             }
-            ConceptualRustType::Array(Box::new(element_type)).into()
         }
         Type2::Map { group, .. } => {
             match group.group_choices.len() {
@@ -1401,20 +1443,21 @@ fn parse_group_choice(
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
 ) {
-    let table_types = table_domain_range(group_choice, rep);
-    let rust_struct = match table_types {
-        // Table map - homogenous key/value types
-        Some((domain, range)) => {
-            let key_type = rust_type_from_type1(types, parent_visitor, domain);
-            let value_type = rust_type(types, parent_visitor, range);
-            RustStruct::new_table(name.clone(), tag, key_type, value_type)
-        }
-        // Heterogenous map (or array!) with defined key/value pairs in the cddl like a struct
-        None => {
-            let record = parse_record_from_group_choice(types, rep, parent_visitor, group_choice);
-            // We need to store this in IntermediateTypes so we can refer from one struct to another.
-            RustStruct::new_record(name.clone(), tag, record)
-        }
+    let rust_struct = if let Some((domain, range)) = table_domain_range(group_choice, rep) {
+        // Table map - homogeneous key/value types
+        let key_type = rust_type_from_type1(types, parent_visitor, domain);
+        let value_type = rust_type(types, parent_visitor, range);
+        RustStruct::new_table(name.clone(), tag, key_type, value_type)
+    } else if let Some(element_type) =
+        homogeneous_array_element(types, parent_visitor, group_choice, rep)
+    {
+        // Array - homogeneous element type with proper occurence operator
+        RustStruct::new_array(name.clone(), tag, element_type)
+    } else {
+        // Heterogenous map or array with defined key/value pairs in the cddl like a struct
+        let record = parse_record_from_group_choice(types, rep, parent_visitor, group_choice);
+        // We need to store this in IntermediateTypes so we can refer from one struct to another.
+        RustStruct::new_record(name.clone(), tag, record)
     };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
