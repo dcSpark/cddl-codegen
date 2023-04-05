@@ -213,7 +213,7 @@ dependencies = [
  "nom",
  "once_cell",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.12",
  "which",
 ]
 
