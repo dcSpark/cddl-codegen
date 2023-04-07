@@ -424,7 +424,6 @@ impl<'a> DeserializeBeforeAfter<'a> {
     }
 }
 
-#[derive(Default)]
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<String, codegen::Scope>,
@@ -436,6 +435,12 @@ pub struct GenerationScope {
     json_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
+}
+
+impl Default for GenerationScope {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GenerationScope {
