@@ -424,6 +424,7 @@ impl<'a> DeserializeBeforeAfter<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<String, codegen::Scope>,
@@ -451,10 +452,6 @@ impl GenerationScope {
             already_generated: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
         }
-    }
-
-    pub fn default() -> Self {
-        GenerationScope::new()
     }
 
     /// Generates, i.e. populates the state, based on `types`.

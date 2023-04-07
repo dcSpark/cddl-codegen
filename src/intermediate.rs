@@ -28,7 +28,7 @@ impl AliasInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
     // This is since in order to generate plain groups we must have a representation, which isn't
@@ -66,10 +66,6 @@ impl<'a> IntermediateTypes<'a> {
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
         }
-    }
-
-    pub fn default() -> Self {
-        IntermediateTypes::new()
     }
 
     #[allow(unused)]
