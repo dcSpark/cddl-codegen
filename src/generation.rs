@@ -453,6 +453,10 @@ impl GenerationScope {
         }
     }
 
+    pub fn default() -> Self {
+        GenerationScope::new()
+    }
+
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes) {

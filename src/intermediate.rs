@@ -68,6 +68,10 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    pub fn default() -> Self {
+        IntermediateTypes::new()
+    }
+
     #[allow(unused)]
     pub fn has_ident(&self, ident: &RustIdent) -> bool {
         let idents: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
