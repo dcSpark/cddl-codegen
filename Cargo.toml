@@ -2,6 +2,11 @@
 name = "cddl-codegen"
 version = "0.1.0"
 edition = "2018"
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/dcSpark/cddl-codegen"
+keywords = ["cddl", "codegen", "cbor", "wasm"]
+description = "Codegen serialization logic for CBOR automatically from a CDDL specification"
 
 [features]
 default = ["which-rustfmt"]
