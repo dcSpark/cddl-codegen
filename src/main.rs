@@ -35,12 +35,12 @@ fn cddl_paths(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Pre-processing files for multi-file support
-    let input_files = if CLI_ARGS.input.is_dir() {
+    let input_files = if CLI_ARGS.lock().unwrap().input.is_dir() {
         let mut cddl_paths_buf = Vec::new();
-        cddl_paths(&mut cddl_paths_buf, &CLI_ARGS.input)?;
+        cddl_paths(&mut cddl_paths_buf, &CLI_ARGS.lock().unwrap().input)?;
         cddl_paths_buf
     } else {
-        vec![CLI_ARGS.input.clone()]
+        vec![CLI_ARGS.lock().unwrap().input.clone()]
     };
     // To get around an issue with cddl where you can't parse a partial cddl fragment
     // we must group all files together. To mark scope we insert string constants with

@@ -525,7 +525,7 @@ impl GenerationScope {
             let mut wasm_wrappers_generated = BTreeSet::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 assert_eq!(rust_ident, rust_struct.ident());
-                if CLI_ARGS.wasm {
+                if CLI_ARGS.lock().unwrap().wasm {
                     rust_struct.visit_types_excluding(
                         types,
                         &mut |ty| match ty {
@@ -577,7 +577,7 @@ impl GenerationScope {
                         codegen_struct(self, types, rust_ident, rust_struct.tag(), record);
                     }
                     RustStructType::Table { domain, range } => {
-                        if CLI_ARGS.wasm {
+                        if CLI_ARGS.lock().unwrap().wasm {
                             let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
                             // want to use `contains` instead of insert
                             // since although map_ident may not be required for this struct
@@ -602,7 +602,7 @@ impl GenerationScope {
                         //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
                     }
                     RustStructType::Array { element_type } => {
-                        if CLI_ARGS.wasm {
+                        if CLI_ARGS.lock().unwrap().wasm {
                             self.generate_array_type(types, element_type.clone(), rust_ident);
                         }
                         //self
@@ -657,7 +657,7 @@ impl GenerationScope {
         }
 
         // JSON export crate
-        if CLI_ARGS.json_schema_export {
+        if CLI_ARGS.lock().unwrap().json_schema_export {
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
             let mut macro_match = Block::new("($name:ty) => ");
             macro_match
@@ -722,7 +722,7 @@ impl GenerationScope {
 
         // declare modules (root lib specific)
         self.rust_lib().raw("pub mod error;");
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             self.rust_lib()
                 .raw("pub mod ordered_hash_map;")
                 .raw("extern crate derivative;");
@@ -740,7 +740,7 @@ impl GenerationScope {
         // declare common modules in each module (struct files)
         for content in self.rust_scopes.values_mut() {
             content.raw("pub mod serialization;");
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 content.raw("pub mod cbor_encodings;");
             }
         }
@@ -752,7 +752,7 @@ impl GenerationScope {
                 .push_import("std::convert", "TryFrom", None)
                 .push_import("crate::error", "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 content
                     .push_import("crate::serialization", "LenEncoding", None)
                     .push_import("crate::serialization", "StringEncoding", None);
@@ -760,7 +760,7 @@ impl GenerationScope {
         }
 
         // cbor_encodings imports
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
@@ -771,7 +771,7 @@ impl GenerationScope {
         }
 
         // import encoding structs (struct files)
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             for (rust_ident, rust_struct) in types.rust_structs() {
                 if matches!(
                     rust_struct.variant(),
@@ -835,7 +835,7 @@ impl GenerationScope {
             // but the code to figure that out would be potentially complex.
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             content.push_import("std::collections", "BTreeMap", None);
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 if scope == "lib" {
                     content.push_import("ordered_hash_map", "OrderedHashMap", None);
                 } else {
@@ -861,10 +861,12 @@ impl GenerationScope {
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(error_scope, "*", None);
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
-            if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+            if CLI_ARGS.lock().unwrap().preserve_encodings
+                && CLI_ARGS.lock().unwrap().canonical_form
+            {
                 content.push_import("cbor_event", "self", None);
             } else {
                 content.push_import("cbor_event", "self", None).push_import(
@@ -879,7 +881,7 @@ impl GenerationScope {
         }
 
         // wasm
-        if CLI_ARGS.wasm {
+        if CLI_ARGS.lock().unwrap().wasm {
             self
             .wasm_lib()
             .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
@@ -900,9 +902,12 @@ impl GenerationScope {
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
                     .push_import("wasm_bindgen::prelude", "JsValue", None);
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     content.push_import(
-                        format!("{}::ordered_hash_map", CLI_ARGS.lib_name_code()),
+                        format!(
+                            "{}::ordered_hash_map",
+                            CLI_ARGS.lock().unwrap().lib_name_code()
+                        ),
                         "OrderedHashMap",
                         None,
                     );
@@ -917,27 +922,38 @@ impl GenerationScope {
     /// Call generate() first to populate the generation state.
     pub fn export(&self, types: &IntermediateTypes) -> std::io::Result<()> {
         // package.json / scripts
-        let rust_dir = if CLI_ARGS.package_json {
-            if CLI_ARGS.json_schema_export {
-                std::fs::create_dir_all(CLI_ARGS.output.join("scripts"))?;
+        let rust_dir = if CLI_ARGS.lock().unwrap().package_json {
+            if CLI_ARGS.lock().unwrap().json_schema_export {
+                std::fs::create_dir_all(CLI_ARGS.lock().unwrap().output.join("scripts"))?;
                 std::fs::copy(
                     "static/run-json2ts.js",
-                    CLI_ARGS.output.join("scripts/run-json2ts.js"),
+                    CLI_ARGS
+                        .lock()
+                        .unwrap()
+                        .output
+                        .join("scripts/run-json2ts.js"),
                 )?;
                 std::fs::copy(
                     "static/json-ts-types.js",
-                    CLI_ARGS.output.join("scripts/json-ts-types.js"),
+                    CLI_ARGS
+                        .lock()
+                        .unwrap()
+                        .output
+                        .join("scripts/json-ts-types.js"),
                 )?;
                 std::fs::copy(
                     "static/package_json_schemas.json",
-                    CLI_ARGS.output.join("package.json"),
+                    CLI_ARGS.lock().unwrap().output.join("package.json"),
                 )?;
             } else {
-                std::fs::copy("static/package.json", CLI_ARGS.output.join("package.json"))?;
+                std::fs::copy(
+                    "static/package.json",
+                    CLI_ARGS.lock().unwrap().output.join("package.json"),
+                )?;
             }
-            CLI_ARGS.output.join("rust")
+            CLI_ARGS.lock().unwrap().output.join("rust")
         } else {
-            CLI_ARGS.output.clone()
+            CLI_ARGS.lock().unwrap().output.clone()
         };
 
         fn merge_scopes_and_export(
@@ -976,9 +992,9 @@ impl GenerationScope {
 
         // serialiation.rs / {module}/serialization.rs files (if input is a directory)
         let mut serialize_paths = vec!["static/serialization.rs"];
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             serialize_paths.push("static/serialization_preserve.rs");
-            if CLI_ARGS.canonical_form {
+            if CLI_ARGS.lock().unwrap().canonical_form {
                 serialize_paths.push("static/serialization_preserve_force_canonical.rs");
             } else {
                 serialize_paths.push("static/serialization_preserve_non_force_canonical.rs");
@@ -1000,7 +1016,7 @@ impl GenerationScope {
         )?;
 
         // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
                 let path = if scope == "lib" {
                     Cow::from("rust/src/cbor_encodings.rs")
@@ -1016,18 +1032,18 @@ impl GenerationScope {
 
         // Cargo.toml
         let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
             rust_cargo_toml.push_str("derivative = \"2.2.0\"\n");
         }
-        if CLI_ARGS.json_serde_derives {
+        if CLI_ARGS.lock().unwrap().json_serde_derives {
             rust_cargo_toml.push_str("serde = { version = \"1.0\", features = [\"derive\"] }\n");
             rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
         }
-        if CLI_ARGS.json_schema_export {
+        if CLI_ARGS.lock().unwrap().json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
         }
-        if CLI_ARGS.wasm
+        if CLI_ARGS.lock().unwrap().wasm
             && types
                 .rust_structs()
                 .values()
@@ -1040,20 +1056,20 @@ impl GenerationScope {
         }
         std::fs::write(
             rust_dir.join("rust/Cargo.toml"),
-            rust_cargo_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
+            rust_cargo_toml.replace("cddl-lib", &CLI_ARGS.lock().unwrap().lib_name),
         )?;
 
         // error.rs
         std::fs::copy("static/error.rs", rust_dir.join("rust/src/error.rs"))?;
 
         // ordered_hash_map.rs
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
-            if CLI_ARGS.json_serde_derives {
+            if CLI_ARGS.lock().unwrap().json_serde_derives {
                 ordered_hash_map_rs
                     .push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
             }
-            if CLI_ARGS.json_schema_export {
+            if CLI_ARGS.lock().unwrap().json_schema_export {
                 ordered_hash_map_rs.push_str(&std::fs::read_to_string(
                     "static/ordered_hash_map_schemars.rs",
                 )?);
@@ -1065,7 +1081,7 @@ impl GenerationScope {
         }
 
         // wasm crate
-        if CLI_ARGS.wasm {
+        if CLI_ARGS.lock().unwrap().wasm {
             // main files
             merge_scopes_and_export(
                 rust_dir.join("wasm/src"),
@@ -1076,18 +1092,18 @@ impl GenerationScope {
             )?;
             // Cargo.toml
             let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
-            if CLI_ARGS.json_serde_derives {
+            if CLI_ARGS.lock().unwrap().json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
                 wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
             }
             std::fs::write(
                 rust_dir.join("wasm/Cargo.toml"),
-                wasm_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
+                wasm_toml.replace("cddl-lib", &CLI_ARGS.lock().unwrap().lib_name),
             )?;
         }
 
         // json-gen crate for exporting JSON schemas
-        if CLI_ARGS.json_schema_export {
+        if CLI_ARGS.lock().unwrap().json_schema_export {
             std::fs::create_dir_all(rust_dir.join("wasm/json-gen/src"))?;
             let json_gen_toml = std::fs::read_to_string(
                 std::path::PathBuf::from_str("static/Cargo_json_gen.toml").unwrap(),
@@ -1095,7 +1111,7 @@ impl GenerationScope {
             .unwrap();
             std::fs::write(
                 rust_dir.join("wasm/json-gen/Cargo.toml"),
-                json_gen_toml.replace("cddl-lib", &CLI_ARGS.lib_name),
+                json_gen_toml.replace("cddl-lib", &CLI_ARGS.lock().unwrap().lib_name),
             )?;
             std::fs::write(
                 rust_dir.join("wasm/json-gen/src/main.rs"),
@@ -1267,7 +1283,7 @@ impl GenerationScope {
                 }
                 FixedValue::Nint(i) => {
                     assert!(*i < 0);
-                    if !CLI_ARGS.preserve_encodings
+                    if !CLI_ARGS.lock().unwrap().preserve_encodings
                         && isize::BITS >= i64::BITS
                         && *i <= i64::MIN as isize
                     {
@@ -1369,12 +1385,14 @@ impl GenerationScope {
                         body.push_block(pos);
                         let mut neg = Block::new("else");
                         // only the _sz variants support i128, the other endpoint is i64
-                        let expr = if CLI_ARGS.preserve_encodings {
+                        let expr = if CLI_ARGS.lock().unwrap().preserve_encodings {
                             format!("{expr_deref} as i128")
                         } else {
                             format!("{expr_deref} as i64")
                         };
-                        if !CLI_ARGS.preserve_encodings && *primitive == Primitive::I64 {
+                        if !CLI_ARGS.lock().unwrap().preserve_encodings
+                            && *primitive == Primitive::I64
+                        {
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
                             // even when not preserving encodings
@@ -1416,7 +1434,7 @@ impl GenerationScope {
                         );
                     }
                     Primitive::N64 => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             write_using_sz(
                                 body,
                                 "write_negative_integer",
@@ -1514,7 +1532,7 @@ impl GenerationScope {
                     &len_expr,
                 );
                 let elem_var_name = format!("{}_elem", config.var_name);
-                let elem_encs = if CLI_ARGS.preserve_encodings {
+                let elem_encs = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     encoding_fields(types, &elem_var_name, &ty.clone().resolve_aliases(), false)
                 } else {
                     vec![]
@@ -1549,7 +1567,7 @@ impl GenerationScope {
                     &encoding_var,
                     &format!("{}.len() as u64", config.expr),
                 );
-                let ser_loop = if CLI_ARGS.preserve_encodings {
+                let ser_loop = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     let key_enc_fields = encoding_fields(
                         types,
                         &format!("{}_key", config.var_name),
@@ -1562,7 +1580,7 @@ impl GenerationScope {
                         &value.clone().resolve_aliases(),
                         false,
                     );
-                    let mut ser_loop = if CLI_ARGS.canonical_form {
+                    let mut ser_loop = if CLI_ARGS.lock().unwrap().canonical_form {
                         let mut key_order = codegen::Block::new(format!(
                             "let mut key_order = {}.iter().map(|(k, v)|",
                             config.expr
@@ -1702,7 +1720,7 @@ impl GenerationScope {
         mut config: DeserializeConfig,
     ) -> DeserializationCode {
         //body.line(&format!("println!(\"deserializing {}\");", var_name));
-        if !CLI_ARGS.preserve_encodings {
+        if !CLI_ARGS.lock().unwrap().preserve_encodings {
             assert!(config.final_exprs.is_empty());
         }
         let mut deser_code = DeserializationCode::default();
@@ -1747,7 +1765,7 @@ impl GenerationScope {
         let deserializer_name = config.deserializer_name();
         match serializing_rust_type {
             SerializingRustType::Root(ConceptualRustType::Fixed(f)) => {
-                if !CLI_ARGS.preserve_encodings {
+                if !CLI_ARGS.lock().unwrap().preserve_encodings {
                     // we don't evaluate to any values here, just verify
                     // before/after are ignored and we need to handle fixed value deserialization in a different way
                     // than normal ones.
@@ -1766,7 +1784,7 @@ impl GenerationScope {
                         ));
                         special_block.line("return Err(DeserializeFailure::ExpectedNull.into());");
                         deser_code.content.push_block(special_block);
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             deser_code.content.line(&format!(
                                 "{}{}{}",
                                 before_after.before_str(false),
@@ -1776,7 +1794,7 @@ impl GenerationScope {
                         }
                     }
                     FixedValue::Uint(x) => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             deser_code.content.line(&format!(
                                 "let ({}_value, {}_encoding) = {}.unsigned_integer_sz()?;",
                                 config.var_name, config.var_name, deserializer_name
@@ -1791,7 +1809,7 @@ impl GenerationScope {
                             Block::new(format!("if {}_value != {}", config.var_name, x));
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint({}_value), expected: Key::Uint({}) }}.into());", config.var_name, x));
                         deser_code.content.push_block(compare_block);
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             config
                                 .final_exprs
                                 .push(format!("Some({}_encoding)", config.var_name));
@@ -1805,7 +1823,7 @@ impl GenerationScope {
                         }
                     }
                     FixedValue::Nint(x) => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             deser_code.content.line(&format!(
                                 "let ({}_value, {}_encoding) = {}.negative_integer_sz()?;",
                                 config.var_name, config.var_name, deserializer_name
@@ -1822,7 +1840,7 @@ impl GenerationScope {
                             Block::new(format!("if {}_value != {}", config.var_name, x));
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint(({}_value + 1).abs() as u64), expected: Key::Uint({}) }}.into());", config.var_name, x_abs));
                         deser_code.content.push_block(compare_block);
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             config
                                 .final_exprs
                                 .push(format!("Some({}_encoding)", config.var_name));
@@ -1836,7 +1854,7 @@ impl GenerationScope {
                         }
                     }
                     FixedValue::Text(x) => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             deser_code.content.line(&format!(
                                 "let ({}_value, {}_encoding) = {}.text_sz()?;",
                                 config.var_name, config.var_name, deserializer_name
@@ -1851,7 +1869,7 @@ impl GenerationScope {
                             Block::new(format!("if {}_value != \"{}\"", config.var_name, x));
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", config.var_name, x));
                         deser_code.content.push_block(compare_block);
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             config.final_exprs.push(format!(
                                 "StringEncoding::from({}_encoding)",
                                 config.var_name
@@ -1873,7 +1891,7 @@ impl GenerationScope {
                             Block::new(format!("if {}_value != {}", config.var_name, x));
                         compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, x));
                         deser_code.content.push_block(compare_block);
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
                     }
@@ -1894,7 +1912,7 @@ impl GenerationScope {
                 };
                 let mut deser_primitive =
                     |mut final_exprs: Vec<String>, func: &str, x: &str, x_expr: &str| {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             let enc_expr = match func {
                                 "text" | "bytes" => "StringEncoding::from(enc)",
                                 _ => "Some(enc)",
@@ -1941,7 +1959,7 @@ impl GenerationScope {
                             before_after.before_str(false),
                             deserializer_name
                         ));
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                             pos.line(&format!(
                                 "let (x, enc) = {deserializer_name}.unsigned_integer_sz()?;"
@@ -1981,7 +1999,7 @@ impl GenerationScope {
                         deser_code.throws = true;
                     }
                     Primitive::N64 => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             deser_primitive(
                                 config.final_exprs,
                                 "negative_integer",
@@ -2009,7 +2027,7 @@ impl GenerationScope {
                             config.final_exprs,
                             "f32::deserialize(raw)",
                         ));
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
                     }
@@ -2019,7 +2037,7 @@ impl GenerationScope {
                             config.final_exprs,
                             "f64::deserialize(raw)",
                         ));
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
                     }
@@ -2037,7 +2055,7 @@ impl GenerationScope {
                     // } else {
                     deser_code.content.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
                     let mut variant_final_exprs = config.final_exprs.clone();
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         for enc_var in
                             encoding_fields(types, config.var_name, variants[0].rust_type(), false)
                         {
@@ -2053,7 +2071,7 @@ impl GenerationScope {
                             &mut deser_code.content,
                         );
                         return_if_deserialized
-                            .line(format!("Ok(({})) => return Ok({}),", 
+                            .line(format!("Ok(({})) => return Ok({}),",
                             variant_final_exprs.join(", "),
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
                             .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
@@ -2066,7 +2084,7 @@ impl GenerationScope {
                 }
                 RustStructType::RawBytesType => {
                     let error_convert = ".map_err(Into::<DeserializeError>::into)";
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         config
                             .final_exprs
                             .push("StringEncoding::from(enc)".to_owned());
@@ -2179,7 +2197,7 @@ impl GenerationScope {
                         deser_code.read_len_used = true;
                     }
                 }
-                let ty_enc_fields = if CLI_ARGS.preserve_encodings {
+                let ty_enc_fields = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     encoding_fields(types, config.var_name, &ty.clone().resolve_aliases(), false)
                 } else {
                     vec![]
@@ -2224,14 +2242,14 @@ impl GenerationScope {
                     none_block.line("read_len.read_elems(1)?;");
                     deser_code.read_len_used = true;
                 }
-                // we don't use this to avoid the new (true) if CLI_ARGS.preserve_encodings is set
+                // we don't use this to avoid the new (true) if CLI_ARGS.lock().unwrap().preserve_encodings is set
                 //self.generate_deserialize(types, &ConceptualRustType::Fixed(FixedValue::Null), var_name, "", "", in_embedded, false, add_parens, &mut none_block);
                 let mut check_null = Block::new(format!(
                     "if {deserializer_name}.special()? != cbor_event::Special::Null"
                 ));
                 check_null.line("return Err(DeserializeFailure::ExpectedNull.into());");
                 none_block.push_block(check_null);
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     let mut none_elems = if ty.is_fixed_value() {
                         vec![]
                     } else {
@@ -2271,12 +2289,12 @@ impl GenerationScope {
                     .content
                     .line(&format!("let mut {arr_var_name} = Vec::new();"));
                 let elem_var_name = format!("{}_elem", config.var_name);
-                let elem_encs = if CLI_ARGS.preserve_encodings {
+                let elem_encs = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     encoding_fields(types, &elem_var_name, &ty.clone().resolve_aliases(), false)
                 } else {
                     vec![]
                 };
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     deser_code
                         .content
                         .line(&format!("let len = {deserializer_name}.array_sz()?;"))
@@ -2356,7 +2374,7 @@ impl GenerationScope {
                     .add_to(&mut deser_loop);
                 }
                 deser_code.content.push_block(deser_loop);
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     config
                         .final_exprs
                         .push(format!("{}_encoding", config.var_name));
@@ -2402,7 +2420,7 @@ impl GenerationScope {
                     ));
                     let key_var_name = format!("{}_key", config.var_name);
                     let value_var_name = format!("{}_value", config.var_name);
-                    let key_encs = if CLI_ARGS.preserve_encodings {
+                    let key_encs = if CLI_ARGS.lock().unwrap().preserve_encodings {
                         encoding_fields(
                             types,
                             &key_var_name,
@@ -2412,7 +2430,7 @@ impl GenerationScope {
                     } else {
                         vec![]
                     };
-                    let value_encs = if CLI_ARGS.preserve_encodings {
+                    let value_encs = if CLI_ARGS.lock().unwrap().preserve_encodings {
                         encoding_fields(
                             types,
                             &value_var_name,
@@ -2423,7 +2441,7 @@ impl GenerationScope {
                         vec![]
                     };
                     let len_var = format!("{}_len", config.var_name);
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         deser_code
                             .content
                             .line(&format!("let {len_var} = {deserializer_name}.map_sz()?;"))
@@ -2455,14 +2473,15 @@ impl GenerationScope {
                     key_config.deserializer_name_overload = config.deserializer_name_overload;
                     let mut value_config = DeserializeConfig::new(&value_var_name);
                     value_config.deserializer_name_overload = config.deserializer_name_overload;
-                    let (key_var_names_str, value_var_names_str) = if CLI_ARGS.preserve_encodings {
-                        (
-                            encoding_var_names_str(types, &key_var_name, key_type),
-                            encoding_var_names_str(types, &value_var_name, value_type),
-                        )
-                    } else {
-                        (key_var_name.clone(), value_var_name.clone())
-                    };
+                    let (key_var_names_str, value_var_names_str) =
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
+                            (
+                                encoding_var_names_str(types, &key_var_name, key_type),
+                                encoding_var_names_str(types, &value_var_name, value_type),
+                            )
+                        } else {
+                            (key_var_name.clone(), value_var_name.clone())
+                        };
                     self.generate_deserialize(
                         types,
                         (&**key_type).into(),
@@ -2514,7 +2533,7 @@ impl GenerationScope {
                         "return Err(DeserializeFailure::DuplicateKey({dup_key_error_key}).into());"
                     ));
                     deser_loop.push_block(dup_check);
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         if !key_encs.is_empty() {
                             deser_loop.line(format!(
                                 "{}_key_encodings.insert({}{}, {});",
@@ -2550,7 +2569,7 @@ impl GenerationScope {
                         }
                     }
                     deser_code.content.push_block(deser_loop);
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         config
                             .final_exprs
                             .push(format!("{}_encoding", config.var_name));
@@ -2586,7 +2605,7 @@ impl GenerationScope {
                     .add_to_code(&mut deser_code);
             }
             SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     config.final_exprs.push(format!(
                         "StringEncoding::from({}_bytes_encoding)",
                         config.var_name
@@ -2619,7 +2638,7 @@ impl GenerationScope {
                     deser_code.content.line("read_len.read_elems(1)?;");
                     deser_code.read_len_used = true;
                 }
-                let mut tag_check = if CLI_ARGS.preserve_encodings {
+                let mut tag_check = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     let mut tag_check = Block::new(format!(
                         "{}match {}.tag_sz()?",
                         before_after.before, deserializer_name
@@ -2668,7 +2687,7 @@ impl GenerationScope {
                 };
                 tag_check.line(&format!(
                     "{} => {}Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),",
-                    if CLI_ARGS.preserve_encodings { "(tag, _enc)" } else { "tag" },
+                    if CLI_ARGS.lock().unwrap().preserve_encodings { "(tag, _enc)" } else { "tag" },
                     if before_after.expects_result { "" } else { "return " },
                     tag));
                 tag_check.after(before_after.after);
@@ -2735,7 +2754,7 @@ impl GenerationScope {
     ) {
         // Rust only
         generate_enum(self, types, name, variants, None, true, tag);
-        if CLI_ARGS.wasm {
+        if CLI_ARGS.lock().unwrap().wasm {
             // Generate a wrapper object that we will expose to wasm around this
             let mut wrapper = create_base_wasm_wrapper(self, types, name, true);
             // new
@@ -2833,7 +2852,7 @@ impl GenerationScope {
 }
 
 fn canonical_param() -> &'static str {
-    if CLI_ARGS.canonical_form {
+    if CLI_ARGS.lock().unwrap().canonical_form {
         ", force_canonical"
     } else {
         ""
@@ -2855,7 +2874,7 @@ fn encoding_var_macros(used_in_key: bool) -> String {
     } else {
         String::new()
     };
-    if CLI_ARGS.json_serde_derives {
+    if CLI_ARGS.lock().unwrap().json_serde_derives {
         ret.push_str("#[serde(skip)]\n");
     }
     ret
@@ -2872,7 +2891,7 @@ fn start_len(
         Representation::Array => "array",
         Representation::Map => "map",
     };
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         body.line(&format!(
             "{}.write_{}_sz({}.to_len_sz({}{}))?;",
             serializer_use,
@@ -2889,7 +2908,7 @@ fn start_len(
 }
 
 fn end_len(body: &mut dyn CodeBlock, serializer_use: &str, encoding_var: &str, is_end: bool) {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         body.line(&format!(
             "{}.end({}{}){}",
             encoding_var,
@@ -2911,7 +2930,7 @@ fn write_using_sz(
     line_ender: &str,
     encoding_var: &str,
 ) {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         body.line(&format!(
             "{}.{}_sz({}, fit_sz({}, {}{})){}",
             serializer_use,
@@ -2935,7 +2954,7 @@ fn write_string_sz(
     line_ender: &str,
     encoding_var: &str,
 ) {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         body.line(&format!(
             "{}.{}_sz(&{}, {}.to_str_len_sz({}.len() as u64{})){}",
             serializer_use,
@@ -3068,8 +3087,12 @@ pub fn rust_crate_struct_from_wasm(types: &IntermediateTypes<'_>, ident: &RustId
 
 pub fn rust_crate_struct_scope_from_wasm(types: &IntermediateTypes, ident: &RustIdent) -> String {
     match types.scope(ident) {
-        "lib" => CLI_ARGS.lib_name_code(),
-        other_scope => format!("{}::{}", CLI_ARGS.lib_name_code(), other_scope),
+        "lib" => CLI_ARGS.lock().unwrap().lib_name_code(),
+        other_scope => format!(
+            "{}::{}",
+            CLI_ARGS.lock().unwrap().lib_name_code(),
+            other_scope
+        ),
     }
 }
 
@@ -3151,13 +3174,15 @@ fn create_base_wasm_struct<'a>(
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
     if exists_in_rust {
-        if CLI_ARGS.to_from_bytes_methods {
+        if CLI_ARGS.lock().unwrap().to_from_bytes_methods {
             let mut to_bytes = codegen::Function::new("to_cbor_bytes");
             to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
-            if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+            if CLI_ARGS.lock().unwrap().preserve_encodings
+                && CLI_ARGS.lock().unwrap().canonical_form
+            {
                 to_bytes.line(format!(
                     "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
-                    CLI_ARGS.lib_name_code()
+                    CLI_ARGS.lock().unwrap().lib_name_code()
                 ));
                 let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
                 to_canonical_bytes
@@ -3168,7 +3193,7 @@ fn create_base_wasm_struct<'a>(
             } else {
                 to_bytes.line(format!(
                     "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
-                    CLI_ARGS.lib_name_code()
+                    CLI_ARGS.lock().unwrap().lib_name_code()
                 ));
             }
             s_impl.push_fn(to_bytes);
@@ -3180,10 +3205,10 @@ fn create_base_wasm_struct<'a>(
                     .vis("pub")
                     .line(format!(
                         "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
-                        CLI_ARGS.lib_name_code()));
+                        CLI_ARGS.lock().unwrap().lib_name_code()));
             }
         }
-        if CLI_ARGS.json_serde_derives {
+        if CLI_ARGS.lock().unwrap().json_serde_derives {
             let mut to_json = codegen::Function::new("to_json");
             to_json
                 .ret("Result<String, JsValue>")
@@ -3224,7 +3249,7 @@ fn create_base_wasm_wrapper<'a>(
     ident: &'a RustIdent,
     default_structure: bool,
 ) -> WasmWrapper<'a> {
-    assert!(CLI_ARGS.wasm);
+    assert!(CLI_ARGS.lock().unwrap().wasm);
     let mut base = create_base_wasm_struct(gen_scope, ident, true);
     if default_structure {
         let native_name = rust_crate_struct_from_wasm(types, ident);
@@ -3419,7 +3444,7 @@ fn create_deserialize_impls(
     //deser_impl.impl_trait("cbor_event::de::Deserialize");
     deser_impl.impl_trait("Deserialize");
     if let Some(tag) = tag {
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             deser_body.line("let (tag, tag_encoding) = raw.tag_sz()?;");
         } else {
             deser_body.line("let tag = raw.tag()?;");
@@ -3431,7 +3456,7 @@ fn create_deserialize_impls(
     if let Some(rep) = rep {
         match rep {
             Representation::Array => {
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     deser_body.line("let len = raw.array_sz()?;");
                 } else {
                     deser_body.line("let len = raw.array()?;");
@@ -3451,7 +3476,7 @@ fn create_deserialize_impls(
                 }
             }
             Representation::Map => {
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     deser_body.line("let len = raw.map_sz()?;");
                 } else {
                     deser_body.line("let len = raw.map()?;");
@@ -3532,7 +3557,7 @@ fn make_deser_loop_break_check() -> Block {
 }
 
 pub fn table_type() -> &'static str {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         "OrderedHashMap"
     } else {
         "BTreeMap"
@@ -3548,7 +3573,7 @@ fn codegen_table_type(
     tag: Option<usize>,
     exists_in_rust: bool,
 ) {
-    assert!(CLI_ARGS.wasm);
+    assert!(CLI_ARGS.lock().unwrap().wasm);
     assert!(tag.is_none(), "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?");
     // this would interfere with loop code generation unless we
     // specially handle this case since you wouldn't know whether you hit a break
@@ -3704,7 +3729,7 @@ fn encoding_fields(
     ty: &RustType,
     include_default: bool,
 ) -> Vec<EncodingField> {
-    assert!(CLI_ARGS.preserve_encodings);
+    assert!(CLI_ARGS.lock().unwrap().preserve_encodings);
     // TODO: how do we handle defaults for nested things? e.g. inside of a ConceptualRustType::Map
     let mut encs = encoding_fields_impl(types, name, ty.into());
     if include_default && ty.default.is_some() {
@@ -3723,7 +3748,7 @@ fn encoding_fields_impl(
     name: &str,
     ty: SerializingRustType,
 ) -> Vec<EncodingField> {
-    assert!(CLI_ARGS.preserve_encodings);
+    assert!(CLI_ARGS.lock().unwrap().preserve_encodings);
     match ty {
         SerializingRustType::Root(ConceptualRustType::Array(elem_ty)) => {
             let base = EncodingField {
@@ -3923,7 +3948,7 @@ fn encoding_var_names_str(
     field_name: &str,
     rust_type: &RustType,
 ) -> String {
-    assert!(CLI_ARGS.preserve_encodings);
+    assert!(CLI_ARGS.lock().unwrap().preserve_encodings);
     let resolved_rust_type = rust_type.clone().resolve_aliases();
     let mut var_names = if resolved_rust_type.is_fixed_value() {
         vec![]
@@ -3966,7 +3991,7 @@ fn generate_array_struct_serialization(
                 &field.rust_type.default
             {
                 (
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         if vars_in_self {
                             format!("if {} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)", field_expr, default_value.to_primitive_str_compare(), field.name)
                         } else {
@@ -4064,9 +4089,9 @@ fn generate_array_struct_deserialization(
                 ),
             );
         } else {
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 let var_names_str = encoding_var_names_str(types, &field.name, &field.rust_type);
-                if CLI_ARGS.annotate_fields {
+                if CLI_ARGS.lock().unwrap().annotate_fields {
                     gen_scope
                         .generate_deserialize(
                             types,
@@ -4092,7 +4117,7 @@ fn generate_array_struct_deserialization(
                 }
             } else if field.rust_type.is_fixed_value() {
                 // don't set anything, only verify data
-                if CLI_ARGS.annotate_fields {
+                if CLI_ARGS.lock().unwrap().annotate_fields {
                     let mut err_deser = gen_scope.generate_deserialize(
                         types,
                         (&field.rust_type).into(),
@@ -4114,7 +4139,7 @@ fn generate_array_struct_deserialization(
                         )
                         .add_to_code(&mut deser_code);
                 }
-            } else if CLI_ARGS.annotate_fields {
+            } else if CLI_ARGS.lock().unwrap().annotate_fields {
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -4139,7 +4164,7 @@ fn generate_array_struct_deserialization(
             }
         }
     }
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         let encoding_vars_output = if vars_in_self {
             &mut encoding_struct_ctor_fields
         } else {
@@ -4182,7 +4207,7 @@ fn codegen_struct(
     record: &RustRecord,
 ) {
     // wasm wrapper
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true);
         let mut wasm_new = codegen::Function::new("new");
         wasm_new.ret("Self").vis("pub");
@@ -4338,7 +4363,7 @@ fn codegen_struct(
             }
         }
     }
-    let len_encoding_var = if CLI_ARGS.preserve_encodings {
+    let len_encoding_var = if CLI_ARGS.lock().unwrap().preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{name}Encoding")));
         native_struct.field(
             &format!(
@@ -4451,13 +4476,13 @@ fn codegen_struct(
             let mut text_field_deserializers = Vec::new();
             // (field_index, field, content) -- this is ordered by canonical order
             let mut ser_content: Vec<(usize, &RustField, BlocksOrLines)> = Vec::new();
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 deser_code
                     .content
                     .line("let mut orig_deser_order = Vec::new();");
             }
             // we default to canonical ordering here as the default ordering as that should be the most useful
-            // keep in mind this is always overwritten if you have CLI_ARGS.preserve_encodings enabled AND there was
+            // keep in mind this is always overwritten if you have CLI_ARGS.lock().unwrap().preserve_encodings enabled AND there was
             // a deserialized encoding, otherwise we still use this by default.
             for (field_index, field) in record.canonical_ordering() {
                 // to support maps with plain groups inside is very difficult as we cannot guarantee
@@ -4478,7 +4503,7 @@ fn codegen_struct(
                     }
                 }
                 // declare variables for deser loop
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     for field_enc in encoding_fields(
                         types,
                         &field.name,
@@ -4516,7 +4541,7 @@ fn codegen_struct(
                 // deserialize key + value
                 let mut deser_block = match &key {
                     FixedValue::Uint(x) => {
-                        if CLI_ARGS.preserve_encodings {
+                        if CLI_ARGS.lock().unwrap().preserve_encodings {
                             Block::new(&format!("({x}, key_enc) => "))
                         } else {
                             Block::new(&format!("{x} => "))
@@ -4535,7 +4560,7 @@ fn codegen_struct(
                     FixedValue::Text(x) => format!("Key::Str(\"{x}\".into())"),
                     _ => unimplemented!(),
                 };
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     let mut dup_check = if field.rust_type.is_fixed_value() {
                         Block::new(&format!("if {}_present", field.name))
                     } else {
@@ -4549,7 +4574,7 @@ fn codegen_struct(
                     let temp_var_prefix = format!("tmp_{}", field.name);
                     let var_names_str =
                         encoding_var_names_str(types, &temp_var_prefix, &field.rust_type);
-                    if CLI_ARGS.annotate_fields {
+                    if CLI_ARGS.lock().unwrap().annotate_fields {
                         let (before, after) = if var_names_str.is_empty() {
                             ("".to_owned(), "?")
                         } else {
@@ -4617,7 +4642,7 @@ fn codegen_struct(
                     ));
                     deser_block_code.content.push_block(dup_check);
                     // only does verification and sets the field_present bool to do error checking later
-                    if CLI_ARGS.annotate_fields {
+                    if CLI_ARGS.lock().unwrap().annotate_fields {
                         let mut err_deser = gen_scope.generate_deserialize(
                             types,
                             (&field.rust_type).into(),
@@ -4651,7 +4676,7 @@ fn codegen_struct(
                         "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                     ));
                     deser_block_code.content.push_block(dup_check);
-                    if CLI_ARGS.annotate_fields {
+                    if CLI_ARGS.lock().unwrap().annotate_fields {
                         gen_scope
                             .generate_deserialize(
                                 types,
@@ -4680,7 +4705,7 @@ fn codegen_struct(
                             .add_to_code(&mut deser_block_code);
                     }
                 }
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     let key_encoding_var = key_encoding_field(&field.name, &key).field_name;
                     let enc_conversion = match &key {
                         FixedValue::Uint(_) => "Some(key_enc)",
@@ -4742,18 +4767,19 @@ fn codegen_struct(
                 );
                 ser_content.push((field_index, field, map_ser_content));
             }
-            if CLI_ARGS.preserve_encodings {
-                let (check_canonical, serialization_order) = if CLI_ARGS.canonical_form {
-                    let indices_str = record
-                        .canonical_ordering()
-                        .iter()
-                        .map(|(i, _)| i.to_string())
-                        .collect::<Vec<String>>()
-                        .join(",");
-                    ("!force_canonical && ", format!("vec![{indices_str}]"))
-                } else {
-                    ("", format!("(0..{}).collect()", ser_content.len()))
-                };
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
+                let (check_canonical, serialization_order) =
+                    if CLI_ARGS.lock().unwrap().canonical_form {
+                        let indices_str = record
+                            .canonical_ordering()
+                            .iter()
+                            .map(|(i, _)| i.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",");
+                        ("!force_canonical && ", format!("vec![{indices_str}]"))
+                    } else {
+                        ("", format!("(0..{}).collect()", ser_content.len()))
+                    };
                 ser_func.line(format!(
                     "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
                     check_canonical,
@@ -4812,7 +4838,7 @@ fn codegen_struct(
             if uint_field_deserializers.is_empty() {
                 type_match.line("cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),");
             } else {
-                let mut uint_match = if CLI_ARGS.preserve_encodings {
+                let mut uint_match = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     Block::new(
                         "cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()?",
                     )
@@ -4822,7 +4848,7 @@ fn codegen_struct(
                 for case in uint_field_deserializers {
                     uint_match.push_block(case);
                 }
-                let unknown_key_decl = if CLI_ARGS.preserve_encodings {
+                let unknown_key_decl = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     "(unknown_key, _enc)"
                 } else {
                     "unknown_key"
@@ -4835,7 +4861,7 @@ fn codegen_struct(
             // so we need to store it in a local and have an extra block to declare it
             if text_field_deserializers.is_empty() {
                 type_match.line("cbor_event::Type::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
-            } else if CLI_ARGS.preserve_encodings {
+            } else if CLI_ARGS.lock().unwrap().preserve_encodings {
                 let mut outer_match = Block::new("cbor_event::Type::Text =>");
                 outer_match.line("let (text_key, key_enc) = raw.text_sz()?;");
                 let mut text_match = Block::new("match text_key.as_str()");
@@ -4903,7 +4929,7 @@ fn codegen_struct(
                         deser_code.content.push_block(mandatory_field_check);
                     }
                 } else if let Some(default_value) = &field.rust_type.default {
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         let mut default_present_check = Block::new(&format!(
                             "if {} == Some({})",
                             field.name,
@@ -4941,7 +4967,7 @@ fn codegen_struct(
                     ctor_block.line(format!("{},", field.name));
                 }
             }
-            if CLI_ARGS.preserve_encodings {
+            if CLI_ARGS.lock().unwrap().preserve_encodings {
                 let mut encoding_ctor =
                     codegen::Block::new(&format!("encodings: Some({name}Encoding"));
                 if tag.is_some() {
@@ -5000,7 +5026,7 @@ fn codegen_struct(
     }
     deser_code.content.push_block(ctor_block);
 
-    if CLI_ARGS.annotate_fields {
+    if CLI_ARGS.lock().unwrap().annotate_fields {
         deser_code = deser_code.annotate(name.as_ref(), "", "");
     }
 
@@ -5015,14 +5041,14 @@ fn codegen_struct(
             "_read_len"
         };
         deser_embed_f.arg(read_len_arg, "&mut CBORReadLen");
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             deser_embed_f.arg("len", "cbor_event::LenSz");
         } else {
             deser_embed_f.arg("len", "cbor_event::Len");
         }
         // this is expected when creating the final struct but wouldn't have been available
         // otherwise as it is in the non-embedded deserialiation function
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             deser_embed_f.line("let len_encoding = len.into();");
         }
         deser_embed_f.push_all(deser_code.content);
@@ -5076,7 +5102,7 @@ fn codegen_group_choices(
     generate_enum(gen_scope, types, name, variants, Some(rep), false, tag);
 
     // wasm wrapper
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true);
         // new (1 per variant)
         for variant in variants.iter() {
@@ -5195,7 +5221,7 @@ fn add_wasm_enum_getters(
     variants: &[EnumVariant],
     rep: Option<Representation>,
 ) {
-    assert!(CLI_ARGS.wasm);
+    assert!(CLI_ARGS.lock().unwrap().wasm);
     // kind() getter
     let kind_name = format!("{name}Kind");
     let mut get_kind = codegen::Function::new("kind");
@@ -5263,7 +5289,7 @@ fn add_wasm_enum_getters(
 }
 
 fn cbor_event_len_n(n: &str) -> String {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         format!("cbor_event::LenSz::Len({n}, _)")
     } else {
         format!("cbor_event::Len::Len({n})")
@@ -5271,7 +5297,7 @@ fn cbor_event_len_n(n: &str) -> String {
 }
 
 fn cbor_event_len_indef() -> &'static str {
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         "cbor_event::LenSz::Indefinite"
     } else {
         "cbor_event::Len::Indefinite"
@@ -5296,7 +5322,7 @@ impl EnumVariantInRust {
         let name = variant.name_as_var();
         match &variant.data {
             EnumVariantData::RustType(ty) => {
-                let mut enc_fields = if CLI_ARGS.preserve_encodings {
+                let mut enc_fields = if CLI_ARGS.lock().unwrap().preserve_encodings {
                     encoding_fields(types, &name, &ty.clone().resolve_aliases(), true)
                 } else {
                     vec![]
@@ -5308,7 +5334,7 @@ impl EnumVariantInRust {
                 };
                 let mut outer_vars = 0;
                 // TOOD: for tags too?
-                if CLI_ARGS.preserve_encodings
+                if CLI_ARGS.lock().unwrap().preserve_encodings
                     && rep.is_some()
                     && !variant.serialize_as_embedded_group
                 {
@@ -5337,7 +5363,7 @@ impl EnumVariantInRust {
                 let mut enc_fields = vec![];
                 let mut enum_types = vec![];
                 let mut names = vec![];
-                if CLI_ARGS.preserve_encodings {
+                if CLI_ARGS.lock().unwrap().preserve_encodings {
                     enc_fields.push(EncodingField {
                         field_name: "len_encoding".to_owned(),
                         type_name: "LenEncoding".to_owned(),
@@ -5475,13 +5501,13 @@ fn generate_c_style_enum(
     variants: &[EnumVariant],
     tag: Option<usize>,
 ) -> bool {
-    if tag.is_some() && CLI_ARGS.preserve_encodings {
+    if tag.is_some() && CLI_ARGS.lock().unwrap().preserve_encodings {
         // cannot store it in a C-style enum
         return false;
     }
     if variants.iter().any(|ev: &EnumVariant| {
         ev.serialize_as_embedded_group
-            || (CLI_ARGS.preserve_encodings && !ev.rust_type().encodings.is_empty())
+            || (CLI_ARGS.lock().unwrap().preserve_encodings && !ev.rust_type().encodings.is_empty())
             || !matches!(
                 ev.rust_type().conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Fixed(_)
@@ -5497,7 +5523,7 @@ fn generate_c_style_enum(
         .derive("PartialEq")
         .derive("Ord")
         .derive("PartialOrd");
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         e.attr("wasm_bindgen::prelude::wasm_bindgen");
         gen_scope
             .wasm(types, name)
@@ -5570,7 +5596,7 @@ fn generate_enum(
     generate_deserialize_directly: bool,
     tag: Option<usize>,
 ) {
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         // also create a wasm-exposed enum just to distinguish the type
         let mut kind = codegen::Enum::new(&format!("{name}Kind"));
         kind.vis("pub");
@@ -5593,7 +5619,7 @@ fn generate_enum(
     let mut ser_func = make_serialization_function("serialize");
     if let Some(tag) = tag {
         // TODO: how to even store these? (maybe it could be a new field in every enum variant)
-        assert!(!CLI_ARGS.preserve_encodings);
+        assert!(!CLI_ARGS.lock().unwrap().preserve_encodings);
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
@@ -5602,7 +5628,7 @@ fn generate_enum(
     let len_info = RustStructCBORLen::Dynamic;
     let mut deser_func = make_deserialization_function("deserialize");
     let mut error_annotator = make_err_annotate_block(name.as_ref(), "", "");
-    let deser_body: &mut dyn CodeBlock = if CLI_ARGS.annotate_fields {
+    let deser_body: &mut dyn CodeBlock = if CLI_ARGS.lock().unwrap().annotate_fields {
         &mut error_annotator
     } else {
         &mut deser_func
@@ -5616,7 +5642,7 @@ fn generate_enum(
         deser_impl
     } else {
         // this handles the tag check too
-        let outer_encoding_var = if CLI_ARGS.preserve_encodings
+        let outer_encoding_var = if CLI_ARGS.lock().unwrap().preserve_encodings
             && variants
                 .iter()
                 .any(|variant| !variant.serialize_as_embedded_group)
@@ -5753,7 +5779,7 @@ fn generate_enum(
             ));
             match &variant.data {
                 EnumVariantData::RustType(ty) => {
-                    if CLI_ARGS.preserve_encodings {
+                    if CLI_ARGS.lock().unwrap().preserve_encodings {
                         if let Some(r) = rep {
                             // group choice
                             let n = ty.expanded_field_count(types).expect(
@@ -5936,7 +5962,7 @@ fn generate_enum(
     deser_body.line(&format!(
         "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched))"
     ));
-    if CLI_ARGS.annotate_fields {
+    if CLI_ARGS.lock().unwrap().annotate_fields {
         deser_func.push_block(error_annotator);
     }
     deser_impl.push_fn(deser_func);
@@ -5955,7 +5981,7 @@ fn make_serialization_function(name: &str) -> codegen::Function {
         .ret("cbor_event::Result<&'se mut Serializer<W>>")
         .arg_ref_self()
         .arg("serializer", "&'se mut Serializer<W>");
-    if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+    if CLI_ARGS.lock().unwrap().preserve_encodings && CLI_ARGS.lock().unwrap().canonical_form {
         f.arg("force_canonical", "bool");
     }
     f
@@ -5963,7 +5989,7 @@ fn make_serialization_function(name: &str) -> codegen::Function {
 
 fn make_serialization_impl(name: &str) -> codegen::Impl {
     let mut ser_impl = codegen::Impl::new(name);
-    if CLI_ARGS.preserve_encodings && CLI_ARGS.canonical_form {
+    if CLI_ARGS.lock().unwrap().preserve_encodings && CLI_ARGS.lock().unwrap().canonical_form {
         ser_impl.impl_trait("Serialize");
     } else {
         ser_impl.impl_trait("cbor_event::se::Serialize");
@@ -6011,7 +6037,7 @@ fn generate_wrapper_struct(
     if min_max.is_some() {
         assert!(types.can_new_fail(type_name));
     }
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true);
         let mut wasm_new = codegen::Function::new("new");
         wasm_new
@@ -6046,7 +6072,7 @@ fn generate_wrapper_struct(
     let (mut s, mut s_impl) = create_base_rust_struct(types, type_name);
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
-    let enc_fields = if CLI_ARGS.preserve_encodings {
+    let enc_fields = if CLI_ARGS.lock().unwrap().preserve_encodings {
         s.field("pub inner", field_type.for_rust_member(types, false));
         let enc_fields =
             encoding_fields(types, "inner", &field_type.clone().resolve_aliases(), true);
@@ -6079,10 +6105,10 @@ fn generate_wrapper_struct(
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
-    if field_type.is_copy(types) && !CLI_ARGS.preserve_encodings {
+    if field_type.is_copy(types) && !CLI_ARGS.lock().unwrap().preserve_encodings {
         s.derive("Copy");
     }
-    let (inner_var, self_var) = if CLI_ARGS.preserve_encodings {
+    let (inner_var, self_var) = if CLI_ARGS.lock().unwrap().preserve_encodings {
         ("inner", "self.inner")
     } else {
         ("0", "self.0")
@@ -6120,7 +6146,7 @@ fn generate_wrapper_struct(
     new_func
         .arg("inner", field_type.for_rust_move(types))
         .vis("pub");
-    let var_names_str = if CLI_ARGS.preserve_encodings {
+    let var_names_str = if CLI_ARGS.lock().unwrap().preserve_encodings {
         encoding_var_names_str(types, "inner", field_type)
     } else {
         "inner".to_owned()
@@ -6359,12 +6385,12 @@ fn generate_wrapper_struct(
 /// seems to behave correctly
 fn key_derives(for_ignore: bool) -> &'static [&'static str] {
     if for_ignore {
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             &["PartialEq", "Ord", "PartialOrd", "Hash"]
         } else {
             &["PartialEq", "Ord", "PartialOrd"]
         }
-    } else if CLI_ARGS.preserve_encodings {
+    } else if CLI_ARGS.lock().unwrap().preserve_encodings {
         &["Eq", "PartialEq", "Ord", "PartialOrd", "Hash"]
     } else {
         &["Eq", "PartialEq", "Ord", "PartialOrd"]
@@ -6373,16 +6399,16 @@ fn key_derives(for_ignore: bool) -> &'static [&'static str] {
 
 fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum: bool) {
     data_type.derive("Clone").derive("Debug");
-    if CLI_ARGS.json_serde_derives {
+    if CLI_ARGS.lock().unwrap().json_serde_derives {
         data_type
             .derive("serde::Deserialize")
             .derive("serde::Serialize");
     }
-    if CLI_ARGS.json_schema_export {
+    if CLI_ARGS.lock().unwrap().json_schema_export {
         data_type.derive("schemars::JsonSchema");
     }
     if used_in_key {
-        if CLI_ARGS.preserve_encodings {
+        if CLI_ARGS.lock().unwrap().preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
             data_type.derive(&format!(
@@ -6408,18 +6434,18 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
 
 fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let ident = RustIdent::new(CDDLIdent::new("int"));
-    if CLI_ARGS.wasm {
+    if CLI_ARGS.lock().unwrap().wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, &ident, true);
         let mut wasm_new = codegen::Function::new("new");
         let mut new_if = codegen::Block::new("if x >= 0");
         let mut new_else = codegen::Block::new("else");
         new_if.line(format!(
             "Self({}::Int::new_uint(x as u64))",
-            CLI_ARGS.lib_name_code()
+            CLI_ARGS.lock().unwrap().lib_name_code()
         ));
         new_else.line(format!(
             "Self({}::Int::new_nint((x + 1).abs() as u64))",
-            CLI_ARGS.lib_name_code()
+            CLI_ARGS.lock().unwrap().lib_name_code()
         ));
         wasm_new
             .ret("Self")
@@ -6456,7 +6482,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     native_struct.vis("pub");
     let mut uint = codegen::Variant::new("Uint");
     let mut nint = codegen::Variant::new("Nint");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         uint.named("value", "u64").named(
             &format!("{}encoding", encoding_var_macros(types.used_as_key(&ident))),
             "Option<cbor_event::Sz>",
@@ -6477,7 +6503,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut native_impl = codegen::Impl::new("Int");
     let mut new_uint = codegen::Function::new("new_uint");
     new_uint.vis("pub").arg("value", "u64").ret("Self");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         let mut new_uint_ctor = codegen::Block::new("Self::Uint");
         new_uint_ctor.line("value,").line("encoding: None,");
         new_uint.push_block(new_uint_ctor);
@@ -6492,7 +6518,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
         .doc("* `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.")
         .arg("value", "u64")
         .ret("Self");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         let mut new_nint_ctor = codegen::Block::new("Self::Nint");
         new_nint_ctor.line("value,").line("encoding: None,");
         new_nint.push_block(new_nint_ctor);
@@ -6505,7 +6531,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut ser_impl = make_serialization_impl("Int");
     let mut ser_func = make_serialization_function("serialize");
     let mut ser_block = Block::new("match self");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         ser_block
             .line(format!("Self::Uint{{ value, encoding }} => serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding{})),", canonical_param()))
             .line(format!("Self::Nint{{ value, encoding }} => serializer.write_negative_integer_sz(-((*value as i128) + 1), fit_sz(*value, *encoding{})),", canonical_param()));
@@ -6523,7 +6549,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut deser_func = make_deserialization_function("deserialize");
     let mut annotate = make_err_annotate_block("Int", "", "");
     let mut deser_match = codegen::Block::new("match raw.cbor_type()?");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         deser_match
             .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint{ value: x, encoding: Some(enc) }).map_err(std::convert::Into::into),")
             .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint{ value: (-1 - x) as u64, encoding: Some(enc) }).map_err(std::convert::Into::into),");
@@ -6549,7 +6575,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
 
     let mut display = codegen::Impl::new("Int");
     let mut display_match = codegen::Block::new("match self");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         display_match
             .line("Self::Uint{ value, .. } => write!(f, \"{}\", value),")
             .line("Self::Nint{ value, .. } => write!(f, \"-{}\", value + 1),");
@@ -6579,7 +6605,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
     let mut try_from_i128 = codegen::Impl::new("Int");
     let mut try_from_if = codegen::Block::new("if x >= 0");
     let mut try_from_else = codegen::Block::new("else");
-    if CLI_ARGS.preserve_encodings {
+    if CLI_ARGS.lock().unwrap().preserve_encodings {
         try_from_if.line("u64::try_from(x).map(|x| Self::Uint{ value: x, encoding: None })");
         try_from_else
             .line("u64::try_from((x + 1).abs()).map(|x| Self::Nint{ value: x, encoding: None })");

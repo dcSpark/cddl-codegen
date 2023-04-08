@@ -299,7 +299,7 @@ impl<'a> IntermediateTypes<'a> {
             ConceptualRustType::Alias(_, ty) => ty,
             ty => ty,
         };
-        if CLI_ARGS.binary_wrappers {
+        if CLI_ARGS.lock().unwrap().binary_wrappers {
             // if we're not literally bytes/bstr, and instead an alias for it
             // we would have generated a named wrapper object so we should
             // refer to that instead
@@ -442,7 +442,7 @@ impl<'a> IntermediateTypes<'a> {
         if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
             self.set_rep_if_plain_group(parent_visitor, &array_type_ident, Representation::Array);
         }
-        if CLI_ARGS.wasm {
+        if CLI_ARGS.lock().unwrap().wasm {
             // we don't pass in tags here. If a tag-wrapped array is done I think it generates
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
@@ -2029,11 +2029,12 @@ impl RustStruct {
     ) -> Self {
         // we could potentially push these encoding vars out too but this is extremely low priority
         // unless people want to have tagged c-style enums encoded in different ways
-        let cant_store_tag = tag.is_some() && CLI_ARGS.preserve_encodings;
+        let cant_store_tag = tag.is_some() && CLI_ARGS.lock().unwrap().preserve_encodings;
         let not_fixed_or_cant_store_enc_vars_or_outer_len =
             variants.iter().any(|ev: &EnumVariant| {
                 ev.serialize_as_embedded_group
-                    || (CLI_ARGS.preserve_encodings && !ev.rust_type().encodings.is_empty())
+                    || (CLI_ARGS.lock().unwrap().preserve_encodings
+                        && !ev.rust_type().encodings.is_empty())
                     || !matches!(
                         ev.rust_type().conceptual_type.resolve_alias_shallow(),
                         ConceptualRustType::Fixed(_)
@@ -2041,7 +2042,8 @@ impl RustStruct {
             });
         if cant_store_tag
             || not_fixed_or_cant_store_enc_vars_or_outer_len
-            || (CLI_ARGS.preserve_encodings && !enum_variants_have_same_encoding_var(&variants))
+            || (CLI_ARGS.lock().unwrap().preserve_encodings
+                && !enum_variants_have_same_encoding_var(&variants))
         {
             Self {
                 ident,
@@ -2306,7 +2308,7 @@ impl RustRecord {
                             Representation::Map => ("_", String::from("1")),
                         };
                         if let Some(default_value) = &field.rust_type.default {
-                            if CLI_ARGS.preserve_encodings {
+                            if CLI_ARGS.lock().unwrap().preserve_encodings {
                                 conditional_field_expr.push_str(&format!(
                                     "if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
                                     field.name,
