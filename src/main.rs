@@ -10,11 +10,14 @@ pub(crate) mod utils;
 #[cfg(test)]
 mod test;
 
+use clap::Parser;
+use cli::Cli;
 use generation::GenerationScope;
 use intermediate::{CDDLIdent, IntermediateTypes, RustIdent};
+use once_cell::sync::Lazy;
 use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
 
-use cli::CLI_ARGS;
+pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
 
 fn cddl_paths(
     output: &mut Vec<std::path::PathBuf>,

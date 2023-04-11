@@ -1,6 +1,4 @@
 use clap::Parser;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 
@@ -69,5 +67,3 @@ impl Cli {
         self.lib_name.replace('-', "_")
     }
 }
-
-pub static CLI_ARGS: Lazy<Mutex<Cli>> = Lazy::new(|| Mutex::new(Cli::parse()));

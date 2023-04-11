@@ -5,7 +5,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 
-use crate::cli::CLI_ARGS;
+use crate::main::CLI_ARGS;
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,

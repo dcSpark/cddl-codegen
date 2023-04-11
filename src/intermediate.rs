@@ -3,7 +3,7 @@ use cbor_event::{Special, Type as CBORType};
 use cddl::ast::parent::ParentVisitor;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::cli::CLI_ARGS;
+use crate::main::CLI_ARGS;
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
