@@ -2,7 +2,7 @@ use clap::Parser;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Default, Parser)]
 #[clap()]
 pub struct Cli {
     /// Input .cddl file to generate from. If this is a directory then it will read all *.cddl files and generate one output for each.
