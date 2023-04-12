@@ -38,12 +38,12 @@ fn cddl_paths(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Pre-processing files for multi-file support
-    let input_files = if CLI_ARGS.lock().unwrap().input.is_dir() {
+    let input_files = if CLI_ARGS.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();
-        cddl_paths(&mut cddl_paths_buf, &CLI_ARGS.lock().unwrap().input)?;
+        cddl_paths(&mut cddl_paths_buf, &CLI_ARGS.input)?;
         cddl_paths_buf
     } else {
-        vec![CLI_ARGS.lock().unwrap().input.clone()]
+        vec![CLI_ARGS.input.clone()]
     };
     // To get around an issue with cddl where you can't parse a partial cddl fragment
     // we must group all files together. To mark scope we insert string constants with
@@ -121,15 +121,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
         println!("\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------", scope, cddl_rule.name());
-        parse_rule(&mut types, &pv, cddl_rule);
+        parse_rule(&mut types, &pv, cddl_rule, &CLI_ARGS);
     }
-    types.finalize(&pv);
+    types.finalize(&pv, &CLI_ARGS);
 
     // Generating code from intermediate form
     println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
     let mut gen_scope = GenerationScope::new();
-    gen_scope.generate(&types);
-    gen_scope.export(&types)?;
+    gen_scope.generate(&types, &CLI_ARGS);
+    gen_scope.export(&types, &CLI_ARGS)?;
     types.print_info();
 
     gen_scope.print_structs_without_deserialize();

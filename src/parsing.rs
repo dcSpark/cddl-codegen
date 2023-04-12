@@ -1,3 +1,4 @@
+use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use either::Either;
@@ -55,6 +56,7 @@ pub fn parse_rule(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     cddl_rule: &cddl::ast::Rule,
+    cli: &Cli,
 ) {
     match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => {
@@ -86,6 +88,7 @@ pub fn parse_rule(
                         choice,
                         None,
                         generic_params,
+                        cli,
                     );
                 } else {
                     parse_type_choices(
@@ -95,6 +98,7 @@ pub fn parse_rule(
                         &rule.value.type_choices,
                         None,
                         generic_params,
+                        cli,
                     );
                 }
             }
@@ -134,6 +138,7 @@ fn parse_type_choices(
     type_choices: &Vec<TypeChoice>,
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    cli: &Cli,
 ) {
     let optional_inner_type = if type_choices.len() == 2 {
         let a = &type_choices[0].type1;
@@ -154,7 +159,7 @@ fn parse_type_choices(
             // but that won't happen with T / null types since we generate an alias instead
             todo!("support foo<T> = T / null");
         }
-        let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2);
+        let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2, cli);
         let final_type = match tag {
             Some(tag) => {
                 RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag)
@@ -167,11 +172,11 @@ fn parse_type_choices(
             AliasInfo::new(final_type, !rule_metadata.no_alias, !rule_metadata.no_alias),
         );
     } else {
-        let variants = create_variants_from_type_choices(types, parent_visitor, type_choices);
-        let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants);
+        let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
+        let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants, cli);
         match generic_params {
             Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
-            None => types.register_rust_struct(parent_visitor, rust_struct),
+            None => types.register_rust_struct(parent_visitor, rust_struct, cli),
         };
     }
 }
@@ -206,6 +211,7 @@ fn parse_control_operator(
     parent_visitor: &ParentVisitor,
     type2: &Type2,
     operator: &Operator,
+    cli: &Cli,
 ) -> ControlOperator {
     let lower_bound = match type2 {
         Type2::Typename { ident, .. } if ident.to_string() == "uint" => Some(0),
@@ -243,9 +249,12 @@ fn parse_control_operator(
             token::ControlOperator::DEFAULT => {
                 ControlOperator::Default(type2_to_fixed_value(&operator.type2))
             }
-            token::ControlOperator::CBOR => {
-                ControlOperator::CBOR(rust_type_from_type2(types, parent_visitor, &operator.type2))
-            }
+            token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(
+                types,
+                parent_visitor,
+                &operator.type2,
+                cli,
+            )),
             token::ControlOperator::EQ => ControlOperator::Range((
                 Some(type2_to_number_literal(&operator.type2) as i128),
                 Some(type2_to_number_literal(&operator.type2) as i128),
@@ -418,6 +427,7 @@ fn parse_type(
     type_choice: &TypeChoice,
     outer_tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    cli: &Cli,
 ) {
     let type1 = &type_choice.type1;
     let rule_metadata = merge_metadata(
@@ -434,11 +444,13 @@ fn parse_type(
                 types.register_rust_struct(
                     parent_visitor,
                     RustStruct::new_extern(type_name.clone()),
+                    cli,
                 );
             } else if ident.ident == RAW_BYTES_MARKER {
                 types.register_rust_struct(
                     parent_visitor,
                     RustStruct::new_raw_bytes(type_name.clone()),
+                    cli,
                 );
             } else {
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
@@ -447,7 +459,7 @@ fn parse_type(
                 let control = type1
                     .operator
                     .as_ref()
-                    .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+                    .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
                 match control {
                     Some(control) => {
                         assert!(
@@ -489,6 +501,7 @@ fn parse_type(
                                             field_type().into(),
                                             Some(min_max),
                                         ),
+                                        cli,
                                     ),
                                 }
                             }
@@ -507,7 +520,7 @@ fn parse_type(
                             },
                             ControlOperator::Default(default_value) => {
                                 let default_type =
-                                    rust_type_from_type2(types, parent_visitor, &type1.type2)
+                                    rust_type_from_type2(types, parent_visitor, &type1.type2, cli)
                                         .default(default_value);
                                 types.register_type_alias(
                                     type_name.clone(),
@@ -521,7 +534,7 @@ fn parse_type(
                         }
                     }
                     None => {
-                        let mut concrete_type = types.new_type(&cddl_ident);
+                        let mut concrete_type = types.new_type(&cddl_ident, cli);
                         if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type
                         {
                             concrete_type.conceptual_type = *ty;
@@ -541,7 +554,12 @@ fn parse_type(
                                             .args
                                             .iter()
                                             .map(|a| {
-                                                rust_type_from_type1(types, parent_visitor, &a.arg)
+                                                rust_type_from_type1(
+                                                    types,
+                                                    parent_visitor,
+                                                    &a.arg,
+                                                    cli,
+                                                )
                                             })
                                             .collect();
                                         types.register_generic_instance(GenericInstance::new(
@@ -560,6 +578,7 @@ fn parse_type(
                                                     concrete_type,
                                                     None,
                                                 ),
+                                                cli,
                                             );
                                         } else {
                                             types.register_type_alias(
@@ -588,6 +607,7 @@ fn parse_type(
                 Representation::Map,
                 outer_tag,
                 generic_params,
+                cli,
             );
         }
         Type2::Array { group, .. } => {
@@ -601,6 +621,7 @@ fn parse_type(
                 Representation::Array,
                 outer_tag,
                 generic_params,
+                cli,
             );
         }
         Type2::TaggedData { tag, t, .. } => {
@@ -627,23 +648,26 @@ fn parse_type(
                             inner_type,
                             *tag,
                             generic_params,
+                            cli,
                         ),
                         Either::Right(ident) => {
-                            let new_type = types.new_type(&CDDLIdent::new(ident.to_string()));
+                            let new_type = types.new_type(&CDDLIdent::new(ident.to_string()), cli);
                             let control = inner_type.type1.operator.as_ref().map(|op| {
                                 parse_control_operator(
                                     types,
                                     parent_visitor,
                                     &inner_type.type1.type2,
                                     op,
+                                    cli,
                                 )
                             });
                             match control {
                                 Some(ControlOperator::CBOR(ty)) => {
                                     let base_type = types
-                                        .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(
-                                            ident.to_string(),
-                                        )))
+                                        .apply_type_aliases(
+                                            &AliasIdent::new(CDDLIdent::new(ident.to_string())),
+                                            cli,
+                                        )
                                         .expect("should not fail since ordered by dep graph")
                                         .0;
                                     assert_eq!(
@@ -689,6 +713,7 @@ fn parse_type(
                                                 new_type,
                                                 Some(min_max),
                                             ),
+                                            cli,
                                         ),
                                     }
                                 }
@@ -697,6 +722,7 @@ fn parse_type(
                                         types,
                                         parent_visitor,
                                         &inner_type.type1.type2,
+                                        cli,
                                     )
                                     .default(default_value)
                                     .tag(tag_unwrap);
@@ -711,9 +737,10 @@ fn parse_type(
                                 }
                                 None => {
                                     let base_type = types
-                                        .apply_type_aliases(&AliasIdent::new(CDDLIdent::new(
-                                            ident.to_string(),
-                                        )))
+                                        .apply_type_aliases(
+                                            &AliasIdent::new(CDDLIdent::new(ident.to_string())),
+                                            cli,
+                                        )
                                         .expect("should not fail since ordered by dep graph")
                                         .0;
                                     types.register_type_alias(
@@ -737,6 +764,7 @@ fn parse_type(
                         &t.type_choices,
                         *tag,
                         generic_params,
+                        cli,
                     );
                 }
             };
@@ -748,7 +776,7 @@ fn parse_type(
             let control = type1
                 .operator
                 .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -773,7 +801,7 @@ fn parse_type(
             let control = type1
                 .operator
                 .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -808,7 +836,7 @@ fn parse_type(
             let control = type1
                 .operator
                 .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
+                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
             let base_type = match control {
                 Some(ControlOperator::Range(min_max)) => {
                     match range_to_primitive(min_max.0, min_max.1) {
@@ -834,12 +862,13 @@ pub fn create_variants_from_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     type_choices: &[TypeChoice],
+    cli: &Cli,
 ) -> Vec<EnumVariant> {
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     type_choices
         .iter()
         .map(|choice| {
-            let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1);
+            let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
             let base_name = match RuleMetadata::from(choice.type1.comments_after_type.as_ref()) {
                 RuleMetadata {
                     name: Some(name), ..
@@ -857,16 +886,18 @@ fn homogeneous_array_element<'a>(
     parent_visitor: &'a ParentVisitor,
     group_choice: &'a GroupChoice<'a>,
     rep: Representation,
+    cli: &Cli,
 ) -> Option<RustType> {
     if let Representation::Array = rep {
         if group_choice.group_entries.len() == 1 {
             let (entry, _has_comma) = &group_choice.group_entries[0];
             let (elem_type, occur) = match entry {
-                GroupEntry::ValueMemberKey { ge, .. } => {
-                    (rust_type(types, parent_visitor, &ge.entry_type), &ge.occur)
-                }
+                GroupEntry::ValueMemberKey { ge, .. } => (
+                    rust_type(types, parent_visitor, &ge.entry_type, cli),
+                    &ge.occur,
+                ),
                 GroupEntry::TypeGroupname { ge, .. } => (
-                    types.new_type(&CDDLIdent::new(ge.name.to_string())),
+                    types.new_type(&CDDLIdent::new(ge.name.to_string()), cli),
                     &ge.occur,
                 ),
                 _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
@@ -1106,12 +1137,13 @@ fn rust_type_from_type1(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     type1: &Type1,
+    cli: &Cli,
 ) -> RustType {
     let control = type1
         .operator
         .as_ref()
-        .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op));
-    let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2);
+        .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
+    let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
     // println!("type1: {:#?}", type1);
     match control {
         Some(ControlOperator::CBOR(ty)) => {
@@ -1150,6 +1182,7 @@ fn rust_type_from_type2(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     type2: &Type2,
+    cli: &Cli,
 ) -> RustType {
     // TODO: socket plugs (used in hash type)
     match &type2 {
@@ -1178,7 +1211,7 @@ fn rust_type_from_type2(
                     let generic_args = args
                         .args
                         .iter()
-                        .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg))
+                        .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
                         .collect::<Vec<_>>();
                     let args_name = generic_args
                         .iter()
@@ -1193,9 +1226,9 @@ fn rust_type_from_type2(
                         generic_ident,
                         generic_args,
                     ));
-                    types.new_type(&instance_cddl_ident)
+                    types.new_type(&instance_cddl_ident, cli)
                 }
-                None => types.new_type(&cddl_ident),
+                None => types.new_type(&cddl_ident, cli),
             }
         }
         Type2::Array { group, .. } => {
@@ -1208,6 +1241,7 @@ fn rust_type_from_type2(
                         parent_visitor,
                         choice,
                         Representation::Array,
+                        cli,
                     ) {
                         // special case for homogenous arrays
                         Some(element_type) => {
@@ -1218,6 +1252,7 @@ fn rust_type_from_type2(
                                     parent_visitor,
                                     element_ident,
                                     Representation::Array,
+                                    cli,
                                 );
                             }
                             ConceptualRustType::Array(Box::new(element_type)).into()
@@ -1242,9 +1277,10 @@ fn rust_type_from_type2(
                                 Representation::Array,
                                 None,
                                 None,
+                                cli,
                             );
                             // we aren't returning an array, but rather a struct where the fields are ordered
-                            types.new_type(&cddl_ident)
+                            types.new_type(&cddl_ident, cli)
                         }
                     }
                 }
@@ -1260,8 +1296,8 @@ fn rust_type_from_type2(
                     match table_types {
                         // Table map - homogenous key/value types
                         Some((domain, range)) => {
-                            let key_type = rust_type_from_type1(types, parent_visitor, domain);
-                            let value_type = rust_type(types, parent_visitor, range);
+                            let key_type = rust_type_from_type1(types, parent_visitor, domain, cli);
+                            let value_type = rust_type(types, parent_visitor, range, cli);
                             // Generate a MapTToV for a { t => v } table-type map as we are an anonymous type
                             // defined as part of another type if we're in this level of parsing.
                             // We also can't have plain groups unlike arrays, so don't try and generate those
@@ -1282,21 +1318,27 @@ fn rust_type_from_type2(
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData { tag, t, .. } => {
             let tag_unwrap = tag.expect("tagged data without tag not supported");
-            rust_type(types, parent_visitor, t).tag(tag_unwrap)
+            rust_type(types, parent_visitor, t, cli).tag(tag_unwrap)
         }
-        Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt),
+        Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt, cli),
         _ => {
             panic!("Ignoring Type2: {:?}", type2);
         }
     }
 }
 
-fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &Type) -> RustType {
+fn rust_type(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    t: &Type,
+    cli: &Cli,
+) -> RustType {
     if t.type_choices.len() == 1 {
         rust_type_from_type1(
             types,
             parent_visitor,
             &t.type_choices.first().unwrap().type1,
+            cli,
         )
     } else {
         if t.type_choices.len() == 2 {
@@ -1308,6 +1350,7 @@ fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &
                     types,
                     parent_visitor,
                     b,
+                    cli,
                 )))
                 .into();
             }
@@ -1316,11 +1359,13 @@ fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &
                     types,
                     parent_visitor,
                     a,
+                    cli,
                 )))
                 .into();
             }
         }
-        let variants = create_variants_from_type_choices(types, parent_visitor, &t.type_choices);
+        let variants =
+            create_variants_from_type_choices(types, parent_visitor, &t.type_choices, cli);
         let mut combined_name = String::new();
         // one caveat: nested types can leave ambiguous names and cause problems like
         // (a / b) / c and a / (b / c) would both be AOrBOrC
@@ -1334,9 +1379,10 @@ fn rust_type(types: &mut IntermediateTypes, parent_visitor: &ParentVisitor, t: &
         let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
         types.register_rust_struct(
             parent_visitor,
-            RustStruct::new_type_choice(combined_ident, None, variants),
+            RustStruct::new_type_choice(combined_ident, None, variants, cli),
+            cli,
         );
-        types.new_type(&CDDLIdent::new(combined_name))
+        types.new_type(&CDDLIdent::new(combined_name), cli)
     }
 }
 
@@ -1356,9 +1402,12 @@ fn group_entry_to_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     entry: &GroupEntry,
+    cli: &Cli,
 ) -> RustType {
     match entry {
-        GroupEntry::ValueMemberKey { ge, .. } => rust_type(types, parent_visitor, &ge.entry_type),
+        GroupEntry::ValueMemberKey { ge, .. } => {
+            rust_type(types, parent_visitor, &ge.entry_type, cli)
+        }
         GroupEntry::TypeGroupname { ge, .. } => {
             if ge.generic_args.is_some() {
                 // I am not sure how we end up with this kind of generic args since definitional ones
@@ -1368,7 +1417,7 @@ fn group_entry_to_type(
                 todo!("If you run into this please create a github issue and include the .cddl that caused it");
             }
             let cddl_ident = CDDLIdent::new(ge.name.to_string());
-            types.new_type(&cddl_ident)
+            types.new_type(&cddl_ident, cli)
         }
         GroupEntry::InlineGroup { .. } => panic!("inline group entries are not implemented"),
     }
@@ -1403,6 +1452,7 @@ fn parse_record_from_group_choice(
     rep: Representation,
     parent_visitor: &ParentVisitor,
     group_choice: &GroupChoice,
+    cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
     let fields = group_choice
@@ -1417,9 +1467,9 @@ fn parse_record_from_group_choice(
                 optional_comma,
             );
             // does not exist for fixed values importantly
-            let field_type = group_entry_to_type(types, parent_visitor, group_entry);
+            let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
-                types.set_rep_if_plain_group(parent_visitor, ident, rep);
+                types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
             }
             let optional_field = group_entry_optional(group_entry);
             let key = match rep {
@@ -1442,26 +1492,27 @@ fn parse_group_choice(
     rep: Representation,
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    cli: &Cli,
 ) {
     let rust_struct = if let Some((domain, range)) = table_domain_range(group_choice, rep) {
         // Table map - homogeneous key/value types
-        let key_type = rust_type_from_type1(types, parent_visitor, domain);
-        let value_type = rust_type(types, parent_visitor, range);
+        let key_type = rust_type_from_type1(types, parent_visitor, domain, cli);
+        let value_type = rust_type(types, parent_visitor, range, cli);
         RustStruct::new_table(name.clone(), tag, key_type, value_type)
     } else if let Some(element_type) =
-        homogeneous_array_element(types, parent_visitor, group_choice, rep)
+        homogeneous_array_element(types, parent_visitor, group_choice, rep, cli)
     {
         // Array - homogeneous element type with proper occurence operator
         RustStruct::new_array(name.clone(), tag, element_type)
     } else {
         // Heterogenous map or array with defined key/value pairs in the cddl like a struct
-        let record = parse_record_from_group_choice(types, rep, parent_visitor, group_choice);
+        let record = parse_record_from_group_choice(types, rep, parent_visitor, group_choice, cli);
         // We need to store this in IntermediateTypes so we can refer from one struct to another.
         RustStruct::new_record(name.clone(), tag, record)
     };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
-        None => types.register_rust_struct(parent_visitor, rust_struct),
+        None => types.register_rust_struct(parent_visitor, rust_struct, cli),
     };
 }
 
@@ -1473,6 +1524,7 @@ pub fn parse_group(
     rep: Representation,
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    cli: &Cli,
 ) {
     if group.group_choices.len() == 1 {
         // Handle simple (no choices) group.
@@ -1484,6 +1536,7 @@ pub fn parse_group(
             rep,
             tag,
             generic_params,
+            cli,
         );
     } else {
         if generic_params.is_some() {
@@ -1510,11 +1563,11 @@ pub fn parse_group(
                 // We might end up doing this anyway to support table-maps in choices though.
                 if group_choice.group_entries.len() == 1 {
                     let group_entry = &group_choice.group_entries.first().unwrap().0;
-                    let ty = group_entry_to_type(types, parent_visitor, group_entry);
+                    let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
                     let serialize_as_embedded =
                         if let ConceptualRustType::Rust(ident) = &ty.conceptual_type {
                             // we might need to generate it if not used elsewhere
-                            types.set_rep_if_plain_group(parent_visitor, ident, rep);
+                            types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
                             types.is_plain_group(ident)
                         } else {
                             false
@@ -1554,6 +1607,7 @@ pub fn parse_group(
                         rep,
                         None,
                         generic_params.clone(),
+                        cli,
                     );
                     let name = VariantIdent::new_rust(variant_name.clone());
                     let variant_ident = ConceptualRustType::Rust(variant_name.clone());
@@ -1573,6 +1627,7 @@ pub fn parse_group(
         types.register_rust_struct(
             parent_visitor,
             RustStruct::new_group_choice(name.clone(), tag, variants, rep),
+            cli,
         );
     }
 }

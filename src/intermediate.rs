@@ -3,7 +3,6 @@ use cbor_event::{Special, Type as CBORType};
 use cddl::ast::parent::ParentVisitor;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::main::CLI_ARGS;
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
@@ -288,9 +287,9 @@ impl<'a> IntermediateTypes<'a> {
     // note: this is mut so that apply_type_aliases() can mark which reserved idents
     // are in the CDDL prelude so we don't generate code for all of them, potentially
     // bloating generated code a bit
-    pub fn new_type(&mut self, raw: &CDDLIdent) -> RustType {
+    pub fn new_type(&mut self, raw: &CDDLIdent, cli: &Cli) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
-        let resolved = match self.apply_type_aliases(&alias_ident) {
+        let resolved = match self.apply_type_aliases(&alias_ident, cli) {
             Some((ty, true)) => ty,
             Some((ty, false)) => ty.as_alias(alias_ident.clone()),
             None => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
@@ -299,7 +298,7 @@ impl<'a> IntermediateTypes<'a> {
             ConceptualRustType::Alias(_, ty) => ty,
             ty => ty,
         };
-        if CLI_ARGS.lock().unwrap().binary_wrappers {
+        if cli.binary_wrappers {
             // if we're not literally bytes/bstr, and instead an alias for it
             // we would have generated a named wrapper object so we should
             // refer to that instead
@@ -324,7 +323,11 @@ impl<'a> IntermediateTypes<'a> {
 
     // see new_type() for why this is mut
     /// returns: (base type, if the alias should be substituted)
-    pub fn apply_type_aliases(&mut self, alias_ident: &AliasIdent) -> Option<(RustType, bool)> {
+    pub fn apply_type_aliases(
+        &mut self,
+        alias_ident: &AliasIdent,
+        cli: &Cli,
+    ) -> Option<(RustType, bool)> {
         // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
         match self.type_aliases.get(alias_ident) {
             Some(alias) => Some((alias.base_type.clone(), !alias.gen_rust_alias)),
@@ -342,7 +345,7 @@ impl<'a> IntermediateTypes<'a> {
                                 "Reserved ident {reserved} not a part of cddl_prelude?"
                             )
                         });
-                        self.emit_prelude(reserved.clone());
+                        self.emit_prelude(reserved.clone(), cli);
                         Some((
                             ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!(
                                 "prelude_{reserved}"
@@ -380,6 +383,7 @@ impl<'a> IntermediateTypes<'a> {
         &mut self,
         parent_visitor: &ParentVisitor,
         rust_struct: RustStruct,
+        cli: &Cli,
     ) {
         match &rust_struct.variant {
             RustStructType::Table { domain, range } => {
@@ -388,6 +392,7 @@ impl<'a> IntermediateTypes<'a> {
                     parent_visitor,
                     domain.clone(),
                     &domain.conceptual_type.name_as_wasm_array(self),
+                    cli,
                 );
                 let mut map_type: RustType =
                     ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
@@ -430,6 +435,7 @@ impl<'a> IntermediateTypes<'a> {
         parent_visitor: &ParentVisitor,
         element_type: RustType,
         array_type_name: &str,
+        cli: &Cli,
     ) -> RustType {
         let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
@@ -440,14 +446,20 @@ impl<'a> IntermediateTypes<'a> {
         // If we are the only thing referring to our element and it's a plain group
         // we must mark it as being serialized as an array
         if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
-            self.set_rep_if_plain_group(parent_visitor, &array_type_ident, Representation::Array);
+            self.set_rep_if_plain_group(
+                parent_visitor,
+                &array_type_ident,
+                Representation::Array,
+                cli,
+            );
         }
-        if CLI_ARGS.lock().unwrap().wasm {
+        if cli.wasm {
             // we don't pass in tags here. If a tag-wrapped array is done I think it generates
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
                 parent_visitor,
                 RustStruct::new_array(array_type_ident, None, element_type.clone()),
+                cli,
             );
         }
         ConceptualRustType::Array(Box::new(element_type)).into()
@@ -464,7 +476,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // call this after all types have been registered
-    pub fn finalize(&mut self, parent_visitor: &ParentVisitor) {
+    pub fn finalize(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
         let resolved_generics = self
@@ -473,7 +485,7 @@ impl<'a> IntermediateTypes<'a> {
             .map(|instance| instance.resolve(self))
             .collect::<Vec<_>>();
         for resolved_instance in resolved_generics {
-            self.register_rust_struct(parent_visitor, resolved_instance);
+            self.register_rust_struct(parent_visitor, resolved_instance, cli);
         }
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types
@@ -532,6 +544,7 @@ impl<'a> IntermediateTypes<'a> {
         parent_visitor: &ParentVisitor,
         ident: &RustIdent,
         rep: Representation,
+        cli: &Cli,
     ) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
@@ -557,6 +570,7 @@ impl<'a> IntermediateTypes<'a> {
                         rep,
                         None,
                         None,
+                        cli,
                     );
                 }
             } else {
@@ -645,7 +659,7 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    fn emit_prelude(&mut self, cddl_name: String) {
+    fn emit_prelude(&mut self, cddl_name: String, cli: &Cli) {
         // we just emit this directly into this scope.
         // due to some referencing others this is the quickest way
         // to support it.
@@ -660,7 +674,7 @@ impl<'a> IntermediateTypes<'a> {
             let cddl = cddl::parser::cddl_from_str(&def, true).unwrap();
             assert_eq!(cddl.rules.len(), 1);
             let pv = ParentVisitor::new(&cddl).unwrap();
-            crate::parsing::parse_rule(self, &pv, cddl.rules.first().unwrap());
+            crate::parsing::parse_rule(self, &pv, cddl.rules.first().unwrap(), cli);
         }
     }
 }
@@ -968,6 +982,7 @@ mod idents {
         }
     }
 }
+use crate::cli::Cli;
 pub use idents::*;
 
 /// Details on how to encode a rust type in CBOR. Order is important
@@ -1258,17 +1273,22 @@ impl ConceptualRustType {
         }
     }
 
-    pub fn name_as_rust_array(&self, types: &IntermediateTypes, from_wasm: bool) -> String {
-        format!("Vec<{}>", self.for_rust_member(types, from_wasm))
+    pub fn name_as_rust_array(
+        &self,
+        types: &IntermediateTypes,
+        from_wasm: bool,
+        cli: &Cli,
+    ) -> String {
+        format!("Vec<{}>", self.for_rust_member(types, from_wasm, cli))
     }
 
     /// Function parameter TYPE that will be moved in
-    pub fn for_rust_move(&self, types: &IntermediateTypes) -> String {
-        self.for_rust_member(types, false)
+    pub fn for_rust_move(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+        self.for_rust_member(types, false, cli)
     }
 
     /// Function parameter TYPE by-non-mut-reference for read-only
-    pub fn _for_rust_read(&self, types: &IntermediateTypes) -> String {
+    pub fn _for_rust_read(&self, types: &IntermediateTypes, cli: &Cli) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type, only here for serialization: {:?}",
@@ -1282,9 +1302,14 @@ impl ConceptualRustType {
                     format!("&{ident}")
                 }
             }
-            Self::Array(ty) => format!("&{}", ty.conceptual_type.name_as_rust_array(types, false)),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type._for_rust_read(types)),
-            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(types, false)),
+            Self::Array(ty) => format!(
+                "&{}",
+                ty.conceptual_type.name_as_rust_array(types, false, cli)
+            ),
+            Self::Optional(ty) => {
+                format!("Option<{}>", ty.conceptual_type._for_rust_read(types, cli))
+            }
+            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(types, false, cli)),
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
                 Self::Rust(_) => format!("&{ident}"),
@@ -1363,12 +1388,13 @@ impl ConceptualRustType {
         k: &RustType,
         v: &RustType,
         from_wasm: bool,
+        cli: &Cli,
     ) -> String {
         format!(
             "{}<{}, {}>",
-            table_type(),
-            k.conceptual_type.for_rust_member(types, from_wasm),
-            v.conceptual_type.for_rust_member(types, from_wasm)
+            table_type(cli),
+            k.conceptual_type.for_rust_member(types, from_wasm, cli),
+            v.conceptual_type.for_rust_member(types, from_wasm, cli)
         )
     }
 
@@ -1395,7 +1421,7 @@ impl ConceptualRustType {
     }
 
     /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
-    pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool) -> String {
+    pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool, cli: &Cli) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
@@ -1404,27 +1430,27 @@ impl ConceptualRustType {
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => {
                 if from_wasm && !types.is_enum(ident) {
-                    crate::generation::rust_crate_struct_from_wasm(types, ident)
+                    crate::generation::rust_crate_struct_from_wasm(types, ident, cli)
                 } else {
                     ident.to_string()
                 }
             }
-            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(types, from_wasm),
+            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(types, from_wasm, cli),
             Self::Optional(ty) => {
                 format!(
                     "Option<{}>",
-                    ty.conceptual_type.for_rust_member(types, from_wasm)
+                    ty.conceptual_type.for_rust_member(types, from_wasm, cli)
                 )
             }
-            Self::Map(k, v) => Self::name_for_rust_map(types, k, v, from_wasm),
+            Self::Map(k, v) => Self::name_for_rust_map(types, k, v, from_wasm, cli),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_rust_member(types, from_wasm),
+                AliasIdent::Reserved(_) => ty.for_rust_member(types, from_wasm, cli),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(rust_ident) => {
                     if from_wasm {
-                        crate::generation::rust_crate_struct_from_wasm(types, rust_ident)
+                        crate::generation::rust_crate_struct_from_wasm(types, rust_ident, cli)
                     } else {
                         ident.to_string()
                     }
@@ -1667,19 +1693,19 @@ impl ConceptualRustType {
     // which evaluates to the length.
     // self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
     // the return of this function will be used.
-    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes) -> String {
+    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes, cli: &Cli) -> String {
         match self.expanded_field_count(types) {
             Some(count) => count.to_string(),
             None => match self {
                 Self::Optional(ty) => format!(
                     "match {} {{ Some(x) => {}, None => 1 }}",
                     self_expr,
-                    ty.conceptual_type.definite_info("x", types)
+                    ty.conceptual_type.definite_info("x", types, cli)
                 ),
                 Self::Rust(ident) => {
                     if types.is_plain_group(ident) {
                         match types.rust_structs.get(ident) {
-                            Some(rs) => rs.definite_info(types),
+                            Some(rs) => rs.definite_info(types, cli),
                             None => panic!(
                                 "rust struct {} not found but referenced by {:?}",
                                 ident, self
@@ -1689,7 +1715,7 @@ impl ConceptualRustType {
                         String::from("1")
                     }
                 }
-                Self::Alias(_ident, ty) => ty.definite_info(self_expr, types),
+                Self::Alias(_ident, ty) => ty.definite_info(self_expr, types, cli),
                 _ => String::from("1"),
             },
         }
@@ -2026,15 +2052,15 @@ impl RustStruct {
         ident: RustIdent,
         tag: Option<usize>,
         variants: Vec<EnumVariant>,
+        cli: &Cli,
     ) -> Self {
         // we could potentially push these encoding vars out too but this is extremely low priority
         // unless people want to have tagged c-style enums encoded in different ways
-        let cant_store_tag = tag.is_some() && CLI_ARGS.lock().unwrap().preserve_encodings;
+        let cant_store_tag = tag.is_some() && cli.preserve_encodings;
         let not_fixed_or_cant_store_enc_vars_or_outer_len =
             variants.iter().any(|ev: &EnumVariant| {
                 ev.serialize_as_embedded_group
-                    || (CLI_ARGS.lock().unwrap().preserve_encodings
-                        && !ev.rust_type().encodings.is_empty())
+                    || (cli.preserve_encodings && !ev.rust_type().encodings.is_empty())
                     || !matches!(
                         ev.rust_type().conceptual_type.resolve_alias_shallow(),
                         ConceptualRustType::Fixed(_)
@@ -2042,8 +2068,7 @@ impl RustStruct {
             });
         if cant_store_tag
             || not_fixed_or_cant_store_enc_vars_or_outer_len
-            || (CLI_ARGS.lock().unwrap().preserve_encodings
-                && !enum_variants_have_same_encoding_var(&variants))
+            || (cli.preserve_encodings && !enum_variants_have_same_encoding_var(&variants))
         {
             Self {
                 ident,
@@ -2146,9 +2171,9 @@ impl RustStruct {
     // Even if fixed_field_count() == None, this will return an expression for
     // a definite length, e.g. with optional field checks in the expression
     // This is useful for definite-length serialization
-    pub fn definite_info(&self, types: &IntermediateTypes) -> String {
+    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
         match &self.variant {
-            RustStructType::Record(record) => record.definite_info(types),
+            RustStructType::Record(record) => record.definite_info(types, cli),
             RustStructType::Table { .. } => String::from("self.0.len() as u64"),
             RustStructType::Array { .. } => String::from("self.0.len() as u64"),
             RustStructType::TypeChoice { .. } => {
@@ -2288,7 +2313,7 @@ impl RustRecord {
     }
 
     // This is guaranteed
-    pub fn definite_info(&self, types: &IntermediateTypes) -> String {
+    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
         match self.fixed_field_count(types) {
             Some(count) => count.to_string(),
             None => {
@@ -2302,13 +2327,16 @@ impl RustRecord {
                         let (field_expr, field_contribution) = match self.rep {
                             Representation::Array => (
                                 "x",
-                                field.rust_type.conceptual_type.definite_info("x", types),
+                                field
+                                    .rust_type
+                                    .conceptual_type
+                                    .definite_info("x", types, cli),
                             ),
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
                         if let Some(default_value) = &field.rust_type.default {
-                            if CLI_ARGS.lock().unwrap().preserve_encodings {
+                            if cli.preserve_encodings {
                                 conditional_field_expr.push_str(&format!(
                                     "if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
                                     field.name,
@@ -2340,10 +2368,12 @@ impl RustRecord {
                                         if !conditional_field_expr.is_empty() {
                                             conditional_field_expr.push_str(" + ");
                                         }
-                                        let field_len_expr = field
-                                            .rust_type
-                                            .conceptual_type
-                                            .definite_info(&format!("self.{}", field.name), types);
+                                        let field_len_expr =
+                                            field.rust_type.conceptual_type.definite_info(
+                                                &format!("self.{}", field.name),
+                                                types,
+                                                cli,
+                                            );
                                         conditional_field_expr.push_str(&field_len_expr);
                                     }
                                 }
