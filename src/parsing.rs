@@ -1484,6 +1484,7 @@ fn parse_record_from_group_choice(
     RustRecord { rep, fields }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_group_choice(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -1516,6 +1517,7 @@ fn parse_group_choice(
     };
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn parse_group(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,

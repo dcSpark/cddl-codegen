@@ -3009,6 +3009,7 @@ fn end_len(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_using_sz(
     body: &mut dyn CodeBlock,
     func: &str,
@@ -3538,6 +3539,7 @@ fn add_deserialize_final_len_check(
 // This (in both options) relies on the use of CBORReadLen at every non-mandatory (if using len_info) element read, or all elements otherwise.
 // * `store_encoding` - If present, creates a variable of the provided name in the deserialization impl as a bool to store if definite was used (true) or indefinite (false)
 // Only generated if generate_deserialize_embedded is false as otherwise we wouldn't have access to it from within the embedded code block as it is declared in the regular Deserialize
+#[allow(clippy::too_many_arguments)]
 fn create_deserialize_impls(
     ident: &RustIdent,
     rep: Option<Representation>,
@@ -3675,6 +3677,7 @@ pub fn table_type(cli: &Cli) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn codegen_table_type(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -4190,6 +4193,7 @@ struct ArrayStructDeserializeCode {
 //    i) all root-level vars/exprs
 //    ii) if Some, all vars/exprs that need to be put inside of an *Encodings struct's constructor
 // so you will need to construct the constructor expression from these
+#[allow(clippy::too_many_arguments)]
 fn generate_array_struct_deserialization(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -5483,7 +5487,7 @@ impl EnumVariantInRust {
         match &variant.data {
             EnumVariantData::RustType(ty) => {
                 let mut enc_fields = if cli.preserve_encodings {
-                    encoding_fields(types, &name, &ty.clone().resolve_aliases(), true, &cli)
+                    encoding_fields(types, &name, &ty.clone().resolve_aliases(), true, cli)
                 } else {
                     vec![]
                 };
@@ -5540,7 +5544,7 @@ impl EnumVariantInRust {
                 for field in record.fields.iter() {
                     if !field.rust_type.is_fixed_value() {
                         names.push(field.name.clone());
-                        enum_types.push(field.rust_type.for_rust_member(types, false, &cli));
+                        enum_types.push(field.rust_type.for_rust_member(types, false, cli));
                     }
                 }
                 for enc_field in &enc_fields {
@@ -5753,6 +5757,7 @@ fn make_enum_variant_return_if_deserialized(
 // if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
 // This is useful for type choicecs which don't have any enclosing array/map tags, and thus don't benefit from exposing a
 // deserialize_as_embedded_group as the behavior would be identical.
+#[allow(clippy::too_many_arguments)]
 fn generate_enum(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
