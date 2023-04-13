@@ -5537,7 +5537,7 @@ impl EnumVariantInRust {
                             &field.name,
                             &field.rust_type.clone().resolve_aliases(),
                             true,
-                            &cli,
+                            cli,
                         ));
                     }
                 }
