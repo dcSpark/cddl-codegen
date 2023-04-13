@@ -13,6 +13,10 @@ pub struct Cli {
     #[clap(short, long, value_parser, value_name = "OUTPUT_DIR")]
     pub output: std::path::PathBuf,
 
+    /// Change the directory of the static files
+    #[clap(short, long, value_parser, value_name = "STATIC_DIR", default_value_os_t = std::path::PathBuf::from("static"))]
+    pub static_dir: std::path::PathBuf,
+
     /// Name to use for exported library.
     /// Will be used directly for rust lib and will have -wasm appended for the wasm bindings.
     /// This will appear EXACTLY as-is in the Cargo.toml's. use Cli::lib_name_code() for use in rust code

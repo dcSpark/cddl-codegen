@@ -3,6 +3,7 @@ use codegen::{Block, TypeAlias};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 
@@ -215,12 +216,12 @@ impl<'a> DeserializeConfig<'a> {
     }
 }
 
-fn concat_files(paths: Vec<&str>) -> std::io::Result<String> {
+fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
     let mut buf = String::new();
     for path in paths {
         buf.push_str(
             &std::fs::read_to_string(path)
-                .map_err(|_| panic!("can't read: {}", path))
+                .map_err(|_| panic!("can't read: {}", path.as_ref().to_str().unwrap()))
                 .unwrap(),
         );
     }
@@ -939,19 +940,22 @@ impl GenerationScope {
             if cli.json_schema_export {
                 std::fs::create_dir_all(cli.output.join("scripts"))?;
                 std::fs::copy(
-                    "static/run-json2ts.js",
+                    cli.static_dir.join("run-json2ts.js"),
                     cli.output.join("scripts/run-json2ts.js"),
                 )?;
                 std::fs::copy(
-                    "static/json-ts-types.js",
+                    cli.static_dir.join("json-ts-types.js"),
                     cli.output.join("scripts/json-ts-types.js"),
                 )?;
                 std::fs::copy(
-                    "static/package_json_schemas.json",
+                    cli.static_dir.join("package_json_schemas.json"),
                     cli.output.join("package.json"),
                 )?;
             } else {
-                std::fs::copy("static/package.json", cli.output.join("package.json"))?;
+                std::fs::copy(
+                    cli.static_dir.join("package.json"),
+                    cli.output.join("package.json"),
+                )?;
             }
             cli.output.join("rust")
         } else {
@@ -993,21 +997,27 @@ impl GenerationScope {
         )?;
 
         // serialiation.rs / {module}/serialization.rs files (if input is a directory)
-        let mut serialize_paths = vec!["static/serialization.rs"];
+        let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
         if cli.preserve_encodings {
-            serialize_paths.push("static/serialization_preserve.rs");
+            serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
             if cli.canonical_form {
-                serialize_paths.push("static/serialization_preserve_force_canonical.rs");
+                serialize_paths.push(
+                    cli.static_dir
+                        .join("serialization_preserve_force_canonical.rs"),
+                );
             } else {
-                serialize_paths.push("static/serialization_preserve_non_force_canonical.rs");
-                serialize_paths.push("static/serialization_non_force_canonical.rs");
+                serialize_paths.push(
+                    cli.static_dir
+                        .join("serialization_preserve_non_force_canonical.rs"),
+                );
+                serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
             }
         } else {
-            serialize_paths.push("static/serialization_non_preserve.rs");
-            serialize_paths.push("static/serialization_non_force_canonical.rs");
+            serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
+            serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
         }
         let mut merged_rust_serialize_scope = codegen::Scope::new();
-        merged_rust_serialize_scope.raw(concat_files(serialize_paths)?);
+        merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
         merge_scopes_and_export(
             rust_dir.join("rust/src"),
@@ -1033,7 +1043,7 @@ impl GenerationScope {
         }
 
         // Cargo.toml
-        let mut rust_cargo_toml = std::fs::read_to_string("static/Cargo_rust.toml")?;
+        let mut rust_cargo_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_rust.toml"))?;
         if cli.preserve_encodings {
             rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
             rust_cargo_toml.push_str("derivative = \"2.2.0\"\n");
@@ -1062,18 +1072,23 @@ impl GenerationScope {
         )?;
 
         // error.rs
-        std::fs::copy("static/error.rs", rust_dir.join("rust/src/error.rs"))?;
+        std::fs::copy(
+            cli.static_dir.join("error.rs"),
+            rust_dir.join("rust/src/error.rs"),
+        )?;
 
         // ordered_hash_map.rs
         if cli.preserve_encodings {
-            let mut ordered_hash_map_rs = std::fs::read_to_string("static/ordered_hash_map.rs")?;
+            let mut ordered_hash_map_rs =
+                std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
             if cli.json_serde_derives {
-                ordered_hash_map_rs
-                    .push_str(&std::fs::read_to_string("static/ordered_hash_map_json.rs")?);
+                ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("ordered_hash_map_json.rs"),
+                )?);
             }
             if cli.json_schema_export {
                 ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                    "static/ordered_hash_map_schemars.rs",
+                    cli.static_dir.join("ordered_hash_map_schemars.rs"),
                 )?);
             }
             std::fs::write(
@@ -1093,7 +1108,7 @@ impl GenerationScope {
                 "mod.rs",
             )?;
             // Cargo.toml
-            let mut wasm_toml = std::fs::read_to_string("static/Cargo_wasm.toml")?;
+            let mut wasm_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_wasm.toml"))?;
             if cli.json_serde_derives {
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
                 wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
@@ -1107,10 +1122,8 @@ impl GenerationScope {
         // json-gen crate for exporting JSON schemas
         if cli.json_schema_export {
             std::fs::create_dir_all(rust_dir.join("wasm/json-gen/src"))?;
-            let json_gen_toml = std::fs::read_to_string(
-                std::path::PathBuf::from_str("static/Cargo_json_gen.toml").unwrap(),
-            )
-            .unwrap();
+            let json_gen_toml =
+                std::fs::read_to_string(cli.static_dir.join("Cargo_json_gen.toml")).unwrap();
             std::fs::write(
                 rust_dir.join("wasm/json-gen/Cargo.toml"),
                 json_gen_toml.replace("cddl-lib", &cli.lib_name),
