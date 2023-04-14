@@ -1121,7 +1121,7 @@ fn rust_type_from_type1(
             ));
             ty.as_bytes()
         }
-        Some(ControlOperator::Range(min_max)) => match &type1.type2 {
+        Some(ControlOperator::Range((low, high))) => match &type1.type2 {
             Type2::Typename { ident, .. }
                 if ident.to_string() == "uint"
                     || ident.to_string() == "int"
@@ -1130,15 +1130,21 @@ fn rust_type_from_type1(
                     || ident.to_string() == "float32"
                     || ident.to_string() == "float64" =>
             {
-                match range_to_primitive(min_max.0, min_max.1) {
+                match range_to_primitive(low, high) {
                     Some(t) => t.into(),
                     None => panic!(
-                        "unsupported range for {:?}: {:?}",
+                        "unsupported range for {:?}: {:?}. Issue: https://github.com/dcSpark/cddl-codegen/issues/173",
                         ident.to_string().as_str(),
                         control
                     ),
                 }
-            }
+            },
+            // the base value will be a constant due to incomplete parsing earlier for explicit ranges
+            // e.g. foo = 0..255
+            Type2::IntValue { .. } |
+            Type2::UintValue { .. } => range_to_primitive(low, high)
+                .map(Into::into)
+                .expect("unsupported ranges. Only integer ranges mapping to primitives supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/173"),
             _ => base_type,
         },
         Some(ControlOperator::Default(default_value)) => base_type.default(default_value),
