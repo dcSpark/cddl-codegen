@@ -3335,6 +3335,16 @@ fn add_deserialize_initial_len_check(deser_body: &mut dyn CodeBlock, len_info: R
             if fixed != 0 {
                 deser_body.line(&format!("read_len.read_elems({fixed})?;"));
             }
+            // We MUST check even in the fixed case, as you might be parsing something that
+            // is a CBOR prefix field-wise to your data e.g.:
+            //   foo = [uint, bytes]
+            //   bar = [uint, bytes, str]
+            // would have any bar be parsable as foo (problematic when we have foo / bar in a choice)
+            // so we must ensure we end up with precisely 0 left over at the end even in fixed cases.
+            // We do the check right away instead of waiting. We don't do this inside of
+            // add_deserialize_final_len_check for all variants as some enum use-cases
+            // break as they rely on being able to do the final check without read_len
+            deser_body.line("read_len.finish()?;");
         }
     }
 }
@@ -5926,6 +5936,8 @@ fn generate_enum(
     // A possible workaround for this could be to read it beforehand if possible but
     // that gets complicated for optional fields inside those plain groups so we'll
     // just avoid this check instead for this one case.
+    // This can cause issues when there are overlapping (CBOR field-wise) variants inlined here.
+    // Issue: https://github.com/dcSpark/cddl-codegen/issues/175
     add_deserialize_final_len_check(deser_body, rep, RustStructCBORLen::Fixed(0));
     deser_body.line(&format!(
         "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched))"

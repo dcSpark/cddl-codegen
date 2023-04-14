@@ -118,3 +118,15 @@ inline_wrapper = [{ * text => text }]
 
 top_level_array = [* uint]
 top_level_single_elem = [uint]
+
+overlapping_inlined = [
+	0 //
+	0, uint //
+	0, uint, text
+]
+
+overlapping0 = [0]
+overlapping1 = [0, uint]
+overlapping2 = [0, uint, text]
+
+overlapping = overlapping0 / overlapping1 / overlapping2
