@@ -176,11 +176,16 @@ fn parse_type_choices(
     }
 }
 
-fn type2_to_number_literal(type2: &Type2) -> isize {
+fn type2_to_number_literal(type2: &Type2) -> i128 {
     match type2 {
-        Type2::UintValue { value, .. } => *value as isize,
-        Type2::IntValue { value, .. } => *value,
-        Type2::FloatValue { value, .. } => *value as isize,
+        Type2::UintValue { value, .. } => *value as i128,
+        Type2::IntValue { value, .. } => *value as i128,
+        Type2::FloatValue { value, .. } => {
+            // FloatToInt trait still experimental so just directly check
+            let as_int = *value as i128;
+            assert_eq!(as_int as f64, *value, "decimal not supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/178");
+            as_int
+        },
         _ => panic!(
             "Value specified: {:?} must be a number literal to be used here",
             type2
@@ -216,15 +221,15 @@ fn parse_control_operator(
     match operator.operator {
         RangeCtlOp::RangeOp { is_inclusive, .. } => {
             let range_start = match type2 {
-                Type2::UintValue { value, .. } => *value as isize,
-                Type2::IntValue { value, .. } => *value,
-                Type2::FloatValue { value, .. } => *value as isize,
+                Type2::UintValue { value, .. } => *value as i128,
+                Type2::IntValue { value, .. } => *value as i128,
+                Type2::FloatValue { value, .. } => *value as i128,
                 _ => panic!("Number expected as range start. Found {:?}", type2),
             };
             let range_end = match operator.type2 {
-                Type2::UintValue { value, .. } => value as isize,
-                Type2::IntValue { value, .. } => value,
-                Type2::FloatValue { value, .. } => value as isize,
+                Type2::UintValue { value, .. } => value as i128,
+                Type2::IntValue { value, .. } => value as i128,
+                Type2::FloatValue { value, .. } => value as i128,
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
             ControlOperator::Range((
