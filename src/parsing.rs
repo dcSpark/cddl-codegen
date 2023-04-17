@@ -183,9 +183,12 @@ fn type2_to_number_literal(type2: &Type2) -> i128 {
         Type2::FloatValue { value, .. } => {
             // FloatToInt trait still experimental so just directly check
             let as_int = *value as i128;
-            assert_eq!(as_int as f64, *value, "decimal not supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/178");
+            assert_eq!(
+                as_int as f64, *value,
+                "decimal not supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/178"
+            );
             as_int
-        },
+        }
         _ => panic!(
             "Value specified: {:?} must be a number literal to be used here",
             type2
