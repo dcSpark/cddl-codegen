@@ -236,11 +236,11 @@ fn parse_control_operator(
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
             ControlOperator::Range((
-                Some(range_start as i128),
+                Some(range_start),
                 Some(if is_inclusive {
-                    range_end as i128
+                    range_end
                 } else {
-                    (range_end + 1) as i128
+                    range_end + 1
                 }),
             ))
         }
@@ -255,31 +255,29 @@ fn parse_control_operator(
                 ControlOperator::CBOR(rust_type_from_type2(types, parent_visitor, &operator.type2))
             }
             token::ControlOperator::EQ => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2) as i128),
-                Some(type2_to_number_literal(&operator.type2) as i128),
+                Some(type2_to_number_literal(&operator.type2)),
+                Some(type2_to_number_literal(&operator.type2)),
             )),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
             token::ControlOperator::NE => ControlOperator::Range((
-                Some((type2_to_number_literal(&operator.type2) + 1) as i128),
-                Some((type2_to_number_literal(&operator.type2) - 1) as i128),
+                Some(type2_to_number_literal(&operator.type2) + 1),
+                Some(type2_to_number_literal(&operator.type2) - 1),
             )),
             token::ControlOperator::LE => ControlOperator::Range((
                 lower_bound,
-                Some(type2_to_number_literal(&operator.type2) as i128),
+                Some(type2_to_number_literal(&operator.type2)),
             )),
             token::ControlOperator::LT => ControlOperator::Range((
                 lower_bound,
-                Some((type2_to_number_literal(&operator.type2) - 1) as i128),
+                Some(type2_to_number_literal(&operator.type2) - 1),
             )),
-            token::ControlOperator::GE => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2) as i128),
-                None,
-            )),
-            token::ControlOperator::GT => ControlOperator::Range((
-                Some((type2_to_number_literal(&operator.type2) + 1) as i128),
-                None,
-            )),
+            token::ControlOperator::GE => {
+                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), None))
+            }
+            token::ControlOperator::GT => {
+                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None))
+            }
             token::ControlOperator::SIZE => {
                 let base_range = match &operator.type2 {
                     Type2::UintValue { value, .. } => {
