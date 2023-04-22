@@ -6428,13 +6428,10 @@ fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum
         }
     }
     if !std_derives.is_empty() {
-        std_predicates.insert(0, format!("derive({})", std_derives.join(", ")).to_string());
+        std_predicates.insert(0, format!("derive({})", std_derives.join(", ")));
     }
     if !std_predicates.is_empty() {
-        data_type.cfg_attr(&*format!(
-            "feature = \"std\", {}",
-            std_predicates.join(", ")
-        ));
+        data_type.cfg_attr(&format!("feature = \"std\", {}", std_predicates.join(", ")));
     }
 }
 
