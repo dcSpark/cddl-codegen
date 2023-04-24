@@ -349,7 +349,7 @@ checksum = "8a2dd5a6fe8c6e3502f568a6353e5273bbb15193ad9a89e457b9970798efbea1"
 [[package]]
 name = "codegen"
 version = "0.2.0"
-source = "git+https://github.com/dcSpark/codegen?branch=master#a31b2eff7adfd65dfdb10d6a4d7a83bd2f5d6010"
+source = "git+https://github.com/dcSpark/codegen?branch=master#c8273c6ab7af2337b845c7674f36e265890ca3d0"
 dependencies = [
  "indexmap",
  "quote",
