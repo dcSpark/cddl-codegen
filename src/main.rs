@@ -7,9 +7,6 @@ pub(crate) mod parsing;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
 
-#[cfg(test)]
-mod test;
-
 use generation::GenerationScope;
 use intermediate::{CDDLIdent, IntermediateTypes, RustIdent};
 use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
@@ -133,3 +130,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test;
