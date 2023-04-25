@@ -54,26 +54,26 @@ u8 = uint .size 1
 u16 = uint .le 65535
 u32 = 0..4294967295
 u64 = uint .size 8 ; 8 bytes
-i8 = -128..127
+i8 = -128 .. 127
 i64 = int .size 8 ; 8 bytes
 
 signed_ints = [
-	u_8: uint .size 1,
+	u_8: 0 .. 255,
 	u_16: uint .size 2,
 	u_32: uint .size 4,
-	u_64: uint .size 8,
+	u_64: uint .le 18446744073709551615,
 	i_8: int .size 1,
 	i_16: int .size 2,
-	i_32: int .size 4,
+	i_32: -2147483648 .. 2147483647,
 	i_64: int .size 8,
-	n_64: nint
+	n_64: nint,
 	u64_max: 18446744073709551615,
 	; this test assumes i64::BITS == isize::BITS (i.e. 64-bit programs) or else the cddl parsing lib would mess up
 	; if this test fails on your platform we might need to either remove this part
 	; or make a fix for the cddl library.
 	; The fix would be ideal as even though the true min in CBOR would be -u64::MAX
 	; we can't test that since isize::BITS is never > 64 in any normal system and likely never will be
-	i64_min: -9223372036854775808
+	i64_min: -9223372036854775808,
 ]
 
 default_uint = uint .default 1337
@@ -96,9 +96,10 @@ no_alias = [
 
 external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 
-externs = [
-	external_foo
-]
+externs = {
+    req: external_foo,
+  ? opt: external_foo,
+}
 
 ; types below test codegen_table_type
 

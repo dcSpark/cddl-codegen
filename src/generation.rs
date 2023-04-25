@@ -2112,7 +2112,12 @@ impl GenerationScope {
             SerializingRustType::Root(ConceptualRustType::Rust(ident)) => {
                 match &types.rust_struct(ident).unwrap().variant() {
                     RustStructType::CStyleEnum { variants } => {
-                        // if let Some(common) = enum_variants_common_constant_type(variants) {
+                        if config.optional_field {
+                            deser_code.content.line("read_len.read_elems(1)?;");
+                            deser_code.throws = true;
+                            deser_code.read_len_used = true;
+                        }
+                        // iflet Some(common) = enum_variants_common_constant_type(variants) {
                         //     // TODO: potentially simplified deserialization some day
                         //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                         // } else {
@@ -2152,6 +2157,11 @@ impl GenerationScope {
                     ));
                     }
                     RustStructType::RawBytesType => {
+                        if config.optional_field {
+                            deser_code.content.line("read_len.read_elems(1)?;");
+                            deser_code.throws = true;
+                            deser_code.read_len_used = true;
+                        }
                         let error_convert = ".map_err(Into::<DeserializeError>::into)";
                         if cli.preserve_encodings {
                             config

@@ -181,11 +181,19 @@ fn parse_type_choices(
     }
 }
 
-fn type2_to_number_literal(type2: &Type2) -> isize {
+fn type2_to_number_literal(type2: &Type2) -> i128 {
     match type2 {
-        Type2::UintValue { value, .. } => *value as isize,
-        Type2::IntValue { value, .. } => *value,
-        Type2::FloatValue { value, .. } => *value as isize,
+        Type2::UintValue { value, .. } => *value as i128,
+        Type2::IntValue { value, .. } => *value as i128,
+        Type2::FloatValue { value, .. } => {
+            // FloatToInt trait still experimental so just directly check
+            let as_int = *value as i128;
+            assert_eq!(
+                as_int as f64, *value,
+                "decimal not supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/178"
+            );
+            as_int
+        }
         _ => panic!(
             "Value specified: {:?} must be a number literal to be used here",
             type2
@@ -222,23 +230,23 @@ fn parse_control_operator(
     match operator.operator {
         RangeCtlOp::RangeOp { is_inclusive, .. } => {
             let range_start = match type2 {
-                Type2::UintValue { value, .. } => *value as isize,
-                Type2::IntValue { value, .. } => *value,
-                Type2::FloatValue { value, .. } => *value as isize,
+                Type2::UintValue { value, .. } => *value as i128,
+                Type2::IntValue { value, .. } => *value as i128,
+                Type2::FloatValue { value, .. } => *value as i128,
                 _ => panic!("Number expected as range start. Found {:?}", type2),
             };
             let range_end = match operator.type2 {
-                Type2::UintValue { value, .. } => value as isize,
-                Type2::IntValue { value, .. } => value,
-                Type2::FloatValue { value, .. } => value as isize,
+                Type2::UintValue { value, .. } => value as i128,
+                Type2::IntValue { value, .. } => value as i128,
+                Type2::FloatValue { value, .. } => value as i128,
                 _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
             };
             ControlOperator::Range((
-                Some(range_start as i128),
+                Some(range_start),
                 Some(if is_inclusive {
-                    range_end as i128
+                    range_end
                 } else {
-                    (range_end + 1) as i128
+                    range_end + 1
                 }),
             ))
         }
@@ -256,31 +264,29 @@ fn parse_control_operator(
                 cli,
             )),
             token::ControlOperator::EQ => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2) as i128),
-                Some(type2_to_number_literal(&operator.type2) as i128),
+                Some(type2_to_number_literal(&operator.type2)),
+                Some(type2_to_number_literal(&operator.type2)),
             )),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
             token::ControlOperator::NE => ControlOperator::Range((
-                Some((type2_to_number_literal(&operator.type2) + 1) as i128),
-                Some((type2_to_number_literal(&operator.type2) - 1) as i128),
+                Some(type2_to_number_literal(&operator.type2) + 1),
+                Some(type2_to_number_literal(&operator.type2) - 1),
             )),
             token::ControlOperator::LE => ControlOperator::Range((
                 lower_bound,
-                Some(type2_to_number_literal(&operator.type2) as i128),
+                Some(type2_to_number_literal(&operator.type2)),
             )),
             token::ControlOperator::LT => ControlOperator::Range((
                 lower_bound,
-                Some((type2_to_number_literal(&operator.type2) - 1) as i128),
+                Some(type2_to_number_literal(&operator.type2) - 1),
             )),
-            token::ControlOperator::GE => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2) as i128),
-                None,
-            )),
-            token::ControlOperator::GT => ControlOperator::Range((
-                Some((type2_to_number_literal(&operator.type2) + 1) as i128),
-                None,
-            )),
+            token::ControlOperator::GE => {
+                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), None))
+            }
+            token::ControlOperator::GT => {
+                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None))
+            }
             token::ControlOperator::SIZE => {
                 let base_range = match &operator.type2 {
                     Type2::UintValue { value, .. } => {
@@ -1153,7 +1159,7 @@ fn rust_type_from_type1(
             ));
             ty.as_bytes()
         }
-        Some(ControlOperator::Range(min_max)) => match &type1.type2 {
+        Some(ControlOperator::Range((low, high))) => match &type1.type2 {
             Type2::Typename { ident, .. }
                 if ident.to_string() == "uint"
                     || ident.to_string() == "int"
@@ -1162,15 +1168,21 @@ fn rust_type_from_type1(
                     || ident.to_string() == "float32"
                     || ident.to_string() == "float64" =>
             {
-                match range_to_primitive(min_max.0, min_max.1) {
+                match range_to_primitive(low, high) {
                     Some(t) => t.into(),
                     None => panic!(
-                        "unsupported range for {:?}: {:?}",
+                        "unsupported range for {:?}: {:?}. Issue: https://github.com/dcSpark/cddl-codegen/issues/173",
                         ident.to_string().as_str(),
                         control
                     ),
                 }
-            }
+            },
+            // the base value will be a constant due to incomplete parsing earlier for explicit ranges
+            // e.g. foo = 0..255
+            Type2::IntValue { .. } |
+            Type2::UintValue { .. } => range_to_primitive(low, high)
+                .map(Into::into)
+                .expect("unsupported ranges. Only integer ranges mapping to primitives supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/173"),
             _ => base_type,
         },
         Some(ControlOperator::Default(default_value)) => base_type.default(default_value),
