@@ -7,9 +7,6 @@ pub(crate) mod parsing;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
 
-#[cfg(test)]
-mod test;
-
 use clap::Parser;
 use cli::Cli;
 use generation::GenerationScope;
@@ -136,3 +133,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test;
