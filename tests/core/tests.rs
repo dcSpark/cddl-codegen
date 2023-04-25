@@ -288,7 +288,8 @@ mod tests {
             std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs"))
                 .unwrap();
         // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
-        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        let lib_rs =
+            &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]\nmod tests").unwrap()];
         // these don't have @no_alias
         assert!(lib_rs.contains("pub type I8 = i8;"));
         assert!(lib_rs.contains("pub type I64 = i64;"));
