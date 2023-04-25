@@ -96,9 +96,10 @@ no_alias = [
 
 external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 
-externs = [
-	external_foo
-]
+externs = {
+    req: external_foo,
+  ? opt: external_foo,
+}
 
 ; types below test codegen_table_type
 

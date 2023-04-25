@@ -1641,14 +1641,17 @@ impl ConceptualRustType {
                 // differing sizes when Null vs Some
                 _ => None,
             },
-            // TODO: instead of returning None when ident doesn't exist, throw error.
-            // Once we split up parsing and codegen this shouldn't happen but with our current multi-pass
-            // approach we might have out of order struct references which would break here without it
-            // but on the final pass (the one we export) this should't be an issue
             Self::Rust(ident) => {
                 if types.is_plain_group(ident) {
-                    types.rust_structs.get(ident)?.fixed_field_count(types)
+                    match types.rust_structs.get(ident) {
+                        Some(rs) => rs.fixed_field_count(types),
+                        None => panic!(
+                            "rust struct {} not found but referenced by {:?}",
+                            ident, self
+                        ),
+                    }
                 } else {
+                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
                     Some(1)
                 }
             }
@@ -1680,6 +1683,7 @@ impl ConceptualRustType {
                             ),
                         }
                     } else {
+                        // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
                         String::from("1")
                     }
                 }
@@ -1700,13 +1704,15 @@ impl ConceptualRustType {
             },
             Self::Rust(ident) => {
                 if types.is_plain_group(ident) {
-                    println!("ident: {ident}");
                     match types.rust_structs.get(ident) {
                         Some(x) => x.expanded_mandatory_field_count(types),
-                        None => panic!("could not find ident: {}", ident),
+                        None => panic!(
+                            "rust struct {} not found but referenced by {:?}",
+                            ident, self
+                        ),
                     }
-                    //types.rust_structs.get(&ident).unwrap().expanded_mandatory_field_count(types)
                 } else {
+                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
                     1
                 }
             }

@@ -179,7 +179,10 @@ mod tests {
 
     #[test]
     fn externs() {
-        let externs = Externs::new(ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]));
+        let ext_foo = ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);
+        let mut externs = Externs::new(ext_foo.clone());
+        deser_test(&externs);
+        externs.opt = Some(ext_foo);
         deser_test(&externs);
     }
 
