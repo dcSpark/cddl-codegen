@@ -220,7 +220,12 @@ fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
     for path in paths {
         buf.push_str(
             &std::fs::read_to_string(path)
-                .map_err(|_| panic!("can't read: {}", path.as_ref().to_str().unwrap()))
+                .map_err(|_| {
+                    panic!(
+                        "can't read: {}",
+                        path.as_ref().to_str().unwrap_or("Path is not in unicode")
+                    )
+                })
                 .unwrap(),
         );
     }
