@@ -305,11 +305,10 @@ mod tests {
 
     #[test]
     fn externs() {
-        let externs = Externs::new(ExternalFoo::new(
-            436,
-            String::from("jfkdsjfd"),
-            vec![1, 1, 1],
-        ));
+        let ext_foo = ExternalFoo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);
+        let mut externs = Externs::new(ext_foo.clone());
+        deser_test(&externs);
+        externs.opt = Some(ext_foo);
         deser_test(&externs);
     }
 
@@ -324,5 +323,26 @@ mod tests {
         deser_test(&arr2);
         arr2.index_0 *= arr2.index_0;
         assert_eq!(arr2.index_0, 81);
+    }
+
+    #[test]
+    fn overlapping() {
+        let overlap0 = Overlapping::new_overlapping0(Overlapping0::new());
+        deser_test(&overlap0);
+        let overlap1 = Overlapping::new_overlapping1(Overlapping1::new(9));
+        deser_test(&overlap1);
+        let overlap2 = Overlapping::new_overlapping2(Overlapping2::new(5, "overlapping".into()));
+        deser_test(&overlap2);
+    }
+
+    #[test]
+    fn overlapping_inlined() {
+        // this test won't work until https://github.com/dcSpark/cddl-codegen/issues/175 is resolved.
+        let overlap0 = OverlappingInlined::new_i0();
+        deser_test(&overlap0);
+        let overlap1 = OverlappingInlined::new_overlapping_inlined1(9);
+        //deser_test(&overlap1);
+        let overlap2 = OverlappingInlined::new_overlapping_inlined2(5, "overlapping".into());
+        //deser_test(&overlap2);
     }
 }

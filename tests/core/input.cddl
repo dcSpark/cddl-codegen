@@ -96,9 +96,10 @@ no_alias = [
 
 external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 
-externs = [
-	external_foo
-]
+externs = {
+    req: external_foo,
+  ? opt: external_foo,
+}
 
 ; types below test codegen_table_type
 
@@ -118,3 +119,15 @@ inline_wrapper = [{ * text => text }]
 
 top_level_array = [* uint]
 top_level_single_elem = [uint]
+
+overlapping_inlined = [
+	0 //
+	0, uint //
+	0, uint, text
+]
+
+overlapping0 = [0]
+overlapping1 = [0, uint]
+overlapping2 = [0, uint, text]
+
+overlapping = overlapping0 / overlapping1 / overlapping2
