@@ -7,11 +7,14 @@ pub(crate) mod parsing;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
 
+use clap::Parser;
+use cli::Cli;
 use generation::GenerationScope;
 use intermediate::{CDDLIdent, IntermediateTypes, RustIdent};
+use once_cell::sync::Lazy;
 use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
 
-use cli::CLI_ARGS;
+pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
 
 fn cddl_paths(
     output: &mut Vec<std::path::PathBuf>,
@@ -115,15 +118,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
         println!("\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------", scope, cddl_rule.name());
-        parse_rule(&mut types, &pv, cddl_rule);
+        parse_rule(&mut types, &pv, cddl_rule, &CLI_ARGS);
     }
-    types.finalize(&pv);
+    types.finalize(&pv, &CLI_ARGS);
 
     // Generating code from intermediate form
     println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
     let mut gen_scope = GenerationScope::new();
-    gen_scope.generate(&types);
-    gen_scope.export(&types)?;
+    gen_scope.generate(&types, &CLI_ARGS);
+    gen_scope.export(&types, &CLI_ARGS)?;
     types.print_info();
 
     gen_scope.print_structs_without_deserialize();
