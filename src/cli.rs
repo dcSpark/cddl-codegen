@@ -1,9 +1,8 @@
 use clap::Parser;
-use once_cell::sync::Lazy;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Default, Parser)]
 #[clap()]
 pub struct Cli {
     /// Input .cddl file to generate from. If this is a directory then it will read all *.cddl files and generate one output for each.
@@ -13,6 +12,10 @@ pub struct Cli {
     /// Output directory for the generated code.
     #[clap(short, long, value_parser, value_name = "OUTPUT_DIR")]
     pub output: std::path::PathBuf,
+
+    /// Change the directory of the static files
+    #[clap(short, long, value_parser, value_name = "STATIC_DIR", default_value_os_t = std::path::PathBuf::from("static"))]
+    pub static_dir: std::path::PathBuf,
 
     /// Name to use for exported library.
     /// Will be used directly for rust lib and will have -wasm appended for the wasm bindings.
@@ -68,5 +71,3 @@ impl Cli {
         self.lib_name.replace('-', "_")
     }
 }
-
-pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
