@@ -11,6 +11,9 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: './docs'
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v3
@@ -20,11 +23,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        working-directory: ./docs
 
       - name: Build website
         run: npm run build
-        working-directory: ./docs
 
       # Popular action to deploy to GitHub Pages:
       # Docs: https://github.com/peaceiris/actions-gh-pages#%EF%B8%8F-docusaurus
