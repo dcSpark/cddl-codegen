@@ -9,7 +9,7 @@ const config = {
   title: "cddl-codegen",
   tagline: 'Getting started',
   url: "https://dcspark.github.io",
-  baseUrl: "/",
+  baseUrl: "/cddl-codegen/",
   onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
   favicon: "img/favicon.svg",
