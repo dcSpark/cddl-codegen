@@ -212,6 +212,7 @@ dependencies = [
  "either",
  "nom",
  "once_cell",
+ "pathdiff",
  "quote",
  "syn 2.0.12",
  "which",
@@ -856,6 +857,12 @@ dependencies = [
  "smallvec",
  "windows-sys 0.42.0",
 ]
+
+[[package]]
+name = "pathdiff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
 
 [[package]]
 name = "pest"

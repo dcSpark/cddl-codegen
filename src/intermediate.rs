@@ -10,6 +10,34 @@ use crate::utils::{
     is_identifier_user_defined,
 };
 
+use once_cell::sync::Lazy;
+pub const ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ModuleScope(Vec<String>);
+
+impl ModuleScope {
+    pub fn new(scope: Vec<String>) -> Self {
+        Self::from(scope)
+    }
+
+    pub fn components(&self) -> &Vec<String> {
+        &self.0
+    }
+}
+
+impl From<Vec<String>> for ModuleScope {
+    fn from(scope: Vec<String>) -> Self {
+        Self(scope)
+    }
+}
+
+impl std::fmt::Display for ModuleScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.join("::"))
+    }
+}
+
 #[derive(Debug)]
 pub struct AliasInfo {
     pub base_type: RustType,
@@ -44,7 +72,10 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
-    scopes: BTreeMap<RustIdent, String>,
+    scopes: BTreeMap<RustIdent, ModuleScope>,
+    // for scope() to work we keep this here.
+    // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
+    root_scope: ModuleScope,
 }
 
 impl Default for IntermediateTypes<'_> {
@@ -70,6 +101,7 @@ impl<'a> IntermediateTypes<'a> {
             news_can_fail: BTreeSet::new(),
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
+            root_scope: ROOT_SCOPE.clone(),
         }
     }
 
@@ -112,30 +144,30 @@ impl<'a> IntermediateTypes<'a> {
     pub fn scope_references(
         &self,
         wasm: bool,
-    ) -> BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>> {
+    ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
         let mut refs = BTreeMap::new();
         fn set_ref(
-            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
-            current_scope: &str,
+            current_scope: &ModuleScope,
             rust_ident: &RustIdent,
         ) {
             let ref_scope = types.scope(rust_ident);
             if current_scope != ref_scope {
-                refs.entry(current_scope.to_owned())
+                refs.entry(current_scope.clone())
                     .or_default()
-                    .entry(ref_scope.to_owned())
+                    .entry(ref_scope.clone())
                     .or_default()
                     .insert(rust_ident.clone());
             }
         }
         fn mark_refs(
-            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
-            current_scope: &str,
+            current_scope: &ModuleScope,
             ty: &RustType,
         ) {
             match &ty.conceptual_type {
@@ -148,7 +180,10 @@ impl<'a> IntermediateTypes<'a> {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    if wasm && !elem_ty.directly_wasm_exposable(types) && current_scope != "lib" {
+                    if wasm
+                        && !elem_ty.directly_wasm_exposable(types)
+                        && *current_scope != *ROOT_SCOPE
+                    {
                         // TODO: we should be doing array wrappers where they are declared or used,
                         // but for the latter, what to do if multiple places use it? default to lib?
                         // issue: https://github.com/dcSpark/cddl-codegen/issues/138
@@ -156,7 +191,7 @@ impl<'a> IntermediateTypes<'a> {
                             RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array(types)));
                         refs.entry(current_scope.to_owned())
                             .or_default()
-                            .entry("lib".to_owned())
+                            .entry(ROOT_SCOPE.clone())
                             .or_default()
                             .insert(arr_wrapper_ident);
                     } else {
@@ -167,7 +202,7 @@ impl<'a> IntermediateTypes<'a> {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
-                    if wasm && current_scope != "lib" {
+                    if wasm && *current_scope != *ROOT_SCOPE {
                         // TODO: we should be doing map wrappers where they are declared or used,
                         // but for the former what if the key/value types are in different modules,
                         // and for the latter, what to do if multiple places use it? default to lib?
@@ -175,7 +210,7 @@ impl<'a> IntermediateTypes<'a> {
                         let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
                         refs.entry(current_scope.to_owned())
                             .or_default()
-                            .entry("lib".to_owned())
+                            .entry(ROOT_SCOPE.clone())
                             .or_default()
                             .insert(map_wrapper_ident);
                     } else {
@@ -595,7 +630,7 @@ impl<'a> IntermediateTypes<'a> {
         self.news_can_fail.contains(name)
     }
 
-    pub fn mark_scope(&mut self, ident: RustIdent, scope: String) {
+    pub fn mark_scope(&mut self, ident: RustIdent, scope: ModuleScope) {
         if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone()) {
             if old_scope != scope {
                 panic!(
@@ -606,8 +641,8 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    pub fn scope(&self, ident: &RustIdent) -> &str {
-        self.scopes.get(ident).map(|s| s.as_str()).unwrap_or("lib")
+    pub fn scope(&self, ident: &RustIdent) -> &ModuleScope {
+        self.scopes.get(ident).unwrap_or(&self.root_scope)
     }
 
     // we need to do this for some generated intermediate structures as the parsing code
