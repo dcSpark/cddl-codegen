@@ -1014,7 +1014,7 @@ impl GenerationScope {
                 } else {
                     let mod_dir = scope
                         .components()
-                        .into_iter()
+                        .iter()
                         .fold(src_dir.clone(), |dir, part| dir.join(part));
                     std::fs::create_dir_all(&mod_dir)?;
                     std::fs::write(

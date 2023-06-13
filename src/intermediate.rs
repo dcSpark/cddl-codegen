@@ -11,7 +11,7 @@ use crate::utils::{
 };
 
 use once_cell::sync::Lazy;
-pub const ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
+pub static ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ModuleScope(Vec<String>);
