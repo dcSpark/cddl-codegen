@@ -188,5 +188,5 @@ bar = [
     foo,
 ]
 ```
-This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialize.rs`) trait `RawBytesEncoding`.
-This can be useful for example when working with cryptographic primtivies e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and be directlry used without needing any useless wrapper struct for the in between.
+This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialization.rs`) trait `RawBytesEncoding`.
+This can be useful for example when working with cryptographic primtivies e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and they will be able to be directly used without needing any useless generated wrapper struct for the in between.
