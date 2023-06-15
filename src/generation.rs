@@ -1068,6 +1068,9 @@ impl GenerationScope {
         if cli.json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
         }
+        if export_raw_bytes_encoding_trait {
+            rust_cargo_toml.push_str("hex = \"0.4.3\"\n");
+        }
         if cli.wasm
             && types
                 .rust_structs()
