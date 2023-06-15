@@ -938,7 +938,12 @@ impl GenerationScope {
 
     /// Exports all already-generated state to the provided directory.
     /// Call generate() first to populate the generation state.
-    pub fn export(&self, types: &IntermediateTypes, cli: &Cli) -> std::io::Result<()> {
+    pub fn export(
+        &self,
+        types: &IntermediateTypes,
+        export_raw_bytes_encoding_trait: bool,
+        cli: &Cli,
+    ) -> std::io::Result<()> {
         // package.json / scripts
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
@@ -1019,6 +1024,10 @@ impl GenerationScope {
         } else {
             serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
             serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+        }
+        // raw_bytes_encoding in serialization too
+        if export_raw_bytes_encoding_trait {
+            serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
         }
         let mut merged_rust_serialize_scope = codegen::Scope::new();
         merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);

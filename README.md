@@ -168,7 +168,7 @@ pub struct Bar {
 
 #### _CDDL_CODEGEN_EXTERN_TYPE_
 
-While not as a comment, this allows you to compose in hand-written structs into a cddl spec.
+This allows you to compose in hand-written structs into a cddl spec.
 ```cddl
 foo = _CDDL_CODEGEN_EXTERN_TYPE_
 bar = [
@@ -178,3 +178,15 @@ bar = [
 ```
 This will treat `Foo` as a type that will exist and that has implemented the `Serialize` and `Deserialize` traits, so the (de)serialization logic in `Bar` here will call `Foo::serialize()` and `Foo::deserialize()`.
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
+
+#### _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+Allows encoding as `bytes` but imposing hand-written constraints defined elsewhere.
+```cddl
+foo = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+bar = [
+    foo,
+]
+```
+This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialize.rs`) trait `RawBytesEncoding`.
+This can be useful for example when working with cryptographic primtivies e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and be directlry used without needing any useless wrapper struct for the in between.
