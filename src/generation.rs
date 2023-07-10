@@ -778,12 +778,12 @@ impl GenerationScope {
             // needed if there's any params that can fail
             content
                 .push_import("std::convert", "TryFrom", None)
-                .push_import("crate::error", "*", None);
+                .push_import(format!("{}::error", cli.common_import_override), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
                 content
-                    .push_import("crate::serialization", "LenEncoding", None)
-                    .push_import("crate::serialization", "StringEncoding", None);
+                    .push_import(format!("{}::serialization", cli.common_import_override), "LenEncoding", None)
+                    .push_import(format!("{}::serialization", cli.common_import_override), "StringEncoding", None);
             }
         }
 
@@ -793,8 +793,8 @@ impl GenerationScope {
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
                     .push_import("std::collections", "BTreeMap", None)
-                    .push_import("crate::serialization", "LenEncoding", None)
-                    .push_import("crate::serialization", "StringEncoding", None);
+                    .push_import(format!("{}::serialization", cli.common_import_override), "LenEncoding", None)
+                    .push_import(format!("{}::serialization", cli.common_import_override), "StringEncoding", None);
             }
         }
 
@@ -867,7 +867,7 @@ impl GenerationScope {
                 if *scope == *ROOT_SCOPE {
                     content.push_import("ordered_hash_map", "OrderedHashMap", None);
                 } else {
-                    content.push_import("crate::ordered_hash_map", "OrderedHashMap", None);
+                    content.push_import(format!("{}::ordered_hash_map", cli.common_import_override), "OrderedHashMap", None);
                 }
             }
         }
@@ -875,11 +875,6 @@ impl GenerationScope {
         // serialization
         // generic imports (serialization)
         for (scope, content) in self.serialize_scopes.iter_mut() {
-            let error_scope = if *scope == *ROOT_SCOPE {
-                "error"
-            } else {
-                "crate::error"
-            };
             content
                 .push_import("super", "*", None)
                 .push_import("std::io", "BufRead", None)
@@ -888,7 +883,7 @@ impl GenerationScope {
                 .push_import("std::io", "Write", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
-                .push_import(error_scope, "*", None);
+                .push_import(format!("{}::error", cli.common_import_override), "*", None);
             if cli.preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
@@ -902,7 +897,7 @@ impl GenerationScope {
                 );
             }
             if *scope != *ROOT_SCOPE {
-                content.push_import("crate::serialization", "*", None);
+                content.push_import(format!("{}::serialization", cli.common_import_override), "*", None);
             }
         }
 
@@ -5950,7 +5945,7 @@ fn generate_enum(
                         match types
                             .rust_struct(ident)
                             .unwrap_or_else(|| {
-                                panic!("{}", "{name} refers to undefined ident: {ident}")
+                                panic!("{} refers to undefined ident: {}", name, ident)
                             })
                             .variant()
                         {
