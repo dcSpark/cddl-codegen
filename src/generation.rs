@@ -782,8 +782,16 @@ impl GenerationScope {
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
                 content
-                    .push_import(format!("{}::serialization", cli.common_import_override), "LenEncoding", None)
-                    .push_import(format!("{}::serialization", cli.common_import_override), "StringEncoding", None);
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "LenEncoding",
+                        None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "StringEncoding",
+                        None,
+                    );
             }
         }
 
@@ -793,8 +801,16 @@ impl GenerationScope {
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
                     .push_import("std::collections", "BTreeMap", None)
-                    .push_import(format!("{}::serialization", cli.common_import_override), "LenEncoding", None)
-                    .push_import(format!("{}::serialization", cli.common_import_override), "StringEncoding", None);
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "LenEncoding",
+                        None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "StringEncoding",
+                        None,
+                    );
             }
         }
 
@@ -867,7 +883,11 @@ impl GenerationScope {
                 if *scope == *ROOT_SCOPE {
                     content.push_import("ordered_hash_map", "OrderedHashMap", None);
                 } else {
-                    content.push_import(format!("{}::ordered_hash_map", cli.common_import_override), "OrderedHashMap", None);
+                    content.push_import(
+                        format!("{}::ordered_hash_map", cli.common_import_override),
+                        "OrderedHashMap",
+                        None,
+                    );
                 }
             }
         }
@@ -897,7 +917,11 @@ impl GenerationScope {
                 );
             }
             if *scope != *ROOT_SCOPE {
-                content.push_import(format!("{}::serialization", cli.common_import_override), "*", None);
+                content.push_import(
+                    format!("{}::serialization", cli.common_import_override),
+                    "*",
+                    None,
+                );
             }
         }
 
