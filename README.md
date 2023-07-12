@@ -1,4 +1,8 @@
-# Experimental library for generating rust code for CBOR serialization from CDDL specs.
+# Library to generate Rust and WASM code from CDDL specifications
+
+See docs [here](https://dcspark.github.io/cddl-codegen/)
+
+# Old docs (deprecated)
 
 ### Purpose ###
 
