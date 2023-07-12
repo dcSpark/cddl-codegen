@@ -93,7 +93,7 @@ const config = {
       navbar: {
         title: "cddl-codegen",
         logo: {
-          alt: "Milkomeda logo",
+          alt: "dcSpark logo",
           src: "img/favicon.svg",
         },
         items: [
@@ -110,7 +110,7 @@ const config = {
       },
       footer: {
         style: "dark",
-        copyright: `Copyright © ${new Date().getFullYear()} Milkomeda Foundation. Built with Docusaurus.`,
+        copyright: `Copyright © ${new Date().getFullYear()} dcSpark. Built with Docusaurus.`,
       },
       prism: {
         theme: lightCodeTheme,
