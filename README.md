@@ -1,3 +1,5 @@
-# Library to generate Rust and WASM code from CDDL specifications
+# cddl-codegen
+
+cddl-codegen is a library to generate Rust, WASM and JSON code from CDDL specifications
 
 See docs [here](https://dcspark.github.io/cddl-codegen/)
