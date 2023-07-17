@@ -6224,8 +6224,11 @@ fn generate_enum(
                 return_if_deserialized
             }
         };
-        return_if_deserialized
-            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
+        let mut variant_deser_failed_block = Block::new("Err(e) =>");
+        variant_deser_failed_block
+            .line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
+            .line("raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();");
+        return_if_deserialized.push_block(variant_deser_failed_block);
         return_if_deserialized.after(";");
         deser_body.push_block(return_if_deserialized);
     }
@@ -6242,7 +6245,7 @@ fn generate_enum(
     // Issue: https://github.com/dcSpark/cddl-codegen/issues/175
     add_deserialize_final_len_check(deser_body, rep, RustStructCBORLen::Fixed(0), cli);
     deser_body.line(&format!(
-        "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched))"
+        "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatchedWithCauses(errs)))"
     ));
     if cli.annotate_fields {
         deser_func.push_block(error_annotator);
