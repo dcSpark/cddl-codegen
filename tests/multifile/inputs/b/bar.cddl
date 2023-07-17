@@ -1,0 +1,12 @@
+bar = {
+    foo: #6.1337([* foo]),
+    ? derp: uint,
+    1 : uint / null,
+    ? 5: text,
+    five: 5,
+    foo_map: { * foo => foo },
+    ? baz: baz,
+}
+
+; test refs too
+bar_typedef = bar

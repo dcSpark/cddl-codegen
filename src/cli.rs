@@ -63,6 +63,17 @@ pub struct Cli {
     /// Generates a npm package.json along with build scripts
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub package_json: bool,
+
+    /// Location override for default common types (error, serialization, etc)
+    /// This is useful for integrating into an exisitng project that is based on
+    /// these types.
+    #[clap(
+        long,
+        value_parser,
+        value_name = "COMMON_IMPORT_OVERRIDE",
+        default_value = "crate"
+    )]
+    pub common_import_override: String,
 }
 
 impl Cli {

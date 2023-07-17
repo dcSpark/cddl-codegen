@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef,
-    GenericInstance, IntermediateTypes, Primitive, Representation, RustField, RustIdent,
-    RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
+    GenericInstance, IntermediateTypes, ModuleScope, Primitive, Representation, RustField,
+    RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -28,7 +28,7 @@ pub const EXTERN_MARKER: &str = "_CDDL_CODEGEN_EXTERN_TYPE_";
 pub const RAW_BYTES_MARKER: &str = "_CDDL_CODEGEN_RAW_BYTES_TYPE_";
 
 /// Some means it is a scope marker, containing the scope
-pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<ModuleScope> {
     match cddl_rule {
         Rule::Type {
             rule:
@@ -41,7 +41,9 @@ pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<String> {
         } => {
             if value.type_choices.len() == 1 && ident.starts_with(SCOPE_MARKER) {
                 match &value.type_choices[0].type1.type2 {
-                    Type2::TextValue { value, .. } => Some(value.to_string()),
+                    Type2::TextValue { value, .. } => Some(ModuleScope::new(
+                        value.to_string().split("::").map(String::from).collect(),
+                    )),
                     _ => None,
                 }
             } else {
