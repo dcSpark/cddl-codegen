@@ -34,6 +34,7 @@ pub enum DeserializeFailure {
     InvalidStructure(Box<dyn std::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
+    NoVariantMatchedWithCauses(Vec<DeserializeError>),
     RangeCheck{
         found: usize,
         min: Option<isize>,
@@ -68,12 +69,12 @@ impl DeserializeError {
             None => Self::new(location, self.failure),
         }
     }
-}
 
-impl std::error::Error for DeserializeError {}
-
-impl std::fmt::Display for DeserializeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: u32) -> std::fmt::Result {
+        use std::fmt::Display;
+        for _ in 0..indent {
+            write!(f, "\t")?;
+        }
         match &self.location {
             Some(loc) => write!(f, "Deserialization failed in {} because: ", loc),
             None => write!(f, "Deserialization: "),
@@ -97,6 +98,14 @@ impl std::fmt::Display for DeserializeError {
             }
             DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
+            DeserializeFailure::NoVariantMatchedWithCauses(errs) => {
+                write!(f, "No variant matched. Failures:\n")?;
+                for e in errs {
+                    e.fmt_indent(f, indent + 1)?;
+                    write!(f, "\n")?;
+                }
+                Ok(())
+            },
             DeserializeFailure::RangeCheck{ found, min, max } => match (min, max) {
                 (Some(min), Some(max)) => write!(f, "{} not in range {} - {}", found, min, max),
                 (Some(min), None) => write!(f, "{} not at least {}", found, min),
@@ -107,6 +116,14 @@ impl std::fmt::Display for DeserializeError {
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
             DeserializeFailure::UnexpectedKeyType(ty) => write!(f, "Found unexpected key of CBOR type {:?}", ty),
         }
+    }
+}
+
+impl std::error::Error for DeserializeError {}
+
+impl std::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_indent(f, 0)
     }
 }
 

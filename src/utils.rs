@@ -1,16 +1,15 @@
-use cbor_event::Type as CBORType;
 use std::collections::BTreeMap;
 
-pub fn _cbor_type_code_str(cbor_type: CBORType) -> &'static str {
+pub fn cbor_type_code_str(cbor_type: cbor_event::Type) -> &'static str {
     match cbor_type {
-        CBORType::UnsignedInteger => "CBORType::UnsignedInteger",
-        CBORType::NegativeInteger => "CBORType::NegativeInteger",
-        CBORType::Bytes => "CBORType::Bytes",
-        CBORType::Text => "CBORType::Text",
-        CBORType::Array => "CBORType::Array",
-        CBORType::Map => "CBORType::Map",
-        CBORType::Tag => "CBORType::Tag",
-        CBORType::Special => "CBORType::Special",
+        cbor_event::Type::UnsignedInteger => "cbor_event::Type::UnsignedInteger",
+        cbor_event::Type::NegativeInteger => "cbor_event::Type::NegativeInteger",
+        cbor_event::Type::Bytes => "cbor_event::Type::Bytes",
+        cbor_event::Type::Text => "cbor_event::Type::Text",
+        cbor_event::Type::Array => "cbor_event::Type::Array",
+        cbor_event::Type::Map => "cbor_event::Type::Map",
+        cbor_event::Type::Tag => "cbor_event::Type::Tag",
+        cbor_event::Type::Special => "cbor_event::Type::Special",
     }
 }
 

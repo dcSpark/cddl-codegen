@@ -12,7 +12,7 @@ use crate::intermediate::{
     RustRecord, RustStructCBORLen, RustStructType, RustType, ToWasmBoundaryOperations,
     VariantIdent, ROOT_SCOPE,
 };
-use crate::utils::convert_to_snake_case;
+use crate::utils::{cbor_type_code_str, convert_to_snake_case};
 
 #[derive(Debug, Clone)]
 struct SerializeConfig<'a> {
@@ -907,14 +907,8 @@ impl GenerationScope {
             if cli.preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
-            if cli.preserve_encodings && cli.canonical_form {
-                content.push_import("cbor_event", "self", None);
-            } else {
-                content.push_import("cbor_event", "self", None).push_import(
-                    "cbor_event::se",
-                    "Serialize",
-                    None,
-                );
+            if !(cli.preserve_encodings && cli.canonical_form) {
+                content.push_import("cbor_event::se", "Serialize", None);
             }
             if *scope != *ROOT_SCOPE {
                 content.push_import(
@@ -5863,6 +5857,50 @@ fn make_enum_variant_return_if_deserialized(
     }
 }
 
+fn make_inline_deser_code(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    enum_gen_info: &EnumVariantInRust,
+    cli: &Cli,
+) -> DeserializationCode {
+    let mut variant_deser_code = generate_array_struct_deserialization(
+        gen_scope, types, name, record, tag, false, false, cli,
+    );
+    add_deserialize_final_len_check(
+        &mut variant_deser_code.deser_code.content,
+        Some(record.rep),
+        record.cbor_len_info(types),
+        cli,
+    );
+    // generate_constructor zips the expressions with the names in the enum_gen_info
+    // so just make sure we're in the same order as returned above
+    assert_eq!(
+        enum_gen_info.names.len(),
+        variant_deser_code.deser_ctor_fields.len()
+            + variant_deser_code.encoding_struct_ctor_fields.len()
+    );
+    let ctor_exprs = variant_deser_code
+        .deser_ctor_fields
+        .into_iter()
+        .chain(variant_deser_code.encoding_struct_ctor_fields.into_iter())
+        .zip(enum_gen_info.names.iter())
+        .map(|((var, expr), name)| {
+            assert_eq!(var, *name);
+            expr
+        })
+        .collect();
+    enum_gen_info.generate_constructor(
+        &mut variant_deser_code.deser_code.content,
+        "Ok(",
+        ")",
+        Some(&ctor_exprs),
+    );
+    variant_deser_code.deser_code
+}
+
 // Generates a general enum e.g. Foo { A(A), B(B), C(C) } for types A, B, C
 // if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
 // This is useful for type choicecs which don't have any enclosing array/map tags, and thus don't benefit from exposing a
@@ -5945,7 +5983,31 @@ fn generate_enum(
         );
         deser_impl
     };
-    deser_body.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
+    // We avoid checking ALL variants if we can figure it out by instead checking the type.
+    // This only works when the variants don't have first types in common.
+    let mut non_overlapping_types_match = {
+        // uses to_byte() instead of directly since Ord not implemented for cbor_event::Type
+        let mut first_types = BTreeSet::new();
+        let mut duplicates = false;
+        for variant in variants.iter() {
+            for first_type in variant.cbor_types(types) {
+                if !first_types.insert(first_type.to_byte(0)) {
+                    duplicates = true;
+                }
+            }
+        }
+        if duplicates {
+            None
+        } else {
+            let deser_covers_all_types = first_types.len() == 8;
+            Some((Block::new("match raw.cbor_type()?"), deser_covers_all_types))
+        }
+    };
+    if non_overlapping_types_match.is_none() {
+        deser_body
+            .line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();")
+            .line("let mut errs = Vec::new();");
+    }
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
         let variant_var_name = variant.name_as_var();
@@ -6161,85 +6223,149 @@ fn generate_enum(
             ser_array_match_block.push_block(case_block);
         }
         // deserialize
-        // TODO: don't backtrack if variants begin with non-overlapping cbor types
-        // issue: https://github.com/dcSpark/cddl-codegen/issues/145
         // TODO: how to detect when a greedy match won't work? (ie choice with choices in a choice possibly)
-        let mut return_if_deserialized = match &variant.data {
-            EnumVariantData::RustType(_) => {
-                let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
-                    gen_scope,
-                    types,
-                    variant,
-                    enum_gen_info.types.is_empty(),
-                    deser_body,
-                    cli,
-                );
-                let names_without_outer = enum_gen_info.names_without_outer();
-                if names_without_outer.is_empty() {
-                    return_if_deserialized
-                        .line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
-                } else {
-                    enum_gen_info.generate_constructor(
-                        &mut return_if_deserialized,
-                        &if names_without_outer.len() > 1 {
-                            format!("Ok(({})) => return Ok(", names_without_outer.join(", "))
+        match non_overlapping_types_match.as_mut() {
+            Some((deser_type_match, _deser_covers_all_types)) => {
+                let variant_deser_code = match &variant.data {
+                    EnumVariantData::RustType(ty) => {
+                        let var_names_str = if cli.preserve_encodings {
+                            encoding_var_names_str(types, &variant.name_as_var(), ty, cli)
                         } else {
-                            format!("Ok({}) => return Ok(", names_without_outer.join(", "))
-                        },
-                        "),",
-                        None,
-                    );
-                }
-                return_if_deserialized
-            }
-            EnumVariantData::Inlined(record) => {
-                let mut variant_deser_code = generate_array_struct_deserialization(
-                    gen_scope, types, name, record, tag, false, false, cli,
-                );
-                add_deserialize_final_len_check(
-                    &mut variant_deser_code.deser_code.content,
-                    Some(record.rep),
-                    record.cbor_len_info(types),
-                    cli,
-                );
-                // generate_constructor zips the expressions with the names in the enum_gen_info
-                // so just make sure we're in the same order as returned above
-                assert_eq!(
-                    enum_gen_info.names.len(),
-                    variant_deser_code.deser_ctor_fields.len()
-                        + variant_deser_code.encoding_struct_ctor_fields.len()
-                );
-                let ctor_exprs = variant_deser_code
-                    .deser_ctor_fields
+                            variant.name_as_var()
+                        };
+                        let mut variant_deser_code = gen_scope.generate_deserialize(
+                            types,
+                            (variant.rust_type()).into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {var_names_str} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&variant.name_as_var()),
+                            cli,
+                        );
+                        let names_without_outer = enum_gen_info.names_without_outer();
+                        // we can avoid this ugly block and directly do it as a line possibly
+                        if variant_deser_code.content.as_single_line().is_some()
+                            && names_without_outer.len() == 1
+                        {
+                            variant_deser_code = gen_scope.generate_deserialize(
+                                types,
+                                (variant.rust_type()).into(),
+                                DeserializeBeforeAfter::new(
+                                    &format!("Ok({}::{}(", name, variant.name),
+                                    "))",
+                                    false,
+                                ),
+                                DeserializeConfig::new(&variant.name_as_var()),
+                                cli,
+                            );
+                        } else {
+                            if names_without_outer.is_empty() {
+                                variant_deser_code
+                                    .content
+                                    .line(&format!("Ok({}::{})", name, variant.name));
+                            } else {
+                                enum_gen_info.generate_constructor(
+                                    &mut variant_deser_code.content,
+                                    "Ok(",
+                                    ")",
+                                    None,
+                                );
+                            }
+                        }
+                        variant_deser_code
+                    }
+                    EnumVariantData::Inlined(record) => make_inline_deser_code(
+                        gen_scope,
+                        types,
+                        name,
+                        tag,
+                        record,
+                        &enum_gen_info,
+                        cli,
+                    ),
+                };
+                let cbor_types_str = variant
+                    .cbor_types(types)
                     .into_iter()
-                    .chain(variant_deser_code.encoding_struct_ctor_fields.into_iter())
-                    .zip(enum_gen_info.names.iter())
-                    .map(|((var, expr), name)| {
-                        assert_eq!(var, *name);
-                        expr
-                    })
-                    .collect();
-                enum_gen_info.generate_constructor(
-                    &mut variant_deser_code.deser_code.content,
-                    "Ok(",
-                    ")",
-                    Some(&ctor_exprs),
-                );
-                let mut variant_deser =
-                    Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
-                variant_deser.after(")(raw)");
-                variant_deser.push_all(variant_deser_code.deser_code.content);
-                deser_body.push_block(variant_deser);
-                // can't chain blocks so we just put them one after the other
-                let mut return_if_deserialized = Block::new("");
-                return_if_deserialized.line("Ok(variant) => return Ok(variant),");
-                return_if_deserialized
+                    .map(cbor_type_code_str)
+                    .collect::<Vec<_>>()
+                    .join("|");
+                match variant_deser_code.content.as_single_line() {
+                    Some(single_line) => {
+                        deser_type_match.line(format!("{cbor_types_str} => {single_line},"));
+                    }
+                    None => {
+                        let mut match_arm = Block::new(format!("{cbor_types_str} =>"));
+                        variant_deser_code.add_to(&mut match_arm);
+                        deser_type_match.push_block(match_arm);
+                    }
+                }
             }
-        };
-        return_if_deserialized
-            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),");
-        return_if_deserialized.after(";");
-        deser_body.push_block(return_if_deserialized);
+            None => {
+                let mut return_if_deserialized = match &variant.data {
+                    EnumVariantData::RustType(_) => {
+                        let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
+                            gen_scope,
+                            types,
+                            variant,
+                            enum_gen_info.types.is_empty(),
+                            deser_body,
+                            cli,
+                        );
+                        let names_without_outer = enum_gen_info.names_without_outer();
+                        if names_without_outer.is_empty() {
+                            return_if_deserialized
+                                .line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
+                        } else {
+                            enum_gen_info.generate_constructor(
+                                &mut return_if_deserialized,
+                                &if names_without_outer.len() > 1 {
+                                    format!(
+                                        "Ok(({})) => return Ok(",
+                                        names_without_outer.join(", ")
+                                    )
+                                } else {
+                                    format!("Ok({}) => return Ok(", names_without_outer.join(", "))
+                                },
+                                "),",
+                                None,
+                            );
+                        }
+                        return_if_deserialized
+                    }
+                    EnumVariantData::Inlined(record) => {
+                        let variant_deser_code = make_inline_deser_code(
+                            gen_scope,
+                            types,
+                            name,
+                            tag,
+                            record,
+                            &enum_gen_info,
+                            cli,
+                        );
+                        let mut variant_deser = Block::new(
+                            "match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                        );
+                        variant_deser.after(")(raw)");
+                        variant_deser.push_all(variant_deser_code.content);
+                        deser_body.push_block(variant_deser);
+                        // can't chain blocks so we just put them one after the other
+                        let mut return_if_deserialized = Block::new("");
+                        return_if_deserialized.line("Ok(variant) => return Ok(variant),");
+                        return_if_deserialized
+                    }
+                };
+                let mut variant_deser_failed_block = Block::new("Err(e) =>");
+                variant_deser_failed_block
+                    .line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
+                    .line("raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();");
+                return_if_deserialized.push_block(variant_deser_failed_block);
+                return_if_deserialized.after(";");
+                deser_body.push_block(return_if_deserialized);
+            }
+        }
     }
     ser_func.push_block(ser_array_match_block);
     ser_impl.push_fn(ser_func);
@@ -6253,9 +6379,21 @@ fn generate_enum(
     // This can cause issues when there are overlapping (CBOR field-wise) variants inlined here.
     // Issue: https://github.com/dcSpark/cddl-codegen/issues/175
     add_deserialize_final_len_check(deser_body, rep, RustStructCBORLen::Fixed(0), cli);
-    deser_body.line(&format!(
-        "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched))"
-    ));
+    match non_overlapping_types_match {
+        Some((mut deser_type_match, deser_covers_all_types)) => {
+            if !deser_covers_all_types {
+                deser_type_match.line(format!(
+                    "_ => Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched)),"
+                ));
+            }
+            deser_body.push_block(deser_type_match);
+        }
+        None => {
+            deser_body.line(&format!(
+                "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatchedWithCauses(errs)))"
+            ));
+        }
+    }
     if cli.annotate_fields {
         deser_func.push_block(error_annotator);
     }

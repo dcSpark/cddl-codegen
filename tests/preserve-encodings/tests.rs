@@ -367,6 +367,79 @@ mod tests {
     }
 
     #[test]
+    fn non_overlapping_type_choice_some() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_11_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_uint = cbor_int(0, *def_enc);
+                let irregular_bytes_nint = cbor_int(-9, *def_enc);
+                let irregular_bytes_text = cbor_str_sz("abcdefghijk", str_enc.clone());
+                let irregular_uint = NonOverlappingTypeChoiceSome::from_cbor_bytes(&irregular_bytes_uint).unwrap();
+                assert_eq!(irregular_bytes_uint, irregular_uint.to_cbor_bytes());
+                let irregular_nint = NonOverlappingTypeChoiceSome::from_cbor_bytes(&irregular_bytes_nint).unwrap();
+                assert_eq!(irregular_bytes_nint, irregular_nint.to_cbor_bytes());
+                let irregular_text = NonOverlappingTypeChoiceSome::from_cbor_bytes(&irregular_bytes_text).unwrap();
+                assert_eq!(irregular_bytes_text, irregular_text.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlapping_type_choice_all() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_11_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_uint = cbor_int(0, *def_enc);
+                let irregular_bytes_nint = cbor_int(-9, *def_enc);
+                let irregular_bytes_text = cbor_str_sz("abcdefghijk", str_enc.clone());
+                let irregular_bytes_bytes = cbor_bytes_sz(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], str_enc.clone());
+                let irregular_bytes_hello_world = vec![
+                    cbor_tag_sz(13, *def_enc),
+                        cbor_str_sz("hello world", str_enc.clone())
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_arr = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(1, *def_enc),
+                        cbor_int(3, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_map = vec![
+                    map_sz(2, *def_enc),
+                        cbor_str_sz("11111111111", str_enc.clone()),
+                            cbor_int(1, *def_enc),
+                        cbor_str_sz("33333333333", str_enc.clone()),
+                            cbor_int(3, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_uint = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_uint).unwrap();
+                assert_eq!(irregular_bytes_uint, irregular_uint.to_cbor_bytes());
+                let irregular_nint = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_nint).unwrap();
+                assert_eq!(irregular_bytes_nint, irregular_nint.to_cbor_bytes());
+                let irregular_text = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_text).unwrap();
+                assert_eq!(irregular_bytes_text, irregular_text.to_cbor_bytes());
+                let irregular_bytes = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_bytes).unwrap();
+                assert_eq!(irregular_bytes_bytes, irregular_bytes.to_cbor_bytes());
+                let irregular_hello_world = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_hello_world).unwrap();
+                assert_eq!(irregular_bytes_hello_world, irregular_hello_world.to_cbor_bytes());
+                let irregular_arr = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_arr).unwrap();
+                assert_eq!(irregular_bytes_arr, irregular_arr.to_cbor_bytes());
+                let irregular_map = NonOverlappingTypeChoiceAll::from_cbor_bytes(&irregular_bytes_map).unwrap();
+                assert_eq!(irregular_bytes_map, irregular_map.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
     fn enums() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let enum_values = vec![3, 1, 4];

@@ -1941,6 +1941,16 @@ impl EnumVariant {
         }
     }
 
+    pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
+        match &self.data {
+            EnumVariantData::RustType(ty) => ty.cbor_types(types),
+            EnumVariantData::Inlined(record) => match record.rep {
+                Representation::Array => vec![CBORType::Array],
+                Representation::Map => vec![CBORType::Map],
+            },
+        }
+    }
+
     // Can only be used on RustType variants, panics otherwise.
     // So don't call this when we're embedding the variant types
     pub fn rust_type(&self) -> &RustType {
