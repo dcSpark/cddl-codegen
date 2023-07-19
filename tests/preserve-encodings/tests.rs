@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn non_overlapping_type_choice_all() {
+    fn non_overlapping_type_choice_some() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let str_11_encodings = vec![
             StringLenSz::Len(Sz::One),
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn non_overlapping_type_choice_some() {
+    fn non_overlapping_type_choice_all() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let str_11_encodings = vec![
             StringLenSz::Len(Sz::One),
