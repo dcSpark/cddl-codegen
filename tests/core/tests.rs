@@ -219,4 +219,24 @@ mod tests {
         let overlap2 = OverlappingInlined::new_overlapping_inlined2(5, "overlapping".into());
         //deser_test(&overlap2);
     }
+
+    #[test]
+    fn overlapping_type_choice_all() {
+        deser_test(&NonOverlappingTypeChoiceAll::U64(100));
+        deser_test(&NonOverlappingTypeChoiceAll::N64(10000));
+        deser_test(&NonOverlappingTypeChoiceAll::Text("Hello, World!".into()));
+        deser_test(&NonOverlappingTypeChoiceAll::Bytes(vec![0xBA, 0xAD, 0xF0, 0x0D]));
+        deser_test(&NonOverlappingTypeChoiceAll::Helloworld);
+        deser_test(&NonOverlappingTypeChoiceAll::ArrU64(vec![0, u64::MAX]));
+        deser_test(&NonOverlappingTypeChoiceAll::MapTextToU64(
+            BTreeMap::from([("two".into(), 2), ("four".into(), 4)]))
+        );
+    }
+
+    #[test]
+    fn overlapping_type_choice_some() {
+        deser_test(&NonOverlappingTypeChoiceSome::U64(100));
+        deser_test(&NonOverlappingTypeChoiceSome::N64(10000));
+        deser_test(&NonOverlappingTypeChoiceSome::Text("Hello, World!".into()));
+    }
 }
