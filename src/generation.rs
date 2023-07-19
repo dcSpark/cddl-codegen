@@ -985,7 +985,12 @@ impl GenerationScope {
 
     /// Exports all already-generated state to the provided directory.
     /// Call generate() first to populate the generation state.
-    pub fn export(&self, types: &IntermediateTypes, cli: &Cli) -> std::io::Result<()> {
+    pub fn export(
+        &self,
+        types: &IntermediateTypes,
+        export_raw_bytes_encoding_trait: bool,
+        cli: &Cli,
+    ) -> std::io::Result<()> {
         // package.json / scripts
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
@@ -1070,6 +1075,10 @@ impl GenerationScope {
             serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
             serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
         }
+        // raw_bytes_encoding in serialization too
+        if export_raw_bytes_encoding_trait {
+            serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
+        }
         let mut merged_rust_serialize_scope = codegen::Scope::new();
         merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
@@ -1111,6 +1120,9 @@ impl GenerationScope {
         }
         if cli.json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
+        }
+        if export_raw_bytes_encoding_trait {
+            rust_cargo_toml.push_str("hex = \"0.4.3\"\n");
         }
         if cli.wasm
             && types
