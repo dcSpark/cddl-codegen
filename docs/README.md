@@ -1,7 +1,3 @@
-<p align="center">
-  <img width="300px" src="/static/img/milkomeda-banner.png" alt="Milkomeda logo">
-</p>
-
 <h1 align="center">CDDL-Codegen Docs</h1>
 
 ### Installation

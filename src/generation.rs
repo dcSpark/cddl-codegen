@@ -8,8 +8,9 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, Primitive, Representation, RustField, RustIdent, RustRecord,
-    RustStructCBORLen, RustStructType, RustType, ToWasmBoundaryOperations, VariantIdent,
+    FixedValue, IntermediateTypes, ModuleScope, Primitive, Representation, RustField, RustIdent,
+    RustRecord, RustStructCBORLen, RustStructType, RustType, ToWasmBoundaryOperations,
+    VariantIdent, ROOT_SCOPE,
 };
 use crate::utils::convert_to_snake_case;
 
@@ -430,12 +431,12 @@ impl<'a> DeserializeBeforeAfter<'a> {
 
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
-    rust_scopes: BTreeMap<String, codegen::Scope>,
+    rust_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     rust_serialize_lib_scope: codegen::Scope,
-    serialize_scopes: BTreeMap<String, codegen::Scope>,
+    serialize_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     wasm_lib_scope: codegen::Scope,
-    wasm_scopes: BTreeMap<String, codegen::Scope>,
-    cbor_encodings_scopes: BTreeMap<String, codegen::Scope>,
+    wasm_scopes: BTreeMap<ModuleScope, codegen::Scope>,
+    cbor_encodings_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     json_scope: codegen::Scope,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
@@ -693,7 +694,7 @@ impl GenerationScope {
             let mut path_exists = Block::new("if !schema_path.exists()");
             path_exists.line("std::fs::create_dir(schema_path).unwrap();");
             main.push_block(path_exists);
-            let mut main_lines_by_file: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 let is_typedef = matches!(
                     rust_struct.variant(),
@@ -703,7 +704,7 @@ impl GenerationScope {
                 // in order for the CDDL to parse but might not be used.
                 if !is_typedef && types.is_referenced(rust_ident) {
                     main_lines_by_file
-                        .entry(types.scope(rust_ident).to_owned())
+                        .entry(types.scope(rust_ident).clone())
                         .or_default()
                         .push(format!(
                             "gen_json_schema!({});",
@@ -753,10 +754,14 @@ impl GenerationScope {
         let scope_names = self
             .rust_scopes
             .keys()
-            .filter(|scope| *scope != "lib")
+            .filter(|scope| **scope != *ROOT_SCOPE)
             .cloned()
             .collect::<Vec<_>>();
-        for scope in scope_names {
+        for scope in scope_names
+            .iter()
+            .filter_map(|s| s.components().first())
+            .collect::<BTreeSet<_>>()
+        {
             self.rust_lib().raw(&format!("pub mod {scope};"));
         }
 
@@ -773,12 +778,20 @@ impl GenerationScope {
             // needed if there's any params that can fail
             content
                 .push_import("std::convert", "TryFrom", None)
-                .push_import("crate::error", "*", None);
+                .push_import(format!("{}::error", cli.common_import_override), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
                 content
-                    .push_import("crate::serialization", "LenEncoding", None)
-                    .push_import("crate::serialization", "StringEncoding", None);
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "LenEncoding",
+                        None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "StringEncoding",
+                        None,
+                    );
             }
         }
 
@@ -788,8 +801,16 @@ impl GenerationScope {
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
                     .push_import("std::collections", "BTreeMap", None)
-                    .push_import("crate::serialization", "LenEncoding", None)
-                    .push_import("crate::serialization", "StringEncoding", None);
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "LenEncoding",
+                        None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_override),
+                        "StringEncoding",
+                        None,
+                    );
             }
         }
 
@@ -812,17 +833,17 @@ impl GenerationScope {
         }
 
         fn add_imports_from_scope_refs(
-            scope: &String,
+            scope: &ModuleScope,
             content: &mut codegen::Scope,
-            imports: &BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            imports: &BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
         ) {
             // might not exist if we don't use stuff from other scopes
             if let Some(scope_imports) = imports.get(scope) {
                 for (import_scope, idents) in scope_imports.iter() {
-                    let import_scope = if import_scope == "lib" {
-                        Cow::from("super")
-                    } else if scope == "lib" {
-                        Cow::from(import_scope)
+                    let import_scope = if *import_scope == *ROOT_SCOPE {
+                        Cow::from("crate")
+                    } else if *scope == *ROOT_SCOPE {
+                        Cow::from(import_scope.to_string())
                     } else {
                         Cow::from(format!("crate::{import_scope}"))
                     };
@@ -859,10 +880,14 @@ impl GenerationScope {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             content.push_import("std::collections", "BTreeMap", None);
             if cli.preserve_encodings {
-                if scope == "lib" {
+                if *scope == *ROOT_SCOPE {
                     content.push_import("ordered_hash_map", "OrderedHashMap", None);
                 } else {
-                    content.push_import("crate::ordered_hash_map", "OrderedHashMap", None);
+                    content.push_import(
+                        format!("{}::ordered_hash_map", cli.common_import_override),
+                        "OrderedHashMap",
+                        None,
+                    );
                 }
             }
         }
@@ -870,11 +895,6 @@ impl GenerationScope {
         // serialization
         // generic imports (serialization)
         for (scope, content) in self.serialize_scopes.iter_mut() {
-            let error_scope = if scope == "lib" {
-                "error"
-            } else {
-                "crate::error"
-            };
             content
                 .push_import("super", "*", None)
                 .push_import("std::io", "BufRead", None)
@@ -883,7 +903,7 @@ impl GenerationScope {
                 .push_import("std::io", "Write", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
-                .push_import(error_scope, "*", None);
+                .push_import(format!("{}::error", cli.common_import_override), "*", None);
             if cli.preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
@@ -896,8 +916,25 @@ impl GenerationScope {
                     None,
                 );
             }
-            if scope != "lib" {
-                content.push_import("crate::serialization", "*", None);
+            if *scope != *ROOT_SCOPE {
+                content.push_import(
+                    format!("{}::serialization", cli.common_import_override),
+                    "*",
+                    None,
+                );
+            }
+        }
+
+        // declare submodules
+        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
+        // for these modules when they only exist to support modules nested deeper
+        for scope in scope_names.iter() {
+            let comps = scope.components();
+            for i in 1..comps.len() {
+                self.rust_scopes
+                    .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
+                    .or_insert(codegen::Scope::new())
+                    .raw(&format!("pub mod {};", comps[i]));
             }
         }
 
@@ -910,10 +947,14 @@ impl GenerationScope {
             let wasm_scope_names = self
                 .wasm_scopes
                 .keys()
-                .filter(|scope| *scope != "lib")
+                .filter(|scope| **scope != *ROOT_SCOPE)
                 .cloned()
                 .collect::<Vec<_>>();
-            for scope in wasm_scope_names {
+            for scope in wasm_scope_names
+                .iter()
+                .filter_map(|s| s.components().first())
+                .collect::<BTreeSet<_>>()
+            {
                 self.wasm_lib().raw(&format!("pub mod {scope};"));
             }
             // wasm imports
@@ -931,6 +972,18 @@ impl GenerationScope {
                     );
                 } else {
                     content.push_import("std::collections", "BTreeMap", None);
+                }
+            }
+            // declare submodules
+            // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
+            // for these modules when they only exist to support modules nested deeper
+            for scope in wasm_scope_names.iter() {
+                let comps = scope.components();
+                for i in 1..comps.len() {
+                    self.wasm_scopes
+                        .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
+                        .or_insert(codegen::Scope::new())
+                        .raw(&format!("pub mod {};", comps[i]));
                 }
             }
         }
@@ -974,16 +1027,19 @@ impl GenerationScope {
         fn merge_scopes_and_export(
             src_dir: std::path::PathBuf,
             mut merged_scope: codegen::Scope,
-            other_scopes: &BTreeMap<String, codegen::Scope>,
+            other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
             root_name: &str,
             inner_name: &str,
         ) -> std::io::Result<()> {
             std::fs::create_dir_all(&src_dir)?;
             for (scope, content) in other_scopes {
-                if scope == "lib" {
+                if *scope == *ROOT_SCOPE {
                     merged_scope.append(&content.clone());
                 } else {
-                    let mod_dir = src_dir.join(scope);
+                    let mod_dir = scope
+                        .components()
+                        .iter()
+                        .fold(src_dir.clone(), |dir, part| dir.join(part));
                     std::fs::create_dir_all(&mod_dir)?;
                     std::fs::write(
                         mod_dir.join(inner_name),
@@ -1043,10 +1099,13 @@ impl GenerationScope {
         // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
         if cli.preserve_encodings {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
-                let path = if scope == "lib" {
+                let path = if *scope == *ROOT_SCOPE {
                     Cow::from("rust/src/cbor_encodings.rs")
                 } else {
-                    Cow::from(format!("rust/src/{scope}/cbor_encodings.rs"))
+                    Cow::from(format!(
+                        "rust/src/{}/cbor_encodings.rs",
+                        scope.components().join("/")
+                    ))
                 };
                 std::fs::write(
                     rust_dir.join(path.as_ref()),
@@ -1209,9 +1268,9 @@ impl GenerationScope {
         types: &IntermediateTypes,
         ident: &RustIdent,
     ) -> &mut codegen::Scope {
-        let scope_name = types.scope(ident).to_owned();
+        let scope = types.scope(ident).clone();
         self.cbor_encodings_scopes
-            .entry(scope_name)
+            .entry(scope)
             .or_insert(codegen::Scope::new())
     }
 
@@ -3225,9 +3284,11 @@ pub fn rust_crate_struct_scope_from_wasm(
     ident: &RustIdent,
     cli: &Cli,
 ) -> String {
-    match types.scope(ident) {
-        "lib" => cli.lib_name_code(),
-        other_scope => format!("{}::{}", cli.lib_name_code(), other_scope),
+    let scope = types.scope(ident);
+    if *scope == *ROOT_SCOPE {
+        cli.lib_name_code()
+    } else {
+        format!("{}::{}", cli.lib_name_code(), scope)
     }
 }
 
@@ -5920,7 +5981,7 @@ fn generate_enum(
                         match types
                             .rust_struct(ident)
                             .unwrap_or_else(|| {
-                                panic!("{}", "{name} refers to undefined ident: {ident}")
+                                panic!("{} refers to undefined ident: {}", name, ident)
                             })
                             .variant()
                         {

@@ -1,10 +1,15 @@
 external_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 
 everything = [
-	foo,
-	external_foo,
-	; test using in arrays too
-	bars: [* bar],
-	; and maps
-	table: { * uint => bar_typedef }
+    ; from a single-level nested mod
+    foo,
+    external_foo,
+    ; test using in arrays too
+    bars: [* bar],
+    ; and maps
+    table: { * uint => bar_typedef }
+    ; and from a multi-level nested mod
+    baz: baz,
+    ; and root dir mod
+    qux: qux,
 ]

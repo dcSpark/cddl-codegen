@@ -16,6 +16,8 @@ use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
 
+use crate::intermediate::{ModuleScope, ROOT_SCOPE};
+
 fn cddl_paths(
     output: &mut Vec<std::path::PathBuf>,
     cd: &std::path::PathBuf,
@@ -55,9 +57,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enumerate()
         .map(|(i, input_file)| {
             let scope = if input_files.len() > 1 {
-                input_file.file_stem().unwrap().to_str().unwrap()
+                use std::path::Component;
+                let relative = pathdiff::diff_paths(input_file, &CLI_ARGS.input).unwrap();
+                let mut components = relative
+                    .components()
+                    .filter_map(|p| match p {
+                        Component::Normal(part) => Some(
+                            std::path::Path::new(part)
+                                .file_stem()
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_owned(),
+                        ),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(c) = components.last() {
+                    if *c == "mod" {
+                        components.pop();
+                    }
+                }
+                ModuleScope::new(components)
             } else {
-                "lib"
+                ROOT_SCOPE.clone()
             };
             std::fs::read_to_string(input_file).map(|raw| {
                 format!(
@@ -82,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
     // mark scope and filter scope markers
-    let mut scope = "lib".to_owned();
+    let mut scope = ROOT_SCOPE.clone();
     let cddl_rules = cddl
         .rules
         .iter()
