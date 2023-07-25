@@ -3320,7 +3320,8 @@ impl<'a> WasmWrapper<'a> {
         // so we instead use the impl's macro spot to put them before the impl where we want them
         for (full_name, params) in self.macros {
             let macro_name = full_name.split("::").last().unwrap();
-            self.s_impl.r#macro(format!("{}!({});\n", macro_name, params.join(", ")));
+            self.s_impl
+                .r#macro(format!("{}!({});\n", macro_name, params.join(", ")));
         }
         self.s_impl.r#macro("#[wasm_bindgen]");
         gen_scope
@@ -3344,7 +3345,10 @@ impl<'a> WasmWrapper<'a> {
     fn add_conversion_methods(&mut self, native_name: &str, cli: &Cli) {
         match &cli.wasm_conversions_macro {
             Some(conversion_macro) => {
-                self.macros.push((conversion_macro.clone(), vec![native_name.to_owned(), self.ident.to_string()]));
+                self.macros.push((
+                    conversion_macro.clone(),
+                    vec![native_name.to_owned(), self.ident.to_string()],
+                ));
             }
             None => {
                 let mut from_wasm = codegen::Impl::new(self.ident.to_string());
@@ -3407,7 +3411,8 @@ fn create_base_wasm_struct<'a>(
                             "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
                             cli.lib_name_code()
                         ));
-                        let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
+                        let mut to_canonical_bytes =
+                            codegen::Function::new("to_canonical_cbor_bytes");
                         to_canonical_bytes
                             .ret("Vec<u8>")
                             .arg_ref_self()
