@@ -954,7 +954,9 @@ impl GenerationScope {
             // wasm imports
             let wasm_imports = types.scope_references(true);
             for (scope, content) in self.wasm_scopes.iter_mut() {
+                // imports from other struct modules
                 add_imports_from_scope_refs(scope, content, &wasm_imports);
+                // common imports
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
                     .push_import("wasm_bindgen::prelude", "JsValue", None);
@@ -966,6 +968,17 @@ impl GenerationScope {
                     );
                 } else {
                     content.push_import("std::collections", "BTreeMap", None);
+                }
+                // external macros
+                if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro {
+                    if let Some((path, m)) = cbor_json_macro.rsplit_once("::") {
+                        content.push_import(path, m, None);
+                    }
+                }
+                if let Some(conversion_macro) = &cli.wasm_conversions_macro {
+                    if let Some((path, m)) = conversion_macro.rsplit_once("::") {
+                        content.push_import(path, m, None);
+                    }
                 }
             }
             // declare submodules
@@ -3018,7 +3031,7 @@ impl GenerationScope {
                             .into_iter()
                     )
                 ));
-            wrapper.add_conversion_methods(&inner_type);
+            wrapper.add_conversion_methods(&inner_type, cli);
             wrapper.push(self, types);
         }
     }
@@ -3297,10 +3310,19 @@ struct WasmWrapper<'a> {
     from_native: Option<codegen::Impl>,
     // AsRef
     as_ref: Option<codegen::Impl>,
+    // (macro name, macro params)
+    macros: Vec<(String, Vec<String>)>,
 }
 
 impl<'a> WasmWrapper<'a> {
-    fn push(self, gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
+    fn push(mut self, gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
+        // using Scope::raw() for the macro calls would result in them all being include at the top of the file
+        // so we instead use the impl's macro spot to put them before the impl where we want them
+        for (full_name, params) in self.macros {
+            let macro_name = full_name.split("::").last().unwrap();
+            self.s_impl.r#macro(format!("{}!({});\n", macro_name, params.join(", ")));
+        }
+        self.s_impl.r#macro("#[wasm_bindgen]");
         gen_scope
             .wasm(types, self.ident)
             .push_struct(self.s)
@@ -3319,31 +3341,38 @@ impl<'a> WasmWrapper<'a> {
     /// native_name is &str since we need to possibly prepend namespacing
     /// and where we're calling it we'd have to construct a RustType where we
     /// didn't have to before, but we already had the string.
-    fn add_conversion_methods(&mut self, native_name: &str) {
-        let mut from_wasm = codegen::Impl::new(self.ident.to_string());
-        from_wasm
-            .impl_trait(format!("From<{native_name}>"))
-            .new_fn("from")
-            .arg("native", native_name)
-            .ret("Self")
-            .line("Self(native)");
-        self.from_wasm = Some(from_wasm);
-        let mut from_native = codegen::Impl::new(native_name);
-        from_native
-            .impl_trait(format!("From<{}>", self.ident))
-            .new_fn("from")
-            .arg("wasm", self.ident.to_string())
-            .ret("Self")
-            .line("wasm.0");
-        self.from_native = Some(from_native);
-        let mut as_ref = codegen::Impl::new(self.ident.to_string());
-        as_ref
-            .impl_trait(format!("AsRef<{native_name}>"))
-            .new_fn("as_ref")
-            .arg_ref_self()
-            .ret(&format!("&{native_name}"))
-            .line("&self.0");
-        self.as_ref = Some(as_ref);
+    fn add_conversion_methods(&mut self, native_name: &str, cli: &Cli) {
+        match &cli.wasm_conversions_macro {
+            Some(conversion_macro) => {
+                self.macros.push((conversion_macro.clone(), vec![native_name.to_owned(), self.ident.to_string()]));
+            }
+            None => {
+                let mut from_wasm = codegen::Impl::new(self.ident.to_string());
+                from_wasm
+                    .impl_trait(format!("From<{native_name}>"))
+                    .new_fn("from")
+                    .arg("native", native_name)
+                    .ret("Self")
+                    .line("Self(native)");
+                self.from_wasm = Some(from_wasm);
+                let mut from_native = codegen::Impl::new(native_name);
+                from_native
+                    .impl_trait(format!("From<{}>", self.ident))
+                    .new_fn("from")
+                    .arg("wasm", self.ident.to_string())
+                    .ret("Self")
+                    .line("wasm.0");
+                self.from_native = Some(from_native);
+                let mut as_ref = codegen::Impl::new(self.ident.to_string());
+                as_ref
+                    .impl_trait(format!("AsRef<{native_name}>"))
+                    .new_fn("as_ref")
+                    .arg_ref_self()
+                    .ret(&format!("&{native_name}"))
+                    .line("&self.0");
+                self.as_ref = Some(as_ref);
+            }
+        }
     }
 }
 
@@ -3360,64 +3389,71 @@ fn create_base_wasm_struct<'a>(
         .derive("Debug")
         .attr("wasm_bindgen");
     let mut s_impl = codegen::Impl::new(name);
-    s_impl.r#macro("#[wasm_bindgen]");
+    let mut macros = Vec::new();
     // There are auto-implementing ToCBORBytes and FromBytes traits, but unfortunately
     // wasm_bindgen right now can't export traits, so we export this functionality
     // as a non-trait function.
     if exists_in_rust {
-        if cli.to_from_bytes_methods {
-            let mut to_bytes = codegen::Function::new("to_cbor_bytes");
-            to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
-            if cli.preserve_encodings && cli.canonical_form {
-                to_bytes.line(format!(
-                    "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
-                    cli.lib_name_code()
-                ));
-                let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
-                to_canonical_bytes
-                    .ret("Vec<u8>")
-                    .arg_ref_self()
-                    .vis("pub")
-                    .line("Serialize::to_canonical_cbor_bytes(&self.0)");
-            } else {
-                to_bytes.line(format!(
-                    "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
-                    cli.lib_name_code()
-                ));
+        match &cli.wasm_cbor_json_api_macro {
+            Some(cbor_json_macro) => {
+                macros.push((cbor_json_macro.clone(), vec![name.to_owned()]));
             }
-            s_impl.push_fn(to_bytes);
-            if gen_scope.deserialize_generated(ident) {
-                s_impl
-                    .new_fn("from_cbor_bytes")
-                    .ret(format!("Result<{name}, JsValue>"))
-                    .arg("cbor_bytes", "&[u8]")
-                    .vis("pub")
-                    .line(format!(
-                        "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
-                        cli.lib_name_code()));
+            None => {
+                if cli.to_from_bytes_methods {
+                    let mut to_bytes = codegen::Function::new("to_cbor_bytes");
+                    to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
+                    if cli.preserve_encodings && cli.canonical_form {
+                        to_bytes.line(format!(
+                            "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
+                            cli.lib_name_code()
+                        ));
+                        let mut to_canonical_bytes = codegen::Function::new("to_canonical_cbor_bytes");
+                        to_canonical_bytes
+                            .ret("Vec<u8>")
+                            .arg_ref_self()
+                            .vis("pub")
+                            .line("Serialize::to_canonical_cbor_bytes(&self.0)");
+                    } else {
+                        to_bytes.line(format!(
+                            "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
+                            cli.lib_name_code()
+                        ));
+                    }
+                    s_impl.push_fn(to_bytes);
+                    if gen_scope.deserialize_generated(ident) {
+                        s_impl
+                            .new_fn("from_cbor_bytes")
+                            .ret(format!("Result<{name}, JsValue>"))
+                            .arg("cbor_bytes", "&[u8]")
+                            .vis("pub")
+                            .line(format!(
+                                "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
+                                cli.lib_name_code()));
+                    }
+                }
+                if cli.json_serde_derives {
+                    let mut to_json = codegen::Function::new("to_json");
+                    to_json
+                        .ret("Result<String, JsValue>")
+                        .arg_ref_self()
+                        .vis("pub")
+                        .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
+                    s_impl.push_fn(to_json);
+                    let mut to_json_value = codegen::Function::new("to_json_value");
+                    to_json_value
+                        .ret("Result<JsValue, JsValue>")
+                        .arg_ref_self()
+                        .vis("pub")
+                        .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
+                    s_impl.push_fn(to_json_value);
+                    s_impl
+                        .new_fn("from_json")
+                        .ret(format!("Result<{name}, JsValue>"))
+                        .arg("json", "&str")
+                        .vis("pub")
+                        .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
+                }
             }
-        }
-        if cli.json_serde_derives {
-            let mut to_json = codegen::Function::new("to_json");
-            to_json
-                .ret("Result<String, JsValue>")
-                .arg_ref_self()
-                .vis("pub")
-                .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
-            s_impl.push_fn(to_json);
-            let mut to_json_value = codegen::Function::new("to_json_value");
-            to_json_value
-                .ret("Result<JsValue, JsValue>")
-                .arg_ref_self()
-                .vis("pub")
-                .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
-            s_impl.push_fn(to_json_value);
-            s_impl
-                .new_fn("from_json")
-                .ret(format!("Result<{name}, JsValue>"))
-                .arg("json", "&str")
-                .vis("pub")
-                .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
         }
     }
     WasmWrapper {
@@ -3427,6 +3463,7 @@ fn create_base_wasm_struct<'a>(
         from_wasm: None,
         from_native: None,
         as_ref: None,
+        macros,
     }
 }
 
@@ -3444,7 +3481,7 @@ fn create_base_wasm_wrapper<'a>(
     if default_structure {
         let native_name = rust_crate_struct_from_wasm(types, ident, cli);
         base.s.tuple_field(None, &native_name);
-        base.add_conversion_methods(&native_name);
+        base.add_conversion_methods(&native_name, cli);
     }
     base
 }
@@ -3908,7 +3945,7 @@ fn codegen_table_type(
         ));
     }
     wrapper.s_impl.push_fn(keys);
-    wrapper.add_conversion_methods(&inner_type);
+    wrapper.add_conversion_methods(&inner_type, cli);
     wrapper.push(gen_scope, types);
 }
 
