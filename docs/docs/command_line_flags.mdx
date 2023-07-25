@@ -133,3 +133,46 @@ Generates a npm package.json along with build scripts (some of these scripts req
 cddl-codegen --input=example --output=export --package-json true --json-schema-export true
 ```
 :::
+
+<br/><br/>
+
+:::info `--common-import-override`
+Overrides the location of the static exports (e.g. error.rs, serialization.rs, etc).
+
+This is particularily useful for combining multiple crates each generated using cddl-codegen where they all share a shared core directory where the static files are located.
+
+**Default:** crate
+```bash
+cddl-codegen --input=example --output=export --common-import-override=cml_core
+```
+:::
+
+<br/><br/>
+
+:::info `--package-json`
+If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
+
+The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
+
+The macro must take the wasm wrapper type as the only parameter.
+
+This macro will be called regardless of the values of to-from-bytes-methods / json-serde-derives / etc, so it is assumed that whatever logic your macros have is consistent with the other CLI flag values.
+
+```bash
+cddl-codegen --input=example --output=export --wasm-cbor-json-api-macro=cml_core_wasm::impl_wasm_cbor_json_api
+```
+:::
+
+<br/><br/>
+
+:::info `--wasm-conversion-macro`
+If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the rust <-> wasm conversion traits.
+
+The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
+
+The macro must take the rust type as the first parameter and the wasm wrapper type as the second one.
+
+```bash
+cddl-codegen --input=example --output=export --wasm-conversion-macro=cml_core_wasm::impl_wasm_conversions
+```
+:::
