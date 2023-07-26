@@ -74,6 +74,22 @@ pub struct Cli {
         default_value = "crate"
     )]
     pub common_import_override: String,
+
+    /// An external macro to be called instead of manually emitting functions for
+    /// conversions to/from CBOR bytes or JSON.
+    /// If the macro is scoped it will be imported using the supplied path.
+    /// e.g. foo::bar::qux will result in importing foo::bar::qux and then
+    /// calling qux!(A); for every struct A with a CBOR/JSON API
+    #[clap(long, value_parser)]
+    pub wasm_cbor_json_api_macro: Option<String>,
+
+    /// An external macro to be called instead of manually emitting traits for
+    /// WASM conversions to/from the inner rust type + AsRef.
+    /// If the macro is scoped it will be imported using the supplied path.
+    /// e.g. foo::bar::qux will result in importing foo::bar::qux and then
+    /// calling qux!(rust::path::A, A); for every struct A with a CBOR/JSON API
+    #[clap(long, value_parser)]
+    pub wasm_conversions_macro: Option<String>,
 }
 
 impl Cli {
