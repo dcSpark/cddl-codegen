@@ -239,4 +239,59 @@ mod tests {
         deser_test(&NonOverlappingTypeChoiceSome::N64(10000));
         deser_test(&NonOverlappingTypeChoiceSome::Text("Hello, World!".into()));
     }
+
+    #[test]
+    fn array_opt_fields() {
+        let mut foo = ArrayOptFields::new(10);
+        for e in [None, Some(NonOverlappingTypeChoiceSome::U64(5)), Some(NonOverlappingTypeChoiceSome::N64(4)), Some(NonOverlappingTypeChoiceSome::Text("five".to_owned()))] {
+            for a in [false, true] {
+                for b in [false, true] {
+                    for d in [false, true] {
+                        // round-trip on non-constants
+                        foo.a = if a { Some(0) } else { None };
+                        foo.b = if b { Some("hello, world".to_owned()) } else { None };
+                        foo.d = if d { Some("cddl-codegen".to_owned()) } else { None };
+                        foo.e = e.clone();
+                        deser_test(&foo);
+                        // deser for constants too
+                        for x in [false, true] {
+                            for y in [false, true] {
+                                for z in [false, true] {
+                                    let mut components = vec![vec![ARR_INDEF]];
+                                    let bytes = vec![
+                                        vec![ARR_INDEF]
+                                    ];
+                                    if x {
+                                        components.push(cbor_float(1.010101));
+                                    }
+                                    if a {
+                                        components.push(cbor_int(0, cbor_event::Sz::One));
+                                    }
+                                    if b {
+                                        components.push(cbor_string("hello, world"));
+                                    }
+                                    // c
+                                    components.push(cbor_int(-10, cbor_event::Sz::One));
+                                    if d {
+                                        components.push(cbor_string("cddl-codegen"));
+                                    }
+                                    // y
+                                    components.push(cbor_float(3.14159265));
+                                    if let Some(e) = &e {
+                                        components.push(e.to_cbor_bytes());
+                                    }
+                                    if z {
+                                        components.push(cbor_float(2.71828));
+                                    }
+                                    components.push(vec![BREAK]);
+                                    let bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
+                                    let _ = ArrayOptFields::from_cbor_bytes(&bytes).unwrap();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
