@@ -77,3 +77,15 @@ map_with_defaults = {
 	? 1 : default_uint
 	? 2 : text .default "two"
 }
+
+; TODO: preserve-encodings remembering optional fixed values. Issue: https://github.com/dcSpark/cddl-codegen/issues/205
+array_opt_fields = [
+;  ? x: null,
+  ? a: uint,
+  ? b: text,
+	c: nint,
+  ? d: text,
+    y: #6.10(1),
+  ? e: non_overlapping_type_choice_some
+;  ? z: null,
+]

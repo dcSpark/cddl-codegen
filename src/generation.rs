@@ -4408,9 +4408,8 @@ fn generate_array_struct_deserialization(
                     gen_scope.dont_generate_deserialize(
                         name,
                         format!(
-                            "Array struct with potentially-ambiguous optional field {}: {}",
-                            field.name,
-                            field.rust_type.for_rust_member(types, false, cli)
+                            "Array struct with potentially-ambiguous optional field {}: {:?}",
+                            field.name, field.rust_type,
                         ),
                     );
                 }
@@ -4463,6 +4462,39 @@ fn generate_array_struct_deserialization(
             let type_check_block = Block::new(format!("{before}{type_check_cond}"));
             let mut type_check_else = Block::new("else");
             if cli.annotate_fields {
+                let enc_fields = if cli.preserve_encodings {
+                    let resolved_rust_type = field.rust_type.clone().resolve_aliases();
+                    assert!(
+                        !resolved_rust_type.is_fixed_value(),
+                        "https://github.com/dcSpark/cddl-codegen/issues/205"
+                    );
+                    encoding_fields(types, &field.name, &resolved_rust_type, false, cli)
+                } else {
+                    vec![]
+                };
+                let (some_map, defaults) = if !enc_fields.is_empty() {
+                    let enc_names_str = enc_fields
+                        .iter()
+                        .map(|enc| enc.field_name.clone())
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    (
+                        Cow::from(format!(
+                            "|({}, {})| (Some({}), {})",
+                            field.name, enc_names_str, field.name, enc_names_str
+                        )),
+                        Cow::from(format!(
+                            "(None, {})",
+                            enc_fields
+                                .iter()
+                                .map(|enc| enc.default_expr.to_owned())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        )),
+                    )
+                } else {
+                    (Cow::from("Some"), Cow::from("None"))
+                };
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -4473,10 +4505,10 @@ fn generate_array_struct_deserialization(
                             .optional_field(true),
                         cli,
                     )
-                    .annotate(&field.name, "", ".map(Some)")
+                    .annotate(&field.name, "", &format!(".map({some_map})"))
                     .wrap_in_block(type_check_block)
                     .add_to_code(&mut deser_code);
-                type_check_else.line("Ok(None)");
+                type_check_else.line(format!("Ok({defaults})"));
             } else {
                 gen_scope
                     .generate_deserialize(
@@ -4535,18 +4567,15 @@ fn generate_array_struct_deserialization(
             encoding_vars_output.push(("tag_encoding".to_owned(), "Some(tag_encoding)".to_owned()));
         }
         for field in record.fields.iter() {
-            // we don't support deserialization for optional fields so don't even bother
-            if !field.optional {
-                for field_enc in encoding_fields(
-                    types,
-                    &field.name,
-                    &field.rust_type.clone().resolve_aliases(),
-                    true,
-                    cli,
-                ) {
-                    encoding_vars_output
-                        .push((field_enc.field_name.clone(), field_enc.field_name.clone()));
-                }
+            for field_enc in encoding_fields(
+                types,
+                &field.name,
+                &field.rust_type.clone().resolve_aliases(),
+                true,
+                cli,
+            ) {
+                encoding_vars_output
+                    .push((field_enc.field_name.clone(), field_enc.field_name.clone()));
             }
         }
     }
