@@ -6275,12 +6275,17 @@ fn generate_enum(
                         } else {
                             variant.name_as_var()
                         };
+                        let (before, after) = if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
+                            (Cow::from(format!("let {var_names_str} = ")), ";")
+                        } else {
+                            (Cow::from(""), "")
+                        };
                         let mut variant_deser_code = gen_scope.generate_deserialize(
                             types,
                             (variant.rust_type()).into(),
                             DeserializeBeforeAfter::new(
-                                &format!("let {var_names_str} = "),
-                                ";",
+                                &before,
+                                after,
                                 false,
                             ),
                             DeserializeConfig::new(&variant.name_as_var()),
