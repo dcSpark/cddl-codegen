@@ -5927,7 +5927,7 @@ fn make_inline_deser_code(
     let ctor_exprs = variant_deser_code
         .deser_ctor_fields
         .into_iter()
-        .chain(variant_deser_code.encoding_struct_ctor_fields.into_iter())
+        .chain(variant_deser_code.encoding_struct_ctor_fields)
         .zip(enum_gen_info.names.iter())
         .map(|((var, expr), name)| {
             assert_eq!(var, *name);
@@ -6304,19 +6304,17 @@ fn generate_enum(
                                 DeserializeConfig::new(&variant.name_as_var()),
                                 cli,
                             );
+                        } else if names_without_outer.is_empty() {
+                            variant_deser_code
+                                .content
+                                .line(&format!("Ok({}::{})", name, variant.name));
                         } else {
-                            if names_without_outer.is_empty() {
-                                variant_deser_code
-                                    .content
-                                    .line(&format!("Ok({}::{})", name, variant.name));
-                            } else {
-                                enum_gen_info.generate_constructor(
-                                    &mut variant_deser_code.content,
-                                    "Ok(",
-                                    ")",
-                                    None,
-                                );
-                            }
+                            enum_gen_info.generate_constructor(
+                                &mut variant_deser_code.content,
+                                "Ok(",
+                                ")",
+                                None,
+                            );
                         }
                         variant_deser_code
                     }
