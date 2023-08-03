@@ -97,4 +97,9 @@ impl Cli {
     pub fn lib_name_code(&self) -> String {
         self.lib_name.replace('-', "_")
     }
+
+    /// If someone override the common imports, we don't want to export them
+    pub fn export_static_files(&self) -> bool {
+        self.common_import_override == "crate"
+    }
 }

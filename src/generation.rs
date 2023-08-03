@@ -1069,31 +1069,34 @@ impl GenerationScope {
         )?;
 
         // serialiation.rs / {module}/serialization.rs files (if input is a directory)
-        let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
-        if cli.preserve_encodings {
-            serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
-            if cli.canonical_form {
-                serialize_paths.push(
-                    cli.static_dir
-                        .join("serialization_preserve_force_canonical.rs"),
-                );
+        let mut merged_rust_serialize_scope = codegen::Scope::new();
+        if cli.export_static_files() {
+            let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
+            if cli.preserve_encodings {
+                serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
+                if cli.canonical_form {
+                    serialize_paths.push(
+                        cli.static_dir
+                            .join("serialization_preserve_force_canonical.rs"),
+                    );
+                } else {
+                    serialize_paths.push(
+                        cli.static_dir
+                            .join("serialization_preserve_non_force_canonical.rs"),
+                    );
+                    serialize_paths
+                        .push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+                }
             } else {
-                serialize_paths.push(
-                    cli.static_dir
-                        .join("serialization_preserve_non_force_canonical.rs"),
-                );
+                serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
                 serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
             }
-        } else {
-            serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
-            serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+            // raw_bytes_encoding in serialization too
+            if export_raw_bytes_encoding_trait {
+                serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
+            }
+            merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         }
-        // raw_bytes_encoding in serialization too
-        if export_raw_bytes_encoding_trait {
-            serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
-        }
-        let mut merged_rust_serialize_scope = codegen::Scope::new();
-        merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
         merge_scopes_and_export(
             rust_dir.join("rust/src"),
@@ -1153,30 +1156,32 @@ impl GenerationScope {
             rust_cargo_toml.replace("cddl-lib", &cli.lib_name),
         )?;
 
-        // error.rs
-        std::fs::copy(
-            cli.static_dir.join("error.rs"),
-            rust_dir.join("rust/src/error.rs"),
-        )?;
-
-        // ordered_hash_map.rs
-        if cli.preserve_encodings {
-            let mut ordered_hash_map_rs =
-                std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
-            if cli.json_serde_derives {
-                ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                    cli.static_dir.join("ordered_hash_map_json.rs"),
-                )?);
-            }
-            if cli.json_schema_export {
-                ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                    cli.static_dir.join("ordered_hash_map_schemars.rs"),
-                )?);
-            }
-            std::fs::write(
-                rust_dir.join("rust/src/ordered_hash_map.rs"),
-                rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+        if cli.export_static_files() {
+            // error.rs
+            std::fs::copy(
+                cli.static_dir.join("error.rs"),
+                rust_dir.join("rust/src/error.rs"),
             )?;
+
+            // ordered_hash_map.rs
+            if cli.preserve_encodings {
+                let mut ordered_hash_map_rs =
+                    std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
+                if cli.json_serde_derives {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_json.rs"),
+                    )?);
+                }
+                if cli.json_schema_export {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_schemars.rs"),
+                    )?);
+                }
+                std::fs::write(
+                    rust_dir.join("rust/src/ordered_hash_map.rs"),
+                    rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+                )?;
+            }
         }
 
         // wasm crate
