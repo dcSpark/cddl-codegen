@@ -135,3 +135,14 @@ overlapping1 = [0, uint]
 overlapping2 = [0, uint, text]
 
 overlapping = overlapping0 / overlapping1 / overlapping2
+
+array_opt_fields = [
+  ? x: 1.010101 
+  ? a: uint,
+  ? b: text,
+	c: nint,
+  ? d: text,
+    y: 3.14159265
+  ? e: non_overlapping_type_choice_some
+  ? z: 2.71828
+]

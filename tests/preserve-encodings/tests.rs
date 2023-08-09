@@ -644,4 +644,75 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn array_opt_fields() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_12_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (7, Sz::One)]),
+            StringLenSz::Indefinite(vec![(3, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_12_encodings {
+            for def_enc in &def_encodings {
+                let e_values = [
+                    None,
+                    Some(NonOverlappingTypeChoiceSome::U64 {
+                        uint: 5,
+                        uint_encoding: Some(*def_enc),
+                    }),
+                    Some(NonOverlappingTypeChoiceSome::N64 {
+                        n64: 4,
+                        n64_encoding: Some(*def_enc),
+                    }),
+                    Some(NonOverlappingTypeChoiceSome::Text {
+                        text: "twelve chars".to_owned(),
+                        text_encoding: str_enc.clone().into(),
+                    }),
+                ];
+                for e in &e_values {
+                    for a in [false, true] {
+                        for b in [false, true] {
+                            for d in [false, true] {
+                                // TODO: preserve-encodings remembering optional fixed values. Issue: https://github.com/dcSpark/cddl-codegen/issues/205
+                                // for x in [false, true] {
+                                //     for z in [false, true] {
+                                        let mut components: Vec<Vec<u8>> = vec![vec![ARR_INDEF]];
+                                        // if x {
+                                        //     components.push(vec![0xf5]);
+                                        // }
+                                        if a {
+                                            components.push(cbor_int(0, *def_enc));
+                                        }
+                                        if b {
+                                            components.push(cbor_str_sz("hello, world", str_enc.clone()));
+                                        }
+                                        // c
+                                        components.push(cbor_int(-10, *def_enc));
+                                        if d {
+                                            components.push(cbor_str_sz("cddl-codegen", str_enc.clone()));
+                                        }
+                                        // y
+                                        components.push(cbor_tag_sz(10, *def_enc));
+                                        components.push(cbor_int(1, *def_enc));
+                                        if let Some(e) = &e {
+                                            components.push(e.to_cbor_bytes());
+                                        }
+                                        // if z {
+                                        //     //components.push(vec![NULL]);
+                                        // }
+                                        components.push(vec![BREAK]);
+                                        let irregular_bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
+                                        let irregular = ArrayOptFields::from_cbor_bytes(&irregular_bytes).unwrap();
+                                        assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
+                                //     }
+                                // }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
