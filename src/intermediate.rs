@@ -2372,6 +2372,10 @@ impl RustRecord {
                 let mut conditional_field_expr = String::new();
                 for field in &self.fields {
                     if field.optional {
+                        if !cli.preserve_encodings && field.rust_type.is_fixed_value() {
+                            // we don't create fields for fixed values when preserve-encodings=false
+                            continue;
+                        }
                         if !conditional_field_expr.is_empty() {
                             conditional_field_expr.push_str(" + ");
                         }
