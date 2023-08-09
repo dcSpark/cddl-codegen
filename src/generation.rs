@@ -437,7 +437,7 @@ pub struct GenerationScope {
     wasm_lib_scope: codegen::Scope,
     wasm_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     cbor_encodings_scopes: BTreeMap<ModuleScope, codegen::Scope>,
-    json_scope: codegen::Scope,
+    json_lines: BlocksOrLines,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
@@ -458,7 +458,7 @@ impl GenerationScope {
             wasm_lib_scope: codegen::Scope::new(),
             wasm_scopes: BTreeMap::new(),
             cbor_encodings_scopes: BTreeMap::new(),
-            json_scope: codegen::Scope::new(),
+            json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
         }
@@ -682,18 +682,11 @@ impl GenerationScope {
 
         // JSON export crate
         if cli.json_schema_export {
-            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
-            let mut macro_match = Block::new("($name:ty) => ");
-            macro_match
-                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
-                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
-            gen_json_schema.push_block(macro_match);
-            let mut main = codegen::Function::new("main");
-            main.push_block(gen_json_schema);
-            main.line("let schema_path = std::path::Path::new(&\"schemas\");");
+            self.json_lines
+                .line("let schema_path = std::path::Path::new(&\"schemas\");");
             let mut path_exists = Block::new("if !schema_path.exists()");
             path_exists.line("std::fs::create_dir(schema_path).unwrap();");
-            main.push_block(path_exists);
+            self.json_lines.push_block(path_exists);
             let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 let is_typedef = matches!(
@@ -715,13 +708,12 @@ impl GenerationScope {
             let multiple_files = main_lines_by_file.len() > 1;
             for (scope_name, lines) in main_lines_by_file {
                 if multiple_files {
-                    main.line(format!("// {scope_name}.rs"));
+                    self.json_lines.line(&format!("// {scope_name}"));
                 }
                 for line in lines {
-                    main.line(line);
+                    self.json_lines.line(&line);
                 }
             }
-            self.json_scope.push_fn(main);
         }
 
         // imports / module declarations
@@ -1203,6 +1195,7 @@ impl GenerationScope {
 
         // json-gen crate for exporting JSON schemas
         if cli.json_schema_export {
+            // Cargo.toml
             std::fs::create_dir_all(rust_dir.join("wasm/json-gen/src"))?;
             let json_gen_toml =
                 std::fs::read_to_string(cli.static_dir.join("Cargo_json_gen.toml")).unwrap();
@@ -1210,9 +1203,42 @@ impl GenerationScope {
                 rust_dir.join("wasm/json-gen/Cargo.toml"),
                 json_gen_toml.replace("cddl-lib", &cli.lib_name),
             )?;
+
+            // lib.rs
+            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
+            let mut macro_match = Block::new("($name:ty) => ");
+            macro_match
+                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
+                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
+            gen_json_schema.push_block(macro_match);
+            // we can't push a codegen::Block to a codegen::Scope
+            // so we instead paste it into the file before
+            let mut lib_str = String::new();
+            gen_json_schema
+                .fmt(&mut codegen::Formatter::new(&mut lib_str))
+                .unwrap();
+
+            lib_str.push('\n');
+            let mut lib_scope = codegen::Scope::new();
+            let mut lib_export_fn = codegen::Function::new("export_schemas");
+            lib_export_fn.vis("pub").push_all(self.json_lines.clone());
+            lib_scope.push_fn(lib_export_fn);
+            lib_str.push_str(&lib_scope.to_string());
+
+            std::fs::write(
+                rust_dir.join("wasm/json-gen/src/lib.rs"),
+                rustfmt_generated_string(&lib_str)?.as_ref(),
+            )?;
+
+            // main.rs
+            let mut main_scope = codegen::Scope::new();
+            main_scope.new_fn("main").line(format!(
+                "{}_json_schema_gen::export_schemas();",
+                cli.lib_name_code()
+            ));
             std::fs::write(
                 rust_dir.join("wasm/json-gen/src/main.rs"),
-                rustfmt_generated_string(&self.json_scope.to_string())?.as_ref(),
+                rustfmt_generated_string(&main_scope.to_string())?.as_ref(),
             )?;
         }
 
@@ -3166,13 +3192,13 @@ fn write_string_sz(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum BlockOrLine {
     Line(String),
     Block(Block),
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct BlocksOrLines(Vec<BlockOrLine>);
 
 impl BlocksOrLines {
