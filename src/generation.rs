@@ -745,11 +745,14 @@ impl GenerationScope {
         }
 
         // declare modules (root lib specific)
-        self.rust_lib().raw("pub mod error;");
+        if cli.export_static_files() {
+            self.rust_lib().raw("pub mod error;");
+            if cli.preserve_encodings {
+                self.rust_lib().raw("pub mod ordered_hash_map;");
+            }
+        }
         if cli.preserve_encodings {
-            self.rust_lib()
-                .raw("pub mod ordered_hash_map;")
-                .raw("extern crate derivative;");
+            self.rust_lib().raw("extern crate derivative;");
         }
         let scope_names = self
             .rust_scopes
