@@ -67,13 +67,8 @@ pub struct Cli {
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
     /// these types.
-    #[clap(
-        long,
-        value_parser,
-        value_name = "COMMON_IMPORT_OVERRIDE",
-        default_value = "crate"
-    )]
-    pub common_import_override: String,
+    #[clap(long, value_parser, value_name = "COMMON_IMPORT_OVERRIDE")]
+    common_import_override: Option<String>,
 
     /// An external macro to be called instead of manually emitting functions for
     /// conversions to/from CBOR bytes or JSON.
@@ -100,6 +95,16 @@ impl Cli {
 
     /// If someone override the common imports, we don't want to export them
     pub fn export_static_files(&self) -> bool {
-        self.common_import_override == "crate"
+        self.common_import_override.is_none()
+    }
+
+    pub fn common_import_rust(&self) -> &str {
+        self.common_import_override.as_deref().unwrap_or("crate")
+    }
+
+    pub fn common_import_wasm(&self) -> String {
+        self.common_import_override
+            .clone()
+            .unwrap_or_else(|| self.lib_name_code())
     }
 }
