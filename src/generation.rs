@@ -747,11 +747,14 @@ impl GenerationScope {
         }
 
         // declare modules (root lib specific)
-        self.rust_lib().raw("pub mod error;");
+        if cli.export_static_files() {
+            self.rust_lib().raw("pub mod error;");
+            if cli.preserve_encodings {
+                self.rust_lib().raw("pub mod ordered_hash_map;");
+            }
+        }
         if cli.preserve_encodings {
-            self.rust_lib()
-                .raw("pub mod ordered_hash_map;")
-                .raw("extern crate derivative;");
+            self.rust_lib().raw("extern crate derivative;");
         }
         let scope_names = self
             .rust_scopes
@@ -780,17 +783,17 @@ impl GenerationScope {
             // needed if there's any params that can fail
             content
                 .push_import("std::convert", "TryFrom", None)
-                .push_import(format!("{}::error", cli.common_import_override), "*", None);
+                .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
                 content
                     .push_import(
-                        format!("{}::serialization", cli.common_import_override),
+                        format!("{}::serialization", cli.common_import_rust()),
                         "LenEncoding",
                         None,
                     )
                     .push_import(
-                        format!("{}::serialization", cli.common_import_override),
+                        format!("{}::serialization", cli.common_import_rust()),
                         "StringEncoding",
                         None,
                     );
@@ -804,12 +807,12 @@ impl GenerationScope {
                 content
                     .push_import("std::collections", "BTreeMap", None)
                     .push_import(
-                        format!("{}::serialization", cli.common_import_override),
+                        format!("{}::serialization", cli.common_import_rust()),
                         "LenEncoding",
                         None,
                     )
                     .push_import(
-                        format!("{}::serialization", cli.common_import_override),
+                        format!("{}::serialization", cli.common_import_rust()),
                         "StringEncoding",
                         None,
                     );
@@ -882,15 +885,11 @@ impl GenerationScope {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             content.push_import("std::collections", "BTreeMap", None);
             if cli.preserve_encodings {
-                if *scope == *ROOT_SCOPE {
-                    content.push_import("ordered_hash_map", "OrderedHashMap", None);
-                } else {
-                    content.push_import(
-                        format!("{}::ordered_hash_map", cli.common_import_override),
-                        "OrderedHashMap",
-                        None,
-                    );
-                }
+                content.push_import(
+                    format!("{}::ordered_hash_map", cli.common_import_rust()),
+                    "OrderedHashMap",
+                    None,
+                );
             }
         }
 
@@ -905,7 +904,7 @@ impl GenerationScope {
                 .push_import("std::io", "Write", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
-                .push_import(format!("{}::error", cli.common_import_override), "*", None);
+                .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             if cli.preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
@@ -914,7 +913,7 @@ impl GenerationScope {
             }
             if *scope != *ROOT_SCOPE {
                 content.push_import(
-                    format!("{}::serialization", cli.common_import_override),
+                    format!("{}::serialization", cli.common_import_rust()),
                     "*",
                     None,
                 );
@@ -964,7 +963,7 @@ impl GenerationScope {
                     .push_import("wasm_bindgen::prelude", "JsValue", None);
                 if cli.preserve_encodings {
                     content.push_import(
-                        format!("{}::ordered_hash_map", cli.lib_name_code()),
+                        format!("{}::ordered_hash_map", cli.common_import_wasm()),
                         "OrderedHashMap",
                         None,
                     );
@@ -1071,31 +1070,34 @@ impl GenerationScope {
         )?;
 
         // serialiation.rs / {module}/serialization.rs files (if input is a directory)
-        let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
-        if cli.preserve_encodings {
-            serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
-            if cli.canonical_form {
-                serialize_paths.push(
-                    cli.static_dir
-                        .join("serialization_preserve_force_canonical.rs"),
-                );
+        let mut merged_rust_serialize_scope = codegen::Scope::new();
+        if cli.export_static_files() {
+            let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
+            if cli.preserve_encodings {
+                serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
+                if cli.canonical_form {
+                    serialize_paths.push(
+                        cli.static_dir
+                            .join("serialization_preserve_force_canonical.rs"),
+                    );
+                } else {
+                    serialize_paths.push(
+                        cli.static_dir
+                            .join("serialization_preserve_non_force_canonical.rs"),
+                    );
+                    serialize_paths
+                        .push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+                }
             } else {
-                serialize_paths.push(
-                    cli.static_dir
-                        .join("serialization_preserve_non_force_canonical.rs"),
-                );
+                serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
                 serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
             }
-        } else {
-            serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
-            serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+            // raw_bytes_encoding in serialization too
+            if export_raw_bytes_encoding_trait {
+                serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
+            }
+            merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         }
-        // raw_bytes_encoding in serialization too
-        if export_raw_bytes_encoding_trait {
-            serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
-        }
-        let mut merged_rust_serialize_scope = codegen::Scope::new();
-        merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
         merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
         merge_scopes_and_export(
             rust_dir.join("rust/src"),
@@ -1155,30 +1157,32 @@ impl GenerationScope {
             rust_cargo_toml.replace("cddl-lib", &cli.lib_name),
         )?;
 
-        // error.rs
-        std::fs::copy(
-            cli.static_dir.join("error.rs"),
-            rust_dir.join("rust/src/error.rs"),
-        )?;
-
-        // ordered_hash_map.rs
-        if cli.preserve_encodings {
-            let mut ordered_hash_map_rs =
-                std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
-            if cli.json_serde_derives {
-                ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                    cli.static_dir.join("ordered_hash_map_json.rs"),
-                )?);
-            }
-            if cli.json_schema_export {
-                ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                    cli.static_dir.join("ordered_hash_map_schemars.rs"),
-                )?);
-            }
-            std::fs::write(
-                rust_dir.join("rust/src/ordered_hash_map.rs"),
-                rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+        if cli.export_static_files() {
+            // error.rs
+            std::fs::copy(
+                cli.static_dir.join("error.rs"),
+                rust_dir.join("rust/src/error.rs"),
             )?;
+
+            // ordered_hash_map.rs
+            if cli.preserve_encodings {
+                let mut ordered_hash_map_rs =
+                    std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
+                if cli.json_serde_derives {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_json.rs"),
+                    )?);
+                }
+                if cli.json_schema_export {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_schemars.rs"),
+                    )?);
+                }
+                std::fs::write(
+                    rust_dir.join("rust/src/ordered_hash_map.rs"),
+                    rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+                )?;
+            }
         }
 
         // wasm crate
@@ -3415,7 +3419,7 @@ fn create_base_wasm_struct<'a>(
                     if cli.preserve_encodings && cli.canonical_form {
                         to_bytes.line(format!(
                             "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
-                            cli.lib_name_code()
+                            cli.common_import_wasm()
                         ));
                         let mut to_canonical_bytes =
                             codegen::Function::new("to_canonical_cbor_bytes");
@@ -3427,7 +3431,7 @@ fn create_base_wasm_struct<'a>(
                     } else {
                         to_bytes.line(format!(
                             "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
-                            cli.lib_name_code()
+                            cli.common_import_wasm()
                         ));
                     }
                     s_impl.push_fn(to_bytes);
@@ -3439,7 +3443,7 @@ fn create_base_wasm_struct<'a>(
                             .vis("pub")
                             .line(format!(
                                 "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
-                                cli.lib_name_code()));
+                                cli.common_import_wasm()));
                     }
                 }
                 if cli.json_serde_derives {
