@@ -146,3 +146,9 @@ array_opt_fields = [
   ? e: non_overlapping_type_choice_some
   ? z: 2.71828
 ]
+
+bounds = [
+    x: uint .le 7,
+    y: nint .ge -5,
+    z: text .size 3..14,
+]
