@@ -1,14 +1,13 @@
 use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
-use either::Either;
 use std::collections::BTreeMap;
 
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
-    AliasIdent, AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef,
-    GenericInstance, IntermediateTypes, ModuleScope, Primitive, Representation, RustField,
-    RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
+    AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef, GenericInstance,
+    IntermediateTypes, ModuleScope, Primitive, Representation, RustField, RustIdent, RustRecord,
+    RustStruct, RustStructType, RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -192,8 +191,8 @@ fn ident_to_primitive(ident: &CDDLIdent) -> Option<Primitive> {
         "uint" => Some(Primitive::U64),
         "nint" => Some(Primitive::N64),
         "float16" | "float32" => Some(Primitive::F32),
-        "float32" => Some(Primitive::F64),
-        _other => None
+        "float64" => Some(Primitive::F64),
+        _other => None,
     }
 }
 
@@ -439,8 +438,7 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
             ConceptualRustType::Primitive(Primitive::F64).into()
         }
         // TODO: use minimal primitive or check here? e.g. uint .le 8 -> U8 instead of U64
-        bounds => RustType::from(ConceptualRustType::Primitive(primitive))
-            .with_bounds(bounds),
+        bounds => RustType::from(ConceptualRustType::Primitive(primitive)).with_bounds(bounds),
     }
 }
 
@@ -494,9 +492,10 @@ fn parse_type(
                             ControlOperator::Range(min_max) => {
                                 // when declared top-level we make a new type as the default behavior like before
                                 let mut ranged_type = range_to_primitive(
-                                    min_max.0, 
-                                    min_max.1, 
-                                    ident_to_primitive(&cddl_ident).unwrap());
+                                    min_max.0,
+                                    min_max.1,
+                                    ident_to_primitive(&cddl_ident).unwrap(),
+                                );
                                 if ranged_type.config.bounds.is_some() || rule_metadata.is_newtype {
                                     // without bounds since passed in other param
                                     ranged_type.config.bounds = None;
@@ -519,7 +518,7 @@ fn parse_type(
                                             ranged_type.tag_if(outer_tag),
                                             !rule_metadata.no_alias,
                                             !rule_metadata.no_alias,
-                                        )
+                                        ),
                                     );
                                 }
                             }
@@ -553,7 +552,7 @@ fn parse_type(
                         }
                     }
                     None => {
-                        let mut concrete_type = types.new_type(&cddl_ident, cli);
+                        let mut concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
                         if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type
                         {
                             concrete_type.conceptual_type = *ty;
@@ -651,108 +650,6 @@ fn parse_type(
             match t.type_choices.len() {
                 1 => {
                     let inner_type = &t.type_choices.first().unwrap();
-                    /*match match &inner_type.type1.type2 {
-                        Type2::Typename { ident, .. } => Either::Right(ident),
-                        Type2::Map { group, .. } => Either::Left(group),
-                        Type2::Array { group, .. } => Either::Left(group),
-                        x => panic!(
-                            "only supports tagged arrays/maps/typenames - found: {:?} in rule {}",
-                            x, type_name
-                        ),
-                    } {
-                        Either::Left(_group) => parse_type(
-                            types,
-                            parent_visitor,
-                            type_name,
-                            inner_type,
-                            *tag,
-                            generic_params,
-                            cli,
-                        ),
-                        Either::Right(ident) => {
-                            let cddl_ident = CDDLIdent::new(ident.to_string());
-                            let new_type = types.new_type(&cddl_ident, cli);
-                            let control = inner_type.type1.operator.as_ref().map(|op| {
-                                parse_control_operator(
-                                    types,
-                                    parent_visitor,
-                                    &inner_type.type1.type2,
-                                    op,
-                                    cli,
-                                )
-                            });
-                            match control {
-                                Some(ControlOperator::CBOR(ty)) => {
-                                    let base_type = types
-                                        .apply_type_aliases(
-                                            &AliasIdent::new(cddl_ident.clone()),
-                                            cli,
-                                        )
-                                        .expect("should not fail since ordered by dep graph")
-                                        .0;
-                                    assert_eq!(
-                                        base_type.conceptual_type,
-                                        ConceptualRustType::Primitive(Primitive::Bytes)
-                                    );
-                                    assert_eq!(base_type.config.default, None);
-                                    assert!(base_type.encodings.is_empty());
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new(
-                                            ty.as_bytes().tag(tag_unwrap),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
-                                        ),
-                                    );
-                                }
-                                Some(ControlOperator::Range(min_max)) => {
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new(
-                                            range_to_primitive(min_max.0, min_max.1, ident_to_primitive(&cddl_ident).unwrap()).tag(tag_unwrap),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
-                                        ),
-                                    );
-                                }
-                                Some(ControlOperator::Default(default_value)) => {
-                                    let default_tagged_type = rust_type_from_type2(
-                                        types,
-                                        parent_visitor,
-                                        &inner_type.type1.type2,
-                                        cli,
-                                    )
-                                    .default(default_value)
-                                    .tag(tag_unwrap);
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new(
-                                            default_tagged_type,
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
-                                        ),
-                                    );
-                                }
-                                None => {
-                                    let base_type = types
-                                        .apply_type_aliases(
-                                            &AliasIdent::new(CDDLIdent::new(ident.to_string())),
-                                            cli,
-                                        )
-                                        .expect("should not fail since ordered by dep graph")
-                                        .0;
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new(
-                                            base_type.tag(tag_unwrap),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
-                                        ),
-                                    );
-                                }
-                            }
-                        }
-                    };*/
                     parse_type(
                         types,
                         parent_visitor,
@@ -794,7 +691,7 @@ fn parse_type(
             types.register_type_alias(
                 type_name.clone(),
                 AliasInfo::new(
-                    base_type,
+                    base_type.tag_if(outer_tag),
                     !rule_metadata.no_alias,
                     !rule_metadata.no_alias,
                 ),
@@ -817,7 +714,7 @@ fn parse_type(
             types.register_type_alias(
                 type_name.clone(),
                 AliasInfo::new(
-                    base_type.into(),
+                    base_type.tag_if(outer_tag),
                     !rule_metadata.no_alias,
                     !rule_metadata.no_alias,
                 ),
@@ -827,7 +724,10 @@ fn parse_type(
             types.register_type_alias(
                 type_name.clone(),
                 AliasInfo::new(
-                    ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into(),
+                    RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
+                        value.to_string(),
+                    )))
+                    .tag_if(outer_tag),
                     !rule_metadata.no_alias,
                     !rule_metadata.no_alias,
                 ),
@@ -849,7 +749,7 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                AliasInfo::new(base_type.into(), true, true),
+                AliasInfo::new(base_type.tag_if(outer_tag), true, true),
             );
         }
         x => {
@@ -923,7 +823,10 @@ fn parse_group_type<'a>(
                 };
                 let bounds = occur.as_ref().map(|o| match o.occur {
                     Occur::ZeroOrMore { .. } => (None, None),
-                    Occur::Exact { lower, upper, .. } => (lower.filter(|l| *l != 0).map(|i| i as i128), upper.map(|i| i as i128)),
+                    Occur::Exact { lower, upper, .. } => (
+                        lower.filter(|l| *l != 0).map(|i| i as i128),
+                        upper.map(|i| i as i128),
+                    ),
                     Occur::Optional { .. } => (None, Some(1)),
                     Occur::OneOrMore { .. } => (Some(1), None),
                 });
@@ -942,7 +845,9 @@ fn parse_group_type<'a>(
                         }
                         // fall-through generic case. this is a general 1-element struct that needs creating
                     }
-                    Some(bounds) => return GroupParsingType::HomogenousArray(elem_type.with_bounds(bounds)),
+                    Some(bounds) => {
+                        return GroupParsingType::HomogenousArray(elem_type.with_bounds(bounds))
+                    }
                 }
             }
         }
@@ -961,12 +866,13 @@ fn parse_group_type<'a>(
                                 // TODO: Do we need to handle cuts for what we're doing?
                                 // Does the range control operator matter?
                                 let key_type = rust_type_from_type1(types, parent_visitor, t1, cli);
-                                let value_type = rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                return GroupParsingType::HomogenousMap(key_type, value_type)
+                                let value_type =
+                                    rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                return GroupParsingType::HomogenousMap(key_type, value_type);
                             }
                             Some(MemberKey::Value { .. }) => {
                                 // has a fixed value - this is just a 1-element struct
-                            },
+                            }
                             _ => panic!("unsupported table map key (1): {:?}", ge),
                         }
                     }
@@ -1177,15 +1083,17 @@ fn rust_type_from_type1(
             ty.as_bytes()
         }
         Some(ControlOperator::Range((low, high))) => match &type1.type2 {
-            Type2::Typename { ident, .. } => match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
-                Some(p) => range_to_primitive(low, high, p),
-                None => base_type,
+            Type2::Typename { ident, .. } => {
+                match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
+                    Some(p) => range_to_primitive(low, high, p),
+                    None => base_type.with_bounds((low, high)),
+                }
             }
             // the base value will be a constant due to incomplete parsing earlier for explicit ranges
             // e.g. foo = 0..255
             Type2::IntValue { .. } => range_to_primitive(low, high, Primitive::I64),
             Type2::UintValue { .. } => range_to_primitive(low, high, Primitive::U64),
-            _ => base_type,
+            _ => base_type.with_bounds((low, high)),
         },
         Some(ControlOperator::Default(default_value)) => base_type.default(default_value),
         None => base_type,

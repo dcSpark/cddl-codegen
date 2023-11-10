@@ -150,5 +150,5 @@ array_opt_fields = [
 bounds = [
     x: uint .le 7,
     y: nint .ge -5,
-    z: text .size 3..14,
+    z: text .size (3..14),
 ]

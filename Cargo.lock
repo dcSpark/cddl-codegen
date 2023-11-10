@@ -230,7 +230,6 @@ dependencies = [
  "cddl",
  "clap 4.3.19",
  "codegen",
- "either",
  "nom",
  "once_cell",
  "pathdiff",

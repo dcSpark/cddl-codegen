@@ -1029,7 +1029,7 @@ pub enum CBOREncodingOperation {
     CBORBytes,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
     pub default: Option<FixedValue>,
@@ -1037,16 +1037,6 @@ pub struct RustTypeSerializeConfig {
     pub bounds: Option<(Option<i128>, Option<i128>)>,
     /// Basic group encoding override. If true basic encoding will not be used in (de)serialization
     pub basic_override: bool,
-}
-
-impl Default for RustTypeSerializeConfig {
-    fn default() -> Self {
-        Self {
-            default: None,
-            bounds: None,
-            basic_override: false,
-        }
-    }
 }
 
 /// A complete rust type, including serialization options that don't impact other areas
@@ -1139,6 +1129,7 @@ impl RustType {
     }
 
     pub fn with_bounds(self, bounds: (Option<i128>, Option<i128>)) -> Self {
+        assert!(self.config.bounds.is_none());
         Self {
             conceptual_type: self.conceptual_type,
             encodings: self.encodings,
@@ -2416,9 +2407,7 @@ impl RustRecord {
                 return None;
             }
             count += match self.rep {
-                Representation::Array => field
-                    .rust_type
-                    .expanded_field_count(types)?,
+                Representation::Array => field.rust_type.expanded_field_count(types)?,
                 Representation::Map => 1,
             };
         }
@@ -2442,12 +2431,9 @@ impl RustRecord {
                             conditional_field_expr.push_str(" + ");
                         }
                         let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => (
-                                "x",
-                                field
-                                    .rust_type
-                                    .definite_info("x", types, cli),
-                            ),
+                            Representation::Array => {
+                                ("x", field.rust_type.definite_info("x", types, cli))
+                            }
                             // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                             Representation::Map => ("_", String::from("1")),
                         };
@@ -2484,12 +2470,11 @@ impl RustRecord {
                                         if !conditional_field_expr.is_empty() {
                                             conditional_field_expr.push_str(" + ");
                                         }
-                                        let field_len_expr =
-                                            field.rust_type.definite_info(
-                                                &format!("self.{}", field.name),
-                                                types,
-                                                cli,
-                                            );
+                                        let field_len_expr = field.rust_type.definite_info(
+                                            &format!("self.{}", field.name),
+                                            types,
+                                            cli,
+                                        );
                                         conditional_field_expr.push_str(&field_len_expr);
                                     }
                                 }
@@ -2513,11 +2498,7 @@ impl RustRecord {
         self.fields
             .iter()
             .filter(|field| !field.optional)
-            .map(|field| {
-                field
-                    .rust_type
-                    .expanded_mandatory_field_count(types)
-            })
+            .map(|field| field.rust_type.expanded_mandatory_field_count(types))
             .sum()
     }
 
