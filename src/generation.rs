@@ -2111,50 +2111,60 @@ impl GenerationScope {
                     | Primitive::N64 => e.to_owned(),
                     Primitive::Str | Primitive::Bytes => format!("{e}.len()"),
                 };
-                let mut deser_primitive = |mut final_exprs: Vec<String>,
-                                           func: &str,
-                                           x: &str,
-                                           x_expr: &str| {
-                    if cli.preserve_encodings {
-                        let enc_expr = match func {
-                            "text" | "bytes" => "StringEncoding::from(enc)",
-                            _ => "Some(enc)",
-                        };
-                        final_exprs.push(enc_expr.to_owned());
-                        let enc_map_fn = match &type_cfg.bounds {
-                            Some(bounds) => format!(
-                                ".and_then(|({}, enc)| {} else {{ Ok({}) }})",
-                                x,
-                                bounds_check_if_block(bounds, &bounds_check_expr(x_expr), false),
-                                final_expr(final_exprs, Some(x_expr.to_owned())),
-                            ),
-                            None => format!(
-                                ".map(|({}, enc)| {})",
-                                x,
-                                final_expr(final_exprs, Some(x_expr.to_owned()))
-                            ),
-                        };
-                        deser_code.content.line(&format!(
-                            "{}{}.{}_sz(){}{}{}",
-                            before_after.before_str(true),
-                            deserializer_name,
-                            func,
-                            enc_map_fn,
+                let non_preserve_bounds_fn =
+                    |x: &str, bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                        Some(bounds) => Cow::Owned(format!(
+                            "{}.and_then(|{}| {} else {{ Ok({}) }})",
                             error_convert,
-                            before_after.after_str(true)
-                        ));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "{}{}.{}()? as {}{}",
-                            before_after.before_str(false),
-                            deserializer_name,
-                            func,
-                            p.to_string(),
-                            before_after.after_str(false)
-                        ));
-                        deser_code.throws = true;
-                    }
-                };
+                            x,
+                            bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                            x,
+                        )),
+                        None => Cow::Borrowed(""),
+                    };
+                let mut deser_primitive =
+                    |mut final_exprs: Vec<String>, func: &str, x: &str, x_expr: &str| {
+                        if cli.preserve_encodings {
+                            let enc_expr = match func {
+                                "text" | "bytes" => "StringEncoding::from(enc)",
+                                _ => "Some(enc)",
+                            };
+                            final_exprs.push(enc_expr.to_owned());
+                            let enc_map_fn = match &type_cfg.bounds {
+                                Some(bounds) => format!(
+                                    ".and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                                    x,
+                                    bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                                    final_expr(final_exprs, Some(x_expr.to_owned())),
+                                ),
+                                None => format!(
+                                    ".map(|({}, enc)| {})",
+                                    x,
+                                    final_expr(final_exprs, Some(x_expr.to_owned()))
+                                ),
+                            };
+                            deser_code.content.line(&format!(
+                                "{}{}.{}_sz(){}{}{}",
+                                before_after.before_str(true),
+                                deserializer_name,
+                                func,
+                                error_convert,
+                                enc_map_fn,
+                                before_after.after_str(true)
+                            ));
+                        } else {
+                            deser_code.content.line(&format!(
+                                "{}{}.{}(){}? as {}{}",
+                                before_after.before_str(false),
+                                deserializer_name,
+                                func,
+                                non_preserve_bounds_fn(x, &type_cfg.bounds),
+                                p.to_string(),
+                                before_after.after_str(false)
+                            ));
+                            deser_code.throws = true;
+                        }
+                    };
                 match p {
                     Primitive::Bytes => {
                         deser_primitive(config.final_exprs, "bytes", "bytes", "bytes")
@@ -2169,15 +2179,37 @@ impl GenerationScope {
                         deser_primitive(config.final_exprs, "unsigned_integer", "x", "x")
                     }
                     Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
+                        // we need to only look at poisitve or negative bounds to avoid comparing e.g. a u64 with a negative
+                        let positive_bounds = type_cfg.bounds.map(|(lower, upper)| {
+                            (lower.filter(|l| *l > 0), upper.filter(|u| *u > 0))
+                        });
+                        let negative_bounds = type_cfg.bounds.map(|(lower, upper)| {
+                            (lower.filter(|l| *l < 0), upper.filter(|u| *u < 0))
+                        });
                         let mut type_check = Block::new(format!(
                             "{}match {}.cbor_type()?",
                             before_after.before_str(false),
                             deserializer_name
                         ));
                         if cli.preserve_encodings {
+                            let bounds_fn =
+                                |bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                                    Some(bounds) => Cow::Owned(format!(
+                                        "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
+                                        error_convert,
+                                        bounds_check_if_block(
+                                            bounds,
+                                            &bounds_check_expr("x"),
+                                            false
+                                        ),
+                                    )),
+                                    None => Cow::Borrowed(""),
+                                };
                             let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                             pos.line(&format!(
-                                "let (x, enc) = {deserializer_name}.unsigned_integer_sz()?;"
+                                "let (x, enc) = {}.unsigned_integer_sz(){}?;",
+                                deserializer_name,
+                                bounds_fn(&positive_bounds)
                             ))
                             .line(format!("(x as {}, Some(enc))", p.to_string()))
                             .after(",");
@@ -2185,26 +2217,46 @@ impl GenerationScope {
                             // let this cover both the negative int case + error case
                             let mut neg = Block::new("_ =>");
                             neg.line(&format!(
-                                "let (x, enc) = {deserializer_name}.negative_integer_sz()?;"
+                                "let (x, enc) = {}.negative_integer_sz(){}?;",
+                                deserializer_name,
+                                bounds_fn(&negative_bounds)
                             ))
                             .line(format!("(x as {}, Some(enc))", p.to_string()))
                             .after(",");
                             type_check.push_block(neg);
                         } else {
                             type_check
-                                .line(format!("cbor_event::Type::UnsignedInteger => {}.unsigned_integer()? as {},", deserializer_name, p.to_string()));
+                                .line(format!(
+                                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}? as {},",
+                                    deserializer_name,
+                                    non_preserve_bounds_fn("x", &positive_bounds),
+                                    p.to_string()));
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
                             if *p == Primitive::I64 {
+                                let bounds_fn = match &type_cfg.bounds {
+                                    Some(bounds) => Cow::Owned(format!(
+                                        "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
+                                        error_convert,
+                                        bounds_check_if_block(
+                                            bounds,
+                                            &bounds_check_expr("x"),
+                                            false
+                                        ),
+                                    )),
+                                    None => Cow::Borrowed(""),
+                                };
                                 type_check.line(format!(
-                                    "_ => {}.negative_integer_sz().map(|(x, _enc)| x)? as {},",
+                                    "_ => {}.negative_integer_sz(){}.map(|(x, _enc)| x)? as {},",
                                     deserializer_name,
+                                    bounds_fn,
                                     p.to_string()
                                 ));
                             } else {
                                 type_check.line(format!(
-                                    "_ => {}.negative_integer()? as {},",
+                                    "_ => {}.negative_integer(){}? as {},",
                                     deserializer_name,
+                                    non_preserve_bounds_fn("x", &negative_bounds),
                                     p.to_string()
                                 ));
                             }
@@ -2224,7 +2276,21 @@ impl GenerationScope {
                         } else {
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
-                            deser_code.content.line(&format!("{}{}.negative_integer_sz().map(|(x, _enc)| (x + 1).abs() as u64){}{}", before_after.before_str(true), deserializer_name, error_convert, before_after.after_str(true)));
+                            let bounds_fn = match &type_cfg.bounds {
+                                Some(bounds) => Cow::Owned(format!(
+                                    ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
+                                    bounds_check_if_block(bounds, &bounds_check_expr("x"), false),
+                                )),
+                                None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).abs() as u64)"),
+                            };
+                            deser_code.content.line(&format!(
+                                "{}{}.negative_integer_sz(){}{}{}",
+                                before_after.before_str(true),
+                                deserializer_name,
+                                error_convert,
+                                bounds_fn,
+                                before_after.after_str(true)
+                            ));
                         }
                     }
                     Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s"),
@@ -2245,6 +2311,9 @@ impl GenerationScope {
                         if cli.preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
+                        if type_cfg.bounds.is_some() {
+                            unimplemented!("bounds not supported for floats")
+                        }
                     }
                     Primitive::F64 => {
                         deser_code.content.line(&final_result_expr_complete(
@@ -2254,6 +2323,9 @@ impl GenerationScope {
                         ));
                         if cli.preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
+                        }
+                        if type_cfg.bounds.is_some() {
+                            unimplemented!("bounds not supported for floats")
                         }
                     }
                 };
@@ -3262,13 +3334,13 @@ fn bounds_check_if_block(
     e: &str,
     return_err: bool,
 ) -> String {
-    let possible_return = if return_err { "return" } else { "" };
+    let possible_return = if return_err { "return " } else { "" };
     format!(
-        "if {} {{ {}Err(DeserializeFailure::RangeCheck{{ found: {}, min: {}, max: {}}}.into()) }}",
+        "if {} {{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
         match bounds {
-            (Some(min), Some(max)) => format!("{e} >= {min} && {e} <= {max}"),
-            (None, Some(max)) => format!("{e} <= {max}"),
-            (Some(min), None) => format!("{e} >= {min}"),
+            (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
+            (None, Some(max)) => format!("{e} > {max}"),
+            (Some(min), None) => format!("{e} < {min}"),
             (None, None) => unreachable!(),
         },
         possible_return,
@@ -6929,7 +7001,7 @@ fn generate_wrapper_struct(
             (None, None) => panic!("How did we end up with a range requirement of (None, None)? Entire thing should've been None then"),
         };
         check.line(format!(
-            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {}, min: {}, max: {} }}));",
+            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",
             type_name,
             against,
             match min {

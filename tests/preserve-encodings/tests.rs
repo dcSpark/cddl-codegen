@@ -715,4 +715,81 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn bounds() {
+        // here we're just making sure that the code compiles + checks bounds with the preserve-encodings codegen
+        // all members here have their round-trip checked in other tests.
+        enum OOB {
+            Below,
+            Lower,
+            Upper,
+            Above,
+        }
+        let make_bounds = |w_out: OOB, x_out: OOB, y_out: OOB, z_out: OOB, a_out: OOB, b_out: OOB| {
+            let cbor = vec![
+                arr_def(6),
+                    cbor_int(match w_out {
+                        OOB::Below => -1001,
+                        OOB::Lower => -1000,
+                        OOB::Upper => 1000,
+                        OOB::Above => 1001,
+                    }, cbor_event::Sz::Two),
+                    cbor_int(match x_out {
+                        OOB::Below => panic!(),
+                        OOB::Lower => panic!(),
+                        OOB::Upper => 7,
+                        OOB::Above => 8,
+                    }, cbor_event::Sz::Inline),
+                    cbor_int(match y_out {
+                        OOB::Below => -6,
+                        OOB::Lower => -5,
+                        OOB::Upper => panic!(),
+                        OOB::Above => panic!(),
+                    }, cbor_event::Sz::Inline),
+                    cbor_string(match z_out {
+                        OOB::Below => "ab",
+                        OOB::Lower => "abc",
+                        OOB::Upper => "abcdefghijklmn",
+                        OOB::Above => "abcdefghijklmno",
+                    }),
+                    vec![ARR_INDEF],
+                        match a_out {
+                            OOB::Below => vec![],
+                            OOB::Lower => vec![0x00],
+                            OOB::Upper => vec![0x00, 0x01, 0x02],
+                            OOB::Above => vec![0x00, 0x01, 0x02, 0x03],
+                        },
+                    vec![BREAK],
+                    vec![MAP_INDEF],
+                        match b_out {
+                            OOB::Below => panic!(),
+                            OOB::Lower => panic!(),
+                            OOB::Upper => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02],
+                            OOB::Above => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x03],
+                        },
+                    vec![BREAK],
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            Bounds::from_cbor_bytes(&cbor)
+        };
+        let good1 = make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Lower, OOB::Lower, OOB::Upper).unwrap();
+        deser_test(&good1);
+        let good2 = make_bounds(OOB::Upper, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).unwrap();
+        deser_test(&good2);
+        // w oob
+        assert!(make_bounds(OOB::Below, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Above, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // x oob
+        assert!(make_bounds(OOB::Lower, OOB::Above, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // y oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Below, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // z oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Below, OOB::Upper, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Above, OOB::Upper, OOB::Upper).is_err());
+        // a oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Below, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Above, OOB::Upper).is_err());
+        // b oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
+    }
 }

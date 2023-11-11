@@ -1128,8 +1128,22 @@ impl RustType {
         }
     }
 
-    pub fn with_bounds(self, bounds: (Option<i128>, Option<i128>)) -> Self {
+    pub fn with_bounds(self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
         assert!(self.config.bounds.is_none());
+        // remove redundant 0 for unsigned types
+        if bounds.0 == Some(0)
+            && matches!(
+                self.conceptual_type.resolve_alias_shallow(),
+                ConceptualRustType::Primitive(Primitive::Bytes)
+                    | ConceptualRustType::Primitive(Primitive::Str)
+                    | ConceptualRustType::Primitive(Primitive::U8)
+                    | ConceptualRustType::Primitive(Primitive::U16)
+                    | ConceptualRustType::Primitive(Primitive::U32)
+                    | ConceptualRustType::Primitive(Primitive::U64)
+            )
+        {
+            bounds.0 = None;
+        }
         Self {
             conceptual_type: self.conceptual_type,
             encodings: self.encodings,
