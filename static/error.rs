@@ -36,7 +36,7 @@ pub enum DeserializeFailure {
     NoVariantMatched,
     NoVariantMatchedWithCauses(Vec<DeserializeError>),
     RangeCheck{
-        found: usize,
+        found: isize,
         min: Option<isize>,
         max: Option<isize>,
     },
