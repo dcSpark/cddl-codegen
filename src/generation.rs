@@ -9,8 +9,8 @@ use std::process::{Command, Stdio};
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
     FixedValue, IntermediateTypes, ModuleScope, Primitive, Representation, RustField, RustIdent,
-    RustRecord, RustStructCBORLen, RustStructType, RustType, ToWasmBoundaryOperations,
-    VariantIdent, ROOT_SCOPE,
+    RustRecord, RustStructCBORLen, RustStructType, RustType, RustTypeSerializeConfig,
+    ToWasmBoundaryOperations, VariantIdent, ROOT_SCOPE,
 };
 use crate::utils::{cbor_type_code_str, convert_to_snake_case};
 
@@ -236,7 +236,7 @@ fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
 #[derive(Debug)]
 enum SerializingRustType<'a> {
     EncodingOperation(&'a CBOREncodingOperation, Box<SerializingRustType<'a>>),
-    Root(&'a ConceptualRustType),
+    Root(&'a ConceptualRustType, Cow<'a, RustTypeSerializeConfig>),
 }
 
 trait EncodingVarIsCopy {
@@ -248,7 +248,7 @@ impl<'a> EncodingVarIsCopy for SerializingRustType<'a> {
         match self {
             Self::EncodingOperation(CBOREncodingOperation::CBORBytes, _) => false,
             Self::EncodingOperation(CBOREncodingOperation::Tagged(_), _) => true,
-            Self::Root(ty) => ty.encoding_var_is_copy(types),
+            Self::Root(ty, _cfg) => ty.encoding_var_is_copy(types),
         }
     }
 }
@@ -310,7 +310,7 @@ impl EncodingVarIsCopy for ConceptualRustType {
 
 impl<'a> From<&'a RustType> for SerializingRustType<'a> {
     fn from(rust_type: &'a RustType) -> Self {
-        let mut root = Self::Root(&rust_type.conceptual_type);
+        let mut root = Self::Root(&rust_type.conceptual_type, Cow::Borrowed(&rust_type.config));
         for cbor_encoding_op in rust_type.encodings.iter() {
             root = Self::EncodingOperation(cbor_encoding_op, Box::new(root));
         }
@@ -320,7 +320,10 @@ impl<'a> From<&'a RustType> for SerializingRustType<'a> {
 
 impl<'a> From<&'a ConceptualRustType> for SerializingRustType<'a> {
     fn from(conceptual_rust_type: &'a ConceptualRustType) -> Self {
-        Self::Root(conceptual_rust_type)
+        Self::Root(
+            conceptual_rust_type,
+            Cow::Owned(RustTypeSerializeConfig::default()),
+        )
     }
 }
 
@@ -1385,12 +1388,13 @@ impl GenerationScope {
                     "write_bytes",
                     serializer_use,
                     &format!("{}_bytes", config.var_name),
+                    true,
                     line_ender,
                     &config.encoding_var(Some("bytes"), encoding_var_is_copy),
                     cli,
                 );
             }
-            SerializingRustType::Root(ConceptualRustType::Fixed(value)) => match value {
+            SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => match value {
                 FixedValue::Null => {
                     body.line(&format!(
                         "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
@@ -1462,13 +1466,14 @@ impl GenerationScope {
                         "write_text",
                         serializer_use,
                         &format!("\"{s}\""),
+                        false,
                         line_ender,
                         &encoding_var,
                         cli,
                     );
                 }
             },
-            SerializingRustType::Root(ConceptualRustType::Primitive(primitive)) => {
+            SerializingRustType::Root(ConceptualRustType::Primitive(primitive), _cfg) => {
                 match primitive {
                     Primitive::Bool => {
                         body.line(&format!(
@@ -1491,6 +1496,7 @@ impl GenerationScope {
                             "write_bytes",
                             serializer_use,
                             &config.expr,
+                            true,
                             line_ender,
                             &encoding_var,
                             cli,
@@ -1502,6 +1508,7 @@ impl GenerationScope {
                             "write_text",
                             serializer_use,
                             &config.expr,
+                            true,
                             line_ender,
                             &encoding_var,
                             cli,
@@ -1593,7 +1600,7 @@ impl GenerationScope {
                     }
                 }
             }
-            SerializingRustType::Root(ConceptualRustType::Rust(t)) => {
+            SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
                 match &types.rust_struct(t).unwrap().variant() {
                     RustStructType::CStyleEnum { variants } => {
                         let mut enum_body = Block::new(format!("match {expr_ref}"));
@@ -1620,13 +1627,14 @@ impl GenerationScope {
                             "write_bytes",
                             serializer_use,
                             &format!("{}.to_raw_bytes()", config.expr),
+                            false,
                             line_ender,
                             &config.encoding_var(None, false),
                             cli,
                         );
                     }
                     _ => {
-                        if types.is_plain_group(t) {
+                        if types.is_plain_group(t) && !type_cfg.basic_override {
                             body.line(&format!(
                                 "{}.serialize_as_embedded_group({}{}){}",
                                 config.expr,
@@ -1646,21 +1654,19 @@ impl GenerationScope {
                     }
                 }
             }
-            SerializingRustType::Root(ConceptualRustType::Array(ty)) => {
+            SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
                 let len_expr = match &ty.conceptual_type {
                     ConceptualRustType::Rust(elem_ident) if types.is_plain_group(elem_ident) => {
                         // you should not be able to indiscriminately encode a plain group like this as it
                         // could be multiple elements. This would require special handling if it's even permitted in CDDL.
                         assert!(ty.encodings.is_empty());
-                        if let Some(fixed_elem_size) =
-                            ty.conceptual_type.expanded_field_count(types)
-                        {
+                        if let Some(fixed_elem_size) = ty.expanded_field_count(types) {
                             format!("{} * {}.len() as u64", fixed_elem_size, config.expr)
                         } else {
                             format!(
                                 "{}.iter().map(|e| {}).sum()",
                                 config.expr,
-                                ty.conceptual_type.definite_info("e", types, cli)
+                                ty.definite_info("e", types, cli)
                             )
                         }
                     }
@@ -1708,7 +1714,7 @@ impl GenerationScope {
                 body.push_block(loop_block);
                 end_len(body, serializer_use, &encoding_var, config.is_end, cli);
             }
-            SerializingRustType::Root(ConceptualRustType::Map(key, value)) => {
+            SerializingRustType::Root(ConceptualRustType::Map(key, value), _cfg) => {
                 start_len(
                     body,
                     Representation::Map,
@@ -1861,7 +1867,7 @@ impl GenerationScope {
                 body.push_block(ser_loop);
                 end_len(body, serializer_use, &encoding_var, config.is_end, cli);
             }
-            SerializingRustType::Root(ConceptualRustType::Optional(ty)) => {
+            SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
                 let mut opt_block = Block::new(format!("match {expr_ref}"));
                 // TODO: do this in one line without a block if possible somehow.
                 //       see other comment in generate_enum()
@@ -1878,7 +1884,7 @@ impl GenerationScope {
                 }
                 body.push_block(opt_block);
             }
-            SerializingRustType::Root(ConceptualRustType::Alias(_ident, ty)) => {
+            SerializingRustType::Root(ConceptualRustType::Alias(_ident, ty), _cfg) => {
                 self.generate_serialize(types, (&**ty).into(), body, config, cli)
             }
         };
@@ -1940,7 +1946,7 @@ impl GenerationScope {
             };
         let deserializer_name = config.deserializer_name();
         match serializing_rust_type {
-            SerializingRustType::Root(ConceptualRustType::Fixed(f)) => {
+            SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => {
                 if !cli.preserve_encodings {
                     // we don't evaluate to any values here, just verify
                     // before/after are ignored and we need to handle fixed value deserialization in a different way
@@ -2079,7 +2085,7 @@ impl GenerationScope {
                     deser_code.content.line("Ok(())");
                 }
             }
-            SerializingRustType::Root(ConceptualRustType::Primitive(p)) => {
+            SerializingRustType::Root(ConceptualRustType::Primitive(p), type_cfg) => {
                 if config.optional_field {
                     deser_code.content.line("read_len.read_elems(1)?;");
                     deser_code.read_len_used = true;
@@ -2090,6 +2096,32 @@ impl GenerationScope {
                 } else {
                     ""
                 };
+                let bounds_check_expr = |e: &str| match p {
+                    Primitive::Bool
+                    | Primitive::F32
+                    | Primitive::F64
+                    | Primitive::I8
+                    | Primitive::I16
+                    | Primitive::I32
+                    | Primitive::I64
+                    | Primitive::U8
+                    | Primitive::U16
+                    | Primitive::U32
+                    | Primitive::U64
+                    | Primitive::N64 => e.to_owned(),
+                    Primitive::Str | Primitive::Bytes => format!("{e}.len()"),
+                };
+                let non_preserve_bounds_fn =
+                    |x: &str, bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                        Some(bounds) => Cow::Owned(format!(
+                            "{}.and_then(|{}| {} else {{ Ok({}) }})",
+                            error_convert,
+                            x,
+                            bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                            x,
+                        )),
+                        None => Cow::Borrowed(""),
+                    };
                 let mut deser_primitive =
                     |mut final_exprs: Vec<String>, func: &str, x: &str, x_expr: &str| {
                         if cli.preserve_encodings {
@@ -2098,22 +2130,35 @@ impl GenerationScope {
                                 _ => "Some(enc)",
                             };
                             final_exprs.push(enc_expr.to_owned());
+                            let enc_map_fn = match &type_cfg.bounds {
+                                Some(bounds) => format!(
+                                    ".and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                                    x,
+                                    bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                                    final_expr(final_exprs, Some(x_expr.to_owned())),
+                                ),
+                                None => format!(
+                                    ".map(|({}, enc)| {})",
+                                    x,
+                                    final_expr(final_exprs, Some(x_expr.to_owned()))
+                                ),
+                            };
                             deser_code.content.line(&format!(
-                                "{}{}.{}_sz().map(|({}, enc)| {}){}{}",
+                                "{}{}.{}_sz(){}{}{}",
                                 before_after.before_str(true),
                                 deserializer_name,
                                 func,
-                                x,
-                                final_expr(final_exprs, Some(x_expr.to_owned())),
                                 error_convert,
+                                enc_map_fn,
                                 before_after.after_str(true)
                             ));
                         } else {
                             deser_code.content.line(&format!(
-                                "{}{}.{}()? as {}{}",
+                                "{}{}.{}(){}? as {}{}",
                                 before_after.before_str(false),
                                 deserializer_name,
                                 func,
+                                non_preserve_bounds_fn(x, &type_cfg.bounds),
                                 p.to_string(),
                                 before_after.after_str(false)
                             ));
@@ -2134,15 +2179,37 @@ impl GenerationScope {
                         deser_primitive(config.final_exprs, "unsigned_integer", "x", "x")
                     }
                     Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
+                        // we need to only look at poisitve or negative bounds to avoid comparing e.g. a u64 with a negative
+                        let positive_bounds = type_cfg.bounds.map(|(lower, upper)| {
+                            (lower.filter(|l| *l > 0), upper.filter(|u| *u > 0))
+                        });
+                        let negative_bounds = type_cfg.bounds.map(|(lower, upper)| {
+                            (lower.filter(|l| *l < 0), upper.filter(|u| *u < 0))
+                        });
                         let mut type_check = Block::new(format!(
                             "{}match {}.cbor_type()?",
                             before_after.before_str(false),
                             deserializer_name
                         ));
                         if cli.preserve_encodings {
+                            let bounds_fn =
+                                |bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                                    Some(bounds) => Cow::Owned(format!(
+                                        "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
+                                        error_convert,
+                                        bounds_check_if_block(
+                                            bounds,
+                                            &bounds_check_expr("x"),
+                                            false
+                                        ),
+                                    )),
+                                    None => Cow::Borrowed(""),
+                                };
                             let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                             pos.line(&format!(
-                                "let (x, enc) = {deserializer_name}.unsigned_integer_sz()?;"
+                                "let (x, enc) = {}.unsigned_integer_sz(){}?;",
+                                deserializer_name,
+                                bounds_fn(&positive_bounds)
                             ))
                             .line(format!("(x as {}, Some(enc))", p.to_string()))
                             .after(",");
@@ -2150,26 +2217,46 @@ impl GenerationScope {
                             // let this cover both the negative int case + error case
                             let mut neg = Block::new("_ =>");
                             neg.line(&format!(
-                                "let (x, enc) = {deserializer_name}.negative_integer_sz()?;"
+                                "let (x, enc) = {}.negative_integer_sz(){}?;",
+                                deserializer_name,
+                                bounds_fn(&negative_bounds)
                             ))
                             .line(format!("(x as {}, Some(enc))", p.to_string()))
                             .after(",");
                             type_check.push_block(neg);
                         } else {
                             type_check
-                                .line(format!("cbor_event::Type::UnsignedInteger => {}.unsigned_integer()? as {},", deserializer_name, p.to_string()));
+                                .line(format!(
+                                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}? as {},",
+                                    deserializer_name,
+                                    non_preserve_bounds_fn("x", &positive_bounds),
+                                    p.to_string()));
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
                             if *p == Primitive::I64 {
+                                let bounds_fn = match &type_cfg.bounds {
+                                    Some(bounds) => Cow::Owned(format!(
+                                        "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
+                                        error_convert,
+                                        bounds_check_if_block(
+                                            bounds,
+                                            &bounds_check_expr("x"),
+                                            false
+                                        ),
+                                    )),
+                                    None => Cow::Borrowed(""),
+                                };
                                 type_check.line(format!(
-                                    "_ => {}.negative_integer_sz().map(|(x, _enc)| x)? as {},",
+                                    "_ => {}.negative_integer_sz(){}.map(|(x, _enc)| x)? as {},",
                                     deserializer_name,
+                                    bounds_fn,
                                     p.to_string()
                                 ));
                             } else {
                                 type_check.line(format!(
-                                    "_ => {}.negative_integer()? as {},",
+                                    "_ => {}.negative_integer(){}? as {},",
                                     deserializer_name,
+                                    non_preserve_bounds_fn("x", &negative_bounds),
                                     p.to_string()
                                 ));
                             }
@@ -2189,7 +2276,21 @@ impl GenerationScope {
                         } else {
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
-                            deser_code.content.line(&format!("{}{}.negative_integer_sz().map(|(x, _enc)| (x + 1).abs() as u64){}{}", before_after.before_str(true), deserializer_name, error_convert, before_after.after_str(true)));
+                            let bounds_fn = match &type_cfg.bounds {
+                                Some(bounds) => Cow::Owned(format!(
+                                    ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
+                                    bounds_check_if_block(bounds, &bounds_check_expr("x"), false),
+                                )),
+                                None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).abs() as u64)"),
+                            };
+                            deser_code.content.line(&format!(
+                                "{}{}.negative_integer_sz(){}{}{}",
+                                before_after.before_str(true),
+                                deserializer_name,
+                                error_convert,
+                                bounds_fn,
+                                before_after.after_str(true)
+                            ));
                         }
                     }
                     Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s"),
@@ -2198,7 +2299,7 @@ impl GenerationScope {
                         deser_code.content.line(&final_result_expr_complete(
                             &mut deser_code.throws,
                             config.final_exprs,
-                            "raw.bool()",
+                            "raw.bool().map_err(Into::into)",
                         ));
                     }
                     Primitive::F32 => {
@@ -2210,6 +2311,9 @@ impl GenerationScope {
                         if cli.preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
+                        if type_cfg.bounds.is_some() {
+                            unimplemented!("bounds not supported for floats")
+                        }
                     }
                     Primitive::F64 => {
                         deser_code.content.line(&final_result_expr_complete(
@@ -2220,10 +2324,13 @@ impl GenerationScope {
                         if cli.preserve_encodings {
                             unimplemented!("preserve_encodings is not implemented for float")
                         }
+                        if type_cfg.bounds.is_some() {
+                            unimplemented!("bounds not supported for floats")
+                        }
                     }
                 };
             }
-            SerializingRustType::Root(ConceptualRustType::Rust(ident)) => {
+            SerializingRustType::Root(ConceptualRustType::Rust(ident), type_cfg) => {
                 match &types.rust_struct(ident).unwrap().variant() {
                     RustStructType::CStyleEnum { variants } => {
                         if config.optional_field {
@@ -2235,7 +2342,9 @@ impl GenerationScope {
                         //     // TODO: potentially simplified deserialization some day
                         //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                         // } else {
-                        deser_code.content.line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();");
+                        deser_code.content.line(
+                            "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
+                        );
                         let mut variant_final_exprs = config.final_exprs.clone();
                         if cli.preserve_encodings {
                             for enc_var in encoding_fields(
@@ -2309,7 +2418,7 @@ impl GenerationScope {
                         }
                     }
                     _ => {
-                        if types.is_plain_group(ident) {
+                        if types.is_plain_group(ident) && !type_cfg.basic_override {
                             // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.
                             // To have this work (if it's valid) you'd either need to generate 2 embedded deserialize methods or pass
                             // a parameter whether it was an optional field, and if so, read_len.read_elems(embedded mandatory fields)?;
@@ -2345,7 +2454,7 @@ impl GenerationScope {
                     }
                 }
             }
-            SerializingRustType::Root(ConceptualRustType::Optional(ty)) => {
+            SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
                 let read_len_check =
                     config.optional_field || (ty.expanded_field_count(types) != Some(1));
                 // codegen crate doesn't support if/else or appending a block after a block, only strings
@@ -2478,11 +2587,7 @@ impl GenerationScope {
                 deser_code.content.push_block(deser_block);
                 deser_code.throws = true;
             }
-            SerializingRustType::Root(ConceptualRustType::Array(ty)) => {
-                //if !self.deserialize_generated_for_type(&element_type) {
-                // TODO: check this elsehwere???
-                //self.dont_generate_deserialize(&array_type_ident, format!("inner type {} doesn't support deserialize", element_type.for_rust_member()));
-                //}
+            SerializingRustType::Root(ConceptualRustType::Array(ty), type_cfg) => {
                 if config.optional_field {
                     deser_code.content.line("read_len.read_elems(1)?;");
                     deser_code.read_len_used = true;
@@ -2533,11 +2638,10 @@ impl GenerationScope {
                         // statically know beforehand. This was done for other areas that use plain groups in order
                         // to be able to do static length checks for statically sized groups that contain plain groups
                         // at the start of deserialization instead of many checks for every single field.
-                        let plain_len_check =
-                            match ty.conceptual_type.expanded_mandatory_field_count(types) {
-                                0 => None,
-                                n => Some(format!("{read_len_overload}.read_elems({n})?;")),
-                            };
+                        let plain_len_check = match ty.expanded_mandatory_field_count(types) {
+                            0 => None,
+                            n => Some(format!("{read_len_overload}.read_elems({n})?;")),
+                        };
                         elem_config = elem_config.overload_read_len(read_len_overload);
                         let deser_loop = make_deser_loop(
                             "len",
@@ -2588,6 +2692,14 @@ impl GenerationScope {
                     .add_to(&mut deser_loop);
                 }
                 deser_code.content.push_block(deser_loop);
+                if let Some(bounds) = &type_cfg.bounds {
+                    // we use cargo fmt after so it's okay if we just use .line() here
+                    deser_code.content.line(&bounds_check_if_block(
+                        bounds,
+                        &format!("{arr_var_name}.len()"),
+                        true,
+                    ));
+                }
                 if cli.preserve_encodings {
                     config
                         .final_exprs
@@ -2613,7 +2725,7 @@ impl GenerationScope {
                 }
                 deser_code.throws = true;
             }
-            SerializingRustType::Root(ConceptualRustType::Map(key_type, value_type)) => {
+            SerializingRustType::Root(ConceptualRustType::Map(key_type, value_type), type_cfg) => {
                 if config.optional_field {
                     deser_code.content.line("read_len.read_elems(1)?;");
                     deser_code.read_len_used = true;
@@ -2786,6 +2898,14 @@ impl GenerationScope {
                         }
                     }
                     deser_code.content.push_block(deser_loop);
+                    if let Some(bounds) = &type_cfg.bounds {
+                        // we use cargo fmt after so it's okay if we just use .line() here
+                        deser_code.content.line(&bounds_check_if_block(
+                            bounds,
+                            &format!("{table_var}.len()"),
+                            true,
+                        ));
+                    }
                     if cli.preserve_encodings {
                         config
                             .final_exprs
@@ -2817,7 +2937,7 @@ impl GenerationScope {
                 }
                 deser_code.throws = true;
             }
-            SerializingRustType::Root(ConceptualRustType::Alias(_ident, ty)) => {
+            SerializingRustType::Root(ConceptualRustType::Alias(_ident, ty), _cfg) => {
                 self.generate_deserialize(types, (&**ty).into(), before_after, config, cli)
                     .add_to_code(&mut deser_code);
             }
@@ -3177,29 +3297,65 @@ fn write_using_sz(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_string_sz(
     body: &mut dyn CodeBlock,
     func: &str,
     serializer_use: &str,
     expr: &str,
+    expr_is_ref: bool,
     line_ender: &str,
     encoding_var: &str,
     cli: &Cli,
 ) {
+    let expr_ref = if expr_is_ref {
+        Cow::from(format!("&{expr}"))
+    } else {
+        Cow::from(expr)
+    };
     if cli.preserve_encodings {
         body.line(&format!(
-            "{}.{}_sz(&{}, {}.to_str_len_sz({}.len() as u64{})){}",
+            "{}.{}_sz({}, {}.to_str_len_sz({}.len() as u64{})){}",
             serializer_use,
             func,
-            expr,
+            expr_ref,
             encoding_var,
             expr,
             canonical_param(cli),
             line_ender
         ));
     } else {
-        body.line(&format!("{serializer_use}.{func}(&{expr}){line_ender}"));
+        body.line(&format!("{serializer_use}.{func}({expr_ref}){line_ender}"));
     }
+}
+
+fn bounds_check_if_block(
+    bounds: &(Option<i128>, Option<i128>),
+    e: &str,
+    return_err: bool,
+) -> String {
+    let possible_return = if return_err { "return " } else { "" };
+    format!(
+        "if {} {{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
+        match bounds {
+            (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
+            (None, Some(max)) => format!("{e} > {max}"),
+            (Some(min), None) => format!("{e} < {min}"),
+            (None, None) => unreachable!(),
+        },
+        possible_return,
+        e,
+        if let Some(b) = bounds.0 {
+            format!("Some({b})")
+        } else {
+            "None".into()
+        },
+        if let Some(b) = bounds.1 {
+            format!("Some({b})")
+        } else {
+            "None".into()
+        },
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -4030,7 +4186,7 @@ fn encoding_fields(
     assert!(cli.preserve_encodings);
     // TODO: how do we handle defaults for nested things? e.g. inside of a ConceptualRustType::Map
     let mut encs = encoding_fields_impl(types, name, ty.into(), cli);
-    if include_default && ty.default.is_some() {
+    if include_default && ty.config.default.is_some() {
         encs.push(EncodingField {
             field_name: format!("{name}_default_present"),
             type_name: "bool".to_owned(),
@@ -4049,7 +4205,7 @@ fn encoding_fields_impl(
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     match ty {
-        SerializingRustType::Root(ConceptualRustType::Array(elem_ty)) => {
+        SerializingRustType::Root(ConceptualRustType::Array(elem_ty), _cfg) => {
             let base = EncodingField {
                 field_name: format!("{name}_encoding"),
                 type_name: "LenEncoding".to_owned(),
@@ -4084,7 +4240,7 @@ fn encoding_fields_impl(
                 ]
             }
         }
-        SerializingRustType::Root(ConceptualRustType::Map(k, v)) => {
+        SerializingRustType::Root(ConceptualRustType::Map(k, v), _cfg) => {
             let mut encs = vec![EncodingField {
                 field_name: format!("{name}_encoding"),
                 type_name: "LenEncoding".to_owned(),
@@ -4146,7 +4302,7 @@ fn encoding_fields_impl(
             }
             encs
         }
-        SerializingRustType::Root(ConceptualRustType::Primitive(p)) => match p {
+        SerializingRustType::Root(ConceptualRustType::Primitive(p), _cfg) => match p {
             Primitive::Bytes | Primitive::Str => vec![EncodingField {
                 field_name: format!("{name}_encoding"),
                 type_name: "StringEncoding".to_owned(),
@@ -4175,7 +4331,7 @@ fn encoding_fields_impl(
                 vec![]
             }
         },
-        SerializingRustType::Root(ConceptualRustType::Fixed(f)) => match f {
+        SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => match f {
             FixedValue::Bool(_) | FixedValue::Null => vec![],
             FixedValue::Nint(_) => encoding_fields_impl(
                 types,
@@ -4202,13 +4358,13 @@ fn encoding_fields_impl(
                 cli,
             ),
         },
-        SerializingRustType::Root(ConceptualRustType::Alias(_, _)) => {
+        SerializingRustType::Root(ConceptualRustType::Alias(_, _), _cfg) => {
             panic!("resolve types before calling this")
         }
-        SerializingRustType::Root(ConceptualRustType::Optional(ty)) => {
+        SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
             encoding_fields(types, name, ty, false, cli)
         }
-        SerializingRustType::Root(ConceptualRustType::Rust(rust_ident)) => {
+        SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), _cfg) => {
             match &types.rust_struct(rust_ident).unwrap().variant() {
                 // for c-style enums we push those up to where they are used instead of self-containing
                 RustStructType::CStyleEnum { variants } => {
@@ -4301,7 +4457,7 @@ fn generate_array_struct_serialization(
                 continue;
             }
             let (optional_field_check, field_expr, expr_is_ref) = if let Some(default_value) =
-                &field.rust_type.default
+                &field.rust_type.config.default
             {
                 (
                     if cli.preserve_encodings {
@@ -4337,7 +4493,7 @@ fn generate_array_struct_serialization(
                     true,
                 )
             };
-            let mut optional_array_ser_block = Block::new(&optional_field_check);
+            let mut optional_array_ser_block = Block::new(optional_field_check);
             let mut config = SerializeConfig::new(field_expr, &field.name).expr_is_ref(expr_is_ref);
             if vars_in_self {
                 config = config.encoding_var_in_option_struct("self.encodings")
@@ -4642,7 +4798,7 @@ fn codegen_struct(
                         .arg_mut_self()
                         .arg(&field.name, &field.rust_type.for_wasm_param(types))
                         .vis("pub");
-                    if field.rust_type.default.is_some() {
+                    if field.rust_type.config.default.is_some() {
                         setter.line(format!(
                             "self.0.{} = {}",
                             field.name,
@@ -4671,7 +4827,7 @@ fn codegen_struct(
                     // getter
                     let mut getter = codegen::Function::new(&field.name);
                     getter.arg_ref_self().vis("pub");
-                    if field.rust_type.default.is_some() {
+                    if field.rust_type.config.default.is_some() {
                         getter.ret(field.rust_type.for_wasm_return(types)).line(
                             field.rust_type.to_wasm_boundary(
                                 types,
@@ -4750,7 +4906,7 @@ fn codegen_struct(
         }
         // Fixed values only exist in (de)serialization code (outside of preserve-encodings=true)
         if !field.rust_type.is_fixed_value() {
-            if let Some(default_value) = &field.rust_type.default {
+            if let Some(default_value) = &field.rust_type.config.default {
                 // field
                 native_struct.field(
                     &format!("pub {}", field.name),
@@ -4873,7 +5029,7 @@ fn codegen_struct(
                 cli,
             );
             code.deser_code.add_to_code(&mut deser_code);
-            let mut deser_ctor = Block::new(&format!("Ok({name}"));
+            let mut deser_ctor = Block::new(format!("Ok({name}"));
             for (var, expr) in code.deser_ctor_fields {
                 if var == expr {
                     deser_ctor.line(format!("{var},"));
@@ -4882,8 +5038,7 @@ fn codegen_struct(
                 }
             }
             if !code.encoding_struct_ctor_fields.is_empty() {
-                let mut encoding_ctor_block =
-                    Block::new(&format!("encodings: Some({name}Encoding"));
+                let mut encoding_ctor_block = Block::new(format!("encodings: Some({name}Encoding"));
                 encoding_ctor_block.after("),");
                 for (var, expr) in code.encoding_struct_ctor_fields {
                     if var == expr {
@@ -4958,7 +5113,7 @@ fn codegen_struct(
                         .line(&format!("let mut {} = None;", field.name));
                 }
                 let (data_name, expr_is_ref) =
-                    if field.optional && field.rust_type.default.is_none() {
+                    if field.optional && field.rust_type.config.default.is_none() {
                         (String::from("field"), true)
                     } else {
                         (format!("self.{}", field.name), false)
@@ -4969,12 +5124,12 @@ fn codegen_struct(
                 let mut deser_block = match &key {
                     FixedValue::Uint(x) => {
                         if cli.preserve_encodings {
-                            Block::new(&format!("({x}, key_enc) => "))
+                            Block::new(format!("({x}, key_enc) => "))
                         } else {
-                            Block::new(&format!("{x} => "))
+                            Block::new(format!("{x} => "))
                         }
                     }
-                    FixedValue::Text(x) => Block::new(&format!("\"{x}\" => ")),
+                    FixedValue::Text(x) => Block::new(format!("\"{x}\" => ")),
                     _ => panic!(
                         "unsupported map key type for {}.{}: {:?}",
                         name, field.name, key
@@ -4989,9 +5144,9 @@ fn codegen_struct(
                 };
                 if cli.preserve_encodings {
                     let mut dup_check = if field.rust_type.is_fixed_value() {
-                        Block::new(&format!("if {}_present", field.name))
+                        Block::new(format!("if {}_present", field.name))
                     } else {
-                        Block::new(&format!("if {}.is_some()", field.name))
+                        Block::new(format!("if {}.is_some()", field.name))
                     };
                     dup_check.line(&format!(
                         "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
@@ -5066,7 +5221,7 @@ fn codegen_struct(
                         ));
                     }
                 } else if field.rust_type.is_fixed_value() {
-                    let mut dup_check = Block::new(&format!("if {}_present", field.name));
+                    let mut dup_check = Block::new(format!("if {}_present", field.name));
                     dup_check.line(&format!(
                         "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                     ));
@@ -5103,7 +5258,7 @@ fn codegen_struct(
                             .line(&format!("{}_present = true;", field.name));
                     }
                 } else {
-                    let mut dup_check = Block::new(&format!("if {}.is_some()", field.name));
+                    let mut dup_check = Block::new(format!("if {}.is_some()", field.name));
                     dup_check.line(&format!(
                         "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                     ));
@@ -5182,6 +5337,7 @@ fn codegen_struct(
                             "write_text",
                             "serializer",
                             &format!("\"{s}\""),
+                            false,
                             "?;",
                             &key_encoding_var,
                             cli,
@@ -5231,15 +5387,15 @@ fn codegen_struct(
                     //    ser_loop_match.line(format!("{} => {},"));
                     //} else {
                     //}
-                    let mut field_ser_block = if field.optional && field.rust_type.default.is_none()
-                    {
-                        Block::new(&format!(
-                            "{} => if let Some(field) = &self.{}",
-                            field_index, field.name
-                        ))
-                    } else {
-                        Block::new(&format!("{field_index} =>"))
-                    };
+                    let mut field_ser_block =
+                        if field.optional && field.rust_type.config.default.is_none() {
+                            Block::new(format!(
+                                "{} => if let Some(field) = &self.{}",
+                                field_index, field.name
+                            ))
+                        } else {
+                            Block::new(format!("{field_index} =>"))
+                        };
                     field_ser_block.push_all(content);
                     ser_loop_match.push_block(field_ser_block);
                 }
@@ -5250,7 +5406,7 @@ fn codegen_struct(
                 for (_field_index, field, content) in ser_content.into_iter() {
                     if field.optional {
                         let optional_ser_field_check =
-                            if let Some(default_value) = &field.rust_type.default {
+                            if let Some(default_value) = &field.rust_type.config.default {
                                 format!(
                                     "if self.{} != {}",
                                     field.name,
@@ -5259,7 +5415,7 @@ fn codegen_struct(
                             } else {
                                 format!("if let Some(field) = &self.{}", field.name)
                             };
-                        let mut optional_ser_field = Block::new(&optional_ser_field_check);
+                        let mut optional_ser_field = Block::new(optional_ser_field_check);
                         optional_ser_field.push_all(content);
                         ser_func.push_block(optional_ser_field);
                     } else {
@@ -5324,7 +5480,7 @@ fn codegen_struct(
                 cbor_event_len_n("_", cli)
             ));
             // TODO: this will need to change if we support Special values as keys (e.g. true / false)
-            let mut break_check = Block::new(&format!(
+            let mut break_check = Block::new(format!(
                 "{} => match raw.special()?",
                 cbor_event_len_indef(cli)
             ));
@@ -5350,23 +5506,23 @@ fn codegen_struct(
                     };
                     if field.rust_type.is_fixed_value() {
                         let mut mandatory_field_check =
-                            Block::new(&format!("if !{}_present", field.name));
+                            Block::new(format!("if !{}_present", field.name));
                         mandatory_field_check.line(format!(
                             "return Err(DeserializeFailure::MandatoryFieldMissing({key}).into());"
                         ));
                         deser_code.content.push_block(mandatory_field_check);
                     } else {
                         let mut mandatory_field_check =
-                            Block::new(&format!("let {} = match {}", field.name, field.name));
+                            Block::new(format!("let {} = match {}", field.name, field.name));
                         mandatory_field_check.line("Some(x) => x,");
 
                         mandatory_field_check.line(format!("None => return Err(DeserializeFailure::MandatoryFieldMissing({key}).into()),"));
                         mandatory_field_check.after(";");
                         deser_code.content.push_block(mandatory_field_check);
                     }
-                } else if let Some(default_value) = &field.rust_type.default {
+                } else if let Some(default_value) = &field.rust_type.config.default {
                     if cli.preserve_encodings {
-                        let mut default_present_check = Block::new(&format!(
+                        let mut default_present_check = Block::new(format!(
                             "if {} == Some({})",
                             field.name,
                             default_value.to_primitive_str_assign()
@@ -5404,7 +5560,7 @@ fn codegen_struct(
                 }
             }
             if cli.preserve_encodings {
-                let mut encoding_ctor = Block::new(&format!("encodings: Some({name}Encoding"));
+                let mut encoding_ctor = Block::new(format!("encodings: Some({name}Encoding"));
                 if tag.is_some() {
                     encoding_ctor.line("tag_encoding: Some(tag_encoding),");
                 }
@@ -5920,7 +6076,7 @@ impl EnumVariantInRust {
                 ));
             }
             _ => {
-                let mut ctor = Block::new(&format!("{}Self::{}", before, self.name));
+                let mut ctor = Block::new(format!("{}Self::{}", before, self.name));
                 for (name, expr) in self.names.iter().zip(init_fields.iter()) {
                     if name == expr {
                         ctor.line(format!("{name},"));
@@ -5960,7 +6116,7 @@ fn generate_c_style_enum(
         return false;
     }
     // rust enum containing the data
-    let mut e = codegen::Enum::new(&name.to_string());
+    let mut e = codegen::Enum::new(name.to_string());
     e.vis("pub");
     e.derive("Copy")
         .derive("Eq")
@@ -6095,7 +6251,7 @@ fn generate_enum(
 ) {
     if cli.wasm {
         // also create a wasm-exposed enum just to distinguish the type
-        let mut kind = codegen::Enum::new(&format!("{name}Kind"));
+        let mut kind = codegen::Enum::new(format!("{name}Kind"));
         kind.vis("pub");
         for variant in variants.iter() {
             kind.new_variant(&variant.name.to_string());
@@ -6105,7 +6261,7 @@ fn generate_enum(
     }
 
     // rust enum containing the data
-    let mut e = codegen::Enum::new(&name.to_string());
+    let mut e = codegen::Enum::new(name.to_string());
     e.vis("pub");
     let mut e_impl = codegen::Impl::new(name.to_string());
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
@@ -6134,7 +6290,7 @@ fn generate_enum(
         // this is handled in create_deseriaize_impls in the other case, and it MUST be handled there to ensure that
         // the tag check is done BEFORE reading the array/map CBOR
         generate_tag_check(deser_body, name, tag);
-        let mut deser_impl = codegen::Impl::new(&name.to_string());
+        let mut deser_impl = codegen::Impl::new(name.to_string());
         deser_impl.impl_trait("Deserialize");
         deser_impl
     } else {
@@ -6182,7 +6338,7 @@ fn generate_enum(
     };
     if non_overlapping_types_match.is_none() {
         deser_body
-            .line("let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();")
+            .line("let initial_position = raw.as_mut_ref().stream_position().unwrap();")
             .line("let mut errs = Vec::new();");
     }
     for variant in variants.iter() {
@@ -6294,7 +6450,7 @@ fn generate_enum(
                 canonical_param(cli)
             ));
         } else {
-            let mut case_block = Block::new(&format!(
+            let mut case_block = Block::new(format!(
                 "{}::{}{} =>",
                 name,
                 variant.name,
@@ -6754,7 +6910,7 @@ fn generate_wrapper_struct(
     );
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize");
-    let mut deser_impl = codegen::Impl::new(&type_name.to_string());
+    let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
     if let ConceptualRustType::Rust(id) = &field_type.conceptual_type {
         if types.is_plain_group(id) {
@@ -6813,7 +6969,7 @@ fn generate_wrapper_struct(
         };
         let mut check = match (min, max) {
             (Some(min), Some(max)) => if min == max {
-                Block::new(&format!("if {against} != {min}"))
+                Block::new(format!("if {against} != {min}"))
             } else {
                 let non_negative = field_type.encodings.is_empty() && match &field_type.conceptual_type {
                     ConceptualRustType::Primitive(p) => match p {
@@ -6835,17 +6991,17 @@ fn generate_wrapper_struct(
                     _ => unimplemented!(),
                 };
                 if min == 0 && non_negative {
-                    Block::new(&format!("if {against} > {max}"))
+                    Block::new(format!("if {against} > {max}"))
                 } else {
-                    Block::new(&format!("if {against} < {min} || {against} > {max}"))
+                    Block::new(format!("if {against} < {min} || {against} > {max}"))
                 }
             },
-            (Some(min), None) => Block::new(&format!("if {against} < {min}")),
-            (None, Some(max)) => Block::new(&format!("if {against} > {max}")),
+            (Some(min), None) => Block::new(format!("if {against} < {min}")),
+            (None, Some(max)) => Block::new(format!("if {against} > {max}")),
             (None, None) => panic!("How did we end up with a range requirement of (None, None)? Entire thing should've been None then"),
         };
         check.line(format!(
-            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {}, min: {}, max: {} }}));",
+            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",
             type_name,
             against,
             match min {
@@ -6864,7 +7020,7 @@ fn generate_wrapper_struct(
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");
             if !enc_fields.is_empty() {
-                let mut encoding_ctor = Block::new(&format!("encodings: Some({encoding_name}"));
+                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
                 for field_enc in enc_fields {
                     encoding_ctor.line(format!("{},", field_enc.field_name));
                 }
@@ -6932,7 +7088,7 @@ fn generate_wrapper_struct(
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");
             if !enc_fields.is_empty() {
-                let mut encoding_ctor = Block::new(&format!("encodings: Some({encoding_name}"));
+                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
                 for field_enc in enc_fields {
                     encoding_ctor.line(format!("{},", field_enc.field_name));
                 }
@@ -7064,7 +7220,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             cli.lib_name_code()
         ));
         new_else.line(format!(
-            "Self({}::Int::new_nint((x + 1).abs() as u64))",
+            "Self({}::Int::new_nint((x + 1).unsigned_abs()))",
             cli.lib_name_code()
         ));
         wasm_new
