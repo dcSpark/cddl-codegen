@@ -547,7 +547,10 @@ impl<'a> IntermediateTypes<'a> {
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
             }
         }
-        self.used_as_key = used_as_key;
+        // we use a separate one here to get around the borrow checker in the above visit_types
+        for ident in used_as_key {
+            self.mark_used_as_key(ident);
+        }
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
@@ -655,6 +658,10 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
         self.used_as_key.contains(name)
+    }
+
+    pub fn mark_used_as_key(&mut self, name: RustIdent) {
+        self.used_as_key.insert(name);
     }
 
     pub fn print_info(&self) {

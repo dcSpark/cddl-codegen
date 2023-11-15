@@ -456,6 +456,9 @@ fn parse_type(
         &RuleMetadata::from(type1.comments_after_type.as_ref()),
         &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
     );
+    if rule_metadata.used_as_key {
+        types.mark_used_as_key(type_name.clone());
+    }
     match &type1.type2 {
         Type2::Typename {
             ident,
