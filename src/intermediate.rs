@@ -539,6 +539,14 @@ impl<'a> IntermediateTypes<'a> {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
+        // do a recursive check on the ones explicitly tagged as keys using @used_as_key
+        // this is done here since the lambdas are defined here so we can reuse them
+        for ident in &self.used_as_key {
+            if let Some(rust_struct) = self.rust_struct(ident) {
+                rust_struct.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+            }
+        }
+        // check all other places used as keys
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, &mut |ty| {
                 check_used_as_key(ty, self, &mut used_as_key)

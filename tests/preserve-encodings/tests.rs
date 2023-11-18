@@ -792,4 +792,13 @@ mod tests {
         // b oob
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
     }
+
+    #[test]
+    fn used_as_key() {
+        // this is just here to make sure this compiles (i.e. Hash/Eq traits are derived)
+        let mut set_foo: std::collections::HashSet<Foo> = std::collections::HashSet::new();
+        set_foo.insert(Foo::new(0, "text".to_owned(), vec![]));
+        let mut set_non_overlap: std::collections::HashSet<NonOverlappingTypeChoiceSome> = std::collections::HashSet::new();
+        set_non_overlap.insert(NonOverlappingTypeChoiceSome::new_uint(0));
+    }
 }
