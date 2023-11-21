@@ -76,7 +76,7 @@ cddl-codegen --input=example --output=export --wasm false
 
 :::info `--preserve-encodings` 
 
-Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering. For each module this will also create a `cbor_encodings.rs` file to potentially store any structs for storing these encodings. This option is useful if you need to preserve the deserialized format for round-tripping (e.g. hashes) or if you want to modify the format to conincide with a specific tool for hashing.
+Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering. For each module this will also create a `cbor_encodings.rs` file to potentially store any structs for storing these encodings. This option is useful if you need to preserve the deserialized format for round-tripping (e.g. hashes) or if you want to modify the format to coincide with a specific tool for hashing.
 
 Possible values: true, false
 ```bash
@@ -139,7 +139,7 @@ cddl-codegen --input=example --output=export --package-json true --json-schema-e
 :::info `--common-import-override`
 Overrides the location of the static exports (e.g. error.rs, serialization.rs, etc).
 
-This is particularily useful for combining multiple crates each generated using cddl-codegen where they all share a shared core directory where the static files are located.
+This is particularly useful for combining multiple crates each generated using cddl-codegen where they all share a shared core directory where the static files are located.
 
 **Default:** crate
 ```bash

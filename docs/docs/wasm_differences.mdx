@@ -9,14 +9,14 @@ In the wasm crate we can't always go one to one with the rust crate. Here are so
 
 ## Heterogeneous Arrays
 
-`wasm_bindgen` cannot expose doubly-nested types like `Vec<Vec<T>` which can be a limitation if `T` was a non-byte primtive.
+`wasm_bindgen` cannot expose doubly-nested types like `Vec<Vec<T>` which can be a limitation if `T` was a non-byte primitive.
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.
 This lets us get around the `wasm_bindgen` limitation (without implementing cross-boundary traits which could be inefficient/tedious/complicated).
 This array wrapper implements `len() -> self`, `get(usize) -> T` and `add(T)`.
 
 ## Tables
 
-Map literals also generate a type for them with `len() -> usize` and `insert(K, V) -> Option<V>`. The table type will have a `MapKeyToValue` name for whichever `Key` and `Value` types it's exposed as if it's anonymously inlined a as a member, or will take on the identifier if it's a named one.
+Map literals also generate a type for them with `len() -> usize` and `insert(K, V) -> Option<V>`. The table type will have a `MapKeyToValue` name for whichever `Key` and `Value` types it's exposed as if it's anonymously inlined as a member, or will take on the identifier if it's a named one.
 
 ## Enums
 
