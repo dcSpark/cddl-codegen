@@ -1503,6 +1503,8 @@ pub fn parse_group(
             .iter()
             .enumerate()
             .map(|(i, group_choice)| {
+                let rule_metadata =
+                    RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref());
                 // If we're a 1-element we should just wrap that type in the variant rather than
                 // define a new struct just for each variant.
                 // TODO: handle map-based enums? It would require being able to extract the key logic
@@ -1518,15 +1520,17 @@ pub fn parse_group(
                         } else {
                             false
                         };
-                    let variant_ident =
-                        convert_to_camel_case(&match group_entry_to_raw_field_name(group_entry) {
+                    let ident_name = rule_metadata.name.unwrap_or_else(|| {
+                        match group_entry_to_raw_field_name(group_entry) {
                             Some(name) => name,
                             None => append_number_if_duplicate(
                                 &mut variants_names_used,
                                 ty.for_variant().to_string(),
                             ),
-                        });
-                    let variant_ident = VariantIdent::new_custom(variant_ident);
+                        }
+                    });
+                    let variant_ident =
+                        VariantIdent::new_custom(convert_to_camel_case(&ident_name));
                     EnumVariant::new(variant_ident, ty, serialize_as_embedded)
                     // None => {
                     //     // TODO: Weird case, group choice with only one fixed-value field.
@@ -1539,8 +1543,6 @@ pub fn parse_group(
                     //     EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), true)
                     // },
                 } else {
-                    let rule_metadata =
-                        RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref());
                     let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{name}{i}"));
                     // General case, GroupN type identifiers and generate group choice since it's inlined here
                     let variant_name = RustIdent::new(CDDLIdent::new(ident_name));

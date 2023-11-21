@@ -11,7 +11,7 @@ foo2 = #6.23([uint, opt_text])
 bar = {
 	foo: #6.1337(foo),
 	? derp: uint,
-	1 : uint / null,
+	1 : uint / null, ; @name one
 	? 5: text,
 	five: 5,
 	float: float64,
@@ -125,8 +125,11 @@ top_level_array = [* uint]
 top_level_single_elem = [uint]
 
 overlapping_inlined = [
+	; @name one
 	0 //
+	; @name two
 	0, uint //
+	; @name three
 	0, uint, text
 ]
 
@@ -134,7 +137,9 @@ overlapping0 = [0]
 overlapping1 = [0, uint]
 overlapping2 = [0, uint, text]
 
-overlapping = overlapping0 / overlapping1 / overlapping2
+overlapping = overlapping0 ; @name A
+            / overlapping1 ; @name B
+            / overlapping2 ; @name C
 
 array_opt_fields = [
   ? x: 1.010101 
