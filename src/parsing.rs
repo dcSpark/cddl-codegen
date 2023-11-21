@@ -173,6 +173,21 @@ fn parse_type_choices(
             AliasInfo::new(final_type, !rule_metadata.no_alias, !rule_metadata.no_alias),
         );
     } else {
+        let rule_metadata = merge_metadata(
+            &RuleMetadata::from(
+                type_choices
+                    .last()
+                    .and_then(|tc| tc.comments_after_type.as_ref()),
+            ),
+            &RuleMetadata::from(
+                type_choices
+                    .last()
+                    .and_then(|tc| tc.type1.comments_after_type.as_ref()),
+            ),
+        );
+        if rule_metadata.used_as_key {
+            types.mark_used_as_key(name.clone());
+        }
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants, cli);
         match generic_params {
@@ -456,6 +471,9 @@ fn parse_type(
         &RuleMetadata::from(type1.comments_after_type.as_ref()),
         &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
     );
+    if rule_metadata.used_as_key {
+        types.mark_used_as_key(type_name.clone());
+    }
     match &type1.type2 {
         Type2::Typename {
             ident,
