@@ -539,6 +539,14 @@ impl<'a> IntermediateTypes<'a> {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
+        // do a recursive check on the ones explicitly tagged as keys using @used_as_key
+        // this is done here since the lambdas are defined here so we can reuse them
+        for ident in &self.used_as_key {
+            if let Some(rust_struct) = self.rust_struct(ident) {
+                rust_struct.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+            }
+        }
+        // check all other places used as keys
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, &mut |ty| {
                 check_used_as_key(ty, self, &mut used_as_key)
@@ -547,7 +555,10 @@ impl<'a> IntermediateTypes<'a> {
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
             }
         }
-        self.used_as_key = used_as_key;
+        // we use a separate one here to get around the borrow checker in the above visit_types
+        for ident in used_as_key {
+            self.mark_used_as_key(ident);
+        }
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
@@ -655,6 +666,10 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
         self.used_as_key.contains(name)
+    }
+
+    pub fn mark_used_as_key(&mut self, name: RustIdent) {
+        self.used_as_key.insert(name);
     }
 
     pub fn print_info(&self) {

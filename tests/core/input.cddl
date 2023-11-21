@@ -18,7 +18,7 @@ bar = {
 }
 
 plain = (d: #6.23(uint), e: tagged_text)
-outer = [a: uint, b: plain, c: "some text"]
+outer = [a: uint, b: plain, c: "some text"] ; @used_as_key
 plain_arrays = [
 ; this is not supported right now. When single-element arrays are supported remove this.
 ;	single: [plain],
@@ -34,7 +34,7 @@ table_arr_members = {
 
 c_enum = 3 / 1 / 4
 
-type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint])
+type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint]) ; @used_as_key
 
 non_overlapping_type_choice_all = uint / nint / text / bytes / #6.30("hello world") / [* uint] / { *text => uint }
 
@@ -45,7 +45,7 @@ enums = [
 	type_choice,
 ]
 
-group_choice = [ foo // 0, x: uint // plain ]
+group_choice = [ foo // 0, x: uint // plain ] ; @used_as_key
 
 foo_bytes = bytes .cbor foo
 

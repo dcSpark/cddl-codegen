@@ -370,4 +370,15 @@ mod tests {
         // b oob
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
     }
+
+    #[test]
+    fn used_as_key() {
+        // this is just here to make sure this compiles (i.e. Ord traits are derived)
+        let mut set_outer: std::collections::BTreeSet<Outer> = std::collections::BTreeSet::new();
+        set_outer.insert(Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
+        let mut set_type_choice: std::collections::BTreeSet<TypeChoice> = std::collections::BTreeSet::new();
+        set_type_choice.insert(TypeChoice::Helloworld);
+        let mut set_group_choice: std::collections::BTreeSet<GroupChoice> = std::collections::BTreeSet::new();
+        set_group_choice.insert(GroupChoice::GroupChoice1(37));
+    }
 }

@@ -82,6 +82,20 @@ pub struct Bar {
 }
 ```
 
+## @used_as_key
+
+```cddl
+foo = [
+  x: uint,
+  y: uint,
+] ; @used_as_Key
+```
+
+cddl-codegen automatically derives `Ord`/`PartialOrd` or `Hash` for any types used within as a key in another type.
+Putting this comment on a type forces that type to derive those traits even if it weren't used in a key in the cddl spec.
+This is useful for when you are writing utility code that would put them in a map and want the generated code to have it already,
+which is particularly useful for re-generating as it lets your `mod.rs` files remain untouched.
+
 ## _CDDL_CODEGEN_EXTERN_TYPE_
 
 While not as a comment, this allows you to compose in hand-written structs into a cddl spec.
