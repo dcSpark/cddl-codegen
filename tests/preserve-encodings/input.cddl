@@ -90,6 +90,8 @@ array_opt_fields = [
 ;  ? z: null,
 ]
 
+hash = bytes .size (0..8)
+
 bounds = [
     w: -1000 .. 1000
     x: uint .le 7,
@@ -97,4 +99,16 @@ bounds = [
     z: text .size (3..14),
     a: [* uint] .size (1..3),
     b: { * uint => uint } .le 3
+]
+
+bounds_type_choice = bytes .size (0..64)
+                   / text .size (0..64)
+
+bounds_group_choice = [
+    ; @name a
+    a: uint, b: text .le 4 //
+    ; @name b
+    hash //
+    ; @name c
+    1, x: hash, y: hash
 ]

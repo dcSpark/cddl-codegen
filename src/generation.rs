@@ -955,7 +955,10 @@ impl GenerationScope {
                 // common imports
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
-                    .push_import("wasm_bindgen::prelude", "JsValue", None);
+                    .push_import("wasm_bindgen::prelude", "JsError", None);
+                if cli.json_serde_derives && cli.wasm_cbor_json_api_macro.is_none() {
+                    content.push_import("wasm_bindgen::prelude", "JsValue", None);
+                }
                 if cli.preserve_encodings {
                     content.push_import(
                         format!("{}::ordered_hash_map", cli.common_import_wasm()),
@@ -1920,6 +1923,7 @@ impl GenerationScope {
                     encoding_exprs.join(", ")
                 }
             };
+        let convert_err_to_ours = ".map_err(Into::<DeserializeError>::into)";
         // Gives a total final expression including the before_after context
         // as well as dealing with avoiding clippy warning which is why we can
         // be conditionally a direct value (if there are encoding vars thus a tuple)
@@ -2092,32 +2096,18 @@ impl GenerationScope {
                     deser_code.throws = true;
                 }
                 let error_convert = if before_after.expects_result {
-                    ".map_err(Into::<DeserializeError>::into)"
+                    convert_err_to_ours
                 } else {
                     ""
                 };
-                let bounds_check_expr = |e: &str| match p {
-                    Primitive::Bool
-                    | Primitive::F32
-                    | Primitive::F64
-                    | Primitive::I8
-                    | Primitive::I16
-                    | Primitive::I32
-                    | Primitive::I64
-                    | Primitive::U8
-                    | Primitive::U16
-                    | Primitive::U32
-                    | Primitive::U64
-                    | Primitive::N64 => e.to_owned(),
-                    Primitive::Str | Primitive::Bytes => format!("{e}.len()"),
-                };
                 let non_preserve_bounds_fn =
                     |x: &str, bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                        // always convert error to have consistent E for the and_then
                         Some(bounds) => Cow::Owned(format!(
                             "{}.and_then(|{}| {} else {{ Ok({}) }})",
-                            error_convert,
+                            convert_err_to_ours,
                             x,
-                            bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                            bounds_check_if_block(bounds, &bounds_check_expr(*p, x), false),
                             x,
                         )),
                         None => Cow::Borrowed(""),
@@ -2131,10 +2121,12 @@ impl GenerationScope {
                             };
                             final_exprs.push(enc_expr.to_owned());
                             let enc_map_fn = match &type_cfg.bounds {
+                                // always convert error to have consistent E for the and_then
                                 Some(bounds) => format!(
-                                    ".and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                                    "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                                    convert_err_to_ours,
                                     x,
-                                    bounds_check_if_block(bounds, &bounds_check_expr(x), false),
+                                    bounds_check_if_block(bounds, &bounds_check_expr(*p, x), false),
                                     final_expr(final_exprs, Some(x_expr.to_owned())),
                                 ),
                                 None => format!(
@@ -2194,12 +2186,13 @@ impl GenerationScope {
                         if cli.preserve_encodings {
                             let bounds_fn =
                                 |bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
+                                    // always convert error to have consistent E for the and_then
                                     Some(bounds) => Cow::Owned(format!(
                                         "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
-                                        error_convert,
+                                        convert_err_to_ours,
                                         bounds_check_if_block(
                                             bounds,
-                                            &bounds_check_expr("x"),
+                                            &bounds_check_expr(*p, "x"),
                                             false
                                         ),
                                     )),
@@ -2237,10 +2230,10 @@ impl GenerationScope {
                                 let bounds_fn = match &type_cfg.bounds {
                                     Some(bounds) => Cow::Owned(format!(
                                         "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
-                                        error_convert,
+                                        convert_err_to_ours,
                                         bounds_check_if_block(
                                             bounds,
-                                            &bounds_check_expr("x"),
+                                            &bounds_check_expr(*p, "x"),
                                             false
                                         ),
                                     )),
@@ -2279,7 +2272,11 @@ impl GenerationScope {
                             let bounds_fn = match &type_cfg.bounds {
                                 Some(bounds) => Cow::Owned(format!(
                                     ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
-                                    bounds_check_if_block(bounds, &bounds_check_expr("x"), false),
+                                    bounds_check_if_block(
+                                        bounds,
+                                        &bounds_check_expr(*p, "x"),
+                                        false
+                                    ),
                                 )),
                                 None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).abs() as u64)"),
                             };
@@ -2385,21 +2382,20 @@ impl GenerationScope {
                             deser_code.throws = true;
                             deser_code.read_len_used = true;
                         }
-                        let error_convert = ".map_err(Into::<DeserializeError>::into)";
                         if cli.preserve_encodings {
                             config
                                 .final_exprs
                                 .push("StringEncoding::from(enc)".to_owned());
                             let from_raw_bytes_with_conversions = format!(
-                            "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
-                            ident,
-                            final_expr(config.final_exprs, Some("bytes".to_owned()))
-                        );
+                                "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
+                                ident,
+                                final_expr(config.final_exprs, Some("bytes".to_owned()))
+                            );
                             deser_code.content.line(&format!(
                                 "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
                                 before_after.before_str(true),
                                 deserializer_name,
-                                error_convert,
+                                convert_err_to_ours,
                                 from_raw_bytes_with_conversions,
                                 before_after.after_str(true)
                             ));
@@ -2411,7 +2407,7 @@ impl GenerationScope {
                                 "{}{}.bytes(){}.and_then(|bytes| {}){}",
                                 before_after.before_str(true),
                                 deserializer_name,
-                                error_convert,
+                                convert_err_to_ours,
                                 from_raw_bytes_with_conversions,
                                 before_after.after_str(true)
                             ));
@@ -3103,35 +3099,38 @@ impl GenerationScope {
                 let variant_arg = variant.name_as_var();
                 let mut new_func = codegen::Function::new(&format!("new_{variant_arg}"));
                 new_func.vis("pub");
-                let can_fail = match &variant.name {
-                    VariantIdent::Custom(_) => false,
-                    VariantIdent::RustStruct(rust_ident) => types.can_new_fail(rust_ident),
-                };
-                if can_fail {
-                    new_func.ret(format!("Result<{name}, JsValue>"));
-                } else {
-                    new_func.ret("Self");
-                }
+                let can_fail = variant.rust_type().needs_bounds_check_if_inlined(types);
                 if !variant.rust_type().is_fixed_value() {
                     new_func.arg(&variant_arg, &variant.rust_type().for_wasm_param(types));
                 }
-                if variant.rust_type().is_fixed_value() {
-                    new_func.line(format!(
-                        "Self({}::new_{}())",
+                let ctor = if variant.rust_type().is_fixed_value() {
+                    format!(
+                        "{}::new_{}()",
                         rust_crate_struct_from_wasm(types, name, cli),
                         variant.name_as_var()
-                    ));
+                    )
                 } else {
+                    // TODO: see if this is ever needed. we don't pass non-false values in anywher else
+                    // and these checks should only be done in the rust side not wasm but there must have
+                    // been a reson this was here before (checking only types.can_new_fail())
+                    let try_into = false;
                     let from_wasm_expr =
                         variant
                             .rust_type()
-                            .from_wasm_boundary_clone(types, &variant_arg, can_fail);
-                    new_func.line(format!(
-                        "Self({}::new_{}({}))",
+                            .from_wasm_boundary_clone(types, &variant_arg, try_into);
+                    format!(
+                        "{}::new_{}({})",
                         rust_crate_struct_from_wasm(types, name, cli),
                         variant.name_as_var(),
                         ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
-                    ));
+                    )
+                };
+                if can_fail {
+                    new_func
+                        .ret(format!("Result<{name}, JsError>"))
+                        .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
+                } else {
+                    new_func.ret("Self").line(format!("Self({ctor})"));
                 }
                 wrapper.s_impl.push_fn(new_func);
             }
@@ -3327,6 +3326,48 @@ fn write_string_sz(
     } else {
         body.line(&format!("{serializer_use}.{func}({expr_ref}){line_ender}"));
     }
+}
+
+fn bounds_check_expr(p: Primitive, e: &str) -> String {
+    match p {
+        Primitive::Bool
+        | Primitive::F32
+        | Primitive::F64
+        | Primitive::I8
+        | Primitive::I16
+        | Primitive::I32
+        | Primitive::I64
+        | Primitive::U8
+        | Primitive::U16
+        | Primitive::U32
+        | Primitive::U64
+        | Primitive::N64 => e.to_owned(),
+        Primitive::Str | Primitive::Bytes => format!("{e}.len()"),
+    }
+}
+
+fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<String> {
+    match ty.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(p) => Some(bounds_check_expr(*p, e)),
+        ConceptualRustType::Array(_) |
+        ConceptualRustType::Map(_, _) => Some(format!("{e}.len()")),
+        // Alias should never be hit due to above alias resolving
+        ConceptualRustType::Alias(_, _) => unreachable!(),
+        // RustType is covered by passed in ctor
+        ConceptualRustType::Rust(_) |
+        // Optional is not passed into ctor, but instead set later
+        ConceptualRustType::Optional(_) |
+        // FixedValue has no field associated with it
+        ConceptualRustType::Fixed(_) => None,
+    }
+}
+
+// we store nint as u64 but the bounds are still negative
+fn nint_bounds_to_u64(bounds: &(Option<i128>, Option<i128>)) -> (Option<i128>, Option<i128>) {
+    (
+        bounds.0.map(|x| (x + 1).abs()),
+        bounds.1.map(|x| (x + 1).abs()),
+    )
 }
 
 fn bounds_check_if_block(
@@ -3620,35 +3661,35 @@ fn create_base_wasm_struct<'a>(
                     if gen_scope.deserialize_generated(ident) {
                         s_impl
                             .new_fn("from_cbor_bytes")
-                            .ret(format!("Result<{name}, JsValue>"))
+                            .ret(format!("Result<{name}, JsError>"))
                             .arg("cbor_bytes", "&[u8]")
                             .vis("pub")
                             .line(format!(
-                                "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_bytes: {{}}\", e)))",
+                                "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsError::new(&format!(\"from_bytes: {{}}\", e)))",
                                 cli.common_import_wasm()));
                     }
                 }
                 if cli.json_serde_derives {
                     let mut to_json = codegen::Function::new("to_json");
                     to_json
-                        .ret("Result<String, JsValue>")
+                        .ret("Result<String, JsError>")
                         .arg_ref_self()
                         .vis("pub")
-                        .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_json: {}\", e)))");
+                        .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!(\"to_json: {}\", e)))");
                     s_impl.push_fn(to_json);
                     let mut to_json_value = codegen::Function::new("to_json_value");
                     to_json_value
-                        .ret("Result<JsValue, JsValue>")
+                        .ret("Result<JsValue, JsError>")
                         .arg_ref_self()
                         .vis("pub")
-                        .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsValue::from_str(&format!(\"to_js_value: {}\", e)))");
+                        .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsError::new(&format!(\"to_js_value: {}\", e)))");
                     s_impl.push_fn(to_json_value);
                     s_impl
                         .new_fn("from_json")
-                        .ret(format!("Result<{name}, JsValue>"))
+                        .ret(format!("Result<{name}, JsError>"))
                         .arg("json", "&str")
                         .vis("pub")
-                        .line("serde_json::from_str(json).map(Self).map_err(|e| JsValue::from_str(&format!(\"from_json: {}\", e)))");
+                        .line("serde_json::from_str(json).map(Self).map_err(|e| JsError::new(&format!(\"from_json: {}\", e)))");
                 }
             }
         }
@@ -4782,11 +4823,20 @@ fn codegen_struct(
     record: &RustRecord,
     cli: &Cli,
 ) {
+    let new_can_fail = record
+        .fields
+        .iter()
+        .any(|f| !f.optional && f.rust_type.config.bounds.is_some());
     // wasm wrapper
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
         let mut wasm_new = codegen::Function::new("new");
-        wasm_new.ret("Self").vis("pub");
+        if new_can_fail {
+            wasm_new.ret(format!("Result<{name}, JsError>"));
+        } else {
+            wasm_new.ret("Self");
+        }
+        wasm_new.vis("pub");
         let mut wasm_new_args = Vec::new();
         for field in &record.fields {
             // Fixed values don't need constructors or getters or fields in the rust code
@@ -4798,6 +4848,25 @@ fn codegen_struct(
                         .arg_mut_self()
                         .arg(&field.name, &field.rust_type.for_wasm_param(types))
                         .vis("pub");
+                    // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
+                    if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
+                        setter.ret("Result<(), JsError>");
+                        if let Some(check_expr) =
+                            bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                        {
+                            if let ConceptualRustType::Primitive(Primitive::N64) =
+                                field.rust_type.resolve_alias_shallow()
+                            {
+                                setter.line(bounds_check_if_block(
+                                    &nint_bounds_to_u64(bounds),
+                                    &check_expr,
+                                    true,
+                                ));
+                            } else {
+                                setter.line(bounds_check_if_block(bounds, &check_expr, true));
+                            }
+                        }
+                    }
                     if field.rust_type.config.default.is_some() {
                         setter.line(format!(
                             "self.0.{} = {}",
@@ -4822,7 +4891,6 @@ fn codegen_struct(
                         ));
                     }
 
-                    // ^ TODO: check types.can_new_fail(&field.name)
                     wrapper.s_impl.push_fn(setter);
                     // getter
                     let mut getter = codegen::Function::new(&field.name);
@@ -4857,7 +4925,6 @@ fn codegen_struct(
                             .from_wasm_boundary_clone(types, &field.name, false)
                             .into_iter(),
                     ));
-                    // ^ TODO: check types.can_new_fail(&field.name)
                     // do we want setters here later for mandatory types covered by new?
                     // getter
                     let mut getter = codegen::Function::new(&field.name);
@@ -4874,11 +4941,19 @@ fn codegen_struct(
                 }
             }
         }
-        wasm_new.line(format!(
-            "Self({}::new({}))",
-            rust_crate_struct_from_wasm(types, name, cli),
-            wasm_new_args.join(", ")
-        ));
+        if new_can_fail {
+            wasm_new.line(format!(
+                "{}::new({}).map(Into::into).map_err(Into::into)",
+                rust_crate_struct_from_wasm(types, name, cli),
+                wasm_new_args.join(", ")
+            ));
+        } else {
+            wasm_new.line(format!(
+                "Self({}::new({}))",
+                rust_crate_struct_from_wasm(types, name, cli),
+                wasm_new_args.join(", ")
+            ));
+        }
         wrapper.s_impl.push_fn(wasm_new);
         wrapper.push(gen_scope, types);
     }
@@ -4889,8 +4964,16 @@ fn codegen_struct(
     let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name, cli);
     native_struct.vis("pub");
     let mut native_new = codegen::Function::new("new");
-    native_new.ret("Self").vis("pub");
-    let mut native_new_block = Block::new("Self");
+    let (ctor_ret, ctor_before) = if new_can_fail {
+        ("Result<Self, DeserializeError>", "Ok(Self")
+    } else {
+        ("Self", "Self")
+    };
+    native_new.ret(ctor_ret).vis("pub");
+    let mut native_new_block = Block::new(ctor_before);
+    if new_can_fail {
+        native_new_block.after(")");
+    }
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
     for field in &record.fields {
@@ -4939,6 +5022,23 @@ fn codegen_struct(
                 native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
                 new_arg_count += 1;
                 native_new_block.line(format!("{},", field.name));
+                if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
+                    if let Some(check_expr) =
+                        bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                    {
+                        if let ConceptualRustType::Primitive(Primitive::N64) =
+                            field.rust_type.resolve_alias_shallow()
+                        {
+                            native_new.line(bounds_check_if_block(
+                                &nint_bounds_to_u64(bounds),
+                                &check_expr,
+                                true,
+                            ));
+                        } else {
+                            native_new.line(bounds_check_if_block(bounds, &check_expr, true));
+                        }
+                    }
+                }
             }
         }
     }
@@ -5703,7 +5803,7 @@ fn codegen_group_choices(
         for variant in variants.iter() {
             // TODO: verify if variant.serialize_as_embedded_group impacts ctor generation
             let mut new_func = codegen::Function::new(&format!("new_{}", variant.name_as_var()));
-            new_func.ret("Self").vis("pub");
+            new_func.vis("pub");
 
             let mut output_comma = false;
             // We only want to generate Variant::new() calls when we created a special struct
@@ -5730,13 +5830,18 @@ fn codegen_group_choices(
                         .iter()
                         .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
                         .collect();
+                    let can_fail = ctor_fields
+                        .iter()
+                        .any(|f| f.rust_type.config.bounds.is_some());
                     match ctor_fields.len() {
                         0 => {
-                            new_func.line(format!(
-                                "Self({}::new_{}())",
-                                rust_crate_struct_from_wasm(types, name, cli),
-                                variant.name_as_var()
-                            ));
+                            new_func
+                                .line(format!(
+                                    "Self({}::new_{}())",
+                                    rust_crate_struct_from_wasm(types, name, cli),
+                                    variant.name_as_var()
+                                ))
+                                .ret("Self");
                         }
                         // TODO: verify. I think this was here so that 1-field things would be directly stored
                         // 1 => {
@@ -5750,7 +5855,7 @@ fn codegen_group_choices(
                         // instead of having to separately construct the variant to pass in
                         _ => {
                             let mut ctor = format!(
-                                "Self({}::new_{}(",
+                                "{}::new_{}(",
                                 rust_crate_struct_from_wasm(types, name, cli),
                                 variant.name_as_var()
                             );
@@ -5767,40 +5872,50 @@ fn codegen_group_choices(
                                         .from_wasm_boundary_clone(types, &field.name, false)
                                         .into_iter(),
                                 ));
-                                // ^ TODO: check types.can_new_fail(&field.name)
                             }
-                            ctor.push_str("))");
-                            new_func.line(ctor);
+                            ctor.push(')');
+                            if can_fail {
+                                new_func
+                                    .ret(format!("Result<{name}, JsError>"))
+                                    .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
+                            } else {
+                                new_func.ret("Self").line(format!("Self({ctor})"));
+                            }
                         }
                     }
                 }
                 None => {
                     // just directly pass in the variant's type
                     if variant.rust_type().is_fixed_value() {
-                        new_func.line(format!(
+                        new_func.ret("Self").line(format!(
                             "Self({}::new_{}())",
                             rust_crate_struct_from_wasm(types, name, cli),
                             variant.name_as_var()
                         ));
                     } else {
-                        let field_name = variant.name.to_string();
-                        new_func
-                            .arg(&field_name, variant.rust_type().for_wasm_param(types))
-                            .line(format!(
-                                "Self({}::new_{}({}))",
-                                rust_crate_struct_from_wasm(types, name, cli),
-                                variant.name_as_var(),
-                                ToWasmBoundaryOperations::format(
-                                    variant
-                                        .rust_type()
-                                        .from_wasm_boundary_clone(types, &field_name, false)
-                                        .into_iter()
-                                )
-                            ));
-                        // ^ TODO: check types.can_new_fail(&field.name)
+                        let field_name = convert_to_snake_case(&variant.name.to_string());
+                        let ctor = format!(
+                            "{}::new_{}({})",
+                            rust_crate_struct_from_wasm(types, name, cli),
+                            variant.name_as_var(),
+                            ToWasmBoundaryOperations::format(
+                                variant
+                                    .rust_type()
+                                    .from_wasm_boundary_clone(types, &field_name, false)
+                                    .into_iter()
+                            )
+                        );
+                        new_func.arg(&field_name, variant.rust_type().for_wasm_param(types));
+                        if variant.rust_type().config.bounds.is_some() {
+                            new_func
+                                .ret(format!("Result<{name}, JsError>"))
+                                .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
+                        } else {
+                            new_func.ret("Self").line(format!("Self({ctor})"));
+                        };
                     }
                 }
-            }
+            };
             wrapper.s_impl.push_fn(new_func);
         }
         // enum-getters
@@ -6363,9 +6478,9 @@ fn generate_enum(
         e.push_variant(v);
         // new (particularly useful if we have encoding variables)
         let mut new_func = codegen::Function::new(&format!("new_{variant_var_name}"));
-        new_func.ret("Self").vis("pub");
+        new_func.vis("pub");
         let mut output_comma = false;
-        let mut init_fields = match &variant.data {
+        let (mut init_fields, can_fail) = match &variant.data {
             EnumVariantData::RustType(ty) => {
                 // We only want to generate Variant::new() calls when we created a special struct
                 // for the variant, which happens in the general case for multi-field group choices
@@ -6392,6 +6507,10 @@ fn generate_enum(
                             .iter()
                             .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
                             .collect();
+                        let can_fail = ctor_fields
+                            .iter()
+                            .any(|field| field.rust_type.config.bounds.is_some());
+                        // bounds checking should be handled by the called constructor here
                         let mut ctor = format!("{}::new(", variant.name);
                         for field in ctor_fields {
                             if output_comma {
@@ -6401,39 +6520,100 @@ fn generate_enum(
                             }
                             new_func.arg(&field.name, field.rust_type.for_rust_move(types, cli));
                             ctor.push_str(&field.name);
-                            // ^ TODO: check types.can_new_fail(&field.name)?
                         }
                         ctor.push(')');
-                        vec![ctor]
+                        if can_fail {
+                            ctor.push('?');
+                        }
+                        (vec![ctor], can_fail)
                     }
                     None => {
                         if ty.is_fixed_value() {
-                            vec![]
+                            (vec![], false)
                         } else {
                             // just directly pass in the variant's type
                             let field_name = variant.name_as_var();
                             new_func
                                 .arg(&field_name, variant.rust_type().for_rust_move(types, cli));
-                            vec![field_name]
-                            // ^ TODO: check types.can_new_fail(&field.name)?
+                            if let Some(bounds) = &ty.config.bounds {
+                                if let Some(check_expr) =
+                                    bounds_check_expr_rust_type(ty, &field_name)
+                                {
+                                    if let ConceptualRustType::Primitive(Primitive::N64) =
+                                        ty.resolve_alias_shallow()
+                                    {
+                                        new_func.line(bounds_check_if_block(
+                                            &nint_bounds_to_u64(bounds),
+                                            &check_expr,
+                                            true,
+                                        ));
+                                    } else {
+                                        new_func.line(bounds_check_if_block(
+                                            bounds,
+                                            &check_expr,
+                                            true,
+                                        ));
+                                    }
+                                }
+                            }
+                            (vec![field_name], ty.config.bounds.is_some())
                         }
                     }
                 }
             }
-            EnumVariantData::Inlined(record) => record
-                .fields
-                .iter()
-                .filter(|field| !field.rust_type.is_fixed_value())
-                .map(|field| {
-                    new_func.arg(&field.name, field.rust_type.for_rust_move(types, cli));
-                    field.name.clone()
-                })
-                .collect(),
+            EnumVariantData::Inlined(record) => {
+                let init_fields = record
+                    .fields
+                    .iter()
+                    .filter(|field| !field.rust_type.is_fixed_value())
+                    .map(|field| {
+                        new_func.arg(&field.name, field.rust_type.for_rust_move(types, cli));
+                        field.name.clone()
+                    })
+                    .collect();
+                let can_fail = record.fields.iter().any(|field| {
+                    let can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
+                    if can_fail {
+                        if let Some(check_expr) =
+                            bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                        {
+                            if let ConceptualRustType::Primitive(Primitive::N64) =
+                                field.rust_type.resolve_alias_shallow()
+                            {
+                                new_func.line(bounds_check_if_block(
+                                    &nint_bounds_to_u64(&field.rust_type.config.bounds.unwrap()),
+                                    &check_expr,
+                                    true,
+                                ));
+                            } else {
+                                new_func.line(bounds_check_if_block(
+                                    &field.rust_type.config.bounds.unwrap(),
+                                    &check_expr,
+                                    true,
+                                ));
+                            }
+                        }
+                    }
+                    can_fail
+                });
+                (init_fields, can_fail)
+            }
         };
         for enc_field in enum_gen_info.enc_fields.iter() {
             init_fields.push(enc_field.default_expr.to_owned());
         }
-        enum_gen_info.generate_constructor(&mut new_func, "", "", Some(&init_fields));
+        let (ret_type, ctor_before, ctor_after) = if can_fail {
+            ("Result<Self, DeserializeError>", "Ok(", ")")
+        } else {
+            ("Self", "", "")
+        };
+        new_func.ret(ret_type);
+        enum_gen_info.generate_constructor(
+            &mut new_func,
+            ctor_before,
+            ctor_after,
+            Some(&init_fields),
+        );
         e_impl.push_fn(new_func);
 
         // serialize
@@ -6813,9 +6993,9 @@ fn generate_wrapper_struct(
         if types.can_new_fail(type_name) {
             // you can't use Self in a parameter in wasm_bindgen for some reason
             wasm_new
-                .ret("Result<{}, JsValue>")
+                .ret("Result<{}, JsError>")
                 // TODO: test
-                .line("inner.try_into().map(Self).map_err(|e| JsValue::from_str(&e.to_string()))");
+                .line("inner.try_into().map(Into::into).map_err(Into::into)");
         } else {
             let mut ops = field_type.from_wasm_boundary_clone(types, "inner", false);
             ops.push(ToWasmBoundaryOperations::Into);
@@ -7242,9 +7422,9 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             .attr("allow(clippy::should_implement_trait)")
             .vis("pub")
             .arg("string", "&str")
-            .ret("Result<Int, JsValue>")
+            .ret("Result<Int, JsError>")
             .line("// have to redefine so it's visible in WASM")
-            .line("std::str::FromStr::from_str(string).map(Self).map_err(|e| JsValue::from_str(&format!(\"Int.from_str({}): {:?}\", string, e)))");
+            .line("std::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
 
         wrapper
             .s_impl
