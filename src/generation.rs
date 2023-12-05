@@ -103,7 +103,7 @@ impl<'a> SerializeConfig<'a> {
     fn container_encoding_lookup(
         &self,
         prefix: &str,
-        encoding_fields: &Vec<EncodingField>,
+        encoding_fields: &[EncodingField],
         var: &str,
     ) -> String {
         let encoding_lookup = match &self.encoding_var_in_option_struct {
