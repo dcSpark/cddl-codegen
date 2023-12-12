@@ -8,10 +8,10 @@ impl ExternalFoo {
         cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExternalFoo, JsValue> {
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExternalFoo, JsError> {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
-            .map_err(|e| JsValue::from_str(&format!("from_bytes: {}", e)))
+            .map_err(Into::into)
     }
 
     pub fn index_0(&self) -> u64 {

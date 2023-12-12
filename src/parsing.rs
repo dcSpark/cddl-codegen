@@ -136,7 +136,7 @@ fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
-    type_choices: &Vec<TypeChoice>,
+    type_choices: &[TypeChoice],
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
     cli: &Cli,

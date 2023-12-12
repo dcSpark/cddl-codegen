@@ -807,7 +807,7 @@ impl FixedValue {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
     F64,
@@ -856,7 +856,7 @@ impl ToString for Primitive {
 }
 // TODO: impl display or fmt or whatever rust uses
 impl Primitive {
-    pub fn to_variant(&self) -> VariantIdent {
+    pub fn to_variant(self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
             Primitive::F32 => "F32",
@@ -1341,6 +1341,14 @@ impl RustType {
                 }
             },
         }
+    }
+
+    pub fn needs_bounds_check_if_inlined(&self, types: &IntermediateTypes) -> bool {
+        self.config.bounds.is_some()
+            || match self.resolve_alias_shallow() {
+                ConceptualRustType::Rust(ident) => types.can_new_fail(ident),
+                _ => false,
+            }
     }
 
     fn _cbor_special_type(&self) -> Option<CBORSpecial> {
