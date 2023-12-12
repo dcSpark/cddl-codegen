@@ -791,6 +791,13 @@ mod tests {
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Above, OOB::Upper).is_err());
         // b oob
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
+
+        // type and group choices share the same deserialization code so we only check the API
+        assert!(BoundsTypeChoice::new_bytes(vec![0; 64]).is_ok());
+        assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
+        assert!(BoundsGroupChoice::new_a(0, "four".to_owned()).is_ok());
+        assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
+        deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
     }
 
     #[test]
