@@ -172,3 +172,22 @@ bounds_group_choice = [
     ; @name c
     1, x: hash, y: hash
 ]
+
+enum_opt_embed_fields = [
+  ; @name ea
+  1 //
+  ; @name eb
+  1, ?text, 5 //
+  ; @name ec
+  1, uint, 7 //
+; doesn't parse but would result in triple nesting so worth testing if we can ever parse it
+;  1, ? (text / null), 9
+  ; @name ed
+  1, uint, ?text //
+  ; @name ee
+  1, uint, ?bytes, uint //
+  ; @name ef
+  1, ? non_overlapping_type_choice_some, 11 //
+  ; @name eg
+  1, ? overlapping_inlined, 13
+]

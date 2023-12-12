@@ -215,13 +215,12 @@ mod tests {
 
     #[test]
     fn overlapping_inlined() {
-        // this test won't work until https://github.com/dcSpark/cddl-codegen/issues/175 is resolved.
         let overlap0 = OverlappingInlined::new_one();
         deser_test(&overlap0);
         let overlap1 = OverlappingInlined::new_two(9);
-        //deser_test(&overlap1);
+        deser_test(&overlap1);
         let overlap2 = OverlappingInlined::new_three(5, "overlapping".into());
-        //deser_test(&overlap2);
+        deser_test(&overlap2);
     }
 
     #[test]
@@ -391,5 +390,41 @@ mod tests {
         set_type_choice.insert(TypeChoice::Helloworld);
         let mut set_group_choice: std::collections::BTreeSet<GroupChoice> = std::collections::BTreeSet::new();
         set_group_choice.insert(GroupChoice::GroupChoice1(37));
+    }
+
+    #[test]
+    fn enum_opt_embed_fields() {
+        let a = EnumOptEmbedFields::new_ea();
+        deser_test(&a);
+        let b1 = EnumOptEmbedFields::new_eb(Some("Hello".to_owned()));
+        deser_test(&b1);
+        let b2 = EnumOptEmbedFields::new_eb(None);
+        deser_test(&b2);
+        let c = EnumOptEmbedFields::new_ec(100);
+        deser_test(&c);
+        let mut d1 = EnumOptEmbedFields::new_ed(1);
+        match &mut d1 {
+            EnumOptEmbedFields::Ed(ed) => ed.index_2 = Some("Goodbye".to_owned()),
+            _ => panic!(),
+        }
+        deser_test(&d1);
+        let d2 = EnumOptEmbedFields::new_ed(2);
+        deser_test(&d2);
+        let mut e1 = EnumOptEmbedFields::new_ee(0, 0);
+        match &mut e1 {
+            EnumOptEmbedFields::Ee(ee) => ee.index_2 = Some(vec![0xBA, 0xAD, 0xF0, 0x0D]),
+            _ => panic!(),
+        }
+        deser_test(&e1);
+        let e2 = EnumOptEmbedFields::new_ee(u64::MAX, u64::MAX);
+        deser_test(&e2);
+        let f1 = EnumOptEmbedFields::new_ef(Some(NonOverlappingTypeChoiceSome::U64(5)));
+        deser_test(&f1);
+        let f2 = EnumOptEmbedFields::new_ef(None);
+        deser_test(&f2);
+        let g1 = EnumOptEmbedFields::new_eg(Some(OverlappingInlined::new_two(0)));
+        deser_test(&g1);
+        let g2 = EnumOptEmbedFields::new_eg(None);
+        deser_test(&g2);
     }
 }
