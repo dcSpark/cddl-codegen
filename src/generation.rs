@@ -386,6 +386,17 @@ impl DeserializationCode {
         self.content
     }
 }
+
+impl From<BlocksOrLines> for DeserializationCode {
+    fn from(content: BlocksOrLines) -> Self {
+        Self {
+            content,
+            read_len_used: false,
+            throws: false,
+        }
+    }
+}
+
 /// Context as to how to generate deserialization code.
 /// formats as {before}{<deserialized value>}{after} in a line within the body param, allowing freedom e.g.:
 /// * {let x = }{<value>}{;} - creation of variables
@@ -425,7 +436,7 @@ impl<'a> DeserializeBeforeAfter<'a> {
             // Result<T, _> -> T
             (false, true) => format!("?{}", self.after),
             // T ->
-            (true, false) => format!("){}", self.before),
+            (true, false) => format!("){}", self.after),
             // expected == found, nothing to be done
             (false, false) | (true, true) => self.after.to_owned(),
         }
@@ -1669,7 +1680,7 @@ impl GenerationScope {
                             format!(
                                 "{}.iter().map(|e| {}).sum()",
                                 config.expr,
-                                ty.definite_info("e", types, cli)
+                                ty.definite_info("e", true, types, cli)
                             )
                         }
                     }
@@ -2361,6 +2372,7 @@ impl GenerationScope {
                                     types,
                                     variant,
                                     variant_final_exprs.is_empty(),
+                                    None,
                                     &mut deser_code.content,
                                     cli,
                                 );
@@ -3089,6 +3101,11 @@ impl GenerationScope {
         tag: Option<usize>,
         cli: &Cli,
     ) {
+        // I don't believe this is even possible (wouldn't be a single CBOR value + nowhere to embed)
+        // Just sanity checking since it's not handled in the wrapper code here
+        assert!(variants
+            .iter()
+            .all(|v| !matches!(v.data, EnumVariantData::Inlined(_))));
         // Rust only
         generate_enum(self, types, name, variants, None, true, tag, cli);
         if cli.wasm {
@@ -3923,7 +3940,7 @@ fn create_deserialize_impls(
     ident: &RustIdent,
     rep: Option<Representation>,
     tag: Option<usize>,
-    len_info: RustStructCBORLen,
+    len_info: Option<RustStructCBORLen>,
     generate_deserialize_embedded: bool,
     store_encoding: Option<&str>,
     deser_body: &mut dyn CodeBlock,
@@ -3960,7 +3977,9 @@ fn create_deserialize_impls(
                         ));
                     }
                 }
-                add_deserialize_initial_len_check(deser_body, len_info);
+                if let Some(len_info) = len_info {
+                    add_deserialize_initial_len_check(deser_body, len_info);
+                }
                 if generate_deserialize_embedded {
                     deser_body.line(
                         "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
@@ -3980,7 +3999,9 @@ fn create_deserialize_impls(
                         ));
                     }
                 }
-                add_deserialize_initial_len_check(deser_body, len_info);
+                if let Some(len_info) = len_info {
+                    add_deserialize_initial_len_check(deser_body, len_info);
+                }
                 if generate_deserialize_embedded {
                     deser_body.line(
                         "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
@@ -3993,7 +4014,9 @@ fn create_deserialize_impls(
         //deser_body.line("Self::deserialize_as_embedded_group(serializer)");
     }
     let deser_embedded_impl = if generate_deserialize_embedded {
-        add_deserialize_final_len_check(deser_body, rep, len_info, cli);
+        if let Some(len_info) = len_info {
+            add_deserialize_final_len_check(deser_body, rep, len_info, cli);
+        }
         deser_body.line("ret");
         let mut embedded_impl = codegen::Impl::new(name);
         embedded_impl.impl_trait("DeserializeEmbeddedGroup");
@@ -5097,7 +5120,7 @@ fn codegen_struct(
         name,
         Some(record.rep),
         tag,
-        &record.definite_info(types, cli),
+        &record.definite_info("self", false, types, cli),
         len_encoding_var
             .map(|var| {
                 format!("self.encodings.as_ref().map(|encs| encs.{var}).unwrap_or_default()")
@@ -5475,7 +5498,7 @@ fn codegen_struct(
                 ser_func.line(format!(
                     "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
                     check_canonical,
-                    record.definite_info(types, cli),
+                    record.definite_info("self", false, types, cli),
                     serialization_order));
                 let mut ser_loop = Block::new("for field_index in deser_order");
                 let mut ser_loop_match = Block::new("match field_index");
@@ -5700,7 +5723,7 @@ fn codegen_struct(
         name,
         Some(record.rep),
         tag,
-        record.cbor_len_info(types),
+        Some(record.cbor_len_info(types)),
         types.is_plain_group(name),
         len_encoding_var,
         &mut deser_scaffolding,
@@ -5826,9 +5849,10 @@ fn codegen_group_choices(
             };
             match fields {
                 Some(fields) => {
+                    let inlined = matches!(&variant.data, EnumVariantData::Inlined(_));
                     let ctor_fields: Vec<&RustField> = fields
                         .iter()
-                        .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                        .filter(|f| (!f.optional || inlined) && !f.rust_type.is_fixed_value())
                         .collect();
                     let can_fail = ctor_fields
                         .iter()
@@ -5865,10 +5889,12 @@ fn codegen_group_choices(
                                 } else {
                                     output_comma = true;
                                 }
-                                new_func.arg(&field.name, field.rust_type.for_wasm_param(types));
+                                // always okay - if not inlined this field would be skipped earlier
+                                assert!(!field.optional || inlined);
+                                let wasm_param_type = field.to_embedded_rust_type();
+                                new_func.arg(&field.name, wasm_param_type.for_wasm_param(types));
                                 ctor.push_str(&ToWasmBoundaryOperations::format(
-                                    field
-                                        .rust_type
+                                    wasm_param_type
                                         .from_wasm_boundary_clone(types, &field.name, false)
                                         .into_iter(),
                                 ));
@@ -5957,21 +5983,48 @@ fn add_wasm_enum_getters(
         let mut add_variant_functions = |ty: &RustType| {
             let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
             let mut as_variant = codegen::Function::new(format!("as_{}", variant.name_as_var()));
-            as_variant
-                .arg_ref_self()
-                .vis("pub")
-                .ret(&format!("Option<{}>", ty.for_wasm_return(types)));
+            as_variant.arg_ref_self().vis("pub");
             let mut variant_match = Block::new("match &self.0");
-            variant_match.line(format!(
-                "{}::{}{} => Some({}),",
-                rust_crate_struct_from_wasm(types, name, cli),
-                variant.name,
-                enum_gen_info.capture_ignore_encodings(),
-                ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
-            ));
-            variant_match.line("_ => None,");
-            as_variant.push_block(variant_match);
-            s_impl.push_fn(as_variant);
+            // unfortunately wasm_bindgen doesn't support nested options so we must flatten
+            // this is a bit ambiguous but it's better than nothing
+            let supported = if let ConceptualRustType::Optional(inner) = ty.resolve_alias_shallow()
+            {
+                if let ConceptualRustType::Optional(_) = inner.resolve_alias_shallow() {
+                    // don't bother - it's triple nested (optional nullable field?).
+                    // this seems to be unable to parseas ? (T / null)
+                    // but we'll keep this here as it makes it easy to make this
+                    // the behavior for skipping vs condensing on double nested ones (optional fields)
+                    println!("skipping {}::as_{}() due to triple nested Options unsupported by wasm_bindgen", name, variant.name_as_var());
+                    false
+                } else {
+                    as_variant
+                        .ret(ty.for_wasm_return(types))
+                        .doc(format!("Returns None if not {} variant OR it is but it's set to None\nThis is to get around wasm_bindgen not supporting Option<Option<T>>", variant.name));
+                    variant_match.line(format!(
+                        "{}::{}{} => {},",
+                        rust_crate_struct_from_wasm(types, name, cli),
+                        variant.name,
+                        enum_gen_info.capture_ignore_encodings(),
+                        ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
+                    ));
+                    true
+                }
+            } else {
+                as_variant.ret(&format!("Option<{}>", ty.for_wasm_return(types)));
+                variant_match.line(format!(
+                    "{}::{}{} => Some({}),",
+                    rust_crate_struct_from_wasm(types, name, cli),
+                    variant.name,
+                    enum_gen_info.capture_ignore_encodings(),
+                    ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
+                ));
+                true
+            };
+            if supported {
+                variant_match.line("_ => None,");
+                as_variant.push_block(variant_match);
+                s_impl.push_fn(as_variant);
+            }
         };
         match &variant.data {
             EnumVariantData::RustType(ty) => {
@@ -5992,7 +6045,7 @@ fn add_wasm_enum_getters(
                     "multiple non-fixed not allowed right now for embedding into enums"
                 );
                 if let Some(&field) = non_fixed_types.first() {
-                    add_variant_functions(&field.rust_type);
+                    add_variant_functions(field.to_embedded_rust_type().as_ref());
                 }
             }
         }
@@ -6096,7 +6149,11 @@ impl EnumVariantInRust {
                 for field in record.fields.iter() {
                     if !field.rust_type.is_fixed_value() {
                         names.push(field.name.clone());
-                        enum_types.push(field.rust_type.for_rust_member(types, false, cli));
+                        enum_types.push(
+                            field
+                                .to_embedded_rust_type()
+                                .for_rust_member(types, false, cli),
+                        );
                     }
                 }
                 for enc_field in &enc_fields {
@@ -6262,27 +6319,41 @@ fn make_enum_variant_return_if_deserialized(
     types: &IntermediateTypes,
     variant: &EnumVariant,
     no_enum_types: bool,
+    len_check: Option<(RustStructCBORLen, Representation)>,
     deser_body: &mut dyn CodeBlock,
     cli: &Cli,
 ) -> Block {
+    let (before, after) = if len_check.is_some() && !no_enum_types {
+        ("let ret = ", ";")
+    } else {
+        ("", "")
+    };
     let variant_deser_code = if no_enum_types {
         let mut code = gen_scope.generate_deserialize(
             types,
             (variant.rust_type()).into(),
-            DeserializeBeforeAfter::new("", "", false),
+            DeserializeBeforeAfter::new(before, after, false),
             DeserializeConfig::new(&variant.name_as_var()),
             cli,
         );
+        if let Some((len_info, rep)) = len_check {
+            code = surround_in_len_checks(code, len_info, rep, cli);
+        }
         code.content.line("Ok(())");
         code
     } else {
-        gen_scope.generate_deserialize(
+        let mut code = gen_scope.generate_deserialize(
             types,
             (variant.rust_type()).into(),
-            DeserializeBeforeAfter::new("", "", true),
+            DeserializeBeforeAfter::new(before, after, true),
             DeserializeConfig::new(&variant.name_as_var()),
             cli,
-        )
+        );
+        if let Some((len_info, rep)) = len_check {
+            code = surround_in_len_checks(code, len_info, rep, cli);
+            code.content.line("ret");
+        }
+        code
     };
     match variant_deser_code.content.as_single_line() {
         Some(single_line) if !variant_deser_code.throws => {
@@ -6305,6 +6376,20 @@ fn make_enum_variant_return_if_deserialized(
     }
 }
 
+fn surround_in_len_checks(
+    mut main_deser_code: DeserializationCode,
+    len_info: RustStructCBORLen,
+    rep: Representation,
+    cli: &Cli,
+) -> DeserializationCode {
+    let mut len_check_before = DeserializationCode::default();
+    add_deserialize_initial_len_check(&mut len_check_before.content, len_info);
+    main_deser_code.add_to_code(&mut len_check_before);
+    main_deser_code = len_check_before;
+    add_deserialize_final_len_check(&mut main_deser_code.content, Some(rep), len_info, cli);
+    main_deser_code
+}
+
 fn make_inline_deser_code(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -6316,12 +6401,6 @@ fn make_inline_deser_code(
 ) -> DeserializationCode {
     let mut variant_deser_code = generate_array_struct_deserialization(
         gen_scope, types, name, record, tag, false, false, cli,
-    );
-    add_deserialize_final_len_check(
-        &mut variant_deser_code.deser_code.content,
-        Some(record.rep),
-        record.cbor_len_info(types),
-        cli,
     );
     // generate_constructor zips the expressions with the names in the enum_gen_info
     // so just make sure we're in the same order as returned above
@@ -6340,6 +6419,12 @@ fn make_inline_deser_code(
             expr
         })
         .collect();
+    variant_deser_code.deser_code = surround_in_len_checks(
+        variant_deser_code.deser_code,
+        record.cbor_len_info(types),
+        record.rep,
+        cli,
+    );
     enum_gen_info.generate_constructor(
         &mut variant_deser_code.deser_code.content,
         "Ok(",
@@ -6391,9 +6476,6 @@ fn generate_enum(
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
-    // we use Dynamic to avoid having any length checks here since we don't know what they are yet without testing the variants
-    // and it's not worth looking into and complicating things on the off chance that all variants are the same length.
-    let len_info = RustStructCBORLen::Dynamic;
     let mut deser_func = make_deserialization_function("deserialize");
     let mut error_annotator = make_err_annotate_block(name.as_ref(), "", "");
     let deser_body: &mut dyn CodeBlock = if cli.annotate_fields {
@@ -6423,7 +6505,7 @@ fn generate_enum(
             name,
             rep,
             tag,
-            len_info,
+            None,
             false,
             outer_encoding_var,
             deser_body,
@@ -6434,11 +6516,13 @@ fn generate_enum(
     // We avoid checking ALL variants if we can figure it out by instead checking the type.
     // This only works when the variants don't have first types in common.
     let mut non_overlapping_types_match = {
-        // uses to_byte() instead of directly since Ord not implemented for cbor_event::Type
         let mut first_types = BTreeSet::new();
         let mut duplicates = false;
         for variant in variants.iter() {
             for first_type in variant.cbor_types(types) {
+                // to_byte(0) is used since cbor_event::Type doesn't implement
+                // Ord or Hash so we can't put it in a set. Since we fix the lenth
+                // to always 0 this still remains a 1-to-1 mapping to Type.
                 if !first_types.insert(first_type.to_byte(0)) {
                     duplicates = true;
                 }
@@ -6567,7 +6651,10 @@ fn generate_enum(
                     .iter()
                     .filter(|field| !field.rust_type.is_fixed_value())
                     .map(|field| {
-                        new_func.arg(&field.name, field.rust_type.for_rust_move(types, cli));
+                        new_func.arg(
+                            &field.name,
+                            field.to_embedded_rust_type().for_rust_move(types, cli),
+                        );
                         field.name.clone()
                     })
                     .collect();
@@ -6717,7 +6804,7 @@ fn generate_enum(
                         rep.expect("can't inline in type choices"),
                         "serializer",
                         "len_encoding",
-                        &record.definite_info(types, cli),
+                        &record.definite_info("", true, types, cli),
                         cli,
                     );
                     generate_array_struct_serialization(
@@ -6818,12 +6905,23 @@ fn generate_enum(
             }
             None => {
                 let mut return_if_deserialized = match &variant.data {
-                    EnumVariantData::RustType(_) => {
+                    EnumVariantData::RustType(ty) => {
                         let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
                             gen_scope,
                             types,
                             variant,
                             enum_gen_info.types.is_empty(),
+                            rep.map(|r| {
+                                let len_info = match ty.conceptual_type.resolve_alias_shallow() {
+                                    ConceptualRustType::Rust(ident)
+                                        if types.is_plain_group(ident) =>
+                                    {
+                                        types.rust_struct(ident).unwrap().cbor_len_info(types)
+                                    }
+                                    _ => RustStructCBORLen::Fixed(1),
+                                };
+                                (len_info, r)
+                            }),
                             deser_body,
                             cli,
                         );
@@ -6882,16 +6980,6 @@ fn generate_enum(
     }
     ser_func.push_block(ser_array_match_block);
     ser_impl.push_fn(ser_func);
-    // TODO: we pass in a dummy Fixed to avoid the check since we don't support optional fields for plain groups
-    // which causes an issue with group choices of plain groups where if we generate_deserialize() with
-    // optional_field = true then we hit asserts (not supported) and
-    // optional_field = false causes this final check to fail since no elements were read
-    // A possible workaround for this could be to read it beforehand if possible but
-    // that gets complicated for optional fields inside those plain groups so we'll
-    // just avoid this check instead for this one case.
-    // This can cause issues when there are overlapping (CBOR field-wise) variants inlined here.
-    // Issue: https://github.com/dcSpark/cddl-codegen/issues/175
-    add_deserialize_final_len_check(deser_body, rep, RustStructCBORLen::Fixed(0), cli);
     match non_overlapping_types_match {
         Some((mut deser_type_match, deser_covers_all_types)) => {
             if !deser_covers_all_types {
