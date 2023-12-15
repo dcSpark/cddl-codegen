@@ -1,6 +1,7 @@
 use cbor_event::Special as CBORSpecial;
 use cbor_event::{Special, Type as CBORType};
 use cddl::ast::parent::ParentVisitor;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 // TODO: move all of these generation specifics into generation.rs
@@ -1222,23 +1223,31 @@ impl RustType {
         }
     }
 
-    // See comment in RustStruct::definite_info(), this is the same, returns a string expression
-    // which evaluates to the length.
-    // self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
-    // the return of this function will be used.
-    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes, cli: &Cli) -> String {
+    /// See comment in RustStruct::definite_info(), this is the same, returns a string expression
+    /// which evaluates to the length.
+    /// self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
         match self.expanded_field_count(types) {
             Some(count) => count.to_string(),
             None => match self.conceptual_type.resolve_alias_shallow() {
                 ConceptualRustType::Optional(ty) => format!(
-                    "match {} {{ Some(x) => {}, None => 1 }}",
+                    "match {}{} {{ Some(x) => {}, None => 1 }}",
+                    if self_is_ref { "" } else { "&" },
                     self_expr,
-                    ty.definite_info("x", types, cli)
+                    ty.definite_info("x", true, types, cli)
                 ),
                 ConceptualRustType::Rust(ident) => {
                     if types.is_plain_group(ident) {
                         match types.rust_structs.get(ident) {
-                            Some(rs) => rs.definite_info(types, cli),
+                            Some(rs) => rs.definite_info(self_expr, self_is_ref, types, cli),
                             None => panic!(
                                 "rust struct {} not found but referenced by {:?}",
                                 ident, self
@@ -2104,6 +2113,16 @@ impl RustField {
             key,
         }
     }
+
+    pub fn to_embedded_rust_type(&self) -> Cow<RustType> {
+        if self.optional {
+            Cow::Owned(RustType::new(ConceptualRustType::Optional(Box::new(
+                self.rust_type.clone(),
+            ))))
+        } else {
+            Cow::Borrowed(&self.rust_type)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -2310,14 +2329,25 @@ impl RustStruct {
         }
     }
 
-    // Even if fixed_field_count() == None, this will return an expression for
-    // a definite length, e.g. with optional field checks in the expression
-    // This is useful for definite-length serialization
-    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+    /// Even if fixed_field_count() == None, this will return an expression for
+    /// a definite length, e.g. with optional field checks in the expression
+    /// This is useful for definite-length serialization
+    /// self_expr is an expression that evaluates to this struct (e.g. "self") at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
         match &self.variant {
-            RustStructType::Record(record) => record.definite_info(types, cli),
-            RustStructType::Table { .. } => String::from("self.0.len() as u64"),
-            RustStructType::Array { .. } => String::from("self.0.len() as u64"),
+            RustStructType::Record(record) => {
+                record.definite_info(self_expr, self_is_ref, types, cli)
+            }
+            RustStructType::Table { .. } => format!("{self_expr}.0.len() as u64"),
+            RustStructType::Array { .. } => format!("{self_expr}.0.len() as u64"),
             RustStructType::TypeChoice { .. } => {
                 unreachable!("I don't think type choices should be using length?")
             }
@@ -2357,7 +2387,7 @@ impl RustStruct {
         }
     }
 
-    fn _cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
+    pub fn cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
         match &self.variant {
             RustStructType::Record(record) => record.cbor_len_info(types),
             RustStructType::Table { .. } => RustStructCBORLen::Dynamic,
@@ -2451,8 +2481,19 @@ impl RustRecord {
         Some(count)
     }
 
-    // This is guaranteed
-    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+    /// This is guaranteed
+    /// If inlined_enum is set, assumes the field is accessible via a local reference e.g. match branch
+    /// Otherwise assumes it's a field e.g. self.name
+    /// self_expr is an expression that evaluates to this struct (e.g. "self") at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
         match self.fixed_field_count(types) {
             Some(count) => count.to_string(),
             None => {
@@ -2467,33 +2508,53 @@ impl RustRecord {
                         if !conditional_field_expr.is_empty() {
                             conditional_field_expr.push_str(" + ");
                         }
-                        let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => {
-                                ("x", field.rust_type.definite_info("x", types, cli))
-                            }
-                            // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
-                            Representation::Map => ("_", String::from("1")),
+                        let self_field_expr = if self_expr.is_empty() {
+                            Cow::Borrowed(&field.name)
+                        } else {
+                            Cow::Owned(format!("{}.{}", self_expr, field.name))
                         };
                         if let Some(default_value) = &field.rust_type.config.default {
+                            let field_contribution = match self.rep {
+                                Representation::Array => Cow::Owned(field.rust_type.definite_info(
+                                    &self_field_expr,
+                                    true,
+                                    types,
+                                    cli,
+                                )),
+                                // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
+                                Representation::Map => Cow::Borrowed("1"),
+                            };
                             if cli.preserve_encodings {
                                 conditional_field_expr.push_str(&format!(
-                                    "if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
+                                    "if {}.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
+                                    self_expr,
                                     field.name,
                                     default_value.to_primitive_str_compare(),
                                     field.name,
                                     field_contribution));
                             } else {
                                 conditional_field_expr.push_str(&format!(
-                                    "if self.{} != {} {{ {} }} else {{ 0 }}",
+                                    "if {}.{} != {} {{ {} }} else {{ 0 }}",
+                                    self_expr,
                                     field.name,
                                     default_value.to_primitive_str_compare(),
                                     field_contribution
                                 ));
                             }
                         } else {
+                            let (field_expr, field_contribution) = match self.rep {
+                                Representation::Array => {
+                                    ("x", field.rust_type.definite_info("x", true, types, cli))
+                                }
+                                // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
+                                Representation::Map => ("_", String::from("1")),
+                            };
                             conditional_field_expr.push_str(&format!(
-                                "match &self.{} {{ Some({}) => {}, None => 0 }}",
-                                field.name, field_expr, field_contribution
+                                "match {}{} {{ Some({}) => {}, None => 0 }}",
+                                if self_is_ref { "" } else { "&" },
+                                self_field_expr,
+                                field_expr,
+                                field_contribution
                             ));
                         }
                     } else {
@@ -2509,6 +2570,7 @@ impl RustRecord {
                                         }
                                         let field_len_expr = field.rust_type.definite_info(
                                             &format!("self.{}", field.name),
+                                            false,
                                             types,
                                             cli,
                                         );
