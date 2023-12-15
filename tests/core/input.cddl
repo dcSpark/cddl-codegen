@@ -181,13 +181,13 @@ enum_opt_embed_fields = [
   ; @name ec
   1, uint, 7 //
 ; doesn't parse but would result in triple nesting so worth testing if we can ever parse it
-;  1, ? (text / null), 9
+;  1, ? (text / null), #6.9(9)
   ; @name ed
   1, uint, ?text //
   ; @name ee
   1, uint, ?bytes, uint //
   ; @name ef
-  1, ? non_overlapping_type_choice_some, 11 //
+  1, ? non_overlapping_type_choice_some, #6.11(11) //
   ; @name eg
-  1, ? overlapping_inlined, 13
+  1, ? overlapping_inlined, #6.13(13)
 ]

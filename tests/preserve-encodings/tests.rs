@@ -367,6 +367,49 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_inlined() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for def_enc in &def_encodings {
+            // one
+            let irregular_bytes_one = vec![
+                arr_sz(1, *def_enc),
+                    cbor_int(0, *def_enc),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let irregular_one = OverlappingInlined::from_cbor_bytes(&irregular_bytes_one).unwrap();
+            assert_eq!(irregular_bytes_one, irregular_one.to_cbor_bytes());
+            assert!(matches!(irregular_one, OverlappingInlined::One { .. }));
+            // two
+            let irregular_bytes_two = vec![
+                vec![ARR_INDEF],
+                    cbor_int(0, *def_enc),
+                    cbor_int(u64::MAX as i128, Sz::Eight),
+                vec![BREAK],
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let irregular_two = OverlappingInlined::from_cbor_bytes(&irregular_bytes_two).unwrap();
+            assert_eq!(irregular_bytes_two, irregular_two.to_cbor_bytes());
+            assert!(matches!(irregular_two, OverlappingInlined::Two { .. }));
+            for str_enc in &str_11_encodings {
+                // three
+                let irregular_bytes_three = vec![
+                    arr_sz(3, *def_enc),
+                        cbor_int(0, *def_enc),
+                        cbor_int(0, *def_enc),
+                        cbor_str_sz("overlapping", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_three = OverlappingInlined::from_cbor_bytes(&irregular_bytes_three).unwrap();
+                assert_eq!(irregular_bytes_three, irregular_three.to_cbor_bytes());
+                assert!(matches!(irregular_three, OverlappingInlined::Three { .. }));
+            }
+        }
+    }
+
+    #[test]
     fn non_overlapping_type_choice_some() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let str_11_encodings = vec![
@@ -807,5 +850,151 @@ mod tests {
         set_foo.insert(Foo::new(0, "text".to_owned(), vec![]));
         let mut set_non_overlap: std::collections::HashSet<NonOverlappingTypeChoiceSome> = std::collections::HashSet::new();
         set_non_overlap.insert(NonOverlappingTypeChoiceSome::new_uint(0));
+    }
+
+    #[test]
+    fn enum_opt_embed_fields() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_3_encodings = vec![
+            StringLenSz::Len(Sz::Eight),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(1, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (1, Sz::Four)]),
+        ];
+        for str_enc in &str_3_encodings {
+            for def_enc in &def_encodings {
+                for opt_present in [false, true] {
+                    // a
+                    let irregular_bytes_a = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_a = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_a).unwrap();
+                    assert_eq!(irregular_bytes_a, irregular_a.to_cbor_bytes());
+                    assert!(matches!(irregular_a, EnumOptEmbedFields::Ea { .. }));
+                    // b (Some)
+                    let irregular_bytes_b1 = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            cbor_str_sz("foo", str_enc.clone()),
+                            cbor_int(5, *def_enc),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_b1 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_b1).unwrap();
+                    assert_eq!(irregular_bytes_b1, irregular_b1.to_cbor_bytes());
+                    assert!(matches!(irregular_b1, EnumOptEmbedFields::Eb { .. }));
+                    // b (None)
+                    let irregular_bytes_b2 = vec![
+                        arr_sz(2, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_int(5, *def_enc),
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_b2 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_b2).unwrap();
+                    assert_eq!(irregular_bytes_b2, irregular_b2.to_cbor_bytes());
+                    assert!(matches!(irregular_b2, EnumOptEmbedFields::Eb { .. }));
+                    // c
+                    let irregular_bytes_c = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            cbor_int(u64::MAX as i128, Sz::Eight),
+                            cbor_int(7, *def_enc),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_c = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_c).unwrap();
+                    assert_eq!(irregular_bytes_c, irregular_c.to_cbor_bytes());
+                    assert!(matches!(irregular_c, EnumOptEmbedFields::Ec { .. }));
+                    // d (Some)
+                    let irregular_bytes_d1 = vec![
+                        arr_sz(3, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_int(0, *def_enc),
+                            cbor_str_sz("bar", str_enc.clone()),
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_d1 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_d1).unwrap();
+                    assert_eq!(irregular_bytes_d1, irregular_d1.to_cbor_bytes());
+                    assert!(matches!(irregular_d1, EnumOptEmbedFields::Ed { .. }));
+                    // d (None)
+                    let irregular_bytes_d2 = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            cbor_int(u64::MAX as i128, Sz::Eight),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_d2 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_d2).unwrap();
+                    assert_eq!(irregular_bytes_d2, irregular_d2.to_cbor_bytes());
+                    assert!(matches!(irregular_d2, EnumOptEmbedFields::Ed { .. }));
+                    // e (Some)
+                    let irregular_bytes_e1 = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            cbor_int(0, *def_enc),
+                            cbor_bytes_sz(vec![0x00, 0x01, 0x02], str_enc.clone()),
+                            cbor_int(u64::MAX as i128, Sz::Eight),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_e1 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_e1).unwrap();
+                    assert_eq!(irregular_bytes_e1, irregular_e1.to_cbor_bytes());
+                    assert!(matches!(irregular_e1, EnumOptEmbedFields::Ee { .. }));
+                    // e (None)
+                    let irregular_bytes_e2 = vec![
+                        arr_sz(3, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_int(u64::MAX as i128, Sz::Eight),
+                            cbor_int(0, *def_enc),
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_e2 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_e2).unwrap();
+                    assert_eq!(irregular_bytes_e2, irregular_e2.to_cbor_bytes());
+                    assert!(matches!(irregular_e2, EnumOptEmbedFields::Ee { .. }));
+                    // f (Some)
+                    let irregular_bytes_f1 = vec![
+                        arr_sz(3, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_int(u64::MAX as i128, Sz::Eight),
+                            cbor_tag_sz(11, *def_enc),
+                                cbor_int(11, *def_enc),
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_f1 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_f1).unwrap();
+                    assert_eq!(irregular_bytes_f1, irregular_f1.to_cbor_bytes());
+                    assert!(matches!(irregular_f1, EnumOptEmbedFields::Ef { .. }));
+                    // f (None)
+                    let irregular_bytes_f2 = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            cbor_tag_sz(11, *def_enc),
+                                cbor_int(11, *def_enc),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_f2 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_f2).unwrap();
+                    assert_eq!(irregular_bytes_f2, irregular_f2.to_cbor_bytes());
+                    assert!(matches!(irregular_f2, EnumOptEmbedFields::Ef { .. }));
+                    // g (Some)
+                    let irregular_bytes_g1 = vec![
+                        vec![ARR_INDEF],
+                            cbor_int(1, *def_enc),
+                            arr_sz(3, *def_enc),
+                                cbor_int(0, *def_enc),
+                                cbor_int(3, *def_enc),
+                                cbor_str_sz("xyz", str_enc.clone()),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(13, *def_enc),
+                        vec![BREAK],
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_g1 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_g1).unwrap();
+                    assert_eq!(irregular_bytes_g1, irregular_g1.to_cbor_bytes());
+                    assert!(matches!(irregular_g1, EnumOptEmbedFields::Eg { .. }));
+                    // g (None)
+                    let irregular_bytes_g2 = vec![
+                        arr_sz(2, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(13, *def_enc),
+                    ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                    let irregular_g2 = EnumOptEmbedFields::from_cbor_bytes(&irregular_bytes_g2).unwrap();
+                    assert_eq!(irregular_bytes_g2, irregular_g2.to_cbor_bytes());
+                    assert!(matches!(irregular_g2, EnumOptEmbedFields::Eg { .. }));
+                }
+            }
+        }
     }
 }
