@@ -26,6 +26,8 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                 // ignored
             }
             c => {
+                // NFT -> nft
+                // IPAddress -> ip_address
                 if !snake_case.is_empty() && c.is_ascii_uppercase() {
                     if let Some(next) = iter.peek() {
                         // IPAddress but not I64
