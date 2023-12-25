@@ -15,7 +15,9 @@ pub fn cbor_type_code_str(cbor_type: cbor_event::Type) -> &'static str {
 
 pub fn convert_to_snake_case(ident: &str) -> String {
     let mut snake_case = String::new();
-    for c in ident.chars() {
+
+    let mut iter = ident.chars().peekable();
+    while let Some(c) = iter.next() {
         match c {
             '-' => {
                 snake_case.push('_');
@@ -24,8 +26,13 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                 // ignored
             }
             c => {
-                if c.is_ascii_uppercase() && !snake_case.is_empty() {
-                    snake_case.push('_')
+                if !snake_case.is_empty() && c.is_ascii_uppercase() {
+                    if let Some(next) = iter.peek() {
+                        // IPAddress but not I64
+                        if next.is_ascii_lowercase() {
+                            snake_case.push('_');
+                        }
+                    }
                 }
                 snake_case.push(c.to_ascii_lowercase());
             }
