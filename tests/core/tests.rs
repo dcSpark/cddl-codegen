@@ -427,4 +427,10 @@ mod tests {
         let g2 = EnumOptEmbedFields::new_eg(None);
         deser_test(&g2);
     }
+
+    #[test]
+    fn casing_test() {
+        CasingTest::new_nft();
+        CasingTest::new_ip_address();
+    }
 }
