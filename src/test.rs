@@ -45,7 +45,6 @@ fn run_test(
     assert!(cargo_run_result.status.success());
     // copy tests into generated code
     let mut lib_rs = std::fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
         .unwrap();
@@ -97,7 +96,6 @@ fn run_test(
     if let Some(external_wasm_file_path) = external_wasm_file_path {
         println!("trying to open: {external_wasm_file_path:?}");
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
-            .write(true)
             .append(true)
             .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
             .unwrap();
