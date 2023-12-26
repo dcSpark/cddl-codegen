@@ -20,9 +20,9 @@ bar = {
 plain = (d: #6.23(uint), e: tagged_text)
 outer = [a: uint, b: plain, c: "some text"] ; @used_as_key
 plain_arrays = [
-; this is not supported right now. When single-element arrays are supported remove this.
-;	single: [plain],
-	multi: [*plain],
+    embedded: plain,
+    single: [plain],
+    multi: [*plain],
 ]
 
 table = { * uint => text }

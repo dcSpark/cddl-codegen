@@ -997,4 +997,53 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn plain_arrays() {
+        let plain = Plain::new(10, String::from("wiorurri34h").into());
+        let plain_arrays = PlainArrays::new(
+            plain.clone(),
+            plain.clone(),
+            vec![plain.clone(), plain.clone()]
+        );
+        deser_test(&plain_arrays);
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_11_encodings {
+            for def_enc in &def_encodings {
+                // need to make sure they are actually inlined!
+                let irregular_bytes = vec![
+                    arr_sz(4, *def_enc),
+                        // embedded
+                        cbor_tag_sz(13, *def_enc),
+                            cbor_int(10, *def_enc),
+                        cbor_tag_sz(9, *def_enc),
+                            cbor_str_sz("wiorurri34h", str_enc.clone()),
+                        // single
+                        arr_def(2),
+                            cbor_tag(13),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                            cbor_str_sz("wiorurri34h", str_enc.clone()),
+                        // multiple
+                        arr_def(4),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                                cbor_str_sz("wiorurri34h", str_enc.clone()),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                                cbor_str_sz("wiorurri34h", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = PlainArrays::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+    }
 }
