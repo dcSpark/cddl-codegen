@@ -35,7 +35,7 @@ fn cbor_string(s: &str) -> Vec<u8> {
 }
 
 fn cbor_tag(t: u8) -> Vec<u8> {
-    assert!(t <= 0xd4 - 0xc0);
+    assert!(t <= 0xd7 - 0xc0);
     vec![0xc0u8 + t]
 }
 

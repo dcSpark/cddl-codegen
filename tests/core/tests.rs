@@ -53,7 +53,40 @@ mod tests {
     #[test]
     fn plain_arrays() {
         let plain = Plain::new(7576, String::from("wiorurri34h").into());
-        deser_test(&PlainArrays::new(vec![plain.clone(), plain.clone()]));
+        let plain_arrays = PlainArrays::new(
+            plain.clone(),
+            plain.clone(),
+            vec![plain.clone(), plain.clone()]
+        );
+        deser_test(&plain_arrays);
+        // need to make sure they are actually inlined!
+        let bytes = vec![
+            arr_def(4),
+                // embedded
+                cbor_tag(23),
+                    cbor_int(7576, cbor_event::Sz::Two),
+                cbor_tag_sz(42, cbor_event::Sz::One),
+                    cbor_string("wiorurri34h"),
+                // single
+                arr_def(2),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                // multiple
+                arr_def(4),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = PlainArrays::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(from_bytes.to_cbor_bytes(), bytes);
+        assert_eq!(plain_arrays.to_cbor_bytes(), bytes);
     }
 
     #[test]
