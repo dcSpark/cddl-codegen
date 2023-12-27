@@ -43,6 +43,12 @@ enums = [
 
 plain = (d: #6.13(uint), e: tagged_text)
 
+plain_arrays = [
+    embedded: plain,
+    single: [plain],
+    multi: [*plain],
+]
+
 group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]
 
 foo_bytes = bytes .cbor foo
