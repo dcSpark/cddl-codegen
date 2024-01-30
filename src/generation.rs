@@ -1161,7 +1161,25 @@ impl GenerationScope {
         if cli.json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
         }
-        if export_raw_bytes_encoding_trait {
+        if export_raw_bytes_encoding_trait
+            || types
+                .rust_structs()
+                .iter()
+                .any(|(_, rust_struct)| match &rust_struct.variant {
+                    RustStructType::Wrapper {
+                        wrapped,
+                        custom_json,
+                        ..
+                    } => {
+                        !custom_json
+                            && matches!(
+                                wrapped.resolve_alias_shallow(),
+                                ConceptualRustType::Primitive(Primitive::Bytes)
+                            )
+                    }
+                    _ => false,
+                })
+        {
             rust_cargo_toml.push_str("hex = \"0.4.3\"\n");
         }
         if cli.wasm
