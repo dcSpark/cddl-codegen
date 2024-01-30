@@ -9,6 +9,7 @@ fn run_test(
     external_rust_file_path: Option<std::path::PathBuf>,
     external_wasm_file_path: Option<std::path::PathBuf>,
     input_is_dir: bool,
+    test_deps: &[&str],
 ) {
     use std::str::FromStr;
     let export_path = match export_suffix {
@@ -71,6 +72,16 @@ fn run_test(
     lib_rs.write_all("\n\n".as_bytes()).unwrap();
     lib_rs.write_all(test_rs.as_bytes()).unwrap();
     std::mem::drop(lib_rs);
+    // add extra deps used within tests
+    let mut cargo_toml = std::fs::OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(test_path.join(format!("{export_path}/rust/Cargo.toml")))
+        .unwrap();
+    for dep in test_deps {
+        cargo_toml.write_all(dep.as_bytes()).unwrap();
+    }
+    std::mem::drop(cargo_toml);
     // run tests in generated code
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
@@ -182,6 +193,7 @@ fn core_with_wasm() {
         Some(extern_rust_path),
         Some(extern_wasm_path),
         false,
+        &[],
     );
 }
 
@@ -198,6 +210,7 @@ fn core_no_wasm() {
         Some(extern_rust_path),
         None,
         false,
+        &[],
     );
 }
 
@@ -210,6 +223,7 @@ fn comment_dsl() {
         None,
         None,
         false,
+        &[],
     );
 }
 
@@ -222,6 +236,7 @@ fn preserve_encodings() {
         None,
         None,
         false,
+        &[],
     );
 }
 
@@ -234,12 +249,13 @@ fn canonical() {
         None,
         None,
         false,
+        &[],
     );
 }
 
 #[test]
 fn rust_wasm_split() {
-    run_test("rust-wasm-split", &[], None, None, None, false);
+    run_test("rust-wasm-split", &[], None, None, None, false, &[]);
 }
 
 #[test]
@@ -259,6 +275,7 @@ fn multifile() {
         Some(extern_rust_path),
         Some(extern_wasm_path),
         true,
+        &[],
     );
 }
 
@@ -286,6 +303,7 @@ fn multifile_json_preserve() {
         Some(extern_rust_path),
         Some(extern_wasm_path),
         true,
+        &[],
     );
 }
 
@@ -305,6 +323,7 @@ fn raw_bytes() {
         Some(extern_rust_path),
         Some(extern_wasm_path),
         false,
+        &[],
     );
 }
 
@@ -324,5 +343,44 @@ fn raw_bytes_preserve() {
         Some(extern_rust_path),
         Some(extern_wasm_path),
         false,
+        &[],
+    );
+}
+
+#[test]
+fn json() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_json_impls");
+    run_test(
+        "json",
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+        None,
+        Some(extern_rust_path),
+        None,
+        false,
+        &[],
+    );
+}
+
+#[test]
+fn json_preserve() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_json_impls");
+    run_test(
+        "json",
+        &[
+            "--preserve-encodings=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+        Some("preserve"),
+        Some(extern_rust_path),
+        None,
+        false,
+        &[],
     );
 }

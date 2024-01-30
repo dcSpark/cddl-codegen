@@ -525,6 +525,7 @@ fn parse_type(
                                             outer_tag,
                                             ranged_type,
                                             Some(min_max),
+                                            rule_metadata.custom_json,
                                         ),
                                         cli,
                                     );
@@ -613,6 +614,7 @@ fn parse_type(
                                                     None,
                                                     concrete_type,
                                                     None,
+                                                    rule_metadata.custom_json,
                                                 ),
                                                 cli,
                                             );
