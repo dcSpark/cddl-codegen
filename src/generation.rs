@@ -842,8 +842,7 @@ impl GenerationScope {
                 if match rust_struct.variant() {
                     RustStructType::Record(_) => true,
                     RustStructType::Wrapper { wrapped, .. } => {
-                        !encoding_fields(types, rust_ident.as_ref(), wrapped, true, cli)
-                            .is_empty()
+                        !encoding_fields(types, rust_ident.as_ref(), wrapped, true, cli).is_empty()
                     }
                     _ => false,
                 } {
