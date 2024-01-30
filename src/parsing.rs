@@ -41,7 +41,7 @@ pub fn rule_is_scope_marker(cddl_rule: &cddl::ast::Rule) -> Option<ModuleScope> 
             if value.type_choices.len() == 1 && ident.starts_with(SCOPE_MARKER) {
                 match &value.type_choices[0].type1.type2 {
                     Type2::TextValue { value, .. } => Some(ModuleScope::new(
-                        value.to_string().split("::").map(String::from).collect(),
+                        value.as_ref().split("::").map(String::from).collect(),
                     )),
                     _ => None,
                 }
