@@ -191,3 +191,10 @@ enum_opt_embed_fields = [
   ; @name eg
   1, ? overlapping_inlined, #6.13(13)
 ]
+
+casing_test = [
+	; @name NFT
+	1 //
+	; @name IPAddress
+	2
+]
