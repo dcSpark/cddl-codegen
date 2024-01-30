@@ -12,6 +12,7 @@ pub struct RuleMetadata {
     pub is_newtype: bool,
     pub no_alias: bool,
     pub used_as_key: bool,
+    pub custom_json: bool,
 }
 
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
@@ -26,6 +27,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         is_newtype: r1.is_newtype || r2.is_newtype,
         no_alias: r1.no_alias || r2.no_alias,
         used_as_key: r1.used_as_key || r2.used_as_key,
+        custom_json: r1.custom_json || r2.custom_json,
     };
     merged.verify();
     merged
@@ -36,6 +38,7 @@ enum ParseResult {
     Name(String),
     DontGenAlias,
     UsedAsKey,
+    CustomJson,
 }
 
 impl RuleMetadata {
@@ -60,6 +63,9 @@ impl RuleMetadata {
 
                 ParseResult::UsedAsKey => {
                     base.used_as_key = true;
+                }
+                ParseResult::CustomJson => {
+                    base.custom_json = true;
                 }
             }
         }
@@ -101,9 +107,21 @@ fn tag_used_as_key(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::UsedAsKey))
 }
 
+fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@custom_json")(input)?;
+
+    Ok((input, ParseResult::CustomJson))
+}
+
 fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, result) = alt((tag_name, tag_newtype, tag_no_alias, tag_used_as_key))(input)?;
+    let (input, result) = alt((
+        tag_name,
+        tag_newtype,
+        tag_no_alias,
+        tag_used_as_key,
+        tag_custom_json,
+    ))(input)?;
 
     Ok((input, result))
 }
@@ -144,6 +162,7 @@ fn parse_comment_name() {
                 is_newtype: false,
                 no_alias: false,
                 used_as_key: false,
+                custom_json: false,
             }
         ))
     );
@@ -160,6 +179,7 @@ fn parse_comment_newtype() {
                 is_newtype: true,
                 no_alias: false,
                 used_as_key: false,
+                custom_json: false,
             }
         ))
     );
@@ -176,6 +196,7 @@ fn parse_comment_newtype_and_name() {
                 is_newtype: true,
                 no_alias: false,
                 used_as_key: false,
+                custom_json: false,
             }
         ))
     );
@@ -192,6 +213,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 is_newtype: true,
                 no_alias: false,
                 used_as_key: true,
+                custom_json: false,
             }
         ))
     );
@@ -208,6 +230,7 @@ fn parse_comment_used_as_key() {
                 is_newtype: false,
                 no_alias: false,
                 used_as_key: true,
+                custom_json: false,
             }
         ))
     );
@@ -224,6 +247,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 is_newtype: true,
                 no_alias: false,
                 used_as_key: false,
+                custom_json: false,
             }
         ))
     );
@@ -240,6 +264,24 @@ fn parse_comment_name_noalias() {
                 is_newtype: false,
                 no_alias: true,
                 used_as_key: false,
+                custom_json: false,
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_comment_newtype_and_custom_json() {
+    assert_eq!(
+        rule_metadata("@custom_json @newtype"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                is_newtype: true,
+                no_alias: false,
+                used_as_key: false,
+                custom_json: true,
             }
         ))
     );

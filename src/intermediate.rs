@@ -2167,6 +2167,7 @@ pub enum RustStructType {
     Wrapper {
         wrapped: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
+        custom_json: bool,
     },
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
@@ -2263,6 +2264,7 @@ impl RustStruct {
         tag: Option<usize>,
         wrapped_type: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
+        custom_json: bool,
     ) -> Self {
         Self {
             ident,
@@ -2270,6 +2272,7 @@ impl RustStruct {
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
                 min_max,
+                custom_json,
             },
         }
     }

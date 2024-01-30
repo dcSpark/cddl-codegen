@@ -653,18 +653,29 @@ impl GenerationScope {
                         rust_struct.tag(),
                         cli,
                     ),
-                    RustStructType::Wrapper { wrapped, min_max } => match rust_struct.tag() {
+                    RustStructType::Wrapper {
+                        wrapped,
+                        min_max,
+                        custom_json,
+                    } => match rust_struct.tag() {
                         Some(tag) => generate_wrapper_struct(
                             self,
                             types,
                             rust_ident,
                             &wrapped.clone().tag(tag),
                             *min_max,
+                            *custom_json,
                             cli,
                         ),
-                        None => {
-                            generate_wrapper_struct(self, types, rust_ident, wrapped, *min_max, cli)
-                        }
+                        None => generate_wrapper_struct(
+                            self,
+                            types,
+                            rust_ident,
+                            wrapped,
+                            *min_max,
+                            *custom_json,
+                            cli,
+                        ),
                     },
                     RustStructType::Extern => {
                         #[allow(clippy::single_match)]
@@ -828,10 +839,13 @@ impl GenerationScope {
         // import encoding structs (struct files)
         if cli.preserve_encodings {
             for (rust_ident, rust_struct) in types.rust_structs() {
-                if matches!(
-                    rust_struct.variant(),
-                    RustStructType::Record(_) | RustStructType::Wrapper { .. }
-                ) {
+                if match rust_struct.variant() {
+                    RustStructType::Record(_) => true,
+                    RustStructType::Wrapper { wrapped, .. } => {
+                        !encoding_fields(types, rust_ident.as_ref(), wrapped, true, cli).is_empty()
+                    }
+                    _ => false,
+                } {
                     // ALL records have an encoding struct since at minimum they contian
                     // the array or map encoding details so no need to check fields
                     self.rust(types, rust_ident).push_import(
@@ -1147,7 +1161,25 @@ impl GenerationScope {
         if cli.json_schema_export {
             rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
         }
-        if export_raw_bytes_encoding_trait {
+        if export_raw_bytes_encoding_trait
+            || types
+                .rust_structs()
+                .iter()
+                .any(|(_, rust_struct)| match &rust_struct.variant {
+                    RustStructType::Wrapper {
+                        wrapped,
+                        custom_json,
+                        ..
+                    } => {
+                        !custom_json
+                            && matches!(
+                                wrapped.resolve_alias_shallow(),
+                                ConceptualRustType::Primitive(Primitive::Bytes)
+                            )
+                    }
+                    _ => false,
+                })
+        {
             rust_cargo_toml.push_str("hex = \"0.4.3\"\n");
         }
         if cli.wasm
@@ -3219,7 +3251,7 @@ fn canonical_param(cli: &Cli) -> &'static str {
 
 /// the codegen crate doesn't support proc macros for fields so we need to
 /// do this with newlines. codegen takes care of indentation somehow.
-fn encoding_var_macros(used_in_key: bool, cli: &Cli) -> String {
+fn encoding_var_macros(used_in_key: bool, custom_json: bool, cli: &Cli) -> String {
     let mut ret = if used_in_key {
         format!(
             "#[derivative({})]\n",
@@ -3232,7 +3264,7 @@ fn encoding_var_macros(used_in_key: bool, cli: &Cli) -> String {
     } else {
         String::new()
     };
-    if cli.json_serde_derives {
+    if cli.json_serde_derives && !custom_json {
         ret.push_str("#[serde(skip)]\n");
     }
     ret
@@ -3513,11 +3545,18 @@ impl DataType for codegen::Enum {
 fn create_base_rust_struct(
     types: &IntermediateTypes<'_>,
     ident: &RustIdent,
+    manual_json_impl: bool,
     cli: &Cli,
 ) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
-    add_struct_derives(&mut s, types.used_as_key(ident), false, cli);
+    add_struct_derives(
+        &mut s,
+        types.used_as_key(ident),
+        false,
+        manual_json_impl,
+        cli,
+    );
     let group_impl = codegen::Impl::new(name);
     // TODO: anything here?
     (s, group_impl)
@@ -4984,7 +5023,7 @@ fn codegen_struct(
     // Rust-only for the rest of this function
 
     // Struct (fields) + constructor
-    let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name, cli);
+    let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name, false, cli);
     native_struct.vis("pub");
     let mut native_new = codegen::Function::new("new");
     let (ctor_ret, ctor_before) = if new_can_fail {
@@ -5070,7 +5109,7 @@ fn codegen_struct(
         native_struct.field(
             &format!(
                 "{}pub encodings",
-                encoding_var_macros(types.used_as_key(name), cli)
+                encoding_var_macros(types.used_as_key(name), false, cli)
             ),
             format!("Option<{encoding_name}>"),
         );
@@ -6189,7 +6228,7 @@ impl EnumVariantInRust {
                     // the codeen crate doesn't support proc macros on fields but we just inline
                     // these with a newline in the field names for declaring as workaround.
                     // Indentation is never an issue as we're always 2 levels deep for field declarations
-                    format!("{}{}", encoding_var_macros(used_in_key, cli), name)
+                    format!("{}{}", encoding_var_macros(used_in_key, false, cli), name)
                 }
             })
             .collect()
@@ -6306,7 +6345,7 @@ fn generate_c_style_enum(
             )
             .vis("pub");
     }
-    add_struct_derives(&mut e, types.used_as_key(name), true, cli);
+    add_struct_derives(&mut e, types.used_as_key(name), true, false, cli);
     for variant in variants.iter() {
         e.new_variant(variant.name.to_string());
     }
@@ -6467,7 +6506,7 @@ fn generate_enum(
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
-    add_struct_derives(&mut e, types.used_as_key(name), true, cli);
+    add_struct_derives(&mut e, types.used_as_key(name), true, false, cli);
     let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
     let mut ser_func = make_serialization_function("serialize", cli);
     if let Some(tag) = tag {
@@ -7066,6 +7105,7 @@ fn generate_wrapper_struct(
     type_name: &RustIdent,
     field_type: &RustType,
     min_max: Option<(Option<i128>, Option<i128>)>,
+    custom_json: bool,
     cli: &Cli,
 ) {
     if min_max.is_some() {
@@ -7103,7 +7143,136 @@ fn generate_wrapper_struct(
 
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
     // The tag is easy but the min/max size would require error types in any place that sets/modifies these in other structs.
-    let (mut s, mut s_impl) = create_base_rust_struct(types, type_name, cli);
+    let (mut s, mut s_impl) = create_base_rust_struct(types, type_name, true, cli);
+    let (inner_var, self_var) = if cli.preserve_encodings {
+        ("inner", "self.inner")
+    } else {
+        ("0", "self.0")
+    };
+
+    // manual JSON impls
+    let mut serde_ser_impl = codegen::Impl::new(type_name);
+    let mut serde_deser_impl = codegen::Impl::new(type_name);
+    let mut json_schema_impl = codegen::Impl::new(type_name);
+    let json_hex_bytes = matches!(
+        field_type.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::Bytes)
+    );
+    let json_schema_type = if json_hex_bytes {
+        Cow::Borrowed("String")
+    } else {
+        Cow::Owned(field_type.for_rust_member(types, false, cli))
+    };
+
+    if !custom_json {
+        // serde Serialize / Deserialize
+        if cli.json_serde_derives {
+            let mut serde_ser_fn = codegen::Function::new("serialize");
+            serde_ser_fn
+                .generic("S")
+                .bound("S", "serde::Serializer")
+                .arg_ref_self()
+                .arg("serializer", "S")
+                .ret("Result<S::Ok, S::Error>");
+            let mut serde_deser_fn = codegen::Function::new("deserialize");
+            serde_deser_fn
+                .generic("D")
+                .bound("D", "serde::de::Deserializer<'de>")
+                .arg("deserializer", "D")
+                .ret("Result<Self, D::Error>");
+            if json_hex_bytes {
+                serde_ser_fn.line(format!(
+                    "serializer.serialize_str(&hex::encode({self_var}.clone()))"
+                ));
+                let err_body = "{ serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid hex bytes\") }";
+                serde_deser_fn
+                    .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
+                    .line("hex::decode(&s)");
+                if types.can_new_fail(type_name) {
+                    serde_deser_fn
+                        .line(format!(
+                            ".ok().and_then(|bytes| {type_name}::new(bytes).ok())"
+                        ))
+                        .line(format!(".ok_or_else(|| {err_body})"));
+                } else {
+                    serde_deser_fn
+                        .line(format!(".map({type_name}::new)"))
+                        .line(format!(".map_err(|_e| {err_body})"));
+                }
+            } else {
+                serde_ser_fn.line(format!("{self_var}.serialize(serializer)"));
+                serde_deser_fn
+                    .line(format!("let inner = <{json_schema_type} as serde::de::Deserialize>::deserialize(deserializer)?;"));
+                if types.can_new_fail(type_name) {
+                    let unexpected = match field_type.resolve_alias_shallow() {
+                        ConceptualRustType::Alias(_, _) => unreachable!(),
+                        ConceptualRustType::Array(_) => "Seq",
+                        ConceptualRustType::Fixed(fixed) => match fixed {
+                            FixedValue::Bool(_) => "Bool(inner)",
+                            FixedValue::Float(_) => "Float(inner)",
+                            FixedValue::Nint(_) => "Signed(inner as i64)",
+                            FixedValue::Null => "Option",
+                            FixedValue::Text(_) => "Str(&inner)",
+                            FixedValue::Uint(_) => "Unsigned(inner)",
+                        },
+                        ConceptualRustType::Map(_, _) => "Map",
+                        ConceptualRustType::Optional(_) => "Option",
+                        ConceptualRustType::Primitive(p) => match p {
+                            Primitive::Bool => "Bool(inner)",
+                            Primitive::Bytes => "Bytes(&inner)",
+                            Primitive::F32 => "Float(inner as f64)",
+                            Primitive::F64 => "Float(inner)",
+                            Primitive::I8
+                            | Primitive::I16
+                            | Primitive::I32
+                            | Primitive::I64
+                            | Primitive::N64 => "Signed(inner as i64)",
+                            Primitive::Str => "Str(&inner)",
+                            Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+                                "Unsigned(inner as u64)"
+                            }
+                            Primitive::U64 => "Unsigned(inner)",
+                        },
+                        ConceptualRustType::Rust(_) => "StructVariant",
+                    };
+                    serde_deser_fn
+                        .line("Self::new(inner)")
+                        .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
+                } else {
+                    serde_deser_fn.line("Ok(Self::new(inner))");
+                }
+            }
+            serde_ser_impl
+                .impl_trait("serde::Serialize")
+                .push_fn(serde_ser_fn);
+            serde_deser_impl
+                .impl_trait("serde::de::Deserialize<'de>")
+                .generic("'de")
+                .push_fn(serde_deser_fn);
+        }
+
+        // JsonSchema
+        if cli.json_schema_export {
+            let mut schema_name_fn = codegen::Function::new("schema_name");
+            schema_name_fn
+                .ret("String")
+                .line(format!("String::from(\"{type_name}\")"));
+            let mut json_schema_fn = codegen::Function::new("json_schema");
+            json_schema_fn
+                .arg("gen", "&mut schemars::gen::SchemaGenerator")
+                .ret("schemars::schema::Schema")
+                .line(format!("{json_schema_type}::json_schema(gen)"));
+            let mut is_referenceable = codegen::Function::new("is_referenceable");
+            is_referenceable
+                .ret("bool")
+                .line(format!("{json_schema_type}::is_referenceable()"));
+            json_schema_impl
+                .impl_trait("schemars::JsonSchema")
+                .push_fn(schema_name_fn)
+                .push_fn(json_schema_fn)
+                .push_fn(is_referenceable);
+        }
+    }
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
@@ -7120,7 +7289,7 @@ fn generate_wrapper_struct(
             s.field(
                 &format!(
                     "{}pub encodings",
-                    encoding_var_macros(types.used_as_key(type_name), cli)
+                    encoding_var_macros(types.used_as_key(type_name), true, cli)
                 ),
                 format!("Option<{encoding_name}>"),
             );
@@ -7147,11 +7316,6 @@ fn generate_wrapper_struct(
     if field_type.is_copy(types) && !cli.preserve_encodings {
         s.derive("Copy");
     }
-    let (inner_var, self_var) = if cli.preserve_encodings {
-        ("inner", "self.inner")
-    } else {
-        ("0", "self.0")
-    };
     let mut get = codegen::Function::new("get");
     get.vis("pub").arg_ref_self();
     if field_type.is_copy(types) {
@@ -7419,6 +7583,17 @@ fn generate_wrapper_struct(
         .push_impl(s_impl)
         .push_impl(from_impl)
         .push_impl(from_inner_impl);
+    if !custom_json {
+        if cli.json_serde_derives {
+            gen_scope
+                .rust(types, type_name)
+                .push_impl(serde_ser_impl)
+                .push_impl(serde_deser_impl);
+        }
+        if cli.json_schema_export {
+            gen_scope.rust(types, type_name).push_impl(json_schema_impl);
+        }
+    }
     gen_scope
         .rust_serialize(types, type_name)
         .push_impl(ser_impl)
@@ -7441,15 +7616,23 @@ fn key_derives(for_ignore: bool, cli: &Cli) -> &'static [&'static str] {
     }
 }
 
-fn add_struct_derives<T: DataType>(data_type: &mut T, used_in_key: bool, is_enum: bool, cli: &Cli) {
+fn add_struct_derives<T: DataType>(
+    data_type: &mut T,
+    used_in_key: bool,
+    is_enum: bool,
+    custom_json: bool,
+    cli: &Cli,
+) {
     data_type.derive("Clone").derive("Debug");
-    if cli.json_serde_derives {
-        data_type
-            .derive("serde::Deserialize")
-            .derive("serde::Serialize");
-    }
-    if cli.json_schema_export {
-        data_type.derive("schemars::JsonSchema");
+    if !custom_json {
+        if cli.json_serde_derives {
+            data_type
+                .derive("serde::Deserialize")
+                .derive("serde::Serialize");
+        }
+        if cli.json_schema_export {
+            data_type.derive("schemars::JsonSchema");
+        }
     }
     if used_in_key {
         if cli.preserve_encodings {
@@ -7530,14 +7713,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
         uint.named("value", "u64").named(
             &format!(
                 "{}encoding",
-                encoding_var_macros(types.used_as_key(&ident), cli)
+                encoding_var_macros(types.used_as_key(&ident), true, cli)
             ),
             "Option<cbor_event::Sz>",
         );
         nint.named("value", "u64").named(
             &format!(
                 "{}encoding",
-                encoding_var_macros(types.used_as_key(&ident), cli)
+                encoding_var_macros(types.used_as_key(&ident), true, cli)
             ),
             "Option<cbor_event::Sz>",
         );
@@ -7547,7 +7730,13 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     }
     native_struct.push_variant(uint);
     native_struct.push_variant(nint);
-    add_struct_derives(&mut native_struct, types.used_as_key(&ident), true, cli);
+    add_struct_derives(
+        &mut native_struct,
+        types.used_as_key(&ident),
+        true,
+        true,
+        cli,
+    );
 
     // impl Int
     let mut native_impl = codegen::Impl::new("Int");

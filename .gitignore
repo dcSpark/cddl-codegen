@@ -16,3 +16,4 @@ book/
 # Test files
 tests/*/export/**
 tests/*/export_wasm/**
+tests/*/export_preserve/**

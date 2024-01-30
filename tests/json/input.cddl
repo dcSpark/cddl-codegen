@@ -1,0 +1,13 @@
+bytes_wrapper = bytes ; @newtype
+str_wrapper = text ; @newtype
+u8_wrapper = uint .lt 256 ; @newtype
+u64_wrapper = uint ; @newtype
+i16_wrapper = int .size 2 ; @newtype
+i64_wrapper = int .size 8 ; @newtype
+nint_wrapper = nint ; @newtype
+
+; TODO: issue: https://github.com/dcSpark/cddl-codegen/issues/223
+; bool_wrapper = bool ; @newtype
+
+struct_wrapper = u64_wrapper ; @newtype
+custom_wrapper = uint ; @newtype @custom_json
