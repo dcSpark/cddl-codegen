@@ -2194,7 +2194,7 @@ impl GenerationScope {
                                 deserializer_name,
                                 func,
                                 non_preserve_bounds_fn(x, &type_cfg.bounds),
-                                p.to_string(),
+                                p,
                                 before_after.after_str(false)
                             ));
                             deser_code.throws = true;
@@ -2208,7 +2208,7 @@ impl GenerationScope {
                         config.final_exprs,
                         "unsigned_integer",
                         "x",
-                        &format!("x as {}", p.to_string()),
+                        &format!("x as {}", p),
                     ),
                     Primitive::U64 => {
                         deser_primitive(config.final_exprs, "unsigned_integer", "x", "x")
@@ -2247,7 +2247,7 @@ impl GenerationScope {
                                 deserializer_name,
                                 bounds_fn(&positive_bounds)
                             ))
-                            .line(format!("(x as {}, Some(enc))", p.to_string()))
+                            .line(format!("(x as {}, Some(enc))", p))
                             .after(",");
                             type_check.push_block(pos);
                             // let this cover both the negative int case + error case
@@ -2257,7 +2257,7 @@ impl GenerationScope {
                                 deserializer_name,
                                 bounds_fn(&negative_bounds)
                             ))
-                            .line(format!("(x as {}, Some(enc))", p.to_string()))
+                            .line(format!("(x as {}, Some(enc))", p))
                             .after(",");
                             type_check.push_block(neg);
                         } else {
@@ -2266,7 +2266,7 @@ impl GenerationScope {
                                     "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}? as {},",
                                     deserializer_name,
                                     non_preserve_bounds_fn("x", &positive_bounds),
-                                    p.to_string()));
+                                    p));
                             // https://github.com/primetype/cbor_event/issues/9
                             // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
                             if *p == Primitive::I64 {
@@ -2286,14 +2286,14 @@ impl GenerationScope {
                                     "_ => {}.negative_integer_sz(){}.map(|(x, _enc)| x)? as {},",
                                     deserializer_name,
                                     bounds_fn,
-                                    p.to_string()
+                                    p
                                 ));
                             } else {
                                 type_check.line(format!(
                                     "_ => {}.negative_integer(){}? as {},",
                                     deserializer_name,
                                     non_preserve_bounds_fn("x", &negative_bounds),
-                                    p.to_string()
+                                    p
                                 ));
                             }
                         }

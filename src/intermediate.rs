@@ -835,9 +835,9 @@ pub enum Primitive {
     Bytes,
 }
 
-impl ToString for Primitive {
-    fn to_string(&self) -> String {
-        String::from(match self {
+impl std::fmt::Display for Primitive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
             Primitive::Bool => "bool",
             Primitive::F32 => "f32",
             Primitive::F64 => "f64",
