@@ -6401,18 +6401,17 @@ fn make_enum_variant_return_if_deserialized(
             deser_body.line(&format!(
                 "let deser_variant: Result<_, DeserializeError> = {single_line};"
             ));
-            Block::new("match deser_variant")
         }
         _ => {
-            let mut variant_deser =
-                Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
-            variant_deser.after(")(raw)");
+            let mut variant_deser = Block::new(
+                "let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+            );
+            variant_deser.after(")(raw);");
             variant_deser.push_all(variant_deser_code.content);
             deser_body.push_block(variant_deser);
-            // can't chain blocks so we just put them one after the other
-            Block::new("")
         }
     }
+    Block::new("match deser_variant")
 }
 
 fn surround_in_len_checks(
@@ -6996,13 +6995,13 @@ fn generate_enum(
                             cli,
                         );
                         let mut variant_deser = Block::new(
-                            "match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                            "let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
                         );
-                        variant_deser.after(")(raw)");
+                        variant_deser.after(")(raw);");
                         variant_deser.push_all(variant_deser_code.content);
                         deser_body.push_block(variant_deser);
                         // can't chain blocks so we just put them one after the other
-                        let mut return_if_deserialized = Block::new("");
+                        let mut return_if_deserialized = Block::new("match variant_deser");
                         return_if_deserialized.line("Ok(variant) => return Ok(variant),");
                         return_if_deserialized
                     }
