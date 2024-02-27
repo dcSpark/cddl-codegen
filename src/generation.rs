@@ -2284,9 +2284,7 @@ impl GenerationScope {
                                 };
                                 type_check.line(format!(
                                     "_ => {}.negative_integer_sz(){}.map(|(x, _enc)| x)? as {},",
-                                    deserializer_name,
-                                    bounds_fn,
-                                    p
+                                    deserializer_name, bounds_fn, p
                                 ));
                             } else {
                                 type_check.line(format!(
