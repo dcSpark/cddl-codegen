@@ -837,22 +837,26 @@ pub enum Primitive {
 
 impl std::fmt::Display for Primitive {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Primitive::Bool => "bool",
-            Primitive::F32 => "f32",
-            Primitive::F64 => "f64",
-            Primitive::U8 => "u8",
-            Primitive::I8 => "i8",
-            Primitive::U16 => "u16",
-            Primitive::I16 => "i16",
-            Primitive::U32 => "u32",
-            Primitive::I32 => "i32",
-            Primitive::U64 => "u64",
-            Primitive::I64 => "i64",
-            Primitive::N64 => "u64",
-            Primitive::Str => "String",
-            Primitive::Bytes => "Vec<u8>",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Primitive::Bool => "bool",
+                Primitive::F32 => "f32",
+                Primitive::F64 => "f64",
+                Primitive::U8 => "u8",
+                Primitive::I8 => "i8",
+                Primitive::U16 => "u16",
+                Primitive::I16 => "i16",
+                Primitive::U32 => "u32",
+                Primitive::I32 => "i32",
+                Primitive::U64 => "u64",
+                Primitive::I64 => "i64",
+                Primitive::N64 => "u64",
+                Primitive::Str => "String",
+                Primitive::Bytes => "Vec<u8>",
+            }
+        )
     }
 }
 // TODO: impl display or fmt or whatever rust uses
