@@ -11,18 +11,18 @@ foo2 = #6.23([uint, opt_text])
 bar = {
 	foo: #6.1337(foo),
 	? derp: uint,
-	1 : uint / null,
+	1 : uint / null, ; @name one
 	? 5: text,
 	five: 5,
 	float: float64,
 }
 
 plain = (d: #6.23(uint), e: tagged_text)
-outer = [a: uint, b: plain, c: "some text"]
+outer = [a: uint, b: plain, c: "some text"] ; @used_as_key
 plain_arrays = [
-; this is not supported right now. When single-element arrays are supported remove this.
-;	single: [plain],
-	multi: [*plain],
+    embedded: plain,
+    single: [plain],
+    multi: [*plain],
 ]
 
 table = { * uint => text }
@@ -34,14 +34,18 @@ table_arr_members = {
 
 c_enum = 3 / 1 / 4
 
-type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint])
+type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint]) ; @used_as_key
+
+non_overlapping_type_choice_all = uint / nint / text / bytes / #6.30("hello world") / [* uint] / { *text => uint }
+
+non_overlapping_type_choice_some = uint / nint / text
 
 enums = [
 	c_enum,
 	type_choice,
 ]
 
-group_choice = [ foo // 0, x: uint // plain ]
+group_choice = [ foo // 0, x: uint // plain ] ; @used_as_key
 
 foo_bytes = bytes .cbor foo
 
@@ -121,8 +125,11 @@ top_level_array = [* uint]
 top_level_single_elem = [uint]
 
 overlapping_inlined = [
+	; @name one
 	0 //
+	; @name two
 	0, uint //
+	; @name three
 	0, uint, text
 ]
 
@@ -130,4 +137,57 @@ overlapping0 = [0]
 overlapping1 = [0, uint]
 overlapping2 = [0, uint, text]
 
-overlapping = overlapping0 / overlapping1 / overlapping2
+overlapping = overlapping0 ; @name A
+            / overlapping1 ; @name B
+            / overlapping2 ; @name C
+
+array_opt_fields = [
+  ? x: 1.010101 
+  ? a: uint,
+  ? b: text,
+	c: nint,
+  ? d: text,
+    y: 3.14159265
+  ? e: non_overlapping_type_choice_some
+  ? z: 2.71828
+]
+
+bounds = [
+    w: -1000 .. 1000
+    x: uint .le 7,
+    y: nint .ge -5,
+    z: text .size (3..14),
+    a: [* uint] .size (1..3),
+    b: { * uint => uint } .le 3
+]
+
+bounds_type_choice = bytes .size (0..64)
+                   / text .size (0..64)
+
+bounds_group_choice = [
+    ; @name a
+    a: uint, b: text .le 4 //
+    ; @name b
+    hash //
+    ; @name c
+    1, x: hash, y: hash
+]
+
+enum_opt_embed_fields = [
+  ; @name ea
+  1 //
+  ; @name eb
+  1, ?text, 5 //
+  ; @name ec
+  1, uint, 7 //
+; doesn't parse but would result in triple nesting so worth testing if we can ever parse it
+;  1, ? (text / null), #6.9(9)
+  ; @name ed
+  1, uint, ?text //
+  ; @name ee
+  1, uint, ?bytes, uint //
+  ; @name ef
+  1, ? non_overlapping_type_choice_some, #6.11(11) //
+  ; @name eg
+  1, ? overlapping_inlined, #6.13(13)
+]

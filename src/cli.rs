@@ -63,11 +63,48 @@ pub struct Cli {
     /// Generates a npm package.json along with build scripts
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub package_json: bool,
+
+    /// Location override for default common types (error, serialization, etc)
+    /// This is useful for integrating into an exisitng project that is based on
+    /// these types.
+    #[clap(long, value_parser, value_name = "COMMON_IMPORT_OVERRIDE")]
+    common_import_override: Option<String>,
+
+    /// An external macro to be called instead of manually emitting functions for
+    /// conversions to/from CBOR bytes or JSON.
+    /// If the macro is scoped it will be imported using the supplied path.
+    /// e.g. foo::bar::qux will result in importing foo::bar::qux and then
+    /// calling qux!(A); for every struct A with a CBOR/JSON API
+    #[clap(long, value_parser)]
+    pub wasm_cbor_json_api_macro: Option<String>,
+
+    /// An external macro to be called instead of manually emitting traits for
+    /// WASM conversions to/from the inner rust type + AsRef.
+    /// If the macro is scoped it will be imported using the supplied path.
+    /// e.g. foo::bar::qux will result in importing foo::bar::qux and then
+    /// calling qux!(rust::path::A, A); for every struct A with a CBOR/JSON API
+    #[clap(long, value_parser)]
+    pub wasm_conversions_macro: Option<String>,
 }
 
 impl Cli {
     /// lib name from code i.e. with underscores
     pub fn lib_name_code(&self) -> String {
         self.lib_name.replace('-', "_")
+    }
+
+    /// If someone override the common imports, we don't want to export them
+    pub fn export_static_files(&self) -> bool {
+        self.common_import_override.is_none()
+    }
+
+    pub fn common_import_rust(&self) -> &str {
+        self.common_import_override.as_deref().unwrap_or("crate")
+    }
+
+    pub fn common_import_wasm(&self) -> String {
+        self.common_import_override
+            .clone()
+            .unwrap_or_else(|| self.lib_name_code())
     }
 }

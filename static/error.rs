@@ -36,8 +36,9 @@ pub enum DeserializeFailure {
     InvalidStructure(Box<dyn core::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
-    RangeCheck {
-        found: usize,
+    NoVariantMatchedWithCauses(Vec<DeserializeError>),
+    RangeCheck{
+        found: isize,
         min: Option<isize>,
         max: Option<isize>,
     },
@@ -70,10 +71,12 @@ impl DeserializeError {
             None => Self::new(location, self.failure),
         }
     }
-}
 
-impl core::fmt::Display for DeserializeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt_indent(&self, f: &mut core::fmt::Formatter<'_>, indent: u32) -> core::fmt::Result {
+        use core::fmt::Display;
+        for _ in 0..indent {
+            write!(f, "\t")?;
+        }
         match &self.location {
             Some(loc) => write!(f, "Deserialization failed in {} because: ", loc),
             None => write!(f, "Deserialization: "),
@@ -104,7 +107,15 @@ impl core::fmt::Display for DeserializeError {
                 write!(f, "Mandatory field {} not found", key)
             }
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
-            DeserializeFailure::RangeCheck { found, min, max } => match (min, max) {
+            DeserializeFailure::NoVariantMatchedWithCauses(errs) => {
+                write!(f, "No variant matched. Failures:\n")?;
+                for e in errs {
+                    e.fmt_indent(f, indent + 1)?;
+                    write!(f, "\n")?;
+                }
+                Ok(())
+            },
+            DeserializeFailure::RangeCheck{ found, min, max } => match (min, max) {
                 (Some(min), Some(max)) => write!(f, "{} not in range {} - {}", found, min, max),
                 (Some(min), None) => write!(f, "{} not at least {}", found, min),
                 (None, Some(max)) => write!(f, "{} not at most {}", found, max),
@@ -118,6 +129,14 @@ impl core::fmt::Display for DeserializeError {
                 write!(f, "Found unexpected key of CBOR type {:?}", ty)
             }
         }
+    }
+}
+
+impl core::error::Error for DeserializeError {}
+
+impl core::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.fmt_indent(f, 0)
     }
 }
 

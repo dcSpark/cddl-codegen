@@ -1,6 +1,7 @@
 use cbor_event::Special as CBORSpecial;
 use cbor_event::{Special, Type as CBORType};
 use cddl::ast::parent::ParentVisitor;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 // TODO: move all of these generation specifics into generation.rs
@@ -9,6 +10,34 @@ use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
     is_identifier_user_defined,
 };
+
+use once_cell::sync::Lazy;
+pub static ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ModuleScope(Vec<String>);
+
+impl ModuleScope {
+    pub fn new(scope: Vec<String>) -> Self {
+        Self::from(scope)
+    }
+
+    pub fn components(&self) -> &Vec<String> {
+        &self.0
+    }
+}
+
+impl From<Vec<String>> for ModuleScope {
+    fn from(scope: Vec<String>) -> Self {
+        Self(scope)
+    }
+}
+
+impl std::fmt::Display for ModuleScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.join("::"))
+    }
+}
 
 #[derive(Debug)]
 pub struct AliasInfo {
@@ -44,7 +73,10 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
-    scopes: BTreeMap<RustIdent, String>,
+    scopes: BTreeMap<RustIdent, ModuleScope>,
+    // for scope() to work we keep this here.
+    // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
+    root_scope: ModuleScope,
 }
 
 impl Default for IntermediateTypes<'_> {
@@ -70,6 +102,7 @@ impl<'a> IntermediateTypes<'a> {
             news_can_fail: BTreeSet::new(),
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
+            root_scope: ROOT_SCOPE.clone(),
         }
     }
 
@@ -112,30 +145,30 @@ impl<'a> IntermediateTypes<'a> {
     pub fn scope_references(
         &self,
         wasm: bool,
-    ) -> BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>> {
+    ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
         let mut refs = BTreeMap::new();
         fn set_ref(
-            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
-            current_scope: &str,
+            current_scope: &ModuleScope,
             rust_ident: &RustIdent,
         ) {
             let ref_scope = types.scope(rust_ident);
             if current_scope != ref_scope {
-                refs.entry(current_scope.to_owned())
+                refs.entry(current_scope.clone())
                     .or_default()
-                    .entry(ref_scope.to_owned())
+                    .entry(ref_scope.clone())
                     .or_default()
                     .insert(rust_ident.clone());
             }
         }
         fn mark_refs(
-            refs: &mut BTreeMap<String, BTreeMap<String, BTreeSet<RustIdent>>>,
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
-            current_scope: &str,
+            current_scope: &ModuleScope,
             ty: &RustType,
         ) {
             match &ty.conceptual_type {
@@ -148,7 +181,10 @@ impl<'a> IntermediateTypes<'a> {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    if wasm && !elem_ty.directly_wasm_exposable(types) && current_scope != "lib" {
+                    if wasm
+                        && !elem_ty.directly_wasm_exposable(types)
+                        && *current_scope != *ROOT_SCOPE
+                    {
                         // TODO: we should be doing array wrappers where they are declared or used,
                         // but for the latter, what to do if multiple places use it? default to lib?
                         // issue: https://github.com/dcSpark/cddl-codegen/issues/138
@@ -156,7 +192,7 @@ impl<'a> IntermediateTypes<'a> {
                             RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array(types)));
                         refs.entry(current_scope.to_owned())
                             .or_default()
-                            .entry("lib".to_owned())
+                            .entry(ROOT_SCOPE.clone())
                             .or_default()
                             .insert(arr_wrapper_ident);
                     } else {
@@ -167,7 +203,7 @@ impl<'a> IntermediateTypes<'a> {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
-                    if wasm && current_scope != "lib" {
+                    if wasm && *current_scope != *ROOT_SCOPE {
                         // TODO: we should be doing map wrappers where they are declared or used,
                         // but for the former what if the key/value types are in different modules,
                         // and for the latter, what to do if multiple places use it? default to lib?
@@ -175,7 +211,7 @@ impl<'a> IntermediateTypes<'a> {
                         let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
                         refs.entry(current_scope.to_owned())
                             .or_default()
-                            .entry("lib".to_owned())
+                            .entry(ROOT_SCOPE.clone())
                             .or_default()
                             .insert(map_wrapper_ident);
                     } else {
@@ -504,6 +540,14 @@ impl<'a> IntermediateTypes<'a> {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
+        // do a recursive check on the ones explicitly tagged as keys using @used_as_key
+        // this is done here since the lambdas are defined here so we can reuse them
+        for ident in &self.used_as_key {
+            if let Some(rust_struct) = self.rust_struct(ident) {
+                rust_struct.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+            }
+        }
+        // check all other places used as keys
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, &mut |ty| {
                 check_used_as_key(ty, self, &mut used_as_key)
@@ -512,7 +556,10 @@ impl<'a> IntermediateTypes<'a> {
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
             }
         }
-        self.used_as_key = used_as_key;
+        // we use a separate one here to get around the borrow checker in the above visit_types
+        for ident in used_as_key {
+            self.mark_used_as_key(ident);
+        }
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
@@ -595,7 +642,7 @@ impl<'a> IntermediateTypes<'a> {
         self.news_can_fail.contains(name)
     }
 
-    pub fn mark_scope(&mut self, ident: RustIdent, scope: String) {
+    pub fn mark_scope(&mut self, ident: RustIdent, scope: ModuleScope) {
         if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone()) {
             if old_scope != scope {
                 panic!(
@@ -606,8 +653,8 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    pub fn scope(&self, ident: &RustIdent) -> &str {
-        self.scopes.get(ident).map(|s| s.as_str()).unwrap_or("lib")
+    pub fn scope(&self, ident: &RustIdent) -> &ModuleScope {
+        self.scopes.get(ident).unwrap_or(&self.root_scope)
     }
 
     // we need to do this for some generated intermediate structures as the parsing code
@@ -620,6 +667,10 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
         self.used_as_key.contains(name)
+    }
+
+    pub fn mark_used_as_key(&mut self, name: RustIdent) {
+        self.used_as_key.insert(name);
     }
 
     pub fn print_info(&self) {
@@ -757,7 +808,7 @@ impl FixedValue {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
     F64,
@@ -806,7 +857,7 @@ impl ToString for Primitive {
 }
 // TODO: impl display or fmt or whatever rust uses
 impl Primitive {
-    pub fn to_variant(&self) -> VariantIdent {
+    pub fn to_variant(self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
             Primitive::F32 => "F32",
@@ -994,6 +1045,16 @@ pub enum CBOREncodingOperation {
     CBORBytes,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RustTypeSerializeConfig {
+    /// default value when missing in deserialization
+    pub default: Option<FixedValue>,
+    /// Bounds to check. Relevant to primitives + arrays + maps
+    pub bounds: Option<(Option<i128>, Option<i128>)>,
+    /// Basic group encoding override. If true basic encoding will not be used in (de)serialization
+    pub basic_override: bool,
+}
+
 /// A complete rust type, including serialization options that don't impact other areas
 #[derive(Clone, Debug, PartialEq)]
 pub struct RustType {
@@ -1001,8 +1062,8 @@ pub struct RustType {
     pub conceptual_type: ConceptualRustType,
     /// How to encode the conceptual type. Order is important. Applied in iteration order.
     pub encodings: Vec<CBOREncodingOperation>,
-    // default value when missing in deserialization
-    pub default: Option<FixedValue>,
+    /// Further type configuration that aren't encoding operation
+    pub config: RustTypeSerializeConfig,
 }
 
 impl std::ops::Deref for RustType {
@@ -1018,7 +1079,7 @@ impl RustType {
         Self {
             conceptual_type,
             encodings: Vec::new(),
-            default: None,
+            config: RustTypeSerializeConfig::default(),
         }
     }
 
@@ -1034,8 +1095,16 @@ impl RustType {
         self
     }
 
+    pub fn tag_if(self, tag: Option<usize>) -> Self {
+        if let Some(t) = tag {
+            self.tag(t)
+        } else {
+            self
+        }
+    }
+
     pub fn default(mut self, default_value: FixedValue) -> Self {
-        assert!(self.default.is_none());
+        assert!(self.config.default.is_none());
         let matches = if let ConceptualRustType::Primitive(p) =
             self.conceptual_type.resolve_alias_shallow()
         {
@@ -1056,7 +1125,7 @@ impl RustType {
                 default_value, self.conceptual_type
             );
         }
-        self.default = Some(default_value);
+        self.config.default = Some(default_value);
         self
     }
 
@@ -1071,7 +1140,153 @@ impl RustType {
         Self {
             conceptual_type: self.conceptual_type.resolve_aliases(),
             encodings: self.encodings,
-            default: self.default,
+            config: self.config,
+        }
+    }
+
+    pub fn with_bounds(self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
+        assert!(self.config.bounds.is_none());
+        // remove redundant 0 for unsigned types
+        if bounds.0 == Some(0)
+            && matches!(
+                self.conceptual_type.resolve_alias_shallow(),
+                ConceptualRustType::Primitive(Primitive::Bytes)
+                    | ConceptualRustType::Primitive(Primitive::Str)
+                    | ConceptualRustType::Primitive(Primitive::U8)
+                    | ConceptualRustType::Primitive(Primitive::U16)
+                    | ConceptualRustType::Primitive(Primitive::U32)
+                    | ConceptualRustType::Primitive(Primitive::U64)
+            )
+        {
+            bounds.0 = None;
+        }
+        Self {
+            conceptual_type: self.conceptual_type,
+            encodings: self.encodings,
+            config: RustTypeSerializeConfig {
+                default: self.config.default,
+                bounds: if bounds.0.is_some() || bounds.1.is_some() {
+                    Some(bounds)
+                } else {
+                    None
+                },
+                basic_override: self.config.basic_override,
+            },
+        }
+    }
+
+    pub fn not_basic(self) -> Self {
+        Self {
+            conceptual_type: self.conceptual_type,
+            encodings: self.encodings,
+            config: RustTypeSerializeConfig {
+                default: self.config.default,
+                bounds: self.config.bounds,
+                basic_override: true,
+            },
+        }
+    }
+
+    /// Checks whether FROM THIS CONTEXT the type is a basic group.
+    /// Only relevant to rust structs.
+    pub fn is_basic(&self, types: &IntermediateTypes) -> bool {
+        if let ConceptualRustType::Rust(ident) = self.conceptual_type.resolve_alias_shallow() {
+            !self.config.basic_override && types.is_plain_group(ident)
+        } else {
+            false
+        }
+    }
+
+    // CBOR len count for the entire type if it were embedded as a member in a cbor collection (array/map)
+    pub fn expanded_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
+        match self.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Optional(ty) => match ty.expanded_field_count(types) {
+                Some(1) => Some(1),
+                // differing sizes when Null vs Some
+                _ => None,
+            },
+            ConceptualRustType::Rust(ident) => {
+                if self.is_basic(types) {
+                    match types.rust_structs.get(ident) {
+                        Some(rs) => rs.fixed_field_count(types),
+                        None => panic!(
+                            "rust struct {} not found but referenced by {:?}",
+                            ident, self
+                        ),
+                    }
+                } else {
+                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
+                    Some(1)
+                }
+            }
+            _ => Some(1),
+        }
+    }
+
+    /// See comment in RustStruct::definite_info(), this is the same, returns a string expression
+    /// which evaluates to the length.
+    /// self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
+        match self.expanded_field_count(types) {
+            Some(count) => count.to_string(),
+            None => match self.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Optional(ty) => format!(
+                    "match {}{} {{ Some(x) => {}, None => 1 }}",
+                    if self_is_ref { "" } else { "&" },
+                    self_expr,
+                    ty.definite_info("x", true, types, cli)
+                ),
+                ConceptualRustType::Rust(ident) => {
+                    if types.is_plain_group(ident) {
+                        match types.rust_structs.get(ident) {
+                            Some(rs) => rs.definite_info(self_expr, self_is_ref, types, cli),
+                            None => panic!(
+                                "rust struct {} not found but referenced by {:?}",
+                                ident, self
+                            ),
+                        }
+                    } else {
+                        // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
+                        String::from("1")
+                    }
+                }
+                _ => String::from("1"),
+            },
+        }
+    }
+
+    // the minimum cbor length of this struct - can be useful for deserialization length checks
+    // does not count ANY type choice like types including Optional UNLESS the option Some type
+    // has cbor len 1 too - to be consistent with expanded_field_count
+    pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
+        match self.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Optional(ty) => match ty.expanded_field_count(types) {
+                Some(1) => 1,
+                _ => 0,
+            },
+            ConceptualRustType::Rust(ident) => {
+                if types.is_plain_group(ident) {
+                    match types.rust_structs.get(ident) {
+                        Some(x) => x.expanded_mandatory_field_count(types),
+                        None => panic!(
+                            "rust struct {} not found but referenced by {:?}",
+                            ident, self
+                        ),
+                    }
+                } else {
+                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
+                    1
+                }
+            }
+            _ => 1,
         }
     }
 
@@ -1137,6 +1352,14 @@ impl RustType {
         }
     }
 
+    pub fn needs_bounds_check_if_inlined(&self, types: &IntermediateTypes) -> bool {
+        self.config.bounds.is_some()
+            || match self.resolve_alias_shallow() {
+                ConceptualRustType::Rust(ident) => types.can_new_fail(ident),
+                _ => false,
+            }
+    }
+
     fn _cbor_special_type(&self) -> Option<CBORSpecial> {
         unimplemented!()
     }
@@ -1172,7 +1395,7 @@ pub enum ConceptualRustType {
     Fixed(FixedValue),
     // Primitive type that can be passed to/from wasm
     Primitive(Primitive),
-    // Rust-defined type that cannot be put in arrays/etc. Can be an enum, etc too.
+    // Rust-defined type that can be put in arrays/etc. Can be an enum, etc too.
     Rust(RustIdent),
     // Array-wrapped type. Passed as Vec<T> if T is Primitive
     Array(Box<RustType>),
@@ -1665,94 +1888,6 @@ impl ConceptualRustType {
         }
     }
 
-    // CBOR len count for the entire type if it were embedded as a member in a cbor collection (array/map)
-    pub fn expanded_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
-        match self {
-            Self::Optional(ty) => match ty.conceptual_type.expanded_field_count(types) {
-                Some(1) => Some(1),
-                // differing sizes when Null vs Some
-                _ => None,
-            },
-            Self::Rust(ident) => {
-                if types.is_plain_group(ident) {
-                    match types.rust_structs.get(ident) {
-                        Some(rs) => rs.fixed_field_count(types),
-                        None => panic!(
-                            "rust struct {} not found but referenced by {:?}",
-                            ident, self
-                        ),
-                    }
-                } else {
-                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
-                    Some(1)
-                }
-            }
-            Self::Alias(_ident, ty) => ty.expanded_field_count(types),
-            _ => Some(1),
-        }
-    }
-
-    // See comment in RustStruct::definite_info(), this is the same, returns a string expression
-    // which evaluates to the length.
-    // self_expr is an expression that evaluates to this RustType (e.g. member, etc) at the point where
-    // the return of this function will be used.
-    pub fn definite_info(&self, self_expr: &str, types: &IntermediateTypes, cli: &Cli) -> String {
-        match self.expanded_field_count(types) {
-            Some(count) => count.to_string(),
-            None => match self {
-                Self::Optional(ty) => format!(
-                    "match {} {{ Some(x) => {}, None => 1 }}",
-                    self_expr,
-                    ty.conceptual_type.definite_info("x", types, cli)
-                ),
-                Self::Rust(ident) => {
-                    if types.is_plain_group(ident) {
-                        match types.rust_structs.get(ident) {
-                            Some(rs) => rs.definite_info(types, cli),
-                            None => panic!(
-                                "rust struct {} not found but referenced by {:?}",
-                                ident, self
-                            ),
-                        }
-                    } else {
-                        // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
-                        String::from("1")
-                    }
-                }
-                Self::Alias(_ident, ty) => ty.definite_info(self_expr, types, cli),
-                _ => String::from("1"),
-            },
-        }
-    }
-
-    // the minimum cbor length of this struct - can be useful for deserialization length checks
-    // does not count ANY type choice like types including Optional UNLESS the option Some type
-    // has cbor len 1 too - to be consistent with expanded_field_count
-    pub fn expanded_mandatory_field_count(&self, types: &IntermediateTypes) -> usize {
-        match self {
-            Self::Optional(ty) => match ty.conceptual_type.expanded_field_count(types) {
-                Some(1) => 1,
-                _ => 0,
-            },
-            Self::Rust(ident) => {
-                if types.is_plain_group(ident) {
-                    match types.rust_structs.get(ident) {
-                        Some(x) => x.expanded_mandatory_field_count(types),
-                        None => panic!(
-                            "rust struct {} not found but referenced by {:?}",
-                            ident, self
-                        ),
-                    }
-                } else {
-                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
-                    1
-                }
-            }
-            Self::Alias(_ident, ty) => ty.expanded_mandatory_field_count(types),
-            _ => 1,
-        }
-    }
-
     pub fn visit_types<F: FnMut(&Self)>(&self, types: &IntermediateTypes, f: &mut F) {
         self.visit_types_excluding(types, f, &mut BTreeSet::new())
     }
@@ -1906,6 +2041,16 @@ impl EnumVariant {
         }
     }
 
+    pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
+        match &self.data {
+            EnumVariantData::RustType(ty) => ty.cbor_types(types),
+            EnumVariantData::Inlined(record) => match record.rep {
+                Representation::Array => vec![CBORType::Array],
+                Representation::Map => vec![CBORType::Map],
+            },
+        }
+    }
+
     // Can only be used on RustType variants, panics otherwise.
     // So don't call this when we're embedding the variant types
     pub fn rust_type(&self) -> &RustType {
@@ -1968,6 +2113,16 @@ impl RustField {
             key,
         }
     }
+
+    pub fn to_embedded_rust_type(&self) -> Cow<RustType> {
+        if self.optional {
+            Cow::Owned(RustType::new(ConceptualRustType::Optional(Box::new(
+                self.rust_type.clone(),
+            ))))
+        } else {
+            Cow::Borrowed(&self.rust_type)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -2012,6 +2167,7 @@ pub enum RustStructType {
     Wrapper {
         wrapped: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
+        custom_json: bool,
     },
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
@@ -2108,6 +2264,7 @@ impl RustStruct {
         tag: Option<usize>,
         wrapped_type: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
+        custom_json: bool,
     ) -> Self {
         Self {
             ident,
@@ -2115,6 +2272,7 @@ impl RustStruct {
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
                 min_max,
+                custom_json,
             },
         }
     }
@@ -2174,14 +2332,25 @@ impl RustStruct {
         }
     }
 
-    // Even if fixed_field_count() == None, this will return an expression for
-    // a definite length, e.g. with optional field checks in the expression
-    // This is useful for definite-length serialization
-    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+    /// Even if fixed_field_count() == None, this will return an expression for
+    /// a definite length, e.g. with optional field checks in the expression
+    /// This is useful for definite-length serialization
+    /// self_expr is an expression that evaluates to this struct (e.g. "self") at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
         match &self.variant {
-            RustStructType::Record(record) => record.definite_info(types, cli),
-            RustStructType::Table { .. } => String::from("self.0.len() as u64"),
-            RustStructType::Array { .. } => String::from("self.0.len() as u64"),
+            RustStructType::Record(record) => {
+                record.definite_info(self_expr, self_is_ref, types, cli)
+            }
+            RustStructType::Table { .. } => format!("{self_expr}.0.len() as u64"),
+            RustStructType::Array { .. } => format!("{self_expr}.0.len() as u64"),
             RustStructType::TypeChoice { .. } => {
                 unreachable!("I don't think type choices should be using length?")
             }
@@ -2221,7 +2390,7 @@ impl RustStruct {
         }
     }
 
-    fn _cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
+    pub fn cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
         match &self.variant {
             RustStructType::Record(record) => record.cbor_len_info(types),
             RustStructType::Table { .. } => RustStructCBORLen::Dynamic,
@@ -2308,18 +2477,26 @@ impl RustRecord {
                 return None;
             }
             count += match self.rep {
-                Representation::Array => field
-                    .rust_type
-                    .conceptual_type
-                    .expanded_field_count(types)?,
+                Representation::Array => field.rust_type.expanded_field_count(types)?,
                 Representation::Map => 1,
             };
         }
         Some(count)
     }
 
-    // This is guaranteed
-    pub fn definite_info(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+    /// This is guaranteed
+    /// If inlined_enum is set, assumes the field is accessible via a local reference e.g. match branch
+    /// Otherwise assumes it's a field e.g. self.name
+    /// self_expr is an expression that evaluates to this struct (e.g. "self") at the point where
+    /// the return of this function will be used.
+    /// self_is_ref whether the above expression is by-ref
+    pub fn definite_info(
+        &self,
+        self_expr: &str,
+        self_is_ref: bool,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> String {
         match self.fixed_field_count(types) {
             Some(count) => count.to_string(),
             None => {
@@ -2327,46 +2504,66 @@ impl RustRecord {
                 let mut conditional_field_expr = String::new();
                 for field in &self.fields {
                     if field.optional {
+                        if !cli.preserve_encodings && field.rust_type.is_fixed_value() {
+                            // we don't create fields for fixed values when preserve-encodings=false
+                            continue;
+                        }
                         if !conditional_field_expr.is_empty() {
                             conditional_field_expr.push_str(" + ");
                         }
-                        let (field_expr, field_contribution) = match self.rep {
-                            Representation::Array => (
-                                "x",
-                                field
-                                    .rust_type
-                                    .conceptual_type
-                                    .definite_info("x", types, cli),
-                            ),
-                            // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
-                            Representation::Map => ("_", String::from("1")),
+                        let self_field_expr = if self_expr.is_empty() {
+                            Cow::Borrowed(&field.name)
+                        } else {
+                            Cow::Owned(format!("{}.{}", self_expr, field.name))
                         };
-                        if let Some(default_value) = &field.rust_type.default {
+                        if let Some(default_value) = &field.rust_type.config.default {
+                            let field_contribution = match self.rep {
+                                Representation::Array => Cow::Owned(field.rust_type.definite_info(
+                                    &self_field_expr,
+                                    true,
+                                    types,
+                                    cli,
+                                )),
+                                // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
+                                Representation::Map => Cow::Borrowed("1"),
+                            };
                             if cli.preserve_encodings {
                                 conditional_field_expr.push_str(&format!(
-                                    "if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
+                                    "if {}.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false) {{ {} }} else {{ 0 }}",
+                                    self_expr,
                                     field.name,
                                     default_value.to_primitive_str_compare(),
                                     field.name,
                                     field_contribution));
                             } else {
                                 conditional_field_expr.push_str(&format!(
-                                    "if self.{} != {} {{ {} }} else {{ 0 }}",
+                                    "if {}.{} != {} {{ {} }} else {{ 0 }}",
+                                    self_expr,
                                     field.name,
                                     default_value.to_primitive_str_compare(),
                                     field_contribution
                                 ));
                             }
                         } else {
+                            let (field_expr, field_contribution) = match self.rep {
+                                Representation::Array => {
+                                    ("x", field.rust_type.definite_info("x", true, types, cli))
+                                }
+                                // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
+                                Representation::Map => ("_", String::from("1")),
+                            };
                             conditional_field_expr.push_str(&format!(
-                                "match &self.{} {{ Some({}) => {}, None => 0 }}",
-                                field.name, field_expr, field_contribution
+                                "match {}{} {{ Some({}) => {}, None => 0 }}",
+                                if self_is_ref { "" } else { "&" },
+                                self_field_expr,
+                                field_expr,
+                                field_contribution
                             ));
                         }
                     } else {
                         match self.rep {
                             Representation::Array => {
-                                match field.rust_type.conceptual_type.expanded_field_count(types) {
+                                match field.rust_type.expanded_field_count(types) {
                                     Some(field_expanded_count) => {
                                         fixed_field_count += field_expanded_count
                                     }
@@ -2374,12 +2571,12 @@ impl RustRecord {
                                         if !conditional_field_expr.is_empty() {
                                             conditional_field_expr.push_str(" + ");
                                         }
-                                        let field_len_expr =
-                                            field.rust_type.conceptual_type.definite_info(
-                                                &format!("self.{}", field.name),
-                                                types,
-                                                cli,
-                                            );
+                                        let field_len_expr = field.rust_type.definite_info(
+                                            &format!("self.{}", field.name),
+                                            false,
+                                            types,
+                                            cli,
+                                        );
                                         conditional_field_expr.push_str(&field_len_expr);
                                     }
                                 }
@@ -2403,12 +2600,7 @@ impl RustRecord {
         self.fields
             .iter()
             .filter(|field| !field.optional)
-            .map(|field| {
-                field
-                    .rust_type
-                    .conceptual_type
-                    .expanded_mandatory_field_count(types)
-            })
+            .map(|field| field.rust_type.expanded_mandatory_field_count(types))
             .sum()
     }
 

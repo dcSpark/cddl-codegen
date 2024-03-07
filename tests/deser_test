@@ -35,7 +35,7 @@ fn cbor_string(s: &str) -> Vec<u8> {
 }
 
 fn cbor_tag(t: u8) -> Vec<u8> {
-    assert!(t <= 0xd4 - 0xc0);
+    assert!(t <= 0xd7 - 0xc0);
     vec![0xc0u8 + t]
 }
 
@@ -64,5 +64,11 @@ fn cbor_str_sz(s: &str, sz: cbor_event::StringLenSz) -> Vec<u8> {
 fn cbor_bytes_sz(bytes: Vec<u8>, sz: cbor_event::StringLenSz) -> Vec<u8> {
     let mut buf = cbor_event::se::Serializer::new_vec();
     buf.write_bytes_sz(bytes, sz).unwrap();
+    buf.finalize()
+}
+
+fn cbor_float(f: f64) -> Vec<u8> {
+    let mut buf = cbor_event::se::Serializer::new_vec();
+    buf.write_special(cbor_event::Special::Float(f)).unwrap();
     buf.finalize()
 }

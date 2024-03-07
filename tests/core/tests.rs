@@ -132,11 +132,11 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(&Bar::new(
-            Foo::new(436, String::from("jfkdf"), vec![6, 4]),
-            None,
-            3.3,
-        ));
+        let mut bar = Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None, 3.3);
+        deser_test(&bar);
+        // tests @name
+        bar.one = Some(10);
+
     }
 
     #[test]
@@ -147,7 +147,40 @@ mod tests {
     #[test]
     fn plain_arrays() {
         let plain = Plain::new(7576, String::from("wiorurri34h").into());
-        deser_test(&PlainArrays::new(vec![plain.clone(), plain.clone()]));
+        let plain_arrays = PlainArrays::new(
+            plain.clone(),
+            plain.clone(),
+            vec![plain.clone(), plain.clone()]
+        );
+        deser_test(&plain_arrays);
+        // need to make sure they are actually inlined!
+        let bytes = vec![
+            arr_def(4),
+                // embedded
+                cbor_tag(23),
+                    cbor_int(7576, cbor_event::Sz::Two),
+                cbor_tag_sz(42, cbor_event::Sz::One),
+                    cbor_string("wiorurri34h"),
+                // single
+                arr_def(2),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                // multiple
+                arr_def(4),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = PlainArrays::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(from_bytes.to_cbor_bytes(), bytes);
+        assert_eq!(plain_arrays.to_cbor_bytes(), bytes);
     }
 
     #[test]
@@ -328,22 +361,226 @@ mod tests {
 
     #[test]
     fn overlapping() {
-        let overlap0 = Overlapping::new_overlapping0(Overlapping0::new());
+        let overlap0 = Overlapping::new_a(Overlapping0::new());
         deser_test(&overlap0);
-        let overlap1 = Overlapping::new_overlapping1(Overlapping1::new(9));
+        let overlap1 = Overlapping::new_b(Overlapping1::new(9));
         deser_test(&overlap1);
-        let overlap2 = Overlapping::new_overlapping2(Overlapping2::new(5, "overlapping".into()));
+        let overlap2 = Overlapping::new_c(Overlapping2::new(5, "overlapping".into()));
         deser_test(&overlap2);
     }
 
     #[test]
     fn overlapping_inlined() {
-        // this test won't work until https://github.com/dcSpark/cddl-codegen/issues/175 is resolved.
-        let overlap0 = OverlappingInlined::new_i0();
+        let overlap0 = OverlappingInlined::new_one();
         deser_test(&overlap0);
-        let overlap1 = OverlappingInlined::new_overlapping_inlined1(9);
-        //deser_test(&overlap1);
-        let overlap2 = OverlappingInlined::new_overlapping_inlined2(5, "overlapping".into());
-        //deser_test(&overlap2);
+        let overlap1 = OverlappingInlined::new_two(9);
+        deser_test(&overlap1);
+        let overlap2 = OverlappingInlined::new_three(5, "overlapping".into());
+        deser_test(&overlap2);
+    }
+
+    #[test]
+    fn overlapping_type_choice_all() {
+        deser_test(&NonOverlappingTypeChoiceAll::U64(100));
+        deser_test(&NonOverlappingTypeChoiceAll::N64(10000));
+        deser_test(&NonOverlappingTypeChoiceAll::Text("Hello, World!".into()));
+        deser_test(&NonOverlappingTypeChoiceAll::Bytes(vec![0xBA, 0xAD, 0xF0, 0x0D]));
+        deser_test(&NonOverlappingTypeChoiceAll::Helloworld);
+        deser_test(&NonOverlappingTypeChoiceAll::ArrU64(vec![0, u64::MAX]));
+        deser_test(&NonOverlappingTypeChoiceAll::MapTextToU64(
+            BTreeMap::from([("two".into(), 2), ("four".into(), 4)]))
+        );
+    }
+
+    #[test]
+    fn overlapping_type_choice_some() {
+        deser_test(&NonOverlappingTypeChoiceSome::U64(100));
+        deser_test(&NonOverlappingTypeChoiceSome::N64(10000));
+        deser_test(&NonOverlappingTypeChoiceSome::Text("Hello, World!".into()));
+    }
+
+    #[test]
+    fn array_opt_fields() {
+        let mut foo = ArrayOptFields::new(10);
+        for e in [None, Some(NonOverlappingTypeChoiceSome::U64(5)), Some(NonOverlappingTypeChoiceSome::N64(4)), Some(NonOverlappingTypeChoiceSome::Text("five".to_owned()))] {
+            for a in [false, true] {
+                for b in [false, true] {
+                    for d in [false, true] {
+                        // round-trip on non-constants
+                        foo.a = if a { Some(0) } else { None };
+                        foo.b = if b { Some("hello, world".to_owned()) } else { None };
+                        foo.d = if d { Some("cddl-codegen".to_owned()) } else { None };
+                        foo.e = e.clone();
+                        deser_test(&foo);
+                        // deser for constants too
+                        for x in [false, true] {
+                            for y in [false, true] {
+                                for z in [false, true] {
+                                    let mut components = vec![vec![ARR_INDEF]];
+                                    let bytes = vec![
+                                        vec![ARR_INDEF]
+                                    ];
+                                    if x {
+                                        components.push(cbor_float(1.010101));
+                                    }
+                                    if a {
+                                        components.push(cbor_int(0, cbor_event::Sz::One));
+                                    }
+                                    if b {
+                                        components.push(cbor_string("hello, world"));
+                                    }
+                                    // c
+                                    components.push(cbor_int(-10, cbor_event::Sz::One));
+                                    if d {
+                                        components.push(cbor_string("cddl-codegen"));
+                                    }
+                                    // y
+                                    components.push(cbor_float(3.14159265));
+                                    if let Some(e) = &e {
+                                        components.push(e.to_cbor_bytes());
+                                    }
+                                    if z {
+                                        components.push(cbor_float(2.71828));
+                                    }
+                                    components.push(vec![BREAK]);
+                                    let bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
+                                    let _ = ArrayOptFields::from_cbor_bytes(&bytes).unwrap();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bounds() {
+        deser_test(&Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).unwrap());
+        enum OOB {
+            Below,
+            Lower,
+            Upper,
+            Above,
+        }
+        let make_bounds = |w_out: OOB, x_out: OOB, y_out: OOB, z_out: OOB, a_out: OOB, b_out: OOB| {
+            let cbor = vec![
+                arr_def(6),
+                    cbor_int(match w_out {
+                        OOB::Below => -1001,
+                        OOB::Lower => -1000,
+                        OOB::Upper => 1000,
+                        OOB::Above => 1001,
+                    }, cbor_event::Sz::Two),
+                    cbor_int(match x_out {
+                        OOB::Below => panic!(),
+                        OOB::Lower => panic!(),
+                        OOB::Upper => 7,
+                        OOB::Above => 8,
+                    }, cbor_event::Sz::Inline),
+                    cbor_int(match y_out {
+                        OOB::Below => -6,
+                        OOB::Lower => -5,
+                        OOB::Upper => panic!(),
+                        OOB::Above => panic!(),
+                    }, cbor_event::Sz::Inline),
+                    cbor_string(match z_out {
+                        OOB::Below => "ab",
+                        OOB::Lower => "abc",
+                        OOB::Upper => "abcdefghijklmn",
+                        OOB::Above => "abcdefghijklmno",
+                    }),
+                    vec![ARR_INDEF],
+                        match a_out {
+                            OOB::Below => vec![],
+                            OOB::Lower => vec![0x00],
+                            OOB::Upper => vec![0x00, 0x01, 0x02],
+                            OOB::Above => vec![0x00, 0x01, 0x02, 0x03],
+                        },
+                    vec![BREAK],
+                    vec![MAP_INDEF],
+                        match b_out {
+                            OOB::Below => panic!(),
+                            OOB::Lower => panic!(),
+                            OOB::Upper => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02],
+                            OOB::Above => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x03],
+                        },
+                    vec![BREAK],
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            Bounds::from_cbor_bytes(&cbor)
+        };
+        let good1 = make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Lower, OOB::Lower, OOB::Upper).unwrap();
+        deser_test(&good1);
+        let good2 = make_bounds(OOB::Upper, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).unwrap();
+        deser_test(&good2);
+        // w oob
+        assert!(make_bounds(OOB::Below, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Above, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // x oob
+        assert!(make_bounds(OOB::Lower, OOB::Above, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // y oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Below, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
+        // z oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Below, OOB::Upper, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Above, OOB::Upper, OOB::Upper).is_err());
+        // a oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Below, OOB::Upper).is_err());
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Above, OOB::Upper).is_err());
+        // b oob
+        assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
+
+        // type and group choices share the same deserialization code so we only check the API
+        assert!(BoundsTypeChoice::new_bytes(vec![0; 64]).is_ok());
+        assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
+        assert!(BoundsGroupChoice::new_a(0, "four".to_owned()).is_ok());
+        assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
+        deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
+    }
+
+    #[test]
+    fn used_as_key() {
+        // this is just here to make sure this compiles (i.e. Ord traits are derived)
+        let mut set_outer: std::collections::BTreeSet<Outer> = std::collections::BTreeSet::new();
+        set_outer.insert(Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
+        let mut set_type_choice: std::collections::BTreeSet<TypeChoice> = std::collections::BTreeSet::new();
+        set_type_choice.insert(TypeChoice::Helloworld);
+        let mut set_group_choice: std::collections::BTreeSet<GroupChoice> = std::collections::BTreeSet::new();
+        set_group_choice.insert(GroupChoice::GroupChoice1(37));
+    }
+
+    #[test]
+    fn enum_opt_embed_fields() {
+        let a = EnumOptEmbedFields::new_ea();
+        deser_test(&a);
+        let b1 = EnumOptEmbedFields::new_eb(Some("Hello".to_owned()));
+        deser_test(&b1);
+        let b2 = EnumOptEmbedFields::new_eb(None);
+        deser_test(&b2);
+        let c = EnumOptEmbedFields::new_ec(100);
+        deser_test(&c);
+        let mut d1 = EnumOptEmbedFields::new_ed(1);
+        match &mut d1 {
+            EnumOptEmbedFields::Ed(ed) => ed.index_2 = Some("Goodbye".to_owned()),
+            _ => panic!(),
+        }
+        deser_test(&d1);
+        let d2 = EnumOptEmbedFields::new_ed(2);
+        deser_test(&d2);
+        let mut e1 = EnumOptEmbedFields::new_ee(0, 0);
+        match &mut e1 {
+            EnumOptEmbedFields::Ee(ee) => ee.index_2 = Some(vec![0xBA, 0xAD, 0xF0, 0x0D]),
+            _ => panic!(),
+        }
+        deser_test(&e1);
+        let e2 = EnumOptEmbedFields::new_ee(u64::MAX, u64::MAX);
+        deser_test(&e2);
+        let f1 = EnumOptEmbedFields::new_ef(Some(NonOverlappingTypeChoiceSome::U64(5)));
+        deser_test(&f1);
+        let f2 = EnumOptEmbedFields::new_ef(None);
+        deser_test(&f2);
+        let g1 = EnumOptEmbedFields::new_eg(Some(OverlappingInlined::new_two(0)));
+        deser_test(&g1);
+        let g2 = EnumOptEmbedFields::new_eg(None);
+        deser_test(&g2);
     }
 }
