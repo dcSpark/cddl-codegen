@@ -180,8 +180,7 @@ checksum = "a3e2c3daef883ecc1b5d58c15adae93470a91d425f3532ba1695849656af3fc1"
 [[package]]
 name = "cbor_event"
 version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "089a0261d1bc59e54e8e11860031efd88593f0e61b921172c474f1f38c2f2d3c"
+source = "git+https://github.com/primetype/cbor_event#2b6330abe7aa69d230454ea2cadda5015526e681"
 
 [[package]]
 name = "cc"

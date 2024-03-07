@@ -3,6 +3,7 @@ mod tests {
     use super::*;
     use cbor_event::{Sz, StringLenSz, de::Deserializer};
     use serialization::Deserialize;
+    use std::format;
 
     #[test]
     fn foo() {

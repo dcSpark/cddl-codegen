@@ -9,7 +9,7 @@ impl RawBytesEncoding for PubKey {
     }
 
     fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
-        use std::convert::TryInto;
+        use core::convert::TryInto;
         bytes
             .try_into()
             .map(PubKey)

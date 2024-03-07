@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use std::format;
 
     #[test]
     fn group_type() {

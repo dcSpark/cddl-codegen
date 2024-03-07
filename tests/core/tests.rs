@@ -3,15 +3,106 @@ mod tests {
     use super::*;
     use cbor_event::de::Deserializer;
     use serialization::Deserialize;
+    use std::{format, print, println};
+
+    fn print_cbor_types(obj_name: &str, vec: Vec<u8>) {
+        use cbor_event::Type;
+        let mut raw = cbor_event::de::Deserializer::from(vec);
+        let mut lens = Vec::new();
+        let consume_elem = |lens: &mut Vec<cbor_event::LenSz>| {
+            if let Some(len) = lens.last_mut() {
+                if let cbor_event::LenSz::Len(n, _) = len {
+                    *n -= 1;
+                }
+            }
+        };
+        let reduce_depth = |lens: &mut Vec<cbor_event::LenSz>| {
+            while let Some(cbor_event::LenSz::Len(0, _)) = lens.last() {
+                lens.pop();
+                println!("{}}}", "\t".repeat(lens.len()));
+            }
+        };
+        println!("{} = {{", obj_name);
+        loop {
+            print!("{}", "\t".repeat(lens.len()));
+            match raw.cbor_type() {
+                Err(_) => break,
+                Ok(Type::UnsignedInteger) => {
+                    let (x, sz) = raw.unsigned_integer_sz().unwrap();
+                    println!("UINT({}, {:?})", x, sz);
+                    consume_elem(&mut lens);
+                    reduce_depth(&mut lens);
+                }
+                Ok(Type::NegativeInteger) => {
+                    let (x, sz) = raw.negative_integer_sz().unwrap();
+                    println!("NINT({}, {:?})", x, sz);
+                    consume_elem(&mut lens);
+                    reduce_depth(&mut lens);
+                }
+                Ok(Type::Bytes) => {
+                    let (x, sz) = raw.bytes_sz().unwrap();
+                    println!("BYTES({:?}, {:?})", x, sz);
+                    consume_elem(&mut lens);
+                    reduce_depth(&mut lens);
+                }
+                Ok(Type::Text) => {
+                    let (x, sz) = raw.text_sz().unwrap();
+                    println!("TEXT(\"{}\", {:?})", x, sz);
+                    consume_elem(&mut lens);
+                    reduce_depth(&mut lens);
+                }
+                Ok(Type::Array) => {
+                    let len = raw.array_sz().unwrap();
+                    println!("ARRAY({:?}) {{", len);
+                    consume_elem(&mut lens);
+                    lens.push(len);
+                    if let cbor_event::LenSz::Len(0, _sz) = len {
+                        reduce_depth(&mut lens);
+                    }
+                }
+                Ok(Type::Map) => {
+                    let len = raw.map_sz().unwrap();
+                    println!("MAP({:?}) {{", len);
+                    consume_elem(&mut lens);
+                    lens.push(match len {
+                        cbor_event::LenSz::Len(n, sz) => cbor_event::LenSz::Len(2 * n, sz),
+                        cbor_event::LenSz::Indefinite => cbor_event::LenSz::Indefinite,
+                    });
+                    if let cbor_event::LenSz::Len(0, _sz) = len {
+                        reduce_depth(&mut lens);
+                    }
+                }
+                Ok(Type::Tag) => {
+                    let (tag, sz) = raw.tag_sz().unwrap();
+                    println!("TAG({}, {:?})", tag, sz);
+                }
+                Ok(Type::Special) => {
+                    let special = raw.special().unwrap();
+                    println!("SPECIAL({:?})", special);
+                    if special == cbor_event::Special::Break {
+                        if let Some(cbor_event::LenSz::Indefinite) = lens.last() {
+                            lens.pop();
+                            reduce_depth(&mut lens);
+                        } else {
+                            panic!("unexpected break");
+                        }
+                    } else {
+                        consume_elem(&mut lens);
+                        reduce_depth(&mut lens);
+                    }
+                }
+            }
+        }
+        println!("}}");
+    }
 
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         let orig_bytes = orig.to_cbor_bytes();
-        print_cbor_types("orig", &orig_bytes);
-        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        print_cbor_types("orig", orig_bytes.clone());
+        let mut deserializer = Deserializer::from(orig_bytes.clone());
         let deser = T::deserialize(&mut deserializer).unwrap();
-        print_cbor_types("deser", &deser.to_cbor_bytes());
+        print_cbor_types("deser", deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
-        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
     #[test]
@@ -28,7 +119,10 @@ mod tests {
 
     #[test]
     fn foo2_some() {
-        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe").into())));
+        deser_test(&Foo2::new(
+            143546,
+            Some(String::from("afdjfkjsiefefe").into()),
+        ));
     }
 
     #[test]
@@ -91,12 +185,15 @@ mod tests {
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
+        deser_test(&Outer::new(
+            2143254,
+            Plain::new(7576, String::from("wiorurri34h").into()),
+        ));
     }
 
     #[test]
     fn table_arr_members() {
-        let mut tab = std::collections::BTreeMap::new();
+        let mut tab = alloc::collections::BTreeMap::new();
         tab.insert(String::from("43266556"), String::from("2k2j343"));
         tab.insert(String::from("213543254546565"), String::from("!!fjdj"));
         let mut foos = vec![
@@ -116,7 +213,7 @@ mod tests {
     fn type_choice_hello_world() {
         deser_test(&TypeChoice::Helloworld);
     }
-    
+
     #[test]
     fn type_choice_uint() {
         deser_test(&TypeChoice::U64(53435364));
@@ -154,7 +251,10 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg").into())));
+        deser_test(&GroupChoice::Plain(Plain::new(
+            354545,
+            String::from("fdsfdsfdg").into(),
+        )));
     }
 
     #[test]
@@ -175,9 +275,29 @@ mod tests {
 
     #[test]
     fn signed_ints() {
-        let min = SignedInts::new(u8::MIN, u16::MIN, u32::MIN, u64::MIN, i8::MIN, i16::MIN, i32::MIN, i64::MIN, u64::MIN);
+        let min = SignedInts::new(
+            u8::MIN,
+            u16::MIN,
+            u32::MIN,
+            u64::MIN,
+            i8::MIN,
+            i16::MIN,
+            i32::MIN,
+            i64::MIN,
+            u64::MIN,
+        );
         deser_test(&min);
-        let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
+        let max = SignedInts::new(
+            u8::MAX,
+            u16::MAX,
+            u32::MAX,
+            u64::MAX,
+            i8::MAX,
+            i16::MAX,
+            i32::MAX,
+            i64::MAX,
+            u64::MAX,
+        );
         deser_test(&max);
     }
 
@@ -197,9 +317,12 @@ mod tests {
         // we can use this test compiling as a test for the presence of an alias by referencing e.g. I8::MIN
         // but we need to read the actual code to test that we're NOT using an alias somewhere and are indeed
         // using a raw rust primitive instead
-        let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
+        let lib_rs_with_tests =
+            std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs"))
+                .unwrap();
         // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
-        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        let lib_rs =
+            &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]\nmod tests").unwrap()];
         // these don't have @no_alias
         assert!(lib_rs.contains("pub type I8 = i8;"));
         assert!(lib_rs.contains("pub type I64 = i64;"));

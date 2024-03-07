@@ -26,7 +26,7 @@ impl CBORReadLen {
                 } else {
                     Ok(())
                 }
-            },
+            }
             cbor_event::LenSz::Indefinite => Ok(()),
         }
     }
@@ -39,18 +39,20 @@ impl CBORReadLen {
                 } else {
                     Err(DeserializeFailure::DefiniteLenMismatch(n, Some(self.read)))
                 }
-            },
+            }
             cbor_event::LenSz::Indefinite => Ok(()),
         }
     }
 }
 
 pub trait DeserializeEmbeddedGroup {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         read_len: &mut CBORReadLen,
         len: cbor_event::LenSz,
-    ) -> Result<Self, DeserializeError> where Self: Sized;
+    ) -> Result<Self, DeserializeError>
+    where
+        Self: Sized;
 }
 
 #[inline]
@@ -80,11 +82,13 @@ impl Default for LenEncoding {
 impl From<cbor_event::LenSz> for LenEncoding {
     fn from(len_sz: cbor_event::LenSz) -> Self {
         match len_sz {
-            cbor_event::LenSz::Len(len, sz) => if cbor_event::Sz::canonical(len) == sz {
-                Self::Canonical
-            } else {
-                Self::Definite(sz)
-            },
+            cbor_event::LenSz::Len(len, sz) => {
+                if cbor_event::Sz::canonical(len) == sz {
+                    Self::Canonical
+                } else {
+                    Self::Definite(sz)
+                }
+            }
             cbor_event::LenSz::Indefinite => Self::Indefinite,
         }
     }

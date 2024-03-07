@@ -3,9 +3,9 @@ mod tests {
     use super::*;
     use serialization::*;
 
-    fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
-	use cbor_event::Type;
-        let mut raw = Deserializer::from(std::io::Cursor::new(vec));
+    fn print_cbor_types(obj_name: &str, vec: Vec<u8>) {
+        use cbor_event::Type;
+        let mut raw = Deserializer::from(vec);
         println!("{} = {{", obj_name);
         loop {
             match raw.cbor_type() {
@@ -24,9 +24,9 @@ mod tests {
     }
 
     fn deser_test<T: Deserialize + ToBytes>(orig: T) {
-        print_cbor_types("orig", &orig.to_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_bytes()))).unwrap();
-        print_cbor_types("deser", &deser.to_bytes());
+        print_cbor_types("orig", orig.to_bytes());
+        let deser = T::deserialize(&mut Deserializer::from(orig.to_bytes())).unwrap();
+        print_cbor_types("deser", deser.to_bytes());
         assert_eq!(orig.to_bytes(), deser.to_bytes());
     }
 
@@ -37,7 +37,10 @@ mod tests {
 
     #[test]
     fn foo2_some() {
-        deser_test(Foo2::new(143546, Some(TaggedText::new(String::from("afdjfkjsiefefe")))));
+        deser_test(Foo2::new(
+            143546,
+            Some(TaggedText::new(String::from("afdjfkjsiefefe"))),
+        ));
     }
 
     #[test]
@@ -47,17 +50,26 @@ mod tests {
 
     #[test]
     fn bar() {
-        deser_test(Bar::new(&Foo::new(436, String::from("jfkdf"), vec![6, 4]), None));
+        deser_test(Bar::new(
+            &Foo::new(436, String::from("jfkdf"), vec![6, 4]),
+            None,
+        ));
     }
 
     #[test]
     fn plain() {
-        deser_test(Plain::new(7576, &TaggedText::new(String::from("wiorurri34h"))));
+        deser_test(Plain::new(
+            7576,
+            &TaggedText::new(String::from("wiorurri34h")),
+        ));
     }
 
     #[test]
     fn outer() {
-        deser_test(Outer::new(2143254, &Plain::new(7576, &TaggedText::new(String::from("wiorurri34h")))));
+        deser_test(Outer::new(
+            2143254,
+            &Plain::new(7576, &TaggedText::new(String::from("wiorurri34h"))),
+        ));
     }
 
     #[test]
@@ -89,7 +101,7 @@ mod tests {
     fn type_choice_hello_world() {
         deser_test(TypeChoice::new_helloworld());
     }
-    
+
     #[test]
     fn type_choice_uint() {
         deser_test(TypeChoice::new_u64(53435364));
@@ -97,7 +109,9 @@ mod tests {
 
     #[test]
     fn type_choice_text() {
-        deser_test(TypeChoice::new_text(String::from("jdfidsf83j3  jkrjefdfk !!")));
+        deser_test(TypeChoice::new_text(String::from(
+            "jdfidsf83j3  jkrjefdfk !!",
+        )));
     }
 
     #[test]
@@ -122,6 +136,9 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(GroupChoice::new_plain(&Plain::new(354545, &TaggedText::new(String::from("fdsfdsfdg")))));
+        deser_test(GroupChoice::new_plain(&Plain::new(
+            354545,
+            &TaggedText::new(String::from("fdsfdsfdg")),
+        )));
     }
 }

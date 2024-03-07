@@ -748,7 +748,10 @@ impl GenerationScope {
 
         // rust
         self.rust_lib()
-            .raw("#![allow(clippy::too_many_arguments)]\n");
+            .raw("#![allow(clippy::too_many_arguments)]\n")
+            .raw("#![no_std]\n")
+            .raw("#![feature(error_in_core)]\n")
+            .raw("#![cfg_attr(not(test), no_std)]\n");
         let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
         for content in self.rust_scopes.values_mut() {
             content.raw(codegen_comment);
@@ -765,7 +768,16 @@ impl GenerationScope {
 
         // declare modules (root lib specific)
         if cli.export_static_files() {
-            self.rust_lib().raw("pub mod error;");
+            self.rust_lib()
+                .raw("pub mod error;")
+                .raw("extern crate alloc;")
+                .raw("#[cfg(test)]\nextern crate std;")
+                .push_import("alloc::borrow", "ToOwned", None)
+                .push_import("alloc::boxed", "Box", None)
+                .push_import("alloc::string", "String", None)
+                .push_import("alloc::string", "ToString", None)
+                .push_import("alloc", "vec", None)
+                .push_import("alloc::vec", "Vec", None);
             if cli.preserve_encodings {
                 self.rust_lib().raw("pub mod ordered_hash_map;");
             }
@@ -799,7 +811,10 @@ impl GenerationScope {
         for content in self.rust_scopes.values_mut() {
             // needed if there's any params that can fail
             content
-                .push_import("std::convert", "TryFrom", None)
+                .push_import("core::convert", "TryFrom", None)
+                .push_import("crate::error", "*", None)
+                .push_import("alloc::string", "String", None)
+                .push_import("alloc::vec", "Vec", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
@@ -822,7 +837,8 @@ impl GenerationScope {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
-                    .push_import("std::collections", "BTreeMap", None)
+                    .push_import("alloc::collections", "BTreeMap", None)
+                    .push_import("alloc::vec", "Vec", None)
                     .push_import(
                         format!("{}::serialization", cli.common_import_rust()),
                         "LenEncoding",
@@ -903,7 +919,7 @@ impl GenerationScope {
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
             // but the code to figure that out would be potentially complex.
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
-            content.push_import("std::collections", "BTreeMap", None);
+            content.push_import("alloc::collections", "BTreeMap", None);
             if cli.preserve_encodings {
                 content.push_import(
                     format!("{}::ordered_hash_map", cli.common_import_rust()),
@@ -918,10 +934,12 @@ impl GenerationScope {
         for (scope, content) in self.serialize_scopes.iter_mut() {
             content
                 .push_import("super", "*", None)
-                .push_import("std::io", "BufRead", None)
-                .push_import("std::io", "Seek", None)
-                .push_import("std::io", "SeekFrom", None)
-                .push_import("std::io", "Write", None)
+                .push_import("alloc::borrow", "ToOwned", None)
+                .push_import("alloc::boxed", "Box", None)
+                .push_import("alloc", "fmt", None)
+                .push_import("alloc::string", "String", None)
+                .push_import("alloc::string", "ToString", None)
+                .push_import("alloc::vec", "Vec", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
@@ -1820,7 +1838,7 @@ impl GenerationScope {
                         let mut key_order_sort_match =
                             Block::new("match lhs_bytes.len().cmp(&rhs_bytes.len())");
                         key_order_sort_match
-                            .line("std::cmp::Ordering::Equal => lhs_bytes.cmp(rhs_bytes),")
+                            .line("core::cmp::Ordering::Equal => lhs_bytes.cmp(rhs_bytes),")
                             .line("diff_ord => diff_ord,");
                         key_order_sort.push_block(key_order_sort_match).after(");");
                         key_order_if.push_block(key_order_sort);
@@ -2382,9 +2400,6 @@ impl GenerationScope {
                         //     // TODO: potentially simplified deserialization some day
                         //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                         // } else {
-                        deser_code.content.line(
-                            "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
-                        );
                         let mut variant_final_exprs = config.final_exprs.clone();
                         if cli.preserve_encodings {
                             for enc_var in encoding_fields(
@@ -2409,11 +2424,16 @@ impl GenerationScope {
                                     cli,
                                 );
                             return_if_deserialized
-                            .line(format!("Ok(({})) => return Ok({}),",
-                            variant_final_exprs.join(", "),
-                            final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
-                            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
-                            .after(";");
+                                .line(format!(
+                                    "Ok(({})) => return Ok({}),",
+                                    variant_final_exprs.join(", "),
+                                    final_expr(
+                                        variant_final_exprs.clone(),
+                                        Some(format!("{}::{}", ident, variant.name))
+                                    )
+                                ))
+                                .line("Err(_) => raw.to_string(),")
+                                .after(";");
                             deser_code.content.push_block(return_if_deserialized);
                         }
                         deser_code.content.line(&format!(
@@ -2998,7 +3018,7 @@ impl GenerationScope {
                 };
                 let name_overload = "inner_de";
                 deser_code.content.line(&format!(
-                    "let {} = &mut Deserializer::from(std::io::Cursor::new({}_bytes));",
+                    "let {} = &mut Deserializer::from({}_bytes);",
                     name_overload, config.var_name
                 ));
                 self.generate_deserialize(
@@ -3254,7 +3274,7 @@ fn canonical_param(cli: &Cli) -> &'static str {
 fn encoding_var_macros(used_in_key: bool, custom_json: bool, cli: &Cli) -> String {
     let mut ret = if used_in_key {
         format!(
-            "#[derivative({})]\n",
+            "#[cfg_attr(feature = \"std\", derivative({}))]\n",
             key_derives(true, cli)
                 .iter()
                 .map(|derive| format!("{derive}=\"ignore\""))
@@ -3528,17 +3548,27 @@ impl CodeBlock for BlocksOrLines {
 
 trait DataType {
     fn derive(&mut self, derive: &str) -> &mut Self;
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self;
 }
 
 impl DataType for codegen::Struct {
     fn derive(&mut self, derive: &str) -> &mut Self {
         self.derive(derive)
     }
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self {
+        self.cfg_attr(cfg_attr)
+    }
 }
 
 impl DataType for codegen::Enum {
     fn derive(&mut self, derive: &str) -> &mut Self {
         self.derive(derive)
+    }
+
+    fn cfg_attr(&mut self, cfg_attr: &str) -> &mut Self {
+        self.cfg_attr(cfg_attr)
     }
 }
 
@@ -4719,7 +4749,7 @@ fn generate_array_struct_deserialization(
                     // There's no nice way to access this as Deserializer::special_break() consumes
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
-                        "if raw.as_mut_ref().fill_buf().ok().and_then(|buf| buf.get(0)).map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
+                        "if raw.as_ref().get(0).map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
                     } else {
                         format!("if raw.cbor_type().map(|ty| ty == {type_str}).unwrap_or(false)")
                     }
@@ -6405,7 +6435,7 @@ fn make_enum_variant_return_if_deserialized(
         }
         _ => {
             let mut variant_deser =
-                Block::new("match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>");
+                Block::new("match (|raw: &mut Deserializer| -> Result<_, DeserializeError>");
             variant_deser.after(")(raw)");
             variant_deser.push_all(variant_deser_code.content);
             deser_body.push_block(variant_deser);
@@ -6575,9 +6605,7 @@ fn generate_enum(
         }
     };
     if non_overlapping_types_match.is_none() {
-        deser_body
-            .line("let initial_position = raw.as_mut_ref().stream_position().unwrap();")
-            .line("let mut errs = Vec::new();");
+        deser_body.line("let mut errs = Vec::new();");
     }
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
@@ -6996,7 +7024,7 @@ fn generate_enum(
                             cli,
                         );
                         let mut variant_deser = Block::new(
-                            "match (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                            "match (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
                         );
                         variant_deser.after(")(raw)");
                         variant_deser.push_all(variant_deser_code.content);
@@ -7010,7 +7038,7 @@ fn generate_enum(
                 let mut variant_deser_failed_block = Block::new("Err(e) =>");
                 variant_deser_failed_block
                     .line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
-                    .line("raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();");
+                    .line("raw.to_string();");
                 return_if_deserialized.push_block(variant_deser_failed_block);
                 return_if_deserialized.after(";");
                 deser_body.push_block(return_if_deserialized);
@@ -7049,10 +7077,10 @@ fn generate_enum(
 
 fn make_serialization_function(name: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("'se, W: Write")
-        .ret("cbor_event::Result<&'se mut Serializer<W>>")
+    f.generic("'se")
+        .ret("cbor_event::Result<&'se mut Serializer>")
         .arg_ref_self()
-        .arg("serializer", "&'se mut Serializer<W>");
+        .arg("serializer", "&'se mut Serializer");
     if cli.preserve_encodings && cli.canonical_form {
         f.arg("force_canonical", "bool");
     }
@@ -7071,9 +7099,8 @@ fn make_serialization_impl(name: &str, cli: &Cli) -> codegen::Impl {
 
 fn make_deserialization_function(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("R: BufRead + Seek")
-        .ret("Result<Self, DeserializeError>")
-        .arg("raw", "&mut Deserializer<R>");
+    f.ret("Result<Self, DeserializeError>")
+        .arg("raw", "&mut Deserializer");
     f
 }
 
@@ -7624,6 +7651,8 @@ fn add_struct_derives<T: DataType>(
     cli: &Cli,
 ) {
     data_type.derive("Clone").derive("Debug");
+    let mut std_derives = vec![];
+    let mut std_predicates = vec![];
     if !custom_json {
         if cli.json_serde_derives {
             data_type
@@ -7631,15 +7660,16 @@ fn add_struct_derives<T: DataType>(
                 .derive("serde::Serialize");
         }
         if cli.json_schema_export {
-            data_type.derive("schemars::JsonSchema");
+            std_derives.push("schemars::JsonSchema".to_string());
         }
     }
     if used_in_key {
         if cli.preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
-            data_type.derive(&format!(
-                "derivative::Derivative)]\n#[derivative({}",
+            std_derives.push("derivative::Derivative".to_string());
+            std_predicates.push(format!(
+                "derivative({})",
                 key_derives(false, cli)
                     .iter()
                     .map(|tr| match *tr {
@@ -7656,6 +7686,12 @@ fn add_struct_derives<T: DataType>(
                 data_type.derive(key_derive);
             }
         }
+    }
+    if !std_derives.is_empty() {
+        std_predicates.insert(0, format!("derive({})", std_derives.join(", ")));
+    }
+    if !std_predicates.is_empty() {
+        data_type.cfg_attr(&format!("feature = \"std\", {}", std_predicates.join(", ")));
     }
 }
 
@@ -7695,7 +7731,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             .arg("string", "&str")
             .ret("Result<Int, JsError>")
             .line("// have to redefine so it's visible in WASM")
-            .line("std::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
+            .line("alloc::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
 
         wrapper
             .s_impl
@@ -7824,16 +7860,16 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
     }
     display
-        .impl_trait("std::fmt::Display")
+        .impl_trait("core::fmt::Display")
         .new_fn("fmt")
         .arg_ref_self()
-        .arg("f", "&mut std::fmt::Formatter<'_>")
-        .ret("std::fmt::Result")
+        .arg("f", "&mut core::fmt::Formatter<'_>")
+        .ret("core::fmt::Result")
         .push_block(display_match);
 
     let mut from_str = codegen::Impl::new("Int");
     from_str
-        .impl_trait("std::str::FromStr")
+        .impl_trait("core::str::FromStr")
         .associate_type("Err", "IntError")
         .new_fn("from_str")
         .arg("s", "&str")
@@ -7854,7 +7890,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     }
     try_from_i128
         .impl_trait("TryFrom<i128>")
-        .associate_type("Error", "std::num::TryFromIntError")
+        .associate_type("Error", "core::num::TryFromIntError")
         .new_fn("try_from")
         .arg("x", "i128")
         .ret("Result<Self, Self::Error>")

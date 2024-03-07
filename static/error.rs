@@ -1,5 +1,8 @@
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use cbor_event::{self, de::Deserializer};
-use std::io::{BufRead, Seek};
 
 #[derive(Debug)]
 pub enum Key {
@@ -8,8 +11,8 @@ pub enum Key {
     Float(f64),
 }
 
-impl std::fmt::Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Key {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Key::Str(x) => write!(f, "\"{}\"", x),
             Key::Uint(x) => write!(f, "{}", x),
@@ -26,12 +29,12 @@ pub enum DeserializeFailure {
     DuplicateKey(Key),
     EndingBreakMissing,
     ExpectedNull,
-    FixedValueMismatch{
+    FixedValueMismatch {
         found: Key,
         expected: Key,
     },
     /// Invalid internal structure imposed on top of the CBOR format
-    InvalidStructure(Box<dyn std::error::Error>),
+    InvalidStructure(Box<dyn core::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
     NoVariantMatchedWithCauses(Vec<DeserializeError>),
@@ -40,7 +43,7 @@ pub enum DeserializeFailure {
         min: Option<isize>,
         max: Option<isize>,
     },
-    TagMismatch{
+    TagMismatch {
         found: u64,
         expected: u64,
     },
@@ -70,8 +73,8 @@ impl DeserializeError {
         }
     }
 
-    fn fmt_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: u32) -> std::fmt::Result {
-        use std::fmt::Display;
+    fn fmt_indent(&self, f: &mut core::fmt::Formatter<'_>, indent: u32) -> core::fmt::Result {
+        use core::fmt::Display;
         for _ in 0..indent {
             write!(f, "\t")?;
         }
@@ -80,7 +83,10 @@ impl DeserializeError {
             None => write!(f, "Deserialization: "),
         }?;
         match &self.failure {
-            DeserializeFailure::BreakInDefiniteLen => write!(f, "Encountered CBOR Break while reading definite length sequence"),
+            DeserializeFailure::BreakInDefiniteLen => write!(
+                f,
+                "Encountered CBOR Break while reading definite length sequence"
+            ),
             DeserializeFailure::CBOR(e) => e.fmt(f),
             DeserializeFailure::DefiniteLenMismatch(found, expected) => {
                 write!(f, "Definite length mismatch: found {}", found)?;
@@ -88,15 +94,19 @@ impl DeserializeError {
                     write!(f, ", expected: {}", expected_elems)?;
                 }
                 Ok(())
-            },
+            }
             DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
-            DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
+            DeserializeFailure::FixedValueMismatch { found, expected } => {
+                write!(f, "Expected fixed value {} found {}", expected, found)
+            }
             DeserializeFailure::InvalidStructure(e) => {
                 write!(f, "Invalid internal structure: {}", e)
             }
-            DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
+            DeserializeFailure::MandatoryFieldMissing(key) => {
+                write!(f, "Mandatory field {} not found", key)
+            }
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
             DeserializeFailure::NoVariantMatchedWithCauses(errs) => {
                 write!(f, "No variant matched. Failures:\n")?;
@@ -112,17 +122,21 @@ impl DeserializeError {
                 (None, Some(max)) => write!(f, "{} not at most {}", found, max),
                 (None, None) => write!(f, "invalid range (no min nor max specified)"),
             },
-            DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
+            DeserializeFailure::TagMismatch { found, expected } => {
+                write!(f, "Expected tag {}, found {}", expected, found)
+            }
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
-            DeserializeFailure::UnexpectedKeyType(ty) => write!(f, "Found unexpected key of CBOR type {:?}", ty),
+            DeserializeFailure::UnexpectedKeyType(ty) => {
+                write!(f, "Found unexpected key of CBOR type {:?}", ty)
+            }
         }
     }
 }
 
-impl std::error::Error for DeserializeError {}
+impl core::error::Error for DeserializeError {}
 
-impl std::fmt::Display for DeserializeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.fmt_indent(f, 0)
     }
 }

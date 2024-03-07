@@ -3,6 +3,7 @@ mod tests {
     use super::*;
     use cbor_event::de::Deserializer;
     use serialization::Deserialize;
+    use std::format;
 
     #[test]
     fn bytes_wrapper() {
