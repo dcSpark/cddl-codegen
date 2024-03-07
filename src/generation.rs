@@ -773,7 +773,9 @@ impl GenerationScope {
                 .raw("extern crate alloc;")
                 .raw("#[cfg(test)]\nextern crate std;")
                 .push_import("alloc::borrow", "ToOwned", None)
+                .push_import("alloc::boxed", "Box", None)
                 .push_import("alloc::string", "String", None)
+                .push_import("alloc::string", "ToString", None)
                 .push_import("alloc", "vec", None)
                 .push_import("alloc::vec", "Vec", None);
             if cli.preserve_encodings {
@@ -2398,9 +2400,6 @@ impl GenerationScope {
                         //     // TODO: potentially simplified deserialization some day
                         //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                         // } else {
-                        deser_code.content.line(
-                            "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
-                        );
                         let mut variant_final_exprs = config.final_exprs.clone();
                         if cli.preserve_encodings {
                             for enc_var in encoding_fields(
@@ -4750,7 +4749,7 @@ fn generate_array_struct_deserialization(
                     // There's no nice way to access this as Deserializer::special_break() consumes
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
-                        "if raw.as_mut_ref().fill_buf().ok().and_then(|buf| buf.get(0)).map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
+                        "if raw.as_ref().get(0).map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
                     } else {
                         format!("if raw.cbor_type().map(|ty| ty == {type_str}).unwrap_or(false)")
                     }
@@ -6606,9 +6605,7 @@ fn generate_enum(
         }
     };
     if non_overlapping_types_match.is_none() {
-        deser_body
-            .line("let initial_position = raw.as_mut_ref().stream_position().unwrap();")
-            .line("let mut errs = Vec::new();");
+        deser_body.line("let mut errs = Vec::new();");
     }
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
@@ -7653,16 +7650,16 @@ fn add_struct_derives<T: DataType>(
     cli: &Cli,
 ) {
     data_type.derive("Clone").derive("Debug");
+    let mut std_derives = vec![];
+    let mut std_predicates = vec![];
     if !custom_json {
         if cli.json_serde_derives {
             data_type
                 .derive("serde::Deserialize")
                 .derive("serde::Serialize");
         }
-        let mut std_derives = vec![];
-    let mut std_predicates = vec![];
-    if cli.json_schema_export {
-        std_derives.push("schemars::JsonSchema".to_string());
+        if cli.json_schema_export {
+            std_derives.push("schemars::JsonSchema".to_string());
         }
     }
     if used_in_key {
@@ -7733,7 +7730,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             .arg("string", "&str")
             .ret("Result<Int, JsError>")
             .line("// have to redefine so it's visible in WASM")
-            .line("std::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
+            .line("alloc::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
 
         wrapper
             .s_impl

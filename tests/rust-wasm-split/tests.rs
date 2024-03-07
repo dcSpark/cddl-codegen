@@ -3,7 +3,7 @@ mod tests {
     use super::*;
     use cbor_event::de::Deserializer;
     use serialization::Deserialize;
-    use std::{print, println};
+    use std::{format, print, println};
 
     fn print_cbor_types(obj_name: &str, vec: Vec<u8>) {
         use cbor_event::Type;

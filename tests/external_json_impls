@@ -12,7 +12,7 @@ impl<'de> serde::de::Deserialize<'de> for CustomWrapper {
     where
         D: serde::de::Deserializer<'de>,
     {
-        use std::str::FromStr;
+        use alloc::str::FromStr;
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
         u64::from_str(&s)
             .map(CustomWrapper::new)

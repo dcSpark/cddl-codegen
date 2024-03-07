@@ -7,4 +7,4 @@ edition = "2018"
 std = []
 
 [dependencies]
-cbor_event = { git = "https://github.com/SimonIT/cbor_event", branch = "no_std" }
+cbor_event = { git = "https://github.com/primetype/cbor_event" }

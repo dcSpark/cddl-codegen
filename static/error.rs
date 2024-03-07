@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec;
 use cbor_event::{self, de::Deserializer};
 
 #[derive(Debug)]
