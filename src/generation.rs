@@ -7036,7 +7036,8 @@ fn generate_enum(
                     }
                 };
                 let mut variant_deser_failed_block = Block::new("Err(e) =>");
-                variant_deser_failed_block.line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
+                variant_deser_failed_block
+                    .line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
                     .line("raw.to_string();");
                 return_if_deserialized.push_block(variant_deser_failed_block);
                 return_if_deserialized.after(";");
