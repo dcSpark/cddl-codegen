@@ -483,6 +483,33 @@ mod tests {
     }
 
     #[test]
+    fn non_overlap_basic_embed() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_32_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(16, Sz::Two), (16, Sz::One)]),
+            StringLenSz::Indefinite(vec![(10, Sz::Inline), (0, Sz::Inline), (22, Sz::Four)]),
+        ];
+        for str_enc in &str_32_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_identity = vec![
+                    arr_sz(1, *def_enc),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_x = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(1, *def_enc),
+                        cbor_bytes_sz(vec![170; 32], str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_identity = NonOverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_identity).unwrap();
+                assert_eq!(irregular_bytes_identity, irregular_identity.to_cbor_bytes());
+                let irregular_x = NonOverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_x).unwrap();
+                assert_eq!(irregular_bytes_x, irregular_x.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
     fn enums() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let enum_values = vec![3, 1, 4];

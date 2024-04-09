@@ -34,6 +34,13 @@ non_overlapping_type_choice_all = uint / nint / text / bytes / #6.13("hello worl
 
 non_overlapping_type_choice_some = uint / nint / text ; @used_as_key
 
+non_overlap_basic_embed =  [
+  ; @name identity
+  tag: 0 //
+  ; @name x
+  tag: 1, hash: bytes .size 32
+]
+
 c_enum = 3 / 1 / 4
 
 enums = [

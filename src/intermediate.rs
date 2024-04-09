@@ -1310,6 +1310,7 @@ impl RustType {
                 }],
                 ConceptualRustType::Primitive(p) => p.cbor_types(),
                 ConceptualRustType::Rust(ident) => {
+                    eprintln!("{ident:?}");
                     let rust_struct = types.rust_struct(ident).unwrap();
                     if rust_struct.tag.is_some() {
                         vec![CBORType::Tag]
@@ -1443,6 +1444,7 @@ impl ConceptualRustType {
     }
 
     pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
+        println!("{self:?}.directly_wasm_exposable()");
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
@@ -2045,13 +2047,30 @@ impl EnumVariant {
         }
     }
 
-    pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
+    pub fn cbor_types_inner(
+        &self,
+        types: &IntermediateTypes,
+        rep: Option<Representation>,
+    ) -> Vec<CBORType> {
         match &self.data {
             EnumVariantData::RustType(ty) => ty.cbor_types(types),
-            EnumVariantData::Inlined(record) => match record.rep {
-                Representation::Array => vec![CBORType::Array],
-                Representation::Map => vec![CBORType::Map],
-            },
+            EnumVariantData::Inlined(record) => {
+                if rep.is_some() {
+                    let mut ret = vec![];
+                    for field in record.fields.iter() {
+                        ret.extend(field.rust_type.cbor_types(types));
+                        if !field.optional {
+                            break;
+                        }
+                    }
+                    ret
+                } else {
+                    match record.rep {
+                        Representation::Array => vec![CBORType::Array],
+                        Representation::Map => vec![CBORType::Map],
+                    }
+                }
+            }
         }
     }
 

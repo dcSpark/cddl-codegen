@@ -275,6 +275,12 @@ mod tests {
         deser_test(&NonOverlappingTypeChoiceSome::N64(10000));
         deser_test(&NonOverlappingTypeChoiceSome::Text("Hello, World!".into()));
     }
+    
+    #[test]
+    fn non_overlap_basic_embed() {
+        deser_test(&NonOverlapBasicEmbed::new_identity());
+        deser_test(&NonOverlapBasicEmbed::new_x(vec![85; 32]).unwrap());
+    }
 
     #[test]
     fn array_opt_fields() {

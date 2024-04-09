@@ -6555,7 +6555,7 @@ fn generate_enum(
         let mut first_types = BTreeSet::new();
         let mut duplicates = false;
         for variant in variants.iter() {
-            for first_type in variant.cbor_types(types) {
+            for first_type in variant.cbor_types_inner(types, rep) {
                 // to_byte(0) is used since cbor_event::Type doesn't implement
                 // Ord or Hash so we can't put it in a set. Since we fix the lenth
                 // to always 0 this still remains a 1-to-1 mapping to Type.
@@ -6923,7 +6923,7 @@ fn generate_enum(
                     ),
                 };
                 let cbor_types_str = variant
-                    .cbor_types(types)
+                    .cbor_types_inner(types, rep)
                     .into_iter()
                     .map(cbor_type_code_str)
                     .collect::<Vec<_>>()
