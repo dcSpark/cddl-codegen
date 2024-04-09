@@ -224,6 +224,13 @@ mod tests {
     }
 
     #[test]
+    fn externs_generic() {
+        deser_test(&UsingExternGeneric::new(
+            ExternGeneric::new(Foo::new(u64::MAX, String::from("asdfghjkl"), vec![0])),
+        ));
+    }
+
+    #[test]
     fn top_level_arrays() {
         // this part of the test just tests that the resulting code compiles
         // e.g. the presence of the typedef instead of a new array struct by being able to asign to it.
