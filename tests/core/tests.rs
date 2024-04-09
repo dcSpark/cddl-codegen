@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn externs_generic() {
         deser_test(&UsingExternGeneric::new(
-            ExternGeneric::new(Foo::new(u64::MAX, String::from("asdfghjkl"), vec![0])),
+            ExternGeneric::new(ExternalFoo::new(u64::MAX, String::from("asdfghjkl"), vec![0])),
         ));
     }
 

@@ -108,7 +108,7 @@ externs = {
 extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_
 
 using_extern_generic = [
-  foo: extern_generic<foo>,
+  foo: extern_generic<external_foo>,
 ]
 
 ; types below test codegen_table_type
