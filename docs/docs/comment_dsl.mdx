@@ -119,6 +119,7 @@ This can also be useful when you have a spec that is either very awkward to use 
 
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
 
+This also works with generics e.g. you can refer to `foo<T>`. As with other generics this will create a `pub type FooT = Foo<T>;` definition in rust to work with wasm-bindgen's restrictions (no generics) as on the wasm side there will be references to a `FooT` in wasm. The wasm type definition is not emitted as that will be implementation-dependent. For an example see `extern_generic` in the `core` unit test.
 
 ## _CDDL_CODEGEN_RAW_BYTES_TYPE_
 

@@ -48,3 +48,17 @@ impl AsRef<cddl_lib::ExternalFoo> for ExternalFoo {
         &self.0
     }
 }
+
+type ExternGenericExternalFoo = ExternalFoo;
+
+impl From<cddl_lib::ExternGeneric<cddl_lib::ExternalFoo>> for ExternalFoo {
+    fn from(native: cddl_lib::ExternGeneric<cddl_lib::ExternalFoo>) -> Self {
+        native.0.into()
+    }
+}
+
+impl From<ExternalFoo> for cddl_lib::ExternGeneric<cddl_lib::ExternalFoo> {
+    fn from(wasm: ExternalFoo) -> Self {
+        cddl_lib::ExternGeneric::new(wasm.0)
+    }
+}

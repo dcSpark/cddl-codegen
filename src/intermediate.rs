@@ -408,10 +408,13 @@ impl<'a> IntermediateTypes<'a> {
 
     /// mostly for convenience since this is checked in so many places
     pub fn is_enum(&self, ident: &RustIdent) -> bool {
-        matches!(
-            self.rust_struct(ident).unwrap().variant(),
-            RustStructType::CStyleEnum { .. }
-        )
+        if let Some(rs) = self.rust_struct(ident) {
+            matches!(rs.variant(), RustStructType::CStyleEnum { .. })
+        } else {
+            // could be a generic instead
+            assert!(self.generic_instances.contains_key(ident));
+            false
+        }
     }
 
     // this is called by register_table_type / register_array_type automatically
@@ -518,10 +521,29 @@ impl<'a> IntermediateTypes<'a> {
         let resolved_generics = self
             .generic_instances
             .values()
-            .map(|instance| instance.resolve(self))
+            .map(|instance| instance.resolve(self, cli))
             .collect::<Vec<_>>();
         for resolved_instance in resolved_generics {
-            self.register_rust_struct(parent_visitor, resolved_instance, cli);
+            match resolved_instance {
+                GenericResolved::Resolved(rs) => self.register_rust_struct(parent_visitor, rs, cli),
+                GenericResolved::Extern {
+                    instance_ident,
+                    real_ident,
+                } => {
+                    // must be generic extern - register it so other lookups don't fail
+                    self.register_rust_struct(
+                        parent_visitor,
+                        RustStruct::new_extern(instance_ident.clone()),
+                        cli,
+                    );
+                    // we do direct rust alias replacing (gen_rust_alias=false) since no problems with generics in rust
+                    // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
+                    self.register_type_alias(
+                        instance_ident,
+                        AliasInfo::new(ConceptualRustType::Rust(real_ident).into(), true, false),
+                    );
+                }
+            }
         }
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types
@@ -902,7 +924,9 @@ impl Primitive {
 }
 
 mod idents {
-    use crate::{rust_reserved::STD_TYPES, utils::is_identifier_reserved};
+    use crate::{cli::Cli, rust_reserved::STD_TYPES, utils::is_identifier_reserved};
+
+    use super::{IntermediateTypes, RustType};
 
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
@@ -960,6 +984,23 @@ mod idents {
             }
 
             Self(super::convert_to_camel_case(&cddl_ident.0))
+        }
+
+        pub fn new_generic(
+            generic_ident: &RustIdent,
+            generic_args: &[RustType],
+            types: &IntermediateTypes,
+            cli: &Cli,
+        ) -> Self {
+            Self(format!(
+                "{}<{}>",
+                generic_ident,
+                generic_args
+                    .iter()
+                    .map(|a| a.for_rust_member(types, false, cli))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ))
         }
     }
 
@@ -2655,6 +2696,19 @@ pub struct GenericInstance {
     generic_args: Vec<RustType>,
 }
 
+#[derive(Debug, Clone)]
+pub enum GenericResolved {
+    // resolved with types swapped to concrete instance
+    Resolved(RustStruct),
+    // could not resolve (def is extern)
+    Extern {
+        // internal generic ident e.g. FooBar for Foo<Bar>
+        instance_ident: RustIdent,
+        // actual data type e.g. Foo<Bar>
+        real_ident: RustIdent,
+    },
+}
+
 impl GenericInstance {
     pub fn new(
         instance_ident: RustIdent,
@@ -2670,13 +2724,32 @@ impl GenericInstance {
 
     // TODO: should we rename fields / variant names after-the-fact?
     // (for the cases where the name came from the original generic param)
-    pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
+    // returns None when it can't be resolved i.e. extern defs
+    // this will be left to the user instead to handle.
+    pub fn resolve(&self, types: &IntermediateTypes, cli: &Cli) -> GenericResolved {
         let def = match types.generic_defs.get(&self.generic_ident) {
             Some(def) => def,
-            None => panic!(
-                "Generic instance used on {} without definition",
-                self.generic_ident
-            ),
+            None => {
+                if types
+                    .rust_struct(&self.generic_ident)
+                    .map(|rs| matches!(rs.variant(), RustStructType::Extern))
+                    .unwrap_or(false)
+                {
+                    return GenericResolved::Extern {
+                        instance_ident: self.instance_ident.clone(),
+                        real_ident: RustIdent::new_generic(
+                            &self.generic_ident,
+                            &self.generic_args,
+                            types,
+                            cli,
+                        ),
+                    };
+                }
+                panic!(
+                    "Generic instance used on {} without definition | {:?}",
+                    self.generic_ident, self
+                );
+            }
         };
         assert_eq!(def.generic_params.len(), self.generic_args.len());
         let resolved_args = def
@@ -2726,7 +2799,7 @@ impl GenericInstance {
                 panic!("generics not supported on raw bytes types")
             }
         };
-        instance
+        GenericResolved::Resolved(instance)
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
