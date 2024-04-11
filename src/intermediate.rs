@@ -2047,15 +2047,45 @@ impl EnumVariant {
         }
     }
 
+    /// Gets the next CBOR type after the passed in rep (array/map) tag
+    /// Returns None if this is not possible and brute-force deserialization
+    /// trying every variant should be used instead
     pub fn cbor_types_inner(
         &self,
         types: &IntermediateTypes,
-        rep: Option<Representation>,
-    ) -> Vec<CBORType> {
+        outer_rep: Option<Representation>,
+    ) -> Option<Vec<CBORType>> {
         match &self.data {
-            EnumVariantData::RustType(ty) => ty.cbor_types(types),
+            EnumVariantData::RustType(ty) => {
+                if ty.encodings.is_empty() && outer_rep.is_some() {
+                    if let ConceptualRustType::Rust(ident) =
+                        ty.conceptual_type.resolve_alias_shallow()
+                    {
+                        match types.rust_struct(ident).unwrap().variant() {
+                            // we can't know this unless there's a way to provide this info
+                            RustStructType::Extern => None,
+                            RustStructType::Record(record) => {
+                                let mut ret = vec![];
+                                for field in record.fields.iter() {
+                                    ret.extend(field.rust_type.cbor_types(types));
+                                    if !field.optional {
+                                        break;
+                                    }
+                                }
+                                Some(ret)
+                            }
+                            RustStructType::GroupChoice { .. } => None,
+                            _ => Some(ty.cbor_types(types)),
+                        }
+                    } else {
+                        Some(ty.cbor_types(types))
+                    }
+                } else {
+                    Some(ty.cbor_types(types))
+                }
+            }
             EnumVariantData::Inlined(record) => {
-                if rep.is_some() {
+                if outer_rep.is_some() {
                     let mut ret = vec![];
                     for field in record.fields.iter() {
                         ret.extend(field.rust_type.cbor_types(types));
@@ -2063,12 +2093,12 @@ impl EnumVariant {
                             break;
                         }
                     }
-                    ret
+                    Some(ret)
                 } else {
-                    match record.rep {
+                    Some(match record.rep {
                         Representation::Array => vec![CBORType::Array],
                         Representation::Map => vec![CBORType::Map],
-                    }
+                    })
                 }
             }
         }

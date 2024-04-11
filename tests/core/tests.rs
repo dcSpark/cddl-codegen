@@ -277,9 +277,34 @@ mod tests {
     }
     
     #[test]
+    fn overlap_basic_embed() {
+        deser_test(&OverlapBasicEmbed::new_identity());
+        deser_test(&OverlapBasicEmbed::new_x(vec![85; 32]).unwrap());
+    }
+
+    #[test]
     fn non_overlap_basic_embed() {
-        deser_test(&NonOverlapBasicEmbed::new_identity());
-        deser_test(&NonOverlapBasicEmbed::new_x(vec![85; 32]).unwrap());
+        deser_test(&NonOverlapBasicEmbed::new_first(100));
+        deser_test(&NonOverlapBasicEmbed::new_second("cddl".to_owned()));
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_multi_fields() {
+        deser_test(&NonOverlapBasicEmbedMultiFields::new_first(100, 1_000_000));
+        deser_test(&NonOverlapBasicEmbedMultiFields::new_second("cddl".to_owned(), 0));
+    }
+    
+    #[test]
+    fn non_overlap_basic_embed_mixed() {
+        deser_test(&NonOverlapBasicEmbedMixed::new_first(100));
+        deser_test(&NonOverlapBasicEmbedMixed::new_second("cddl".to_owned(), 0));
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_mixed_explicit() {
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_first(100));
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_second("cddl".to_owned(), 0));
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_third(vec![0xBA, 0xAD, 0xF0, 0x0D], 4));
     }
 
     #[test]

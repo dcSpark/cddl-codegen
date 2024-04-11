@@ -34,11 +34,43 @@ non_overlapping_type_choice_all = uint / nint / text / bytes / #6.13("hello worl
 
 non_overlapping_type_choice_some = uint / nint / text ; @used_as_key
 
-non_overlap_basic_embed =  [
+overlap_basic_embed =  [
   ; @name identity
   tag: 0 //
   ; @name x
   tag: 1, hash: bytes .size 32
+]
+
+non_overlap_basic_embed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, tag: 1
+]
+
+non_overlap_basic_embed_multi_fields = [
+  ; @name first
+  x: uint, z: uint //
+  ; @name second
+  y: text, z: uint
+]
+
+non_overlap_basic_embed_mixed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint
+]
+
+third = (bytes, uint)
+
+non_overlap_basic_embed_mixed_explicit = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint //
+  ; we don't use name dsl due to: https://github.com/dcSpark/cddl-codegen/issues/230
+  third
 ]
 
 c_enum = 3 / 1 / 4
