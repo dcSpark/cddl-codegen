@@ -308,6 +308,14 @@ mod tests {
     }
 
     #[test]
+    fn non_overlap_basic_not_basic() {
+        deser_test(&NonOverlapBasicNotBasic::new_group(4, "basic".to_owned()));
+        deser_test(&NonOverlapBasicNotBasic::new_group_arr(Basic::new(4, "".to_owned())));
+        deser_test(&NonOverlapBasicNotBasic::new_group_tagged(0, " T A G G E D ".to_owned()));
+        deser_test(&NonOverlapBasicNotBasic::new_group_bytes(u64::MAX, "bytes .cbor basic".to_owned()));
+    }
+
+    #[test]
     fn array_opt_fields() {
         let mut foo = ArrayOptFields::new(10);
         for e in [None, Some(NonOverlappingTypeChoiceSome::U64(5)), Some(NonOverlappingTypeChoiceSome::N64(4)), Some(NonOverlappingTypeChoiceSome::Text("five".to_owned()))] {

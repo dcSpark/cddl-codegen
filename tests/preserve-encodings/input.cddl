@@ -62,15 +62,31 @@ non_overlap_basic_embed_mixed = [
   y: text, z: uint
 ]
 
-third = (bytes, uint)
+bytes_uint = (bytes, uint)
 
 non_overlap_basic_embed_mixed_explicit = [
   ; @name first
   x: uint, tag: 0 //
   ; @name second
   y: text, z: uint //
-  ; we don't use name dsl due to: https://github.com/dcSpark/cddl-codegen/issues/230
-  third
+  ; @name third
+  bytes_uint
+]
+
+basic = (uint, text)
+
+basic_arr = [basic]
+
+; not overlap since double array for second
+non_overlap_basic_not_basic = [
+  ; @name group
+  basic //
+  ; @name group_arr
+  basic_arr //
+  ; @name group_tagged
+  #6.11(basic) //
+  ; @name group_bytes
+  bytes .cbor basic_arr
 ]
 
 c_enum = 3 / 1 / 4

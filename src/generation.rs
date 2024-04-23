@@ -6639,7 +6639,7 @@ fn generate_enum(
                             .iter()
                             .any(|field| field.rust_type.config.bounds.is_some());
                         // bounds checking should be handled by the called constructor here
-                        let mut ctor = format!("{}::new(", variant.name);
+                        let mut ctor = format!("{}::new(", ty.conceptual_type.for_variant());
                         for field in ctor_fields {
                             if output_comma {
                                 ctor.push_str(", ");
@@ -6877,17 +6877,9 @@ fn generate_enum(
                         } else {
                             variant.name_as_var()
                         };
-                        // also used to check if it's a basic rust group
-                        let basic_rust_group_def_len =
-                            match ty.conceptual_type.resolve_alias_shallow() {
-                                ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
-                                    Some(types.rust_struct(ident).unwrap().cbor_len_info(types))
-                                }
-                                _ => None,
-                            };
                         let (before, after) = if cli.preserve_encodings
                             || !variant.rust_type().is_fixed_value()
-                            || basic_rust_group_def_len.is_some()
+                            || rep.is_some()
                         {
                             (Cow::from(format!("let {var_names_str} = ")), ";")
                         } else {
@@ -6900,24 +6892,33 @@ fn generate_enum(
                             DeserializeConfig::new(&variant.name_as_var()),
                             cli,
                         );
-                        let names_without_outer = enum_gen_info.names_without_outer();
-                        if let Some(len_info) = basic_rust_group_def_len {
+                        if let Some(r) = rep {
+                            let len_info = match ty.conceptual_type.resolve_alias_shallow() {
+                                ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
+                                    types.rust_struct(ident).unwrap().cbor_len_info(types)
+                                }
+                                _ => RustStructCBORLen::Fixed(1),
+                            };
                             // this will never be 1 line to don't bother with the below cases
-                            variant_deser_code = surround_in_len_checks(
-                                variant_deser_code,
-                                len_info,
-                                rep.unwrap(),
-                                cli,
-                            );
-                            variant_deser_code.content.line(&format!(
-                                "Ok({}::{}({}))",
-                                name, variant.name, var_names_str
-                            ));
-                            variant_deser_code
+                            variant_deser_code =
+                                surround_in_len_checks(variant_deser_code, len_info, r, cli);
+                            if enum_gen_info.outer_vars == 0 {
+                                variant_deser_code.content.line(&format!(
+                                    "Ok({}::{}({}))",
+                                    name, variant.name, var_names_str
+                                ));
+                            } else {
+                                enum_gen_info.generate_constructor(
+                                    &mut variant_deser_code.content,
+                                    "Ok(",
+                                    ")",
+                                    None,
+                                );
+                            }
                         } else {
                             // we can avoid this ugly block and directly do it as a line possibly
                             if variant_deser_code.content.as_single_line().is_some()
-                                && names_without_outer.len() == 1
+                                && enum_gen_info.names.len() == 1
                             {
                                 variant_deser_code = gen_scope.generate_deserialize(
                                     types,
@@ -6930,7 +6931,7 @@ fn generate_enum(
                                     DeserializeConfig::new(&variant.name_as_var()),
                                     cli,
                                 );
-                            } else if names_without_outer.is_empty() {
+                            } else if enum_gen_info.names.is_empty() {
                                 variant_deser_code
                                     .content
                                     .line(&format!("Ok({}::{})", name, variant.name));
@@ -6942,8 +6943,8 @@ fn generate_enum(
                                     None,
                                 );
                             }
-                            variant_deser_code
                         }
+                        variant_deser_code
                     }
                     EnumVariantData::Inlined(record) => make_inline_deser_code(
                         gen_scope,
