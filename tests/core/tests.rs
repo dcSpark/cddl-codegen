@@ -467,4 +467,23 @@ mod tests {
         let g2 = EnumOptEmbedFields::new_eg(None);
         deser_test(&g2);
     }
+
+    #[test]
+    fn custom_serialization() {
+        let struct_with_custom_bytes = StructWithCustomBytes::new(
+            vec![0xCA, 0xFE, 0xF0, 0x0D],
+            vec![0x03, 0x01, 0x04, 0x01],
+            vec![0xBA, 0xAD, 0xD0, 0x0D]
+        );
+        use cbor_event::{Sz, StringLenSz};
+        let bytes_special_enc = StringLenSz::Indefinite(vec![(1, Sz::Inline), (1, Sz::Inline), (1, Sz::Inline), (1, Sz::Inline)]);
+        deser_test(&struct_with_custom_bytes);
+        let expected_bytes = vec![
+            arr_def(3),
+                cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                cbor_string("baadd00d"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        assert_eq!(expected_bytes, struct_with_custom_bytes.to_cbor_bytes());
+    }
 }

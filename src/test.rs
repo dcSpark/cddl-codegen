@@ -6,8 +6,8 @@ fn run_test(
     dir: &str,
     options: &[&str],
     export_suffix: Option<&str>,
-    external_rust_file_path: Option<std::path::PathBuf>,
-    external_wasm_file_path: Option<std::path::PathBuf>,
+    external_rust_file_paths: &[std::path::PathBuf],
+    external_wasm_file_paths: &[std::path::PathBuf],
     input_is_dir: bool,
     test_deps: &[&str],
 ) {
@@ -53,8 +53,8 @@ fn run_test(
     lib_rs
         .write_all("\nuse serialization::*;\n".as_bytes())
         .unwrap();
-    // copy external file in too (if needed) too
-    if let Some(external_rust_file_path) = external_rust_file_path {
+    // copy external files in too (if needed) too
+    for external_rust_file_path in external_rust_file_paths {
         let extern_rs = std::fs::read_to_string(external_rust_file_path).unwrap();
         lib_rs.write_all("\n\n".as_bytes()).unwrap();
         lib_rs.write_all(extern_rs.as_bytes()).unwrap();
@@ -103,7 +103,7 @@ fn run_test(
     let wasm_export_dir = test_path.join(format!("{export_path}/wasm"));
     let wasm_test_dir = test_path.join("tests_wasm.rs");
     // copy external wasm defs if they exist
-    if let Some(external_wasm_file_path) = external_wasm_file_path {
+    for external_wasm_file_path in external_wasm_file_paths {
         println!("trying to open: {external_wasm_file_path:?}");
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
@@ -187,8 +187,8 @@ fn core_with_wasm() {
         "core",
         &[],
         Some("wasm"),
-        Some(extern_rust_path),
-        Some(extern_wasm_path),
+        &[extern_rust_path],
+        &[extern_wasm_path],
         false,
         &[],
     );
@@ -204,8 +204,8 @@ fn core_no_wasm() {
         "core",
         &["--wasm=false"],
         None,
-        Some(extern_rust_path),
-        None,
+        &[extern_rust_path],
+        &[],
         false,
         &[],
     );
@@ -217,8 +217,8 @@ fn comment_dsl() {
         "comment-dsl",
         &["--preserve-encodings=true"],
         None,
-        None,
-        None,
+        &[],
+        &[],
         false,
         &[],
     );
@@ -230,8 +230,8 @@ fn preserve_encodings() {
         "preserve-encodings",
         &["--preserve-encodings=true"],
         None,
-        None,
-        None,
+        &[],
+        &[],
         false,
         &[],
     );
@@ -243,8 +243,8 @@ fn canonical() {
         "canonical",
         &["--preserve-encodings=true", "--canonical-form=true"],
         None,
-        None,
-        None,
+        &[],
+        &[],
         false,
         &[],
     );
@@ -252,7 +252,7 @@ fn canonical() {
 
 #[test]
 fn rust_wasm_split() {
-    run_test("rust-wasm-split", &[], None, None, None, false, &[]);
+    run_test("rust-wasm-split", &[], None, &[], &[], false, &[]);
 }
 
 #[test]
@@ -269,10 +269,10 @@ fn multifile() {
         "multifile",
         &[],
         None,
-        Some(extern_rust_path),
-        Some(extern_wasm_path),
+        &[extern_rust_path],
+        &[extern_wasm_path],
         true,
-        &[],
+        &["hex = \"0.4.3\""],
     );
 }
 
@@ -297,8 +297,8 @@ fn multifile_json_preserve() {
             "--json-schema-export=true",
         ],
         Some("json_preserve"),
-        Some(extern_rust_path),
-        Some(extern_wasm_path),
+        &[extern_rust_path],
+        &[extern_wasm_path],
         true,
         &[],
     );
@@ -317,8 +317,8 @@ fn raw_bytes() {
         "raw-bytes",
         &[],
         None,
-        Some(extern_rust_path),
-        Some(extern_wasm_path),
+        &[extern_rust_path],
+        &[extern_wasm_path],
         false,
         &[],
     );
@@ -337,8 +337,8 @@ fn raw_bytes_preserve() {
         "raw-bytes-preserve",
         &["--preserve-encodings=true"],
         None,
-        Some(extern_rust_path),
-        Some(extern_wasm_path),
+        &[extern_rust_path],
+        &[extern_wasm_path],
         false,
         &[],
     );
@@ -354,8 +354,8 @@ fn json() {
         "json",
         &["--json-serde-derives=true", "--json-schema-export=true"],
         None,
-        Some(extern_rust_path),
-        None,
+        &[extern_rust_path],
+        &[],
         false,
         &[],
     );
@@ -375,8 +375,8 @@ fn json_preserve() {
             "--json-schema-export=true",
         ],
         Some("preserve"),
-        Some(extern_rust_path),
-        None,
+        &[extern_rust_path],
+        &[],
         false,
         &[],
     );

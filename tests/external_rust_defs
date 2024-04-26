@@ -81,3 +81,48 @@ impl<T: serialization::Deserialize> serialization::Deserialize for ExternGeneric
     }
 }
 
+// writes bytes using indefinite encoding chunked into 1-byte parts
+pub fn custom_serialize_bytes<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    bytes: &[u8],
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    serializer.write_raw_bytes(&[0x5f])?;
+    for byte in bytes {
+        serializer.write_bytes(&[*byte])?;
+    }
+    serializer.write_special(cbor_event::Special::Break)
+}
+
+// read bytes and verify the 1-byte chunking of custom_serialize_bytes()
+pub fn custom_deserialize_bytes<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<Vec<u8>, DeserializeError> {
+    let (bytes, bytes_enc) = raw.bytes_sz()?;
+    match bytes_enc {
+        cbor_event::StringLenSz::Len(_sz) => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError("custom_deserialize_bytes(): needs indefinite chunking".to_owned())).into()),
+        cbor_event::StringLenSz::Indefinite(chunks) => {
+            for (chunk_len, _chunk_sz) in chunks.iter() {
+                if *chunk_len != 1 {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!("custom_deserialize_bytes(): chunks need to be 1-len, found: {:?}", chunks))).into());
+                }
+            }
+            Ok(bytes)
+        }
+    }
+}
+
+// writes as hex text
+pub fn write_hex_string<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    bytes: &[u8],
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    serializer.write_text(hex::encode(bytes))
+}
+
+// reads hex text to bytes
+pub fn read_hex_string<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<Vec<u8>, DeserializeError> {
+    let text = raw.text()?;
+    hex::decode(text).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+}
