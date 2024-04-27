@@ -183,11 +183,14 @@ fn core_with_wasm() {
     let extern_wasm_path = std::path::PathBuf::from_str("tests")
         .unwrap()
         .join("external_wasm_defs");
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization");
     run_test(
         "core",
         &[],
         Some("wasm"),
-        &[extern_rust_path],
+        &[extern_rust_path, custom_ser_path],
         &[extern_wasm_path],
         false,
         &[],
@@ -200,11 +203,14 @@ fn core_no_wasm() {
     let extern_rust_path = std::path::PathBuf::from_str("tests")
         .unwrap()
         .join("external_rust_defs");
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization");
     run_test(
         "core",
         &["--wasm=false"],
         None,
-        &[extern_rust_path],
+        &[extern_rust_path, custom_ser_path],
         &[],
         false,
         &[],
@@ -226,11 +232,15 @@ fn comment_dsl() {
 
 #[test]
 fn preserve_encodings() {
+    use std::str::FromStr;
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization_preserve");
     run_test(
         "preserve-encodings",
         &["--preserve-encodings=true"],
         None,
-        &[],
+        &[custom_ser_path],
         &[],
         false,
         &[],

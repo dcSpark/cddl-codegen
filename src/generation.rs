@@ -1417,6 +1417,7 @@ impl GenerationScope {
         let encoding_var_is_copy = serializing_rust_type.encoding_var_is_copy(types);
         let encoding_var = config.encoding_var(None, encoding_var_is_copy);
         let encoding_var_deref = format!("{encoding_deref}{encoding_var}");
+        // field-level @custom_serialize overrides everything
         if let Some(custom_serialize) = &config.custom_serialize {
             let pass_encoding_args = if cli.preserve_encodings {
                 Cow::Owned(
@@ -1427,10 +1428,11 @@ impl GenerationScope {
                                 ", {}",
                                 match &config.encoding_var_in_option_struct {
                                     Some(namespace) => format!(
-                                        "{}.as_ref().map(|encs| encs.{}{}).unwrap_or_default()",
+                                        "{}{}.as_ref().map(|encs| encs.{}{}).unwrap_or_default()",
+                                        if enc.is_copy { "" } else { "&" },
                                         namespace,
                                         enc.field_name,
-                                        if enc.is_copy { "" } else { ".cloned()" },
+                                        if enc.is_copy { "" } else { ".clone()" },
                                     ),
                                     None => enc.field_name.clone(),
                                 }
