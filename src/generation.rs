@@ -2088,7 +2088,7 @@ impl GenerationScope {
         let deserializer_name = config.deserializer_name();
         // field-level @custom_deserialize overrides everything
         if let Some(custom_deserialize) = &config.custom_deserialize {
-            let deser_err_map = if config.final_exprs.is_empty() {
+            let deser_err_map = if !config.final_exprs.is_empty() {
                 let enc_fields =
                     encoding_fields_impl(types, config.var_name, serializing_rust_type, cli);
                 let (closure_args, tuple_fields) = if enc_fields.is_empty() {
