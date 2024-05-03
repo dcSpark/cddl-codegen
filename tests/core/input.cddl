@@ -200,8 +200,10 @@ enum_opt_embed_fields = [
 
 custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
 
-struct_with_custom_bytes = [
+struct_with_custom_serialization = [
   custom_bytes,
   field: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
   overridden: custom_bytes, ; @custom_serialize write_hex_string @custom_deserialize read_hex_string
+  tagged1: #6.9(custom_bytes),
+  tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]

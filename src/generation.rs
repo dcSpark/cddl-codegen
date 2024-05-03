@@ -2088,12 +2088,38 @@ impl GenerationScope {
         let deserializer_name = config.deserializer_name();
         // field-level @custom_deserialize overrides everything
         if let Some(custom_deserialize) = &config.custom_deserialize {
-            assert_eq!(config.final_exprs.len(), 0);
+            let deser_err_map = if config.final_exprs.is_empty() {
+                let enc_fields =
+                    encoding_fields_impl(types, config.var_name, serializing_rust_type, cli);
+                let (closure_args, tuple_fields) = if enc_fields.is_empty() {
+                    (config.var_name.to_owned(), "".to_owned())
+                } else {
+                    let enc_fields_names = enc_fields
+                        .iter()
+                        .map(|enc| enc.field_name.clone())
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    (
+                        format!("({}, {})", config.var_name, enc_fields_names),
+                        enc_fields_names,
+                    )
+                };
+                Cow::Owned(format!(
+                    ".map(|{}| ({}, {}, {}))",
+                    closure_args,
+                    config.var_name,
+                    config.final_exprs.join(", "),
+                    tuple_fields
+                ))
+            } else {
+                Cow::Borrowed("")
+            };
             deser_code.content.line(&format!(
-                "{}{}({}){}",
+                "{}{}({}){}{}",
                 before_after.before_str(true),
                 custom_deserialize,
                 deserializer_name,
+                deser_err_map,
                 before_after.after_str(true),
             ));
         } else {
@@ -4399,10 +4425,21 @@ struct EncodingField {
     /// this MUST be equivalent to the Default trait of the encoding field.
     /// This can be more concise though e.g. None for Option<T>::default()
     default_expr: &'static str,
+    enc_conversion_before: &'static str,
+    enc_conversion_after: &'static str,
     is_copy: bool,
     /// inner encodings - used for map/vec types
     #[allow(unused)]
     inner: Vec<EncodingField>,
+}
+
+impl EncodingField {
+    pub fn enc_conversion(&self, expr: &str) -> String {
+        format!(
+            "{}{}{}",
+            self.enc_conversion_before, expr, self.enc_conversion_after
+        )
+    }
 }
 
 fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
@@ -4411,6 +4448,8 @@ fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
             field_name: format!("{name}_key_encoding"),
             type_name: "StringEncoding".to_owned(),
             default_expr: "StringEncoding::default()",
+            enc_conversion_before: "StringEncoding::from(",
+            enc_conversion_after: ")",
             is_copy: false,
             inner: Vec::new(),
         },
@@ -4418,6 +4457,8 @@ fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
             field_name: format!("{name}_key_encoding"),
             type_name: "Option<cbor_event::Sz>".to_owned(),
             default_expr: "None",
+            enc_conversion_before: "Some(",
+            enc_conversion_after: ")",
             is_copy: true,
             inner: Vec::new(),
         },
@@ -4440,6 +4481,8 @@ fn encoding_fields(
             field_name: format!("{name}_default_present"),
             type_name: "bool".to_owned(),
             default_expr: "false",
+            enc_conversion_before: "",
+            enc_conversion_after: "",
             is_copy: true,
             inner: Vec::new(),
         });
@@ -4460,6 +4503,8 @@ fn encoding_fields_impl(
                 field_name: format!("{name}_encoding"),
                 type_name: "LenEncoding".to_owned(),
                 default_expr: "LenEncoding::default()",
+                enc_conversion_before: "",
+                enc_conversion_after: "",
                 is_copy: true,
                 inner: Vec::new(),
             };
@@ -4486,6 +4531,8 @@ fn encoding_fields_impl(
                         field_name: format!("{name}_elem_encodings"),
                         type_name: format!("Vec<{type_name_elem}>"),
                         default_expr: "Vec::new()",
+                        enc_conversion_before: "",
+                        enc_conversion_after: "",
                         is_copy: false,
                         inner: inner_encs,
                     },
@@ -4497,6 +4544,8 @@ fn encoding_fields_impl(
                 field_name: format!("{name}_encoding"),
                 type_name: "LenEncoding".to_owned(),
                 default_expr: "LenEncoding::default()",
+                enc_conversion_before: "",
+                enc_conversion_after: "",
                 is_copy: true,
                 inner: Vec::new(),
             }];
@@ -4525,6 +4574,8 @@ fn encoding_fields_impl(
                         type_name_value
                     ),
                     default_expr: "BTreeMap::new()",
+                    enc_conversion_before: "",
+                    enc_conversion_after: "",
                     is_copy: false,
                     inner: key_encs,
                 });
@@ -4551,6 +4602,8 @@ fn encoding_fields_impl(
                         type_name_value
                     ),
                     default_expr: "BTreeMap::new()",
+                    enc_conversion_before: "",
+                    enc_conversion_after: "",
                     is_copy: false,
                     inner: val_encs,
                 });
@@ -4562,6 +4615,8 @@ fn encoding_fields_impl(
                 field_name: format!("{name}_encoding"),
                 type_name: "StringEncoding".to_owned(),
                 default_expr: "StringEncoding::default()",
+                enc_conversion_before: "StringEncoding::from(",
+                enc_conversion_after: ")",
                 is_copy: false,
                 inner: Vec::new(),
             }],
@@ -4579,6 +4634,8 @@ fn encoding_fields_impl(
                 field_name: format!("{name}_encoding"),
                 type_name: "Option<cbor_event::Sz>".to_owned(),
                 default_expr: "None",
+                enc_conversion_before: "Some(",
+                enc_conversion_after: ")",
                 is_copy: true,
                 inner: Vec::new(),
             }],
@@ -5685,15 +5742,14 @@ fn codegen_struct(
                         }
                     }
                     if cli.preserve_encodings {
-                        let key_encoding_var = key_encoding_field(&field.name, &key).field_name;
-                        let enc_conversion = match &key {
-                            FixedValue::Uint(_) => "Some(key_enc)",
-                            FixedValue::Text(_) => "StringEncoding::from(key_enc)",
-                            _ => unimplemented!(),
-                        };
+                        let key_encoding = key_encoding_field(&field.name, &key);
                         deser_block_code
                             .content
-                            .line(&format!("{key_encoding_var} = {enc_conversion};"))
+                            .line(&format!(
+                                "{} = {};",
+                                key_encoding.field_name,
+                                key_encoding.enc_conversion("key_enc")
+                            ))
                             .line(&format!("orig_deser_order.push({field_index});"));
                     }
 
@@ -6398,6 +6454,8 @@ impl EnumVariantInRust {
                         field_name: "len_encoding".to_owned(),
                         type_name: "LenEncoding".to_owned(),
                         default_expr: "LenEncoding::default()",
+                        enc_conversion_before: "",
+                        enc_conversion_after: "",
                         is_copy: true,
                         inner: Vec::new(),
                     });
@@ -6425,6 +6483,8 @@ impl EnumVariantInRust {
                         field_name: "len_encoding".to_owned(),
                         type_name: "LenEncoding".to_owned(),
                         default_expr: "LenEncoding::default()",
+                        enc_conversion_before: "",
+                        enc_conversion_after: "",
                         is_copy: true,
                         inner: Vec::new(),
                     });

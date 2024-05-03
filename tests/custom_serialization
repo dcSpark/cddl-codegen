@@ -43,3 +43,22 @@ pub fn read_hex_string<R: std::io::BufRead + std::io::Seek>(
     let text = raw.text()?;
     hex::decode(text).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
 }
+
+// must include the tag since @custom_serialize at field-level overrides everything
+pub fn write_tagged_uint_str<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    uint: &u64,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    serializer
+        .write_tag(9)?
+        .write_text(uint.to_string())
+}
+
+pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<u64, DeserializeError> {
+    use std::str::FromStr;
+    let tag = raw.tag()?;
+    let text = raw.text()?;
+    u64::from_str(&text).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+}
