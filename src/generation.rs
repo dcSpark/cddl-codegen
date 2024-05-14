@@ -923,11 +923,6 @@ impl GenerationScope {
         for (scope, content) in self.serialize_scopes.iter_mut() {
             content
                 .push_import("super", "*", None)
-                .push_import(
-                    format!("{}::serialization", cli.common_import_rust()),
-                    "*",
-                    None,
-                )
                 .push_import("std::io", "BufRead", None)
                 .push_import("std::io", "Seek", None)
                 .push_import("std::io", "SeekFrom", None)
@@ -935,6 +930,9 @@ impl GenerationScope {
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
+            if let Some(common_import) = cli.common_import_override.as_ref() {
+                content.push_import(format!("{}::serialization", common_import), "*", None);
+            }
             if cli.preserve_encodings {
                 content.push_import("super::cbor_encodings", "*", None);
             }
