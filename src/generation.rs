@@ -221,10 +221,15 @@ fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
     for path in paths {
         buf.push_str(
             &std::fs::read_to_string(path)
-                .map_err(|_| {
+                .map_err(|e| {
                     panic!(
-                        "can't read: {}",
-                        path.as_ref().to_str().unwrap_or("Path is not in unicode")
+                        "can't read: {}. Err: {:?} | {:?}",
+                        path.as_ref().to_str().unwrap_or("Path is not in unicode"),
+                        e,
+                        paths
+                            .iter()
+                            .map(|p| p.as_ref().to_str().unwrap())
+                            .collect::<Vec<_>>(),
                     )
                 })
                 .unwrap(),
@@ -918,6 +923,11 @@ impl GenerationScope {
         for (scope, content) in self.serialize_scopes.iter_mut() {
             content
                 .push_import("super", "*", None)
+                .push_import(
+                    format!("{}::serialization", cli.common_import_rust()),
+                    "*",
+                    None,
+                )
                 .push_import("std::io", "BufRead", None)
                 .push_import("std::io", "Seek", None)
                 .push_import("std::io", "SeekFrom", None)
@@ -1028,6 +1038,9 @@ impl GenerationScope {
         export_raw_bytes_encoding_trait: bool,
         cli: &Cli,
     ) -> std::io::Result<()> {
+        // check it exists here to get clearer error message
+        assert!(std::path::Path::exists(&cli.static_dir));
+
         // package.json / scripts
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
