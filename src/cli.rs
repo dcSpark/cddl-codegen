@@ -68,7 +68,7 @@ pub struct Cli {
     /// This is useful for integrating into an exisitng project that is based on
     /// these types.
     #[clap(long, value_parser, value_name = "COMMON_IMPORT_OVERRIDE")]
-    common_import_override: Option<String>,
+    pub common_import_override: Option<String>,
 
     /// An external macro to be called instead of manually emitting functions for
     /// conversions to/from CBOR bytes or JSON.
