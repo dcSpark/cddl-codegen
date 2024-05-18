@@ -6892,22 +6892,30 @@ fn generate_enum(
     // We avoid checking ALL variants if we can figure it out by instead checking the type.
     // This only works when the variants don't have first types in common.
     let mut non_overlapping_types_match = {
-        let mut first_types = BTreeSet::new();
-        let mut duplicates = false;
+        let mut all_first_types = BTreeSet::new();
+        let mut duplicates_or_unknown = false;
         for variant in variants.iter() {
-            for first_type in variant.cbor_types(types) {
-                // to_byte(0) is used since cbor_event::Type doesn't implement
-                // Ord or Hash so we can't put it in a set. Since we fix the lenth
-                // to always 0 this still remains a 1-to-1 mapping to Type.
-                if !first_types.insert(first_type.to_byte(0)) {
-                    duplicates = true;
+            match variant.cbor_types_inner(types, rep) {
+                Some(first_types) => {
+                    for first_type in first_types.iter() {
+                        // to_byte(0) is used since cbor_event::Type doesn't implement
+                        // Ord or Hash so we can't put it in a set. Since we fix the lenth
+                        // to always 0 this still remains a 1-to-1 mapping to Type.
+                        if !all_first_types.insert(first_type.to_byte(0)) {
+                            duplicates_or_unknown = true;
+                        }
+                    }
+                }
+                None => {
+                    duplicates_or_unknown = true;
+                    break;
                 }
             }
         }
-        if duplicates {
+        if duplicates_or_unknown {
             None
         } else {
-            let deser_covers_all_types = first_types.len() == 8;
+            let deser_covers_all_types = all_first_types.len() == 8;
             Some((Block::new("match raw.cbor_type()?"), deser_covers_all_types))
         }
     };
@@ -6971,7 +6979,7 @@ fn generate_enum(
                             .iter()
                             .any(|field| field.rust_type.config.bounds.is_some());
                         // bounds checking should be handled by the called constructor here
-                        let mut ctor = format!("{}::new(", variant.name);
+                        let mut ctor = format!("{}::new(", ty.conceptual_type.for_variant());
                         for field in ctor_fields {
                             if output_comma {
                                 ctor.push_str(", ");
@@ -7209,12 +7217,14 @@ fn generate_enum(
                         } else {
                             variant.name_as_var()
                         };
-                        let (before, after) =
-                            if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
-                                (Cow::from(format!("let {var_names_str} = ")), ";")
-                            } else {
-                                (Cow::from(""), "")
-                            };
+                        let (before, after) = if cli.preserve_encodings
+                            || !variant.rust_type().is_fixed_value()
+                            || rep.is_some()
+                        {
+                            (Cow::from(format!("let {var_names_str} = ")), ";")
+                        } else {
+                            (Cow::from(""), "")
+                        };
                         let mut variant_deser_code = gen_scope.generate_deserialize(
                             types,
                             (variant.rust_type()).into(),
@@ -7222,33 +7232,57 @@ fn generate_enum(
                             DeserializeConfig::new(&variant.name_as_var()),
                             cli,
                         );
-                        let names_without_outer = enum_gen_info.names_without_outer();
-                        // we can avoid this ugly block and directly do it as a line possibly
-                        if variant_deser_code.content.as_single_line().is_some()
-                            && names_without_outer.len() == 1
-                        {
-                            variant_deser_code = gen_scope.generate_deserialize(
-                                types,
-                                (variant.rust_type()).into(),
-                                DeserializeBeforeAfter::new(
-                                    &format!("Ok({}::{}(", name, variant.name),
-                                    "))",
-                                    false,
-                                ),
-                                DeserializeConfig::new(&variant.name_as_var()),
-                                cli,
-                            );
-                        } else if names_without_outer.is_empty() {
-                            variant_deser_code
-                                .content
-                                .line(&format!("Ok({}::{})", name, variant.name));
+                        if let Some(r) = rep {
+                            let len_info = match ty.conceptual_type.resolve_alias_shallow() {
+                                ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
+                                    types.rust_struct(ident).unwrap().cbor_len_info(types)
+                                }
+                                _ => RustStructCBORLen::Fixed(1),
+                            };
+                            // this will never be 1 line so don't bother with the below cases
+                            variant_deser_code =
+                                surround_in_len_checks(variant_deser_code, len_info, r, cli);
+                            if enum_gen_info.outer_vars == 0 {
+                                variant_deser_code.content.line(&format!(
+                                    "Ok({}::{}({}))",
+                                    name, variant.name, var_names_str
+                                ));
+                            } else {
+                                enum_gen_info.generate_constructor(
+                                    &mut variant_deser_code.content,
+                                    "Ok(",
+                                    ")",
+                                    None,
+                                );
+                            }
                         } else {
-                            enum_gen_info.generate_constructor(
-                                &mut variant_deser_code.content,
-                                "Ok(",
-                                ")",
-                                None,
-                            );
+                            // we can avoid this ugly block and directly do it as a line possibly
+                            if variant_deser_code.content.as_single_line().is_some()
+                                && enum_gen_info.names.len() == 1
+                            {
+                                variant_deser_code = gen_scope.generate_deserialize(
+                                    types,
+                                    (variant.rust_type()).into(),
+                                    DeserializeBeforeAfter::new(
+                                        &format!("Ok({}::{}(", name, variant.name),
+                                        "))",
+                                        false,
+                                    ),
+                                    DeserializeConfig::new(&variant.name_as_var()),
+                                    cli,
+                                );
+                            } else if enum_gen_info.names.is_empty() {
+                                variant_deser_code
+                                    .content
+                                    .line(&format!("Ok({}::{})", name, variant.name));
+                            } else {
+                                enum_gen_info.generate_constructor(
+                                    &mut variant_deser_code.content,
+                                    "Ok(",
+                                    ")",
+                                    None,
+                                );
+                            }
                         }
                         variant_deser_code
                     }
@@ -7263,7 +7297,8 @@ fn generate_enum(
                     ),
                 };
                 let cbor_types_str = variant
-                    .cbor_types(types)
+                    .cbor_types_inner(types, rep)
+                    .expect("Already checked above")
                     .into_iter()
                     .map(cbor_type_code_str)
                     .collect::<Vec<_>>()

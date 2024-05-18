@@ -34,6 +34,61 @@ non_overlapping_type_choice_all = uint / nint / text / bytes / #6.13("hello worl
 
 non_overlapping_type_choice_some = uint / nint / text ; @used_as_key
 
+overlap_basic_embed =  [
+  ; @name identity
+  tag: 0 //
+  ; @name x
+  tag: 1, hash: bytes .size 32
+]
+
+non_overlap_basic_embed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, tag: 1
+]
+
+non_overlap_basic_embed_multi_fields = [
+  ; @name first
+  x: uint, z: uint //
+  ; @name second
+  y: text, z: uint
+]
+
+non_overlap_basic_embed_mixed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint
+]
+
+bytes_uint = (bytes, uint)
+
+non_overlap_basic_embed_mixed_explicit = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint //
+  ; @name third
+  bytes_uint
+]
+
+basic = (uint, text)
+
+basic_arr = [basic]
+
+; not overlap since double array for second
+non_overlap_basic_not_basic = [
+  ; @name group
+  basic //
+  ; @name group_arr
+  basic_arr //
+  ; @name group_tagged
+  #6.11(basic) //
+  ; @name group_bytes
+  bytes .cbor basic_arr
+]
+
 c_enum = 3 / 1 / 4
 
 enums = [
