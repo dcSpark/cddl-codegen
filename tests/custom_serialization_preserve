@@ -1,0 +1,86 @@
+// writes bytes using indefinite encoding chunked into 1-byte parts
+pub fn custom_serialize_bytes<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    bytes: &[u8],
+    enc: &StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    let szs = match enc {
+        StringEncoding::Indefinite(encs) => {
+            encs.iter().map(|(_l, e)| *e).chain(std::iter::repeat(cbor_event::Sz::Inline)).take(bytes.len()).collect::<Vec<_>>()
+        }
+        _ => std::iter::repeat(cbor_event::Sz::Inline).take(bytes.len()).collect::<Vec<_>>()
+    };
+    serializer.write_raw_bytes(&[0x5f])?;
+    for (sz, byte) in szs.iter().zip(bytes.iter()) {
+        serializer.write_bytes_sz(&[*byte], cbor_event::StringLenSz::Len(*sz))?;
+    }
+    serializer.write_special(cbor_event::Special::Break)
+}
+
+// read bytes and verify the 1-byte chunking of custom_serialize_bytes()
+pub fn custom_deserialize_bytes<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<(Vec<u8>, StringEncoding), DeserializeError> {
+    let (bytes, bytes_enc) = raw.bytes_sz()?;
+    match &bytes_enc {
+        cbor_event::StringLenSz::Len(_sz) => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError("custom_deserialize_bytes(): needs indefinite chunking".to_owned())).into()),
+        cbor_event::StringLenSz::Indefinite(chunks) => {
+            for (chunk_len, _chunk_sz) in chunks.iter() {
+                if *chunk_len != 1 {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!("custom_deserialize_bytes(): chunks need to be 1-len, found: {:?}", chunks))).into());
+                }
+            }
+            Ok((bytes, bytes_enc.into()))
+        }
+    }
+}
+
+// writes as hex text
+pub fn write_hex_string<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    bytes: &[u8],
+    enc: &StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    serializer.write_text_sz(hex::encode(bytes), enc.to_str_len_sz(bytes.len() as u64))
+}
+
+// reads hex text to bytes
+pub fn read_hex_string<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<(Vec<u8>, StringEncoding), DeserializeError> {
+    let (text, text_enc) = raw.text_sz()?;
+    hex::decode(text)
+        .map(|bytes| (bytes, text_enc.into()))
+        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+}
+
+// must include the tag since @custom_serialize at field-level overrides everything
+pub fn write_tagged_uint_str<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    uint: &u64,
+    tag_encoding: Option<cbor_event::Sz>,
+    text_encoding: Option<cbor_event::Sz>,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+    let uint_string = uint.to_string();
+    let text_encoding = text_encoding
+        .map(|enc| crate::serialization::StringEncoding::Definite(enc))
+        .unwrap_or(crate::serialization::StringEncoding::Canonical);
+    let uint_string_encoding = text_encoding.to_str_len_sz(uint_string.len() as u64);
+    serializer
+        .write_tag_sz(9, fit_sz(9, tag_encoding))?
+        .write_text_sz(uint_string, uint_string_encoding)
+}
+
+pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<(u64, Option<cbor_event::Sz>, Option<cbor_event::Sz>), DeserializeError> {
+    use std::str::FromStr;
+    let (tag, tag_encoding) = raw.tag_sz()?;
+    let (text, text_encoding) = raw.text_sz()?;
+    match text_encoding {
+        cbor_event::StringLenSz::Indefinite(_) => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!("We only support definite encodings in order to use the uint one"))).into()),
+        cbor_event::StringLenSz::Len(text_encoding_sz) => u64::from_str(&text)
+            .map(|uint| (uint, Some(tag_encoding), Some(text_encoding_sz)))
+            .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into()),
+    }
+}

@@ -170,7 +170,7 @@ fn parse_type_choices(
         let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
         types.register_type_alias(
             name.clone(),
-            AliasInfo::new(final_type, !rule_metadata.no_alias, !rule_metadata.no_alias),
+            AliasInfo::new_from_metadata(final_type, rule_metadata),
         );
     } else {
         let rule_metadata = merge_metadata(
@@ -189,7 +189,8 @@ fn parse_type_choices(
             types.mark_used_as_key(name.clone());
         }
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
-        let rust_struct = RustStruct::new_type_choice(name.clone(), tag, variants, cli);
+        let rust_struct =
+            RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
         match generic_params {
             Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
             None => types.register_rust_struct(parent_visitor, rust_struct, cli),
@@ -523,9 +524,9 @@ fn parse_type(
                                         RustStruct::new_wrapper(
                                             type_name.clone(),
                                             outer_tag,
+                                            Some(&rule_metadata),
                                             ranged_type,
                                             Some(min_max),
-                                            rule_metadata.custom_json,
                                         ),
                                         cli,
                                     );
@@ -533,10 +534,9 @@ fn parse_type(
                                     // matches to known rust type e.g. u32, i16, etc so just make an alias
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        AliasInfo::new(
+                                        AliasInfo::new_from_metadata(
                                             ranged_type.tag_if(outer_tag),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
+                                            rule_metadata,
                                         ),
                                     );
                                 }
@@ -545,10 +545,9 @@ fn parse_type(
                                 Some(Primitive::Bytes) => {
                                     types.register_type_alias(
                                         type_name.clone(),
-                                        AliasInfo::new(
+                                        AliasInfo::new_from_metadata(
                                             ty.as_bytes().tag_if(outer_tag),
-                                            !rule_metadata.no_alias,
-                                            !rule_metadata.no_alias,
+                                            rule_metadata,
                                         ),
                                     );
                                 }
@@ -561,11 +560,7 @@ fn parse_type(
                                         .tag_if(outer_tag);
                                 types.register_type_alias(
                                     type_name.clone(),
-                                    AliasInfo::new(
-                                        default_type,
-                                        !rule_metadata.no_alias,
-                                        !rule_metadata.no_alias,
-                                    ),
+                                    AliasInfo::new_from_metadata(default_type, rule_metadata),
                                 );
                             }
                         }
@@ -612,19 +607,18 @@ fn parse_type(
                                                 RustStruct::new_wrapper(
                                                     type_name.clone(),
                                                     None,
+                                                    Some(&rule_metadata),
                                                     concrete_type,
                                                     None,
-                                                    rule_metadata.custom_json,
                                                 ),
                                                 cli,
                                             );
                                         } else {
                                             types.register_type_alias(
                                                 type_name.clone(),
-                                                AliasInfo::new(
+                                                AliasInfo::new_from_metadata(
                                                     concrete_type,
-                                                    !rule_metadata.no_alias,
-                                                    !rule_metadata.no_alias,
+                                                    rule_metadata,
                                                 ),
                                             );
                                         }
@@ -710,11 +704,7 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                AliasInfo::new(
-                    base_type.tag_if(outer_tag),
-                    !rule_metadata.no_alias,
-                    !rule_metadata.no_alias,
-                ),
+                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
             );
         }
         Type2::UintValue { value, .. } => {
@@ -733,23 +723,18 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                AliasInfo::new(
-                    base_type.tag_if(outer_tag),
-                    !rule_metadata.no_alias,
-                    !rule_metadata.no_alias,
-                ),
+                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
             );
         }
         Type2::TextValue { value, .. } => {
             types.register_type_alias(
                 type_name.clone(),
-                AliasInfo::new(
+                AliasInfo::new_from_metadata(
                     RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
                         value.to_string(),
                     )))
                     .tag_if(outer_tag),
-                    !rule_metadata.no_alias,
-                    !rule_metadata.no_alias,
+                    rule_metadata,
                 ),
             );
         }
@@ -769,7 +754,7 @@ fn parse_type(
             };
             types.register_type_alias(
                 type_name.clone(),
-                AliasInfo::new(base_type.tag_if(outer_tag), true, true),
+                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
             );
         }
         x => {
@@ -1082,6 +1067,24 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
     }
 }
 
+fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma) -> RuleMetadata {
+    let entry_trailing_comments = match entry {
+        GroupEntry::ValueMemberKey {
+            trailing_comments, ..
+        } => trailing_comments,
+        GroupEntry::TypeGroupname {
+            trailing_comments, ..
+        } => trailing_comments,
+        GroupEntry::InlineGroup { group, .. } => panic!(
+            "not implemented (define a new struct for this!) = {}\n\n {:?}",
+            group, group
+        ),
+    };
+    let combined_comments =
+        combine_comments(entry_trailing_comments, &optional_comma.trailing_comments);
+    metadata_from_comments(&combined_comments.unwrap_or_default())
+}
+
 fn rust_type_from_type1(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -1286,6 +1289,9 @@ fn rust_type(
             cli,
         )
     } else {
+        let rule_metadata = RuleMetadata::from(
+            get_comment_after(parent_visitor, &CDDLType::from(t), None).as_ref(),
+        );
         if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
             let a = &t.type_choices[0].type1;
@@ -1324,7 +1330,7 @@ fn rust_type(
         let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
         types.register_rust_struct(
             parent_visitor,
-            RustStruct::new_type_choice(combined_ident, None, variants, cli),
+            RustStruct::new_type_choice(combined_ident, None, Some(&rule_metadata), variants, cli),
             cli,
         );
         types.new_type(&CDDLIdent::new(combined_name), cli)
@@ -1411,6 +1417,7 @@ fn parse_record_from_group_choice(
                 &mut generated_fields,
                 optional_comma,
             );
+            let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
@@ -1423,7 +1430,7 @@ fn parse_record_from_group_choice(
                 }
                 Representation::Array => None,
             };
-            RustField::new(field_name, field_type, optional_field, key)
+            RustField::new(field_name, field_type, optional_field, key, rule_metadata)
         })
         .collect();
     RustRecord { rep, fields }
@@ -1440,21 +1447,30 @@ fn parse_group_choice(
     generic_params: Option<Vec<RustIdent>>,
     cli: &Cli,
 ) {
+    let rule_metadata = RuleMetadata::from(
+        get_comment_after(parent_visitor, &CDDLType::from(group_choice), None).as_ref(),
+    );
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
         GroupParsingType::HomogenousArray(element_type) => {
             // Array - homogeneous element type with proper occurence operator
-            RustStruct::new_array(name.clone(), tag, element_type)
+            RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
         }
         GroupParsingType::HomogenousMap(key_type, value_type) => {
             // Table map - homogeneous key/value types
-            RustStruct::new_table(name.clone(), tag, key_type, value_type)
+            RustStruct::new_table(
+                name.clone(),
+                tag,
+                Some(&rule_metadata),
+                key_type,
+                value_type,
+            )
         }
         GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
             let record =
                 parse_record_from_group_choice(types, rep, parent_visitor, group_choice, cli);
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
-            RustStruct::new_record(name.clone(), tag, record)
+            RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
         }
     };
     match generic_params {
@@ -1574,9 +1590,12 @@ pub fn parse_group(
                 }
             })
             .collect();
+        let rule_metadata = RuleMetadata::from(
+            get_comment_after(parent_visitor, &CDDLType::from(group), None).as_ref(),
+        );
         types.register_rust_struct(
             parent_visitor,
-            RustStruct::new_group_choice(name.clone(), tag, variants, rep),
+            RustStruct::new_group_choice(name.clone(), tag, Some(&rule_metadata), variants, rep),
             cli,
         );
     }

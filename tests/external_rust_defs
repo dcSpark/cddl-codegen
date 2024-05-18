@@ -80,4 +80,3 @@ impl<T: serialization::Deserialize> serialization::Deserialize for ExternGeneric
         T::deserialize(raw).map(Self)
     }
 }
-

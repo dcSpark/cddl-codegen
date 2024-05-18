@@ -4,6 +4,7 @@ use cddl::ast::parent::ParentVisitor;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::comment_ast::RuleMetadata;
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
@@ -44,14 +45,27 @@ pub struct AliasInfo {
     pub base_type: RustType,
     pub gen_rust_alias: bool,
     pub gen_wasm_alias: bool,
+    pub rule_metadata: Option<RuleMetadata>,
 }
 
 impl AliasInfo {
-    pub fn new(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
+    pub fn new_manual(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
         Self {
             base_type,
             gen_rust_alias,
             gen_wasm_alias,
+            rule_metadata: None,
+        }
+    }
+
+    pub fn new_from_metadata(base_type: RustType, rule_metadata: RuleMetadata) -> Self {
+        let gen_rust_alias = !rule_metadata.no_alias;
+        let gen_wasm_alias = !rule_metadata.no_alias;
+        Self {
+            base_type,
+            gen_rust_alias,
+            gen_wasm_alias,
+            rule_metadata: Some(rule_metadata),
         }
     }
 }
@@ -269,7 +283,7 @@ impl<'a> IntermediateTypes<'a> {
         let mut aliases = BTreeMap::<AliasIdent, AliasInfo>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident, AliasInfo::new(rust_type, false, false));
+            aliases.insert(ident, AliasInfo::new_manual(rust_type, false, false));
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
@@ -441,7 +455,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
-                    AliasInfo::new(map_type, true, false),
+                    AliasInfo::new_manual(map_type, true, false),
                 )
             }
             RustStructType::Array { element_type } => {
@@ -452,7 +466,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
-                    AliasInfo::new(array_type, true, false),
+                    AliasInfo::new_manual(array_type, true, false),
                 )
             }
             RustStructType::Wrapper {
@@ -497,7 +511,7 @@ impl<'a> IntermediateTypes<'a> {
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
                 parent_visitor,
-                RustStruct::new_array(array_type_ident, None, element_type.clone()),
+                RustStruct::new_array(array_type_ident, None, None, element_type.clone()),
                 cli,
             );
         }
@@ -540,7 +554,11 @@ impl<'a> IntermediateTypes<'a> {
                     // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
                     self.register_type_alias(
                         instance_ident,
-                        AliasInfo::new(ConceptualRustType::Rust(real_ident).into(), true, false),
+                        AliasInfo::new_manual(
+                            ConceptualRustType::Rust(real_ident).into(),
+                            true,
+                            false,
+                        ),
                     );
                 }
             }
@@ -2147,15 +2165,24 @@ pub struct RustField {
     pub optional: bool,
     // None for array fields, Some for map fields. FixedValue for (de)serialization for map keys
     pub key: Option<FixedValue>,
+    // comment DSL metadata applied to this field
+    pub rule_metadata: RuleMetadata,
 }
 
 impl RustField {
-    pub fn new(name: String, rust_type: RustType, optional: bool, key: Option<FixedValue>) -> Self {
+    pub fn new(
+        name: String,
+        rust_type: RustType,
+        optional: bool,
+        key: Option<FixedValue>,
+        rule_metadata: RuleMetadata,
+    ) -> Self {
         Self {
             name,
             rust_type,
             optional,
             key,
+            rule_metadata,
         }
     }
 
@@ -2180,6 +2207,26 @@ pub enum RustStructCBORLen {
     OptionalFields(usize),
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RustStructConfig {
+    pub custom_json: bool,
+    pub custom_serialize: Option<String>,
+    pub custom_deserialize: Option<String>,
+}
+
+impl From<Option<&RuleMetadata>> for RustStructConfig {
+    fn from(rule_metadata: Option<&RuleMetadata>) -> Self {
+        match rule_metadata {
+            Some(rule_metadata) => Self {
+                custom_json: rule_metadata.custom_json,
+                custom_serialize: rule_metadata.custom_serialize.clone(),
+                custom_deserialize: rule_metadata.custom_deserialize.clone(),
+            },
+            None => Self::default(),
+        }
+    }
+}
+
 // TODO: It would be nice to separate parsing the CDDL lib structs and code generation entirely.
 // We would just need to construct these structs (+ maybe the array/table wrapper types) separately and pass these into codegen.
 // This would also give us more access to this info without reparsing which could simplify code in some places.
@@ -2189,6 +2236,7 @@ pub enum RustStructCBORLen {
 pub struct RustStruct {
     ident: RustIdent,
     tag: Option<usize>,
+    config: RustStructConfig,
     pub(crate) variant: RustStructType,
 }
 
@@ -2212,7 +2260,6 @@ pub enum RustStructType {
     Wrapper {
         wrapped: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
-        custom_json: bool,
     },
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
@@ -2225,10 +2272,16 @@ pub enum RustStructType {
 }
 
 impl RustStruct {
-    pub fn new_record(ident: RustIdent, tag: Option<usize>, record: RustRecord) -> Self {
+    pub fn new_record(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        record: RustRecord,
+    ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Record(record),
         }
     }
@@ -2236,20 +2289,28 @@ impl RustStruct {
     pub fn new_table(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         domain: RustType,
         range: RustType,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Table { domain, range },
         }
     }
 
-    pub fn new_array(ident: RustIdent, tag: Option<usize>, element_type: RustType) -> Self {
+    pub fn new_array(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        element_type: RustType,
+    ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Array { element_type },
         }
     }
@@ -2258,6 +2319,7 @@ impl RustStruct {
     pub fn new_type_choice(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         variants: Vec<EnumVariant>,
         cli: &Cli,
     ) -> Self {
@@ -2280,12 +2342,14 @@ impl RustStruct {
             Self {
                 ident,
                 tag,
+                config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::TypeChoice { variants },
             }
         } else {
             Self {
                 ident,
                 tag,
+                config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::CStyleEnum { variants },
             }
         }
@@ -2294,12 +2358,14 @@ impl RustStruct {
     pub fn new_group_choice(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         variants: Vec<EnumVariant>,
         rep: Representation,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::GroupChoice { variants, rep },
         }
     }
@@ -2307,17 +2373,17 @@ impl RustStruct {
     pub fn new_wrapper(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         wrapped_type: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
-        custom_json: bool,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
                 min_max,
-                custom_json,
             },
         }
     }
@@ -2326,6 +2392,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            config: RustStructConfig::default(),
             variant: RustStructType::Extern,
         }
     }
@@ -2334,6 +2401,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            config: RustStructConfig::default(),
             variant: RustStructType::RawBytesType,
         }
     }
@@ -2344,6 +2412,10 @@ impl RustStruct {
 
     pub fn tag(&self) -> Option<usize> {
         self.tag
+    }
+
+    pub fn config(&self) -> &RustStructConfig {
+        &self.config
     }
 
     pub fn variant(&self) -> &RustStructType {

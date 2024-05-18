@@ -6,13 +6,15 @@ use nom::{
     IResult,
 };
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
     pub is_newtype: bool,
     pub no_alias: bool,
     pub used_as_key: bool,
     pub custom_json: bool,
+    pub custom_serialize: Option<String>,
+    pub custom_deserialize: Option<String>,
 }
 
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
@@ -28,6 +30,29 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         no_alias: r1.no_alias || r2.no_alias,
         used_as_key: r1.used_as_key || r2.used_as_key,
         custom_json: r1.custom_json || r2.custom_json,
+        custom_serialize: match (r1.custom_serialize.as_ref(), r2.custom_serialize.as_ref()) {
+            (Some(val1), Some(val2)) => {
+                panic!(
+                    "Key \"custom_serialize\" specified twice: {:?} {:?}",
+                    val1, val2
+                )
+            }
+            (val @ Some(_), _) => val.cloned(),
+            (_, val) => val.cloned(),
+        },
+        custom_deserialize: match (
+            r1.custom_deserialize.as_ref(),
+            r2.custom_deserialize.as_ref(),
+        ) {
+            (Some(val1), Some(val2)) => {
+                panic!(
+                    "Key \"custom_deserialize\" specified twice: {:?} {:?}",
+                    val1, val2
+                )
+            }
+            (val @ Some(_), _) => val.cloned(),
+            (_, val) => val.cloned(),
+        },
     };
     merged.verify();
     merged
@@ -39,6 +64,8 @@ enum ParseResult {
     DontGenAlias,
     UsedAsKey,
     CustomJson,
+    CustomSerialize(String),
+    CustomDeserialize(String),
 }
 
 impl RuleMetadata {
@@ -66,6 +93,32 @@ impl RuleMetadata {
                 }
                 ParseResult::CustomJson => {
                     base.custom_json = true;
+                }
+                ParseResult::CustomSerialize(custom_serialize) => {
+                    match base.custom_serialize.as_ref() {
+                        Some(old) => {
+                            panic!(
+                                "Key \"custom_serialize\" specified twice: {:?} {:?}",
+                                old, custom_serialize
+                            )
+                        }
+                        None => {
+                            base.custom_serialize = Some(custom_serialize.to_string());
+                        }
+                    }
+                }
+                ParseResult::CustomDeserialize(custom_deserialize) => {
+                    match base.custom_deserialize.as_ref() {
+                        Some(old) => {
+                            panic!(
+                                "Key \"custom_deserialize\" specified twice: {:?} {:?}",
+                                old, custom_deserialize
+                            )
+                        }
+                        None => {
+                            base.custom_deserialize = Some(custom_deserialize.to_string());
+                        }
+                    }
                 }
             }
         }
@@ -113,6 +166,28 @@ fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::CustomJson))
 }
 
+fn tag_custom_serialize(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@custom_serialize")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    let (input, custom_serialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
+
+    Ok((
+        input,
+        ParseResult::CustomSerialize(custom_serialize.to_string()),
+    ))
+}
+
+fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@custom_deserialize")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    let (input, custom_deserialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
+
+    Ok((
+        input,
+        ParseResult::CustomDeserialize(custom_deserialize.to_string()),
+    ))
+}
+
 fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, result) = alt((
@@ -121,6 +196,8 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_no_alias,
         tag_used_as_key,
         tag_custom_json,
+        tag_custom_serialize,
+        tag_custom_deserialize,
     ))(input)?;
 
     Ok((input, result))
@@ -163,6 +240,8 @@ fn parse_comment_name() {
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -180,6 +259,8 @@ fn parse_comment_newtype() {
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -197,6 +278,8 @@ fn parse_comment_newtype_and_name() {
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -214,6 +297,8 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 no_alias: false,
                 used_as_key: true,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -231,6 +316,8 @@ fn parse_comment_used_as_key() {
                 no_alias: false,
                 used_as_key: true,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -248,6 +335,8 @@ fn parse_comment_newtype_and_name_inverse() {
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -265,6 +354,8 @@ fn parse_comment_name_noalias() {
                 no_alias: true,
                 used_as_key: false,
                 custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -282,6 +373,8 @@ fn parse_comment_newtype_and_custom_json() {
                 no_alias: false,
                 used_as_key: false,
                 custom_json: true,
+                custom_serialize: None,
+                custom_deserialize: None,
             }
         ))
     );
@@ -291,4 +384,43 @@ fn parse_comment_newtype_and_custom_json() {
 #[should_panic]
 fn parse_comment_noalias_newtype() {
     let _ = rule_metadata("@no_alias @newtype");
+}
+
+#[test]
+fn parse_comment_custom_serialize_deserialize() {
+    assert_eq!(
+        rule_metadata("@custom_serialize foo @custom_deserialize bar"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                is_newtype: false,
+                no_alias: false,
+                used_as_key: false,
+                custom_json: false,
+                custom_serialize: Some("foo".to_string()),
+                custom_deserialize: Some("bar".to_string()),
+            }
+        ))
+    );
+}
+
+// can't have all since @no_alias and @newtype are mutually exclusive
+#[test]
+fn parse_comment_all_except_no_alias() {
+    assert_eq!(
+        rule_metadata("@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: Some("baz".to_string()),
+                is_newtype: true,
+                no_alias: false,
+                used_as_key: true,
+                custom_json: true,
+                custom_serialize: Some("foo".to_string()),
+                custom_deserialize: Some("bar".to_string()),
+            }
+        ))
+    );
 }
