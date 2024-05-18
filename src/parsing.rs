@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
-    AliasInfo, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef, GenericInstance,
-    IntermediateTypes, ModuleScope, Primitive, Representation, RustField, RustIdent, RustRecord,
-    RustStruct, RustStructType, RustType, VariantIdent,
+    AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
+    GenericDef, GenericInstance, IntermediateTypes, ModuleScope, Primitive, Representation,
+    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -1534,7 +1534,12 @@ pub fn parse_group(
                         if let ConceptualRustType::Rust(ident) = &ty.conceptual_type {
                             // we might need to generate it if not used elsewhere
                             types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
+                            // manual match in case we expand operaitons later
                             types.is_plain_group(ident)
+                                && !ty.encodings.iter().any(|enc| match enc {
+                                    CBOREncodingOperation::Tagged(_) => true,
+                                    CBOREncodingOperation::CBORBytes => true,
+                                })
                         } else {
                             false
                         };
