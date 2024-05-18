@@ -104,6 +104,63 @@ foo = uint ; @newtype @custom_json
 
 Avoids generating and/or deriving json-related traits under the assumption that the user will supply their own implementation to be used in the generated library.
 
+## @custom_serialize / @custom_deserialize
+
+```cddl
+custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+
+struct_with_custom_serialization = [
+  custom_bytes,
+  field: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+  overridden: custom_bytes, ; @custom_serialize write_hex_string @custom_deserialize read_hex_string
+  tagged1: #6.9(custom_bytes),
+  tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
+]
+```
+
+This allows the overriding of serialization and/or deserialization for when a specific format must be maintained. This works even with primitives where _CDDL_CODEGEN_EXTERN_TYPE_ would require making a wrapper type to use.
+
+The string after `@custom_serialize`/`@custom_deserialize` will be directly called as a function in place of regular serialization/deserialization code. As such it must either be specified using fully qualified paths e.g. `@custom_serialize crate::utils::custom_serialize_function`, or post-generation it will need to be imported into the serialization code by hand e.g. adding `import crate::utils::custom_serialize_function;`.
+
+With `--preserve-encodings=true` the encoding variables must be passed in in the order they are used in cddl-codegen with regular serialization. They are passed in as `Option<cbor_event::Sz>` for integers/tags, `LenEncoding` for lengths and `StringEncoding` for text/bytes. These are the same types as are stored in the `*Encoding` structs generated. The same must be returned for deserialization. When there are no encoding variables the deserialized value should be directly returned, and if not a tuple with the value and its encoding variables should be returned.
+
+There are two ways to use this comment DSL:
+
+* Type level: e.g. `custom_bytes`. This will replace the (de)serialization everywhere you use this type.
+* Field level: e.g. `struct_with_custom_serialization.field`. This will entirely replace the (de)serialization logic for the entire field, including other encoding operations like tags, `.cbor`, etc.
+
+Example function signatures for `--preserve-encodings=false` for `custom_serialize_bytes` / `custom_deserialize_bytes` above:
+
+```rust
+pub fn custom_serialize_bytes<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    bytes: &[u8],
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>>
+
+pub fn custom_deserialize_bytes<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<Vec<u8>, DeserializeError>
+```
+
+Example function signatures for `--preserve-encodings=true` for `write_tagged_uint_str` / `read_tagged_uint_str` above:
+
+```rust
+pub fn write_tagged_uint_str<'se, W: std::io::Write>(
+    serializer: &'se mut cbor_event::se::Serializer<W>,
+    uint: &u64,
+    tag_encoding: Option<cbor_event::Sz>,
+    text_encoding: Option<cbor_event::Sz>,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>>
+
+pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
+    raw: &mut cbor_event::de::Deserializer<R>,
+) -> Result<(u64, Option<cbor_event::Sz>, Option<cbor_event::Sz>), DeserializeError>
+```
+
+Note that as this is at the field-level it must handle the tag as well as the `uint`.
+
+For more examples see `tests/custom_serialization` (used in the `core` and `core_no_wasm` tests) and `tests/custom_serialization_preserve` (used in the `preserve-encodings` test).
+
 ## _CDDL_CODEGEN_EXTERN_TYPE_
 
 While not as a comment, this allows you to compose in hand-written structs into a cddl spec.

@@ -1046,4 +1046,32 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn custom_serialization() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_8_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (5, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Four), (4, Sz::Inline), (0, Sz::Inline), (4, Sz::Inline), (0, Sz::One)]),
+        ];
+        for def_enc in &def_encodings {
+            let bytes_special_enc = StringLenSz::Indefinite(vec![(1, *def_enc); 4]);
+            for str_enc in &str_8_encodings {
+                let irregular_bytes = vec![
+                    arr_sz(5, *def_enc),
+                        cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                        cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                        cbor_str_sz("baadd00d", str_enc.clone()),
+                        cbor_tag(9),
+                            cbor_bytes_sz(vec![0xDE, 0xAD, 0xBE, 0xEF], bytes_special_enc.clone()),
+                        cbor_tag(9),
+                            cbor_str_sz("10241024", StringLenSz::Len(*def_enc))
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = StructWithCustomSerialization::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+    }
 }
