@@ -6899,7 +6899,7 @@ fn generate_enum(
                                 }
                                 _ => RustStructCBORLen::Fixed(1),
                             };
-                            // this will never be 1 line to don't bother with the below cases
+                            // this will never be 1 line so don't bother with the below cases
                             variant_deser_code =
                                 surround_in_len_checks(variant_deser_code, len_info, r, cli);
                             if enum_gen_info.outer_vars == 0 {

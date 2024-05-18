@@ -1310,7 +1310,6 @@ impl RustType {
                 }],
                 ConceptualRustType::Primitive(p) => p.cbor_types(),
                 ConceptualRustType::Rust(ident) => {
-                    eprintln!("{ident:?}");
                     let rust_struct = types.rust_struct(ident).unwrap();
                     if rust_struct.tag.is_some() {
                         vec![CBORType::Tag]
