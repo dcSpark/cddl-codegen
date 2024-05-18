@@ -120,6 +120,8 @@ struct_with_custom_serialization = [
 
 This allows the overriding of serialization and/or deserialization for when a specific format must be maintained. This works even with primitives where _CDDL_CODEGEN_EXTERN_TYPE_ would require making a wrapper type to use.
 
+The string after `@custom_serialize`/`@custom_deserialize` will be directly called as a function in place of regular serialization/deserialization code. As such it must either be specified using fully qualified paths e.g. `@custom_serialize crate::utils::custom_serialize_function, or post-generation it will need to be imported into the serialization code by hand e.g. adding `import crate::utils::custom_serialize_function;`.
+
 With `--preserve-encodings=true` the encoding variables must be passed in in the order they are used in cddl-codegen with regular serialization. They are passed in as `Option<cbor_event::Sz>` for integers/tags, `LenEncoding` for lengths and `StringEncoding` for text/bytes. These are the same types as are stored in the `*Encoding` structs generated. The same must be returned for deserialization. When there are no encoding variables the deserialized value should be directly returned, and if not a tuple with the value and its encoding variables should be returned.
 
 There are two ways to use this comment DSL:
