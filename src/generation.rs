@@ -424,6 +424,7 @@ impl From<BlocksOrLines> for DeserializationCode {
 /// * {x = Some(}{<value>}{);} - variable assignment (could be nested in function call, etc, too)
 /// * {}{<value>}{} - for last-expression eval in blocks
 /// * etc
+///
 /// We also keep track of if it expects a result and can adjust the generated code based on that
 /// to avoid warnings (e.g. avoid Ok(foo?) and directly do foo instead)
 struct DeserializeBeforeAfter<'a> {
@@ -532,7 +533,7 @@ impl GenerationScope {
                             FixedValue::Text(s) => ("String", format!("\"{s}\".to_owned()")),
                         };
                         self.wasm(types, ident)
-                            .new_fn(&convert_to_snake_case(ident.as_ref()))
+                            .new_fn(convert_to_snake_case(ident.as_ref()))
                             .attr("wasm_bindgen")
                             .vis("pub")
                             .ret(ty)
@@ -2441,7 +2442,7 @@ impl GenerationScope {
                                     ));
                                 }
                             }
-                            type_check.after(&before_after.after_str(false));
+                            type_check.after(before_after.after_str(false));
                             deser_code.content.push_block(type_check);
                             deser_code.throws = true;
                         }
@@ -2782,7 +2783,7 @@ impl GenerationScope {
                     } else {
                         none_block.line("None");
                     }
-                    deser_block.after(&before_after.after_str(false));
+                    deser_block.after(before_after.after_str(false));
                     deser_block.push_block(none_block);
                     deser_code.content.push_block(deser_block);
                     deser_code.throws = true;
@@ -3345,7 +3346,7 @@ impl GenerationScope {
                 new_func.vis("pub");
                 let can_fail = variant.rust_type().needs_bounds_check_if_inlined(types);
                 if !variant.rust_type().is_fixed_value() {
-                    new_func.arg(&variant_arg, &variant.rust_type().for_wasm_param(types));
+                    new_func.arg(&variant_arg, variant.rust_type().for_wasm_param(types));
                 }
                 let ctor = if variant.rust_type().is_fixed_value() {
                     format!(
@@ -3411,7 +3412,7 @@ impl GenerationScope {
                 .s_impl
                 .new_fn("get")
                 .vis("pub")
-                .ret(&element_type.for_wasm_return(types))
+                .ret(element_type.for_wasm_return(types))
                 .arg_ref_self()
                 .arg("index", "usize")
                 .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -3645,16 +3646,16 @@ fn bounds_check_if_block(
 
 fn declare_modules(
     gen_scopes: &mut BTreeMap<ModuleScope, codegen::Scope>,
-    module_scopes: &Vec<ModuleScope>,
+    module_scopes: &[ModuleScope],
 ) {
     for module_scope in module_scopes.iter() {
         if module_scope.export() {
             let components = module_scope.components();
-            for i in 1..components.len() {
+            for (i, component) in components.iter().enumerate().skip(1) {
                 gen_scopes
                     .entry(module_scope.parents(i))
                     .or_insert(codegen::Scope::new())
-                    .raw(&format!("pub mod {};", components[i]));
+                    .raw(&format!("pub mod {};", component));
             }
         }
     }
@@ -5169,7 +5170,7 @@ fn codegen_struct(
                     let mut setter = codegen::Function::new(&format!("set_{}", field.name));
                     setter
                         .arg_mut_self()
-                        .arg(&field.name, &field.rust_type.for_wasm_param(types))
+                        .arg(&field.name, field.rust_type.for_wasm_param(types))
                         .vis("pub");
                     // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
                     if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
@@ -6840,7 +6841,7 @@ fn generate_enum(
         let mut kind = codegen::Enum::new(format!("{name}Kind"));
         kind.vis("pub");
         for variant in variants.iter() {
-            kind.new_variant(&variant.name.to_string());
+            kind.new_variant(variant.name.to_string());
         }
         kind.attr("wasm_bindgen");
         gen_scope.wasm(types, name).push_enum(kind);
@@ -6943,7 +6944,7 @@ fn generate_enum(
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
         let variant_var_name = variant.name_as_var();
-        let mut v = codegen::Variant::new(&variant.name.to_string());
+        let mut v = codegen::Variant::new(variant.name.to_string());
         match enum_gen_info.names.len() {
             0 => {}
             1 if enum_gen_info.enc_fields.is_empty() => {
