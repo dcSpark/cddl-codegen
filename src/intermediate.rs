@@ -16,27 +16,47 @@ use once_cell::sync::Lazy;
 pub static ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ModuleScope(Vec<String>);
+pub struct ModuleScope {
+    export: bool,
+    scope: Vec<String>,
+}
 
 impl ModuleScope {
     pub fn new(scope: Vec<String>) -> Self {
         Self::from(scope)
     }
 
+    /// Make a new ModuleScope using only the first [depth] components
+    pub fn parents(&self, depth: usize) -> Self {
+        Self {
+            export: self.export,
+            scope: self.scope.as_slice()[0..depth].to_vec(),
+        }
+    }
+
+    pub fn export(&self) -> bool {
+        self.export
+    }
+
     pub fn components(&self) -> &Vec<String> {
-        &self.0
+        &self.scope
     }
 }
 
 impl From<Vec<String>> for ModuleScope {
-    fn from(scope: Vec<String>) -> Self {
-        Self(scope)
+    fn from(mut scope: Vec<String>) -> Self {
+        let export = match scope.first() {
+            Some(first_scope) => first_scope != crate::parsing::EXTERN_DEPS_DIR,
+            None => true,
+        };
+        let scope = if export { scope } else { scope.split_off(1) };
+        Self { export, scope }
     }
 }
 
 impl std::fmt::Display for ModuleScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.join("::"))
+        write!(f, "{}", self.scope.join("::"))
     }
 }
 
@@ -87,6 +107,7 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
+    // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // for scope() to work we keep this here.
     // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
@@ -986,8 +1007,6 @@ mod idents {
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
-            println!("{}", cddl_ident.0);
-
             assert!(
                 !STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]),
                 "Cannot use reserved Rust type name: \"{}\"",
@@ -1502,7 +1521,6 @@ impl ConceptualRustType {
     }
 
     pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
-        println!("{self:?}.directly_wasm_exposable()");
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,

@@ -809,7 +809,13 @@ impl GenerationScope {
             .collect::<Vec<_>>();
         for scope in scope_names
             .iter()
-            .filter_map(|s| s.components().first())
+            .filter_map(|s| {
+                if s.export() {
+                    s.components().first()
+                } else {
+                    None
+                }
+            })
             .collect::<BTreeSet<_>>()
         {
             self.rust_lib().raw(&format!("pub mod {scope};"));
@@ -895,7 +901,7 @@ impl GenerationScope {
                 for (import_scope, idents) in scope_imports.iter() {
                     let import_scope = if *import_scope == *ROOT_SCOPE {
                         Cow::from("crate")
-                    } else if *scope == *ROOT_SCOPE {
+                    } else if *scope == *ROOT_SCOPE || !import_scope.export() {
                         Cow::from(import_scope.to_string())
                     } else {
                         Cow::from(format!("crate::{import_scope}"))
@@ -974,15 +980,7 @@ impl GenerationScope {
         // declare submodules
         // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
         // for these modules when they only exist to support modules nested deeper
-        for scope in scope_names.iter() {
-            let comps = scope.components();
-            for i in 1..comps.len() {
-                self.rust_scopes
-                    .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
-                    .or_insert(codegen::Scope::new())
-                    .raw(&format!("pub mod {};", comps[i]));
-            }
-        }
+        declare_modules(&mut self.rust_scopes, &scope_names);
 
         // wasm
         if cli.wasm {
@@ -998,7 +996,13 @@ impl GenerationScope {
                 .collect::<Vec<_>>();
             for scope in wasm_scope_names
                 .iter()
-                .filter_map(|s| s.components().first())
+                .filter_map(|s| {
+                    if s.export() {
+                        s.components().first()
+                    } else {
+                        None
+                    }
+                })
                 .collect::<BTreeSet<_>>()
             {
                 self.wasm_lib().raw(&format!("pub mod {scope};"));
@@ -1039,15 +1043,7 @@ impl GenerationScope {
             // declare submodules
             // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
             // for these modules when they only exist to support modules nested deeper
-            for scope in wasm_scope_names.iter() {
-                let comps = scope.components();
-                for i in 1..comps.len() {
-                    self.wasm_scopes
-                        .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
-                        .or_insert(codegen::Scope::new())
-                        .raw(&format!("pub mod {};", comps[i]));
-                }
-            }
+            declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
     }
 
@@ -1099,8 +1095,9 @@ impl GenerationScope {
             std::fs::create_dir_all(&src_dir)?;
             for (scope, content) in other_scopes {
                 if *scope == *ROOT_SCOPE {
+                    assert!(scope.export());
                     merged_scope.append(&content.clone());
-                } else {
+                } else if scope.export() {
                     let mod_dir = scope
                         .components()
                         .iter()
@@ -1167,18 +1164,20 @@ impl GenerationScope {
         // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
         if cli.preserve_encodings {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
-                let path = if *scope == *ROOT_SCOPE {
-                    Cow::from("rust/src/cbor_encodings.rs")
-                } else {
-                    Cow::from(format!(
-                        "rust/src/{}/cbor_encodings.rs",
-                        scope.components().join("/")
-                    ))
-                };
-                std::fs::write(
-                    rust_dir.join(path.as_ref()),
-                    rustfmt_generated_string(&contents.to_string())?.as_ref(),
-                )?;
+                if scope.export() {
+                    let path = if *scope == *ROOT_SCOPE {
+                        Cow::from("rust/src/cbor_encodings.rs")
+                    } else {
+                        Cow::from(format!(
+                            "rust/src/{}/cbor_encodings.rs",
+                            scope.components().join("/")
+                        ))
+                    };
+                    std::fs::write(
+                        rust_dir.join(path.as_ref()),
+                        rustfmt_generated_string(&contents.to_string())?.as_ref(),
+                    )?;
+                }
             }
         }
 
@@ -3642,6 +3641,23 @@ fn bounds_check_if_block(
             "None".into()
         },
     )
+}
+
+fn declare_modules(
+    gen_scopes: &mut BTreeMap<ModuleScope, codegen::Scope>,
+    module_scopes: &Vec<ModuleScope>,
+) {
+    for module_scope in module_scopes.iter() {
+        if module_scope.export() {
+            let components = module_scope.components();
+            for i in 1..components.len() {
+                gen_scopes
+                    .entry(module_scope.parents(i))
+                    .or_insert(codegen::Scope::new())
+                    .raw(&format!("pub mod {};", components[i]));
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -78,9 +78,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         components.pop();
                     }
                 }
-                ModuleScope::new(components)
+                components.join("::")
             } else {
-                ROOT_SCOPE.clone()
+                ROOT_SCOPE.to_string()
             };
             std::fs::read_to_string(input_file).map(|raw| {
                 format!(
