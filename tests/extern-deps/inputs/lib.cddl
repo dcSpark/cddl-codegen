@@ -1,0 +1,13 @@
+everything = [
+    ; from a single-level nested mod
+    foo,
+    extern_crate_foo,
+    ; test using in arrays too
+    bars: [* bar],
+    ; and maps
+    table: { * uint => bar_typedef }
+    ; and from a multi-level nested mod
+    baz: baz,
+    ; and root dir mod
+    qux: qux,
+]
