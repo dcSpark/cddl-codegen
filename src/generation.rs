@@ -424,6 +424,7 @@ impl From<BlocksOrLines> for DeserializationCode {
 /// * {x = Some(}{<value>}{);} - variable assignment (could be nested in function call, etc, too)
 /// * {}{<value>}{} - for last-expression eval in blocks
 /// * etc
+///
 /// We also keep track of if it expects a result and can adjust the generated code based on that
 /// to avoid warnings (e.g. avoid Ok(foo?) and directly do foo instead)
 struct DeserializeBeforeAfter<'a> {
@@ -532,7 +533,7 @@ impl GenerationScope {
                             FixedValue::Text(s) => ("String", format!("\"{s}\".to_owned()")),
                         };
                         self.wasm(types, ident)
-                            .new_fn(&convert_to_snake_case(ident.as_ref()))
+                            .new_fn(convert_to_snake_case(ident.as_ref()))
                             .attr("wasm_bindgen")
                             .vis("pub")
                             .ret(ty)
@@ -809,7 +810,13 @@ impl GenerationScope {
             .collect::<Vec<_>>();
         for scope in scope_names
             .iter()
-            .filter_map(|s| s.components().first())
+            .filter_map(|s| {
+                if s.export() {
+                    s.components().first()
+                } else {
+                    None
+                }
+            })
             .collect::<BTreeSet<_>>()
         {
             self.rust_lib().raw(&format!("pub mod {scope};"));
@@ -895,7 +902,7 @@ impl GenerationScope {
                 for (import_scope, idents) in scope_imports.iter() {
                     let import_scope = if *import_scope == *ROOT_SCOPE {
                         Cow::from("crate")
-                    } else if *scope == *ROOT_SCOPE {
+                    } else if *scope == *ROOT_SCOPE || !import_scope.export() {
                         Cow::from(import_scope.to_string())
                     } else {
                         Cow::from(format!("crate::{import_scope}"))
@@ -974,15 +981,7 @@ impl GenerationScope {
         // declare submodules
         // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
         // for these modules when they only exist to support modules nested deeper
-        for scope in scope_names.iter() {
-            let comps = scope.components();
-            for i in 1..comps.len() {
-                self.rust_scopes
-                    .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
-                    .or_insert(codegen::Scope::new())
-                    .raw(&format!("pub mod {};", comps[i]));
-            }
-        }
+        declare_modules(&mut self.rust_scopes, &scope_names);
 
         // wasm
         if cli.wasm {
@@ -998,7 +997,13 @@ impl GenerationScope {
                 .collect::<Vec<_>>();
             for scope in wasm_scope_names
                 .iter()
-                .filter_map(|s| s.components().first())
+                .filter_map(|s| {
+                    if s.export() {
+                        s.components().first()
+                    } else {
+                        None
+                    }
+                })
                 .collect::<BTreeSet<_>>()
             {
                 self.wasm_lib().raw(&format!("pub mod {scope};"));
@@ -1039,15 +1044,7 @@ impl GenerationScope {
             // declare submodules
             // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
             // for these modules when they only exist to support modules nested deeper
-            for scope in wasm_scope_names.iter() {
-                let comps = scope.components();
-                for i in 1..comps.len() {
-                    self.wasm_scopes
-                        .entry(ModuleScope::new(comps.as_slice()[0..i].to_vec()))
-                        .or_insert(codegen::Scope::new())
-                        .raw(&format!("pub mod {};", comps[i]));
-                }
-            }
+            declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
     }
 
@@ -1099,8 +1096,9 @@ impl GenerationScope {
             std::fs::create_dir_all(&src_dir)?;
             for (scope, content) in other_scopes {
                 if *scope == *ROOT_SCOPE {
+                    assert!(scope.export());
                     merged_scope.append(&content.clone());
-                } else {
+                } else if scope.export() {
                     let mod_dir = scope
                         .components()
                         .iter()
@@ -1167,18 +1165,20 @@ impl GenerationScope {
         // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
         if cli.preserve_encodings {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
-                let path = if *scope == *ROOT_SCOPE {
-                    Cow::from("rust/src/cbor_encodings.rs")
-                } else {
-                    Cow::from(format!(
-                        "rust/src/{}/cbor_encodings.rs",
-                        scope.components().join("/")
-                    ))
-                };
-                std::fs::write(
-                    rust_dir.join(path.as_ref()),
-                    rustfmt_generated_string(&contents.to_string())?.as_ref(),
-                )?;
+                if scope.export() {
+                    let path = if *scope == *ROOT_SCOPE {
+                        Cow::from("rust/src/cbor_encodings.rs")
+                    } else {
+                        Cow::from(format!(
+                            "rust/src/{}/cbor_encodings.rs",
+                            scope.components().join("/")
+                        ))
+                    };
+                    std::fs::write(
+                        rust_dir.join(path.as_ref()),
+                        rustfmt_generated_string(&contents.to_string())?.as_ref(),
+                    )?;
+                }
             }
         }
 
@@ -2442,7 +2442,7 @@ impl GenerationScope {
                                     ));
                                 }
                             }
-                            type_check.after(&before_after.after_str(false));
+                            type_check.after(before_after.after_str(false));
                             deser_code.content.push_block(type_check);
                             deser_code.throws = true;
                         }
@@ -2783,7 +2783,7 @@ impl GenerationScope {
                     } else {
                         none_block.line("None");
                     }
-                    deser_block.after(&before_after.after_str(false));
+                    deser_block.after(before_after.after_str(false));
                     deser_block.push_block(none_block);
                     deser_code.content.push_block(deser_block);
                     deser_code.throws = true;
@@ -3346,7 +3346,7 @@ impl GenerationScope {
                 new_func.vis("pub");
                 let can_fail = variant.rust_type().needs_bounds_check_if_inlined(types);
                 if !variant.rust_type().is_fixed_value() {
-                    new_func.arg(&variant_arg, &variant.rust_type().for_wasm_param(types));
+                    new_func.arg(&variant_arg, variant.rust_type().for_wasm_param(types));
                 }
                 let ctor = if variant.rust_type().is_fixed_value() {
                     format!(
@@ -3412,7 +3412,7 @@ impl GenerationScope {
                 .s_impl
                 .new_fn("get")
                 .vis("pub")
-                .ret(&element_type.for_wasm_return(types))
+                .ret(element_type.for_wasm_return(types))
                 .arg_ref_self()
                 .arg("index", "usize")
                 .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -3642,6 +3642,23 @@ fn bounds_check_if_block(
             "None".into()
         },
     )
+}
+
+fn declare_modules(
+    gen_scopes: &mut BTreeMap<ModuleScope, codegen::Scope>,
+    module_scopes: &[ModuleScope],
+) {
+    for module_scope in module_scopes.iter() {
+        if module_scope.export() {
+            let components = module_scope.components();
+            for (i, component) in components.iter().enumerate().skip(1) {
+                gen_scopes
+                    .entry(module_scope.parents(i))
+                    .or_insert(codegen::Scope::new())
+                    .raw(&format!("pub mod {};", component));
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -5153,7 +5170,7 @@ fn codegen_struct(
                     let mut setter = codegen::Function::new(&format!("set_{}", field.name));
                     setter
                         .arg_mut_self()
-                        .arg(&field.name, &field.rust_type.for_wasm_param(types))
+                        .arg(&field.name, field.rust_type.for_wasm_param(types))
                         .vis("pub");
                     // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
                     if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
@@ -6824,7 +6841,7 @@ fn generate_enum(
         let mut kind = codegen::Enum::new(format!("{name}Kind"));
         kind.vis("pub");
         for variant in variants.iter() {
-            kind.new_variant(&variant.name.to_string());
+            kind.new_variant(variant.name.to_string());
         }
         kind.attr("wasm_bindgen");
         gen_scope.wasm(types, name).push_enum(kind);
@@ -6927,7 +6944,7 @@ fn generate_enum(
     for variant in variants.iter() {
         let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
         let variant_var_name = variant.name_as_var();
-        let mut v = codegen::Variant::new(&variant.name.to_string());
+        let mut v = codegen::Variant::new(variant.name.to_string());
         match enum_gen_info.names.len() {
             0 => {}
             1 if enum_gen_info.enc_fields.is_empty() => {

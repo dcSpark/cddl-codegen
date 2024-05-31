@@ -16,7 +16,7 @@ use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
 
 pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
 
-use crate::intermediate::{ModuleScope, ROOT_SCOPE};
+use crate::intermediate::ROOT_SCOPE;
 
 fn cddl_paths(
     output: &mut Vec<std::path::PathBuf>,
@@ -78,9 +78,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         components.pop();
                     }
                 }
-                ModuleScope::new(components)
+                components.join("::")
             } else {
-                ROOT_SCOPE.clone()
+                ROOT_SCOPE.to_string()
             };
             std::fs::read_to_string(input_file).map(|raw| {
                 format!(

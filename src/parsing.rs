@@ -23,6 +23,7 @@ enum ControlOperator {
 }
 
 pub const SCOPE_MARKER: &str = "_CDDL_CODEGEN_SCOPE_MARKER_";
+pub const EXTERN_DEPS_DIR: &str = "_CDDL_CODEGEN_EXTERN_DEPS_DIR_";
 pub const EXTERN_MARKER: &str = "_CDDL_CODEGEN_EXTERN_TYPE_";
 pub const RAW_BYTES_MARKER: &str = "_CDDL_CODEGEN_RAW_BYTES_TYPE_";
 

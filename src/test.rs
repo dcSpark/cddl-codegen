@@ -72,14 +72,24 @@ fn run_test(
     lib_rs.write_all(test_rs.as_bytes()).unwrap();
     std::mem::drop(lib_rs);
     // add extra deps used within tests
-    let mut cargo_toml = std::fs::OpenOptions::new()
-        .append(true)
-        .open(test_path.join(format!("{export_path}/rust/Cargo.toml")))
-        .unwrap();
-    for dep in test_deps {
-        cargo_toml.write_all(dep.as_bytes()).unwrap();
+    if !test_deps.is_empty() {
+        let mut cargo_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(test_path.join(format!("{export_path}/rust/Cargo.toml")))
+            .unwrap();
+        for dep in test_deps {
+            cargo_toml.write_all(dep.as_bytes()).unwrap();
+        }
+        // copy test deps to wasm too in case they're used (e.g. extern deps dir crates)
+        if let Ok(mut cargo_toml_wasm) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(test_path.join(format!("{export_path}/wasm/Cargo.toml")))
+        {
+            for dep in test_deps {
+                cargo_toml_wasm.write_all(dep.as_bytes()).unwrap();
+            }
+        }
     }
-    std::mem::drop(cargo_toml);
     // run tests in generated code
     println!("   ------ testing ------");
     let cargo_test = std::process::Command::new("cargo")
@@ -389,5 +399,21 @@ fn json_preserve() {
         &[],
         false,
         &[],
+    );
+}
+
+#[test]
+fn extern_deps() {
+    run_test(
+        "extern-deps",
+        &[
+            "--preserve-encodings=true",
+            "--common-import-override=extern_dep_crate",
+        ],
+        None,
+        &[],
+        &[],
+        true,
+        &["extern-dep-crate = { path = \"../../../extern-dep-crate\" }"],
     );
 }
