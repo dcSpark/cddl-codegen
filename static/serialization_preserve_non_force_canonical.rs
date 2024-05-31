@@ -1,5 +1,5 @@
 #[inline]
-pub(crate) fn fit_sz(len: u64, sz: Option<cbor_event::Sz>) -> cbor_event::Sz {
+pub fn fit_sz(len: u64, sz: Option<cbor_event::Sz>) -> cbor_event::Sz {
     match sz {
         Some(sz) => if len <= sz_max(sz) {
             sz
