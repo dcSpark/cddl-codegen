@@ -9,8 +9,9 @@ pub(crate) mod utils;
 
 use clap::Parser;
 use cli::Cli;
+use comment_ast::RuleMetadata;
 use generation::GenerationScope;
-use intermediate::{CDDLIdent, IntermediateTypes, RustIdent};
+use intermediate::{CDDLIdent, IntermediateTypes, PlainGroupInfo, RustIdent};
 use once_cell::sync::Lazy;
 use parsing::{parse_rule, rule_ident, rule_is_scope_marker};
 
@@ -128,10 +129,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let cddl::ast::Rule::Group { rule, .. } = cddl_rule {
             // Freely defined group - no need to generate anything outside of group module
             match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup { group, .. } => {
+                cddl::ast::GroupEntry::InlineGroup { group, comments_after_group, .. } => {
+                    assert_eq!(group.group_choices.len(), 1);
+                    let rule_metadata = RuleMetadata::from(comments_after_group.as_ref());
                     types.mark_plain_group(
                         RustIdent::new(CDDLIdent::new(rule.name.to_string())),
-                        Some(group.clone()),
+                        PlainGroupInfo::new(Some(group.clone()), rule_metadata),
                     );
                 }
                 x => panic!("Group rule with non-inline group? {:?}", x),
