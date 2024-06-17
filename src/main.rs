@@ -129,7 +129,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let cddl::ast::Rule::Group { rule, .. } = cddl_rule {
             // Freely defined group - no need to generate anything outside of group module
             match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup { group, comments_after_group, .. } => {
+                cddl::ast::GroupEntry::InlineGroup {
+                    group,
+                    comments_after_group,
+                    ..
+                } => {
                     assert_eq!(group.group_choices.len(), 1);
                     let rule_metadata = RuleMetadata::from(comments_after_group.as_ref());
                     types.mark_plain_group(

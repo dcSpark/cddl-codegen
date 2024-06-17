@@ -5,7 +5,10 @@ use std::collections::BTreeMap;
 
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
-    AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue, GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent
+    AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
+    GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
+    Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -1459,20 +1462,23 @@ fn parse_group_choice(
         rule_metadata
     };
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
-        GroupParsingType::HomogenousArray(element_type) => if rule_metadata.is_newtype {
-            // generate newtype over array
-            RustStruct::new_wrapper(
-                name.clone(),
-                tag,
-                Some(&rule_metadata),
-                ConceptualRustType::Array(Box::new(element_type)).into(),
-                None,
-            )
-        } else {
-            // Array - homogeneous element type with proper occurence operator
-            RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
+        GroupParsingType::HomogenousArray(element_type) => {
+            if rule_metadata.is_newtype {
+                // generate newtype over array
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    ConceptualRustType::Array(Box::new(element_type)).into(),
+                    None,
+                )
+            } else {
+                // Array - homogeneous element type with proper occurence operator
+                RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
+            }
         }
-        GroupParsingType::HomogenousMap(key_type, value_type) => if rule_metadata.is_newtype {
+        GroupParsingType::HomogenousMap(key_type, value_type) => {
+            if rule_metadata.is_newtype {
                 // generate newtype over map
                 RustStruct::new_wrapper(
                     name.clone(),
@@ -1490,9 +1496,13 @@ fn parse_group_choice(
                     key_type,
                     value_type,
                 )
+            }
         }
         GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
-            assert!(!rule_metadata.is_newtype, "Can only use @newtype on primtives + heterogenious arrays/maps");
+            assert!(
+                !rule_metadata.is_newtype,
+                "Can only use @newtype on primtives + heterogenious arrays/maps"
+            );
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
             let record =
                 parse_record_from_group_choice(types, rep, parent_visitor, group_choice, cli);
@@ -1599,7 +1609,10 @@ pub fn parse_group(
                     let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{name}{i}"));
                     // General case, GroupN type identifiers and generate group choice since it's inlined here
                     let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
-                    types.mark_plain_group(variant_name.clone(), PlainGroupInfo::new(None, RuleMetadata::default()));
+                    types.mark_plain_group(
+                        variant_name.clone(),
+                        PlainGroupInfo::new(None, RuleMetadata::default()),
+                    );
                     parse_group_choice(
                         types,
                         parent_visitor,

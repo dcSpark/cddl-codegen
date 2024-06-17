@@ -97,10 +97,7 @@ pub struct PlainGroupInfo<'a> {
 }
 
 impl<'a> PlainGroupInfo<'a> {
-    pub fn new(
-        group: Option<cddl::ast::Group<'a>>,
-        rule_metadata: RuleMetadata,
-    ) -> Self {
+    pub fn new(group: Option<cddl::ast::Group<'a>>, rule_metadata: RuleMetadata) -> Self {
         Self {
             group,
             rule_metadata,
