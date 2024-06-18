@@ -90,6 +90,21 @@ impl AliasInfo {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PlainGroupInfo<'a> {
+    group: Option<cddl::ast::Group<'a>>,
+    rule_metadata: RuleMetadata,
+}
+
+impl<'a> PlainGroupInfo<'a> {
+    pub fn new(group: Option<cddl::ast::Group<'a>>, rule_metadata: RuleMetadata) -> Self {
+        Self {
+            group,
+            rule_metadata,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
@@ -99,7 +114,7 @@ pub struct IntermediateTypes<'a> {
     // delayed until the point where it is referenced via self.set_rep_if_plain_group(rep)
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
-    plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group<'a>>>,
+    plain_groups: BTreeMap<RustIdent, PlainGroupInfo<'a>>,
     type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
@@ -642,8 +657,8 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see self.plain_groups comments
-    pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group<'a>>) {
-        self.plain_groups.insert(ident, group);
+    pub fn mark_plain_group(&mut self, ident: RustIdent, group_info: PlainGroupInfo<'a>) {
+        self.plain_groups.insert(ident, group_info);
     }
 
     // see self.plain_groups comments
@@ -656,7 +671,8 @@ impl<'a> IntermediateTypes<'a> {
     ) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
-            if let Some(group) = plain_group.as_ref().cloned() {
+            let plain_group = plain_group.clone();
+            if let Some(group) = plain_group.group.as_ref() {
                 // we are defined via .cddl and thus need to register a concrete
                 // representation of the plain group
                 if let Some(rust_struct) = self.rust_structs.get(ident) {
@@ -673,11 +689,12 @@ impl<'a> IntermediateTypes<'a> {
                     crate::parsing::parse_group(
                         self,
                         parent_visitor,
-                        &group,
+                        group,
                         ident,
                         rep,
                         None,
                         None,
+                        &plain_group.rule_metadata,
                         cli,
                     );
                 }

@@ -6,8 +6,9 @@ use std::collections::BTreeMap;
 use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
 use crate::intermediate::{
     AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
-    GenericDef, GenericInstance, IntermediateTypes, ModuleScope, Primitive, Representation,
-    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
+    GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
+    Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -640,6 +641,7 @@ fn parse_type(
                 Representation::Map,
                 outer_tag,
                 generic_params,
+                &rule_metadata,
                 cli,
             );
         }
@@ -654,6 +656,7 @@ fn parse_type(
                 Representation::Array,
                 outer_tag,
                 generic_params,
+                &rule_metadata,
                 cli,
             );
         }
@@ -1222,6 +1225,7 @@ fn rust_type_from_type2(
                                 Representation::Array,
                                 None,
                                 None,
+                                &rule_metadata,
                                 cli,
                             );
                             // we aren't returning an array, but rather a struct where the fields are ordered
@@ -1446,27 +1450,59 @@ fn parse_group_choice(
     rep: Representation,
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    parent_rule_metadata: Option<&RuleMetadata>,
     cli: &Cli,
 ) {
     let rule_metadata = RuleMetadata::from(
         get_comment_after(parent_visitor, &CDDLType::from(group_choice), None).as_ref(),
     );
+    let rule_metadata = if let Some(parent_rule_metadata) = parent_rule_metadata {
+        merge_metadata(&rule_metadata, parent_rule_metadata)
+    } else {
+        rule_metadata
+    };
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
         GroupParsingType::HomogenousArray(element_type) => {
-            // Array - homogeneous element type with proper occurence operator
-            RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
+            if rule_metadata.is_newtype {
+                // generate newtype over array
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    ConceptualRustType::Array(Box::new(element_type)).into(),
+                    None,
+                )
+            } else {
+                // Array - homogeneous element type with proper occurence operator
+                RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
+            }
         }
         GroupParsingType::HomogenousMap(key_type, value_type) => {
-            // Table map - homogeneous key/value types
-            RustStruct::new_table(
-                name.clone(),
-                tag,
-                Some(&rule_metadata),
-                key_type,
-                value_type,
-            )
+            if rule_metadata.is_newtype {
+                // generate newtype over map
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into(),
+                    None,
+                )
+            } else {
+                // Table map - homogeneous key/value types
+                RustStruct::new_table(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    key_type,
+                    value_type,
+                )
+            }
         }
         GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
+            assert!(
+                !rule_metadata.is_newtype,
+                "Can only use @newtype on primtives + heterogenious arrays/maps"
+            );
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
             let record =
                 parse_record_from_group_choice(types, rep, parent_visitor, group_choice, cli);
@@ -1489,6 +1525,7 @@ pub fn parse_group(
     rep: Representation,
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    parent_rule_metadata: &RuleMetadata,
     cli: &Cli,
 ) {
     if group.group_choices.len() == 1 {
@@ -1501,12 +1538,14 @@ pub fn parse_group(
             rep,
             tag,
             generic_params,
+            Some(parent_rule_metadata),
             cli,
         );
     } else {
         if generic_params.is_some() {
             todo!("{}: generic group choices not supported", name);
         }
+        assert!(!parent_rule_metadata.is_newtype);
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
 
@@ -1570,7 +1609,10 @@ pub fn parse_group(
                     let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{name}{i}"));
                     // General case, GroupN type identifiers and generate group choice since it's inlined here
                     let variant_name = RustIdent::new(CDDLIdent::new(ident_name));
-                    types.mark_plain_group(variant_name.clone(), None);
+                    types.mark_plain_group(
+                        variant_name.clone(),
+                        PlainGroupInfo::new(None, RuleMetadata::default()),
+                    );
                     parse_group_choice(
                         types,
                         parent_visitor,
@@ -1579,6 +1621,7 @@ pub fn parse_group(
                         rep,
                         None,
                         generic_params.clone(),
+                        None,
                         cli,
                     );
                     let name = VariantIdent::new_rust(variant_name.clone());
