@@ -531,4 +531,35 @@ mod tests {
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         assert_eq!(expected_bytes, struct_with_custom_bytes.to_cbor_bytes());
     }
+
+    #[test]
+    fn wrapper_table() {
+        use cbor_event::Sz;
+        let bytes = vec![
+            map_sz(3, Sz::Inline),
+                cbor_int(5, Sz::Inline),
+                    cbor_int(4, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                    cbor_int(2, Sz::Inline),
+                cbor_int(1, Sz::Inline),
+                    cbor_int(0, Sz::Inline),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = WrapperTable::from_cbor_bytes(&bytes).unwrap();
+        deser_test(&from_bytes);
+    }
+
+    #[test]
+    fn wrapper_list() {
+        use cbor_event::Sz;
+        let bytes = vec![
+            arr_sz(5, Sz::Inline),
+                cbor_int(5, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(1, Sz::Inline),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = WrapperList::from_cbor_bytes(&bytes).unwrap();
+        deser_test(&from_bytes);
+    }
 }

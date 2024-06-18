@@ -1264,4 +1264,39 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn wrapper_table() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in &def_encodings {
+            let irregular_bytes = vec![
+                map_sz(3, *def_enc),
+                    cbor_int(5, *def_enc),
+                        cbor_int(4, *def_enc),
+                    cbor_int(3, *def_enc),
+                        cbor_int(2, *def_enc),
+                    cbor_int(1, *def_enc),
+                        cbor_int(0, *def_enc),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let from_bytes = WrapperTable::from_cbor_bytes(&irregular_bytes).unwrap();
+            assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+        }
+    }
+
+    #[test]
+    fn wrapper_list() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in &def_encodings {
+            let irregular_bytes = vec![
+                arr_sz(5, *def_enc),
+                    cbor_int(5, *def_enc),
+                    cbor_int(4, *def_enc),
+                    cbor_int(3, *def_enc),
+                    cbor_int(2, *def_enc),
+                    cbor_int(1, *def_enc),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let from_bytes = WrapperList::from_cbor_bytes(&irregular_bytes).unwrap();
+            assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+        }
+    }
 }
