@@ -212,5 +212,5 @@ struct_with_custom_serialization = [
   tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]
 
-wrapper_table = { * uint => text } ; @newtype
+wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype

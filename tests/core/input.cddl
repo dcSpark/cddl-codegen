@@ -185,7 +185,7 @@ inline_wrapper = [{ * text => text }]
 top_level_array = [* uint]
 top_level_single_elem = [uint]
 
-wrapper_table = { * uint => text } ; @newtype
+wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
 
 overlapping_inlined = [
