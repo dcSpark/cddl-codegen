@@ -14,7 +14,8 @@ which-rustfmt = ["which"]
 
 [dependencies]
 cbor_event = "2.4.0"
-cddl = "0.9.1"
+# we don't update due to https://github.com/anweiss/cddl/issues/222
+cddl = "=0.9.1"
 clap = { version = "4.3.12", features = ["derive"] }
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
 once_cell = "1.18.0"

@@ -20,9 +20,9 @@ bar = {
 plain = (d: #6.23(uint), e: tagged_text)
 outer = [a: uint, b: plain, c: "some text"] ; @used_as_key
 plain_arrays = [
-; this is not supported right now. When single-element arrays are supported remove this.
-;	single: [plain],
-	multi: [*plain],
+    embedded: plain,
+    single: [plain],
+    multi: [*plain],
 ]
 
 table = { * uint => text }
@@ -39,6 +39,61 @@ type_choice = 0 / "hello world" / uint / text / bytes / #6.64([*uint]) ; @used_a
 non_overlapping_type_choice_all = uint / nint / text / bytes / #6.30("hello world") / [* uint] / { *text => uint }
 
 non_overlapping_type_choice_some = uint / nint / text
+
+overlap_basic_embed =  [
+  ; @name identity
+  tag: 0 //
+  ; @name x
+  tag: 1, hash: bytes .size 32
+]
+
+non_overlap_basic_embed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, tag: 1
+]
+
+non_overlap_basic_embed_multi_fields = [
+  ; @name first
+  x: uint, z: uint //
+  ; @name second
+  y: text, z: uint
+]
+
+non_overlap_basic_embed_mixed = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint
+]
+
+bytes_uint = (bytes, uint)
+
+non_overlap_basic_embed_mixed_explicit = [
+  ; @name first
+  x: uint, tag: 0 //
+  ; @name second
+  y: text, z: uint //
+  ; @name third
+  bytes_uint
+]
+
+basic = (uint, text)
+
+basic_arr = [basic]
+
+; not overlap since double array for second
+non_overlap_basic_not_basic = [
+  ; @name group
+  basic //
+  ; @name group_arr
+  basic_arr //
+  ; @name group_tagged
+  #6.11(basic) //
+  ; @name group_bytes
+  bytes .cbor basic
+]
 
 enums = [
 	c_enum,
@@ -105,6 +160,12 @@ externs = {
   ? opt: external_foo,
 }
 
+extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_
+
+using_extern_generic = [
+  foo: extern_generic<external_foo>,
+]
+
 ; types below test codegen_table_type
 
 standalone_table = { * uint => text }
@@ -123,6 +184,9 @@ inline_wrapper = [{ * text => text }]
 
 top_level_array = [* uint]
 top_level_single_elem = [uint]
+
+wrapper_table = { * uint => uint } ; @newtype
+wrapper_list = [ * uint ] ; @newtype
 
 overlapping_inlined = [
 	; @name one
@@ -197,4 +261,14 @@ casing_test = [
 	1 //
 	; @name IPAddress
 	2
+]
+
+custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+
+struct_with_custom_serialization = [
+  custom_bytes,
+  field: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+  overridden: custom_bytes, ; @custom_serialize write_hex_string @custom_deserialize read_hex_string
+  tagged1: #6.9(custom_bytes),
+  tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]

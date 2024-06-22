@@ -53,7 +53,40 @@ mod tests {
     #[test]
     fn plain_arrays() {
         let plain = Plain::new(7576, String::from("wiorurri34h").into());
-        deser_test(&PlainArrays::new(vec![plain.clone(), plain.clone()]));
+        let plain_arrays = PlainArrays::new(
+            plain.clone(),
+            plain.clone(),
+            vec![plain.clone(), plain.clone()]
+        );
+        deser_test(&plain_arrays);
+        // need to make sure they are actually inlined!
+        let bytes = vec![
+            arr_def(4),
+                // embedded
+                cbor_tag(23),
+                    cbor_int(7576, cbor_event::Sz::Two),
+                cbor_tag_sz(42, cbor_event::Sz::One),
+                    cbor_string("wiorurri34h"),
+                // single
+                arr_def(2),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                // multiple
+                arr_def(4),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+                    cbor_tag(23),
+                        cbor_int(7576, cbor_event::Sz::Two),
+                    cbor_tag_sz(42, cbor_event::Sz::One),
+                        cbor_string("wiorurri34h"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = PlainArrays::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(from_bytes.to_cbor_bytes(), bytes);
+        assert_eq!(plain_arrays.to_cbor_bytes(), bytes);
     }
 
     #[test]
@@ -191,6 +224,13 @@ mod tests {
     }
 
     #[test]
+    fn externs_generic() {
+        deser_test(&UsingExternGeneric::new(
+            ExternGeneric::new(ExternalFoo::new(u64::MAX, String::from("asdfghjkl"), vec![0])),
+        ));
+    }
+
+    #[test]
     fn top_level_arrays() {
         // this part of the test just tests that the resulting code compiles
         // e.g. the presence of the typedef instead of a new array struct by being able to asign to it.
@@ -241,6 +281,45 @@ mod tests {
         deser_test(&NonOverlappingTypeChoiceSome::U64(100));
         deser_test(&NonOverlappingTypeChoiceSome::N64(10000));
         deser_test(&NonOverlappingTypeChoiceSome::Text("Hello, World!".into()));
+    }
+    
+    #[test]
+    fn overlap_basic_embed() {
+        deser_test(&OverlapBasicEmbed::new_identity());
+        deser_test(&OverlapBasicEmbed::new_x(vec![85; 32]).unwrap());
+    }
+
+    #[test]
+    fn non_overlap_basic_embed() {
+        deser_test(&NonOverlapBasicEmbed::new_first(100));
+        deser_test(&NonOverlapBasicEmbed::new_second("cddl".to_owned()));
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_multi_fields() {
+        deser_test(&NonOverlapBasicEmbedMultiFields::new_first(100, 1_000_000));
+        deser_test(&NonOverlapBasicEmbedMultiFields::new_second("cddl".to_owned(), 0));
+    }
+    
+    #[test]
+    fn non_overlap_basic_embed_mixed() {
+        deser_test(&NonOverlapBasicEmbedMixed::new_first(100));
+        deser_test(&NonOverlapBasicEmbedMixed::new_second("cddl".to_owned(), 0));
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_mixed_explicit() {
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_first(100));
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_second("cddl".to_owned(), 0));
+        deser_test(&NonOverlapBasicEmbedMixedExplicit::new_third(vec![0xBA, 0xAD, 0xF0, 0x0D], 4));
+    }
+
+    #[test]
+    fn non_overlap_basic_not_basic() {
+        deser_test(&NonOverlapBasicNotBasic::new_group(4, "basic".to_owned()));
+        deser_test(&NonOverlapBasicNotBasic::new_group_arr(Basic::new(4, "".to_owned())));
+        deser_test(&NonOverlapBasicNotBasic::new_group_tagged(0, " T A G G E D ".to_owned()));
+        deser_test(&NonOverlapBasicNotBasic::new_group_bytes(u64::MAX, "bytes .cbor basic".to_owned()));
     }
 
     #[test]
@@ -432,5 +511,60 @@ mod tests {
     fn casing_test() {
         CasingTest::new_nft();
         CasingTest::new_ip_address();
+    }
+  
+    fn custom_serialization() {
+        let struct_with_custom_bytes = StructWithCustomSerialization::new(
+            vec![0xCA, 0xFE, 0xF0, 0x0D],
+            vec![0x03, 0x01, 0x04, 0x01],
+            vec![0xBA, 0xAD, 0xD0, 0x0D],
+            vec![0xDE, 0xAD, 0xBE, 0xEF],
+            1024,
+        );
+        use cbor_event::{Sz, StringLenSz};
+        let bytes_special_enc = StringLenSz::Indefinite(vec![(1, Sz::Inline), (1, Sz::Inline), (1, Sz::Inline), (1, Sz::Inline)]);
+        deser_test(&struct_with_custom_bytes);
+        let expected_bytes = vec![
+            arr_def(5),
+                cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                cbor_string("baadd00d"),
+                cbor_tag(9),
+                    cbor_bytes_sz(vec![0xDE, 0xAD, 0xBE, 0xEF], bytes_special_enc.clone()),
+                cbor_tag(9),
+                    cbor_string("1024")
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        assert_eq!(expected_bytes, struct_with_custom_bytes.to_cbor_bytes());
+    }
+
+    #[test]
+    fn wrapper_table() {
+        use cbor_event::Sz;
+        let bytes = vec![
+            map_sz(3, Sz::Inline),
+                cbor_int(5, Sz::Inline),
+                    cbor_int(4, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                    cbor_int(2, Sz::Inline),
+                cbor_int(1, Sz::Inline),
+                    cbor_int(0, Sz::Inline),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = WrapperTable::from_cbor_bytes(&bytes).unwrap();
+        deser_test(&from_bytes);
+    }
+
+    #[test]
+    fn wrapper_list() {
+        use cbor_event::Sz;
+        let bytes = vec![
+            arr_sz(5, Sz::Inline),
+                cbor_int(5, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(1, Sz::Inline),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let from_bytes = WrapperList::from_cbor_bytes(&bytes).unwrap();
+        deser_test(&from_bytes);
     }
 }

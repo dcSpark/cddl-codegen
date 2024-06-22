@@ -56,3 +56,27 @@ impl serialization::Deserialize for ExternalFoo {
         .map_err(|e| e.annotate("ExternalFoo"))
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct ExternGeneric<T>(pub T);
+
+impl<T> ExternGeneric<T> {
+    pub fn new(x: T) -> Self {
+        Self(x)
+    }
+}
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExternGeneric<T> {
+    fn serialize<'se, W: std::io::Write>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer<W>,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<T: serialization::Deserialize> serialization::Deserialize for ExternGeneric<T> {
+    fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {
+        T::deserialize(raw).map(Self)
+    }
+}

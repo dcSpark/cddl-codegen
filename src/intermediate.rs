@@ -4,6 +4,7 @@ use cddl::ast::parent::ParentVisitor;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::comment_ast::RuleMetadata;
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
@@ -15,27 +16,47 @@ use once_cell::sync::Lazy;
 pub static ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ModuleScope(Vec<String>);
+pub struct ModuleScope {
+    export: bool,
+    scope: Vec<String>,
+}
 
 impl ModuleScope {
     pub fn new(scope: Vec<String>) -> Self {
         Self::from(scope)
     }
 
+    /// Make a new ModuleScope using only the first [depth] components
+    pub fn parents(&self, depth: usize) -> Self {
+        Self {
+            export: self.export,
+            scope: self.scope.as_slice()[0..depth].to_vec(),
+        }
+    }
+
+    pub fn export(&self) -> bool {
+        self.export
+    }
+
     pub fn components(&self) -> &Vec<String> {
-        &self.0
+        &self.scope
     }
 }
 
 impl From<Vec<String>> for ModuleScope {
-    fn from(scope: Vec<String>) -> Self {
-        Self(scope)
+    fn from(mut scope: Vec<String>) -> Self {
+        let export = match scope.first() {
+            Some(first_scope) => first_scope != crate::parsing::EXTERN_DEPS_DIR,
+            None => true,
+        };
+        let scope = if export { scope } else { scope.split_off(1) };
+        Self { export, scope }
     }
 }
 
 impl std::fmt::Display for ModuleScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.join("::"))
+        write!(f, "{}", self.scope.join("::"))
     }
 }
 
@@ -44,14 +65,42 @@ pub struct AliasInfo {
     pub base_type: RustType,
     pub gen_rust_alias: bool,
     pub gen_wasm_alias: bool,
+    pub rule_metadata: Option<RuleMetadata>,
 }
 
 impl AliasInfo {
-    pub fn new(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
+    pub fn new_manual(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
         Self {
             base_type,
             gen_rust_alias,
             gen_wasm_alias,
+            rule_metadata: None,
+        }
+    }
+
+    pub fn new_from_metadata(base_type: RustType, rule_metadata: RuleMetadata) -> Self {
+        let gen_rust_alias = !rule_metadata.no_alias;
+        let gen_wasm_alias = !rule_metadata.no_alias;
+        Self {
+            base_type,
+            gen_rust_alias,
+            gen_wasm_alias,
+            rule_metadata: Some(rule_metadata),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PlainGroupInfo<'a> {
+    group: Option<cddl::ast::Group<'a>>,
+    rule_metadata: RuleMetadata,
+}
+
+impl<'a> PlainGroupInfo<'a> {
+    pub fn new(group: Option<cddl::ast::Group<'a>>, rule_metadata: RuleMetadata) -> Self {
+        Self {
+            group,
+            rule_metadata,
         }
     }
 }
@@ -65,7 +114,7 @@ pub struct IntermediateTypes<'a> {
     // delayed until the point where it is referenced via self.set_rep_if_plain_group(rep)
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
-    plain_groups: BTreeMap<RustIdent, Option<cddl::ast::Group<'a>>>,
+    plain_groups: BTreeMap<RustIdent, PlainGroupInfo<'a>>,
     type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
@@ -73,6 +122,7 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
+    // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // for scope() to work we keep this here.
     // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
@@ -269,7 +319,7 @@ impl<'a> IntermediateTypes<'a> {
         let mut aliases = BTreeMap::<AliasIdent, AliasInfo>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident, AliasInfo::new(rust_type, false, false));
+            aliases.insert(ident, AliasInfo::new_manual(rust_type, false, false));
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
@@ -408,10 +458,13 @@ impl<'a> IntermediateTypes<'a> {
 
     /// mostly for convenience since this is checked in so many places
     pub fn is_enum(&self, ident: &RustIdent) -> bool {
-        matches!(
-            self.rust_struct(ident).unwrap().variant(),
-            RustStructType::CStyleEnum { .. }
-        )
+        if let Some(rs) = self.rust_struct(ident) {
+            matches!(rs.variant(), RustStructType::CStyleEnum { .. })
+        } else {
+            // could be a generic instead
+            assert!(self.generic_instances.contains_key(ident));
+            false
+        }
     }
 
     // this is called by register_table_type / register_array_type automatically
@@ -438,7 +491,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
-                    AliasInfo::new(map_type, true, false),
+                    AliasInfo::new_manual(map_type, true, false),
                 )
             }
             RustStructType::Array { element_type } => {
@@ -449,7 +502,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
-                    AliasInfo::new(array_type, true, false),
+                    AliasInfo::new_manual(array_type, true, false),
                 )
             }
             RustStructType::Wrapper {
@@ -494,7 +547,7 @@ impl<'a> IntermediateTypes<'a> {
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
                 parent_visitor,
-                RustStruct::new_array(array_type_ident, None, element_type.clone()),
+                RustStruct::new_array(array_type_ident, None, None, element_type.clone()),
                 cli,
             );
         }
@@ -518,10 +571,33 @@ impl<'a> IntermediateTypes<'a> {
         let resolved_generics = self
             .generic_instances
             .values()
-            .map(|instance| instance.resolve(self))
+            .map(|instance| instance.resolve(self, cli))
             .collect::<Vec<_>>();
         for resolved_instance in resolved_generics {
-            self.register_rust_struct(parent_visitor, resolved_instance, cli);
+            match resolved_instance {
+                GenericResolved::Resolved(rs) => self.register_rust_struct(parent_visitor, rs, cli),
+                GenericResolved::Extern {
+                    instance_ident,
+                    real_ident,
+                } => {
+                    // must be generic extern - register it so other lookups don't fail
+                    self.register_rust_struct(
+                        parent_visitor,
+                        RustStruct::new_extern(instance_ident.clone()),
+                        cli,
+                    );
+                    // we do direct rust alias replacing (gen_rust_alias=false) since no problems with generics in rust
+                    // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
+                    self.register_type_alias(
+                        instance_ident,
+                        AliasInfo::new_manual(
+                            ConceptualRustType::Rust(real_ident).into(),
+                            true,
+                            false,
+                        ),
+                    );
+                }
+            }
         }
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types
@@ -581,8 +657,8 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // see self.plain_groups comments
-    pub fn mark_plain_group(&mut self, ident: RustIdent, group: Option<cddl::ast::Group<'a>>) {
-        self.plain_groups.insert(ident, group);
+    pub fn mark_plain_group(&mut self, ident: RustIdent, group_info: PlainGroupInfo<'a>) {
+        self.plain_groups.insert(ident, group_info);
     }
 
     // see self.plain_groups comments
@@ -595,7 +671,8 @@ impl<'a> IntermediateTypes<'a> {
     ) {
         if let Some(plain_group) = self.plain_groups.get(ident) {
             // the clone is to get around the borrow checker
-            if let Some(group) = plain_group.as_ref().cloned() {
+            let plain_group = plain_group.clone();
+            if let Some(group) = plain_group.group.as_ref() {
                 // we are defined via .cddl and thus need to register a concrete
                 // representation of the plain group
                 if let Some(rust_struct) = self.rust_structs.get(ident) {
@@ -612,11 +689,12 @@ impl<'a> IntermediateTypes<'a> {
                     crate::parsing::parse_group(
                         self,
                         parent_visitor,
-                        &group,
+                        group,
                         ident,
                         rep,
                         None,
                         None,
+                        &plain_group.rule_metadata,
                         cli,
                     );
                 }
@@ -835,24 +913,28 @@ pub enum Primitive {
     Bytes,
 }
 
-impl ToString for Primitive {
-    fn to_string(&self) -> String {
-        String::from(match self {
-            Primitive::Bool => "bool",
-            Primitive::F32 => "f32",
-            Primitive::F64 => "f64",
-            Primitive::U8 => "u8",
-            Primitive::I8 => "i8",
-            Primitive::U16 => "u16",
-            Primitive::I16 => "i16",
-            Primitive::U32 => "u32",
-            Primitive::I32 => "i32",
-            Primitive::U64 => "u64",
-            Primitive::I64 => "i64",
-            Primitive::N64 => "u64",
-            Primitive::Str => "String",
-            Primitive::Bytes => "Vec<u8>",
-        })
+impl std::fmt::Display for Primitive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Primitive::Bool => "bool",
+                Primitive::F32 => "f32",
+                Primitive::F64 => "f64",
+                Primitive::U8 => "u8",
+                Primitive::I8 => "i8",
+                Primitive::U16 => "u16",
+                Primitive::I16 => "i16",
+                Primitive::U32 => "u32",
+                Primitive::I32 => "i32",
+                Primitive::U64 => "u64",
+                Primitive::I64 => "i64",
+                Primitive::N64 => "u64",
+                Primitive::Str => "String",
+                Primitive::Bytes => "Vec<u8>",
+            }
+        )
     }
 }
 // TODO: impl display or fmt or whatever rust uses
@@ -898,7 +980,9 @@ impl Primitive {
 }
 
 mod idents {
-    use crate::{rust_reserved::STD_TYPES, utils::is_identifier_reserved};
+    use crate::{cli::Cli, rust_reserved::STD_TYPES, utils::is_identifier_reserved};
+
+    use super::{IntermediateTypes, RustType};
 
     // to resolve ambiguities between raw (from CDDL) and already-formatted
     // for things like type aliases, etc, we use these wrapper structs
@@ -940,8 +1024,6 @@ mod idents {
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
             // int is special here since it refers to our own rust struct, not a primitive
-            println!("{}", cddl_ident.0);
-
             assert!(
                 !STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]),
                 "Cannot use reserved Rust type name: \"{}\"",
@@ -956,6 +1038,23 @@ mod idents {
             }
 
             Self(super::convert_to_camel_case(&cddl_ident.0))
+        }
+
+        pub fn new_generic(
+            generic_ident: &RustIdent,
+            generic_args: &[RustType],
+            types: &IntermediateTypes,
+            cli: &Cli,
+        ) -> Self {
+            Self(format!(
+                "{}<{}>",
+                generic_ident,
+                generic_args
+                    .iter()
+                    .map(|a| a.for_rust_member(types, false, cli))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ))
         }
     }
 
@@ -2041,13 +2140,60 @@ impl EnumVariant {
         }
     }
 
-    pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
+    /// Gets the next CBOR type after the passed in rep (array/map) tag
+    /// Returns None if this is not possible and brute-force deserialization
+    /// trying every variant should be used instead
+    pub fn cbor_types_inner(
+        &self,
+        types: &IntermediateTypes,
+        outer_rep: Option<Representation>,
+    ) -> Option<Vec<CBORType>> {
         match &self.data {
-            EnumVariantData::RustType(ty) => ty.cbor_types(types),
-            EnumVariantData::Inlined(record) => match record.rep {
-                Representation::Array => vec![CBORType::Array],
-                Representation::Map => vec![CBORType::Map],
-            },
+            EnumVariantData::RustType(ty) => {
+                if ty.encodings.is_empty() && outer_rep.is_some() {
+                    if let ConceptualRustType::Rust(ident) =
+                        ty.conceptual_type.resolve_alias_shallow()
+                    {
+                        match types.rust_struct(ident).unwrap().variant() {
+                            // we can't know this unless there's a way to provide this info
+                            RustStructType::Extern => None,
+                            RustStructType::Record(record) => {
+                                let mut ret = vec![];
+                                for field in record.fields.iter() {
+                                    ret.extend(field.rust_type.cbor_types(types));
+                                    if !field.optional {
+                                        break;
+                                    }
+                                }
+                                Some(ret)
+                            }
+                            RustStructType::GroupChoice { .. } => None,
+                            _ => Some(ty.cbor_types(types)),
+                        }
+                    } else {
+                        Some(ty.cbor_types(types))
+                    }
+                } else {
+                    Some(ty.cbor_types(types))
+                }
+            }
+            EnumVariantData::Inlined(record) => {
+                if outer_rep.is_some() {
+                    let mut ret = vec![];
+                    for field in record.fields.iter() {
+                        ret.extend(field.rust_type.cbor_types(types));
+                        if !field.optional {
+                            break;
+                        }
+                    }
+                    Some(ret)
+                } else {
+                    Some(match record.rep {
+                        Representation::Array => vec![CBORType::Array],
+                        Representation::Map => vec![CBORType::Map],
+                    })
+                }
+            }
         }
     }
 
@@ -2102,15 +2248,24 @@ pub struct RustField {
     pub optional: bool,
     // None for array fields, Some for map fields. FixedValue for (de)serialization for map keys
     pub key: Option<FixedValue>,
+    // comment DSL metadata applied to this field
+    pub rule_metadata: RuleMetadata,
 }
 
 impl RustField {
-    pub fn new(name: String, rust_type: RustType, optional: bool, key: Option<FixedValue>) -> Self {
+    pub fn new(
+        name: String,
+        rust_type: RustType,
+        optional: bool,
+        key: Option<FixedValue>,
+        rule_metadata: RuleMetadata,
+    ) -> Self {
         Self {
             name,
             rust_type,
             optional,
             key,
+            rule_metadata,
         }
     }
 
@@ -2135,6 +2290,26 @@ pub enum RustStructCBORLen {
     OptionalFields(usize),
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RustStructConfig {
+    pub custom_json: bool,
+    pub custom_serialize: Option<String>,
+    pub custom_deserialize: Option<String>,
+}
+
+impl From<Option<&RuleMetadata>> for RustStructConfig {
+    fn from(rule_metadata: Option<&RuleMetadata>) -> Self {
+        match rule_metadata {
+            Some(rule_metadata) => Self {
+                custom_json: rule_metadata.custom_json,
+                custom_serialize: rule_metadata.custom_serialize.clone(),
+                custom_deserialize: rule_metadata.custom_deserialize.clone(),
+            },
+            None => Self::default(),
+        }
+    }
+}
+
 // TODO: It would be nice to separate parsing the CDDL lib structs and code generation entirely.
 // We would just need to construct these structs (+ maybe the array/table wrapper types) separately and pass these into codegen.
 // This would also give us more access to this info without reparsing which could simplify code in some places.
@@ -2144,6 +2319,7 @@ pub enum RustStructCBORLen {
 pub struct RustStruct {
     ident: RustIdent,
     tag: Option<usize>,
+    config: RustStructConfig,
     pub(crate) variant: RustStructType,
 }
 
@@ -2179,10 +2355,16 @@ pub enum RustStructType {
 }
 
 impl RustStruct {
-    pub fn new_record(ident: RustIdent, tag: Option<usize>, record: RustRecord) -> Self {
+    pub fn new_record(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        record: RustRecord,
+    ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Record(record),
         }
     }
@@ -2190,20 +2372,28 @@ impl RustStruct {
     pub fn new_table(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         domain: RustType,
         range: RustType,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Table { domain, range },
         }
     }
 
-    pub fn new_array(ident: RustIdent, tag: Option<usize>, element_type: RustType) -> Self {
+    pub fn new_array(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        element_type: RustType,
+    ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Array { element_type },
         }
     }
@@ -2212,6 +2402,7 @@ impl RustStruct {
     pub fn new_type_choice(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         variants: Vec<EnumVariant>,
         cli: &Cli,
     ) -> Self {
@@ -2234,12 +2425,14 @@ impl RustStruct {
             Self {
                 ident,
                 tag,
+                config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::TypeChoice { variants },
             }
         } else {
             Self {
                 ident,
                 tag,
+                config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::CStyleEnum { variants },
             }
         }
@@ -2248,12 +2441,14 @@ impl RustStruct {
     pub fn new_group_choice(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         variants: Vec<EnumVariant>,
         rep: Representation,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::GroupChoice { variants, rep },
         }
     }
@@ -2261,12 +2456,14 @@ impl RustStruct {
     pub fn new_wrapper(
         ident: RustIdent,
         tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
         wrapped_type: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
     ) -> Self {
         Self {
             ident,
             tag,
+            config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
                 min_max,
@@ -2278,6 +2475,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            config: RustStructConfig::default(),
             variant: RustStructType::Extern,
         }
     }
@@ -2286,6 +2484,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            config: RustStructConfig::default(),
             variant: RustStructType::RawBytesType,
         }
     }
@@ -2296,6 +2495,10 @@ impl RustStruct {
 
     pub fn tag(&self) -> Option<usize> {
         self.tag
+    }
+
+    pub fn config(&self) -> &RustStructConfig {
+        &self.config
     }
 
     pub fn variant(&self) -> &RustStructType {
@@ -2648,6 +2851,19 @@ pub struct GenericInstance {
     generic_args: Vec<RustType>,
 }
 
+#[derive(Debug, Clone)]
+pub enum GenericResolved {
+    // resolved with types swapped to concrete instance
+    Resolved(RustStruct),
+    // could not resolve (def is extern)
+    Extern {
+        // internal generic ident e.g. FooBar for Foo<Bar>
+        instance_ident: RustIdent,
+        // actual data type e.g. Foo<Bar>
+        real_ident: RustIdent,
+    },
+}
+
 impl GenericInstance {
     pub fn new(
         instance_ident: RustIdent,
@@ -2663,13 +2879,32 @@ impl GenericInstance {
 
     // TODO: should we rename fields / variant names after-the-fact?
     // (for the cases where the name came from the original generic param)
-    pub fn resolve(&self, types: &IntermediateTypes) -> RustStruct {
+    // returns None when it can't be resolved i.e. extern defs
+    // this will be left to the user instead to handle.
+    pub fn resolve(&self, types: &IntermediateTypes, cli: &Cli) -> GenericResolved {
         let def = match types.generic_defs.get(&self.generic_ident) {
             Some(def) => def,
-            None => panic!(
-                "Generic instance used on {} without definition",
-                self.generic_ident
-            ),
+            None => {
+                if types
+                    .rust_struct(&self.generic_ident)
+                    .map(|rs| matches!(rs.variant(), RustStructType::Extern))
+                    .unwrap_or(false)
+                {
+                    return GenericResolved::Extern {
+                        instance_ident: self.instance_ident.clone(),
+                        real_ident: RustIdent::new_generic(
+                            &self.generic_ident,
+                            &self.generic_args,
+                            types,
+                            cli,
+                        ),
+                    };
+                }
+                panic!(
+                    "Generic instance used on {} without definition | {:?}",
+                    self.generic_ident, self
+                );
+            }
         };
         assert_eq!(def.generic_params.len(), self.generic_args.len());
         let resolved_args = def
@@ -2719,7 +2954,7 @@ impl GenericInstance {
                 panic!("generics not supported on raw bytes types")
             }
         };
-        instance
+        GenericResolved::Resolved(instance)
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {

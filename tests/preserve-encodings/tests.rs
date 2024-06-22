@@ -483,6 +483,196 @@ mod tests {
     }
 
     #[test]
+    fn overlap_basic_embed() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_32_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(16, Sz::Two), (16, Sz::One)]),
+            StringLenSz::Indefinite(vec![(10, Sz::Inline), (0, Sz::Inline), (22, Sz::Four)]),
+        ];
+        for str_enc in &str_32_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_identity = vec![
+                    arr_sz(1, *def_enc),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_x = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(1, *def_enc),
+                        cbor_bytes_sz(vec![170; 32], str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_identity = OverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_identity).unwrap();
+                assert_eq!(irregular_bytes_identity, irregular_identity.to_cbor_bytes());
+                let irregular_x = OverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_x).unwrap();
+                assert_eq!(irregular_bytes_x, irregular_x.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlap_basic_embed() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_5_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Eight), (1, Sz::Inline), (0, Sz::Inline), (4, Sz::Four), (0, Sz::Inline)]),
+        ];
+        for str_enc in &str_5_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_first = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(10, *def_enc),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_second = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_str_sz("world", str_enc.clone()),
+                        cbor_int(1, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_first = NonOverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_first).unwrap();
+                assert_eq!(irregular_bytes_first, irregular_first.to_cbor_bytes());
+                let irregular_second = NonOverlapBasicEmbed::from_cbor_bytes(&irregular_bytes_second).unwrap();
+                assert_eq!(irregular_bytes_second, irregular_second.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_multi_fields() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_5_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Eight), (1, Sz::Inline), (0, Sz::Inline), (4, Sz::Four), (0, Sz::Inline)]),
+        ];
+        for str_enc in &str_5_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_first = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(10, *def_enc),
+                        cbor_int(11, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_second = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_str_sz("HELLO", str_enc.clone()),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_first = NonOverlapBasicEmbedMultiFields::from_cbor_bytes(&irregular_bytes_first).unwrap();
+                assert_eq!(irregular_bytes_first, irregular_first.to_cbor_bytes());
+                let irregular_second = NonOverlapBasicEmbedMultiFields::from_cbor_bytes(&irregular_bytes_second).unwrap();
+                assert_eq!(irregular_bytes_second, irregular_second.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_mixed() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_5_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Eight), (1, Sz::Inline), (0, Sz::Inline), (4, Sz::Four), (0, Sz::Inline)]),
+        ];
+        for str_enc in &str_5_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_first = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(10, *def_enc),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_second = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_str_sz("world", str_enc.clone()),
+                        cbor_int(1, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_first = NonOverlapBasicEmbedMixed::from_cbor_bytes(&irregular_bytes_first).unwrap();
+                assert_eq!(irregular_bytes_first, irregular_first.to_cbor_bytes());
+                let irregular_second = NonOverlapBasicEmbedMixed::from_cbor_bytes(&irregular_bytes_second).unwrap();
+                assert_eq!(irregular_bytes_second, irregular_second.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlap_basic_embed_mixed_explicit() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_5_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Eight), (1, Sz::Inline), (0, Sz::Inline), (4, Sz::Four), (0, Sz::Inline)]),
+        ];
+        for str_enc in &str_5_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_first = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(10, *def_enc),
+                        cbor_int(0, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_second = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_str_sz("MiXeD", str_enc.clone()),
+                        cbor_int(1, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_third = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_bytes_sz(vec![0x00, 0x01, 0x02, 0x03, 0x04], str_enc.clone()),
+                        cbor_int(1, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_first = NonOverlapBasicEmbedMixedExplicit::from_cbor_bytes(&irregular_bytes_first).unwrap();
+                assert_eq!(irregular_bytes_first, irregular_first.to_cbor_bytes());
+                let irregular_second = NonOverlapBasicEmbedMixedExplicit::from_cbor_bytes(&irregular_bytes_second).unwrap();
+                assert_eq!(irregular_bytes_second, irregular_second.to_cbor_bytes());
+                let irregular_third = NonOverlapBasicEmbedMixedExplicit::from_cbor_bytes(&irregular_bytes_third).unwrap();
+                assert_eq!(irregular_bytes_third, irregular_third.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn non_overlap_basic_not_basic() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_5_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (2, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Eight), (1, Sz::Inline), (0, Sz::Inline), (4, Sz::Four), (0, Sz::Inline)]),
+        ];
+        for str_enc in &str_5_encodings {
+            for def_enc in &def_encodings {
+                let irregular_bytes_group = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_int(0, *def_enc),
+                        cbor_str_sz("hello", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_group_arr = vec![
+                    vec![ARR_INDEF],
+                        arr_sz(2, *def_enc),
+                            cbor_int(1, *def_enc),
+                            cbor_str_sz("world", str_enc.clone()),
+                    vec![BREAK],
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_group_tagged = vec![
+                    arr_sz(2, *def_enc),
+                        cbor_tag_sz(11, *def_enc),
+                            cbor_int(3, *def_enc),
+                            cbor_str_sz(" test", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_bytes_group_bytes = vec![
+                    arr_sz(1, *def_enc),
+                        cbor_bytes_sz(irregular_bytes_group.clone(), StringLenSz::Len(Sz::Two)),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular_group = NonOverlapBasicNotBasic::from_cbor_bytes(&irregular_bytes_group).unwrap();
+                assert_eq!(irregular_bytes_group, irregular_group.to_cbor_bytes());
+                let irregular_group_arr = NonOverlapBasicNotBasic::from_cbor_bytes(&irregular_bytes_group_arr).unwrap();
+                assert_eq!(irregular_bytes_group_arr, irregular_group_arr.to_cbor_bytes());
+                let irregular_group_tagged = NonOverlapBasicNotBasic::from_cbor_bytes(&irregular_bytes_group_tagged).unwrap();
+                assert_eq!(irregular_bytes_group_tagged, irregular_group_tagged.to_cbor_bytes());
+                let irregular_group_bytes = NonOverlapBasicNotBasic::from_cbor_bytes(&irregular_bytes_group_bytes).unwrap();
+                assert_eq!(irregular_bytes_group_bytes, irregular_group_bytes.to_cbor_bytes());
+            }
+        }
+    }
+
+    #[test]
     fn enums() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         let enum_values = vec![3, 1, 4];
@@ -995,6 +1185,118 @@ mod tests {
                     assert!(matches!(irregular_g2, EnumOptEmbedFields::Eg { .. }));
                 }
             }
+        }
+    }
+
+    #[test]
+    fn plain_arrays() {
+        let plain = Plain::new(10, String::from("wiorurri34h").into());
+        let plain_arrays = PlainArrays::new(
+            plain.clone(),
+            plain.clone(),
+            vec![plain.clone(), plain.clone()]
+        );
+        deser_test(&plain_arrays);
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_11_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(5, Sz::Two), (6, Sz::One)]),
+            StringLenSz::Indefinite(vec![(2, Sz::Inline), (0, Sz::Inline), (9, Sz::Four)]),
+        ];
+        for str_enc in &str_11_encodings {
+            for def_enc in &def_encodings {
+                // need to make sure they are actually inlined!
+                let irregular_bytes = vec![
+                    arr_sz(4, *def_enc),
+                        // embedded
+                        cbor_tag_sz(13, *def_enc),
+                            cbor_int(10, *def_enc),
+                        cbor_tag_sz(9, *def_enc),
+                            cbor_str_sz("wiorurri34h", str_enc.clone()),
+                        // single
+                        arr_def(2),
+                            cbor_tag(13),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                            cbor_str_sz("wiorurri34h", str_enc.clone()),
+                        // multiple
+                        arr_def(4),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                                cbor_str_sz("wiorurri34h", str_enc.clone()),
+                            cbor_tag_sz(13, *def_enc),
+                                cbor_int(10, *def_enc),
+                            cbor_tag_sz(9, *def_enc),
+                                cbor_str_sz("wiorurri34h", str_enc.clone()),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = PlainArrays::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn custom_serialization() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_8_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (5, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Four), (4, Sz::Inline), (0, Sz::Inline), (4, Sz::Inline), (0, Sz::One)]),
+        ];
+        for def_enc in &def_encodings {
+            let bytes_special_enc = StringLenSz::Indefinite(vec![(1, *def_enc); 4]);
+            for str_enc in &str_8_encodings {
+                let irregular_bytes = vec![
+                    arr_sz(5, *def_enc),
+                        cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                        cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                        cbor_str_sz("baadd00d", str_enc.clone()),
+                        cbor_tag(9),
+                            cbor_bytes_sz(vec![0xDE, 0xAD, 0xBE, 0xEF], bytes_special_enc.clone()),
+                        cbor_tag(9),
+                            cbor_str_sz("10241024", StringLenSz::Len(*def_enc))
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = StructWithCustomSerialization::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn wrapper_table() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in &def_encodings {
+            let irregular_bytes = vec![
+                map_sz(3, *def_enc),
+                    cbor_int(5, *def_enc),
+                        cbor_int(4, *def_enc),
+                    cbor_int(3, *def_enc),
+                        cbor_int(2, *def_enc),
+                    cbor_int(1, *def_enc),
+                        cbor_int(0, *def_enc),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let from_bytes = WrapperTable::from_cbor_bytes(&irregular_bytes).unwrap();
+            assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+        }
+    }
+
+    #[test]
+    fn wrapper_list() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        for def_enc in &def_encodings {
+            let irregular_bytes = vec![
+                arr_sz(5, *def_enc),
+                    cbor_int(5, *def_enc),
+                    cbor_int(4, *def_enc),
+                    cbor_int(3, *def_enc),
+                    cbor_int(2, *def_enc),
+                    cbor_int(1, *def_enc),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>();
+            let from_bytes = WrapperList::from_cbor_bytes(&irregular_bytes).unwrap();
+            assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
         }
     }
 }
