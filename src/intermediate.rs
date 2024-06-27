@@ -2121,22 +2121,34 @@ pub struct EnumVariant {
     pub name: VariantIdent,
     pub data: EnumVariantData,
     pub serialize_as_embedded_group: bool,
+    pub doc: Option<String>,
 }
 
 impl EnumVariant {
-    pub fn new(name: VariantIdent, rust_type: RustType, serialize_as_embedded_group: bool) -> Self {
+    pub fn new(
+        name: VariantIdent,
+        rust_type: RustType,
+        serialize_as_embedded_group: bool,
+        doc: Option<String>,
+    ) -> Self {
         Self {
             name,
             data: EnumVariantData::RustType(rust_type),
             serialize_as_embedded_group,
+            doc,
         }
     }
 
-    pub fn new_embedded(name: VariantIdent, embedded_record: RustRecord) -> Self {
+    pub fn new_embedded(
+        name: VariantIdent,
+        embedded_record: RustRecord,
+        doc: Option<String>,
+    ) -> Self {
         Self {
             name,
             data: EnumVariantData::Inlined(embedded_record),
             serialize_as_embedded_group: false,
+            doc,
         }
     }
 
@@ -2295,6 +2307,7 @@ pub struct RustStructConfig {
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
+    pub doc: Option<String>,
 }
 
 impl From<Option<&RuleMetadata>> for RustStructConfig {
@@ -2304,6 +2317,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_json: rule_metadata.custom_json,
                 custom_serialize: rule_metadata.custom_serialize.clone(),
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
+                doc: rule_metadata.comment.clone(),
             },
             None => Self::default(),
         }

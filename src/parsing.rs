@@ -779,14 +779,20 @@ pub fn create_variants_from_type_choices(
         .iter()
         .map(|choice| {
             let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
-            let base_name = match RuleMetadata::from(choice.type1.comments_after_type.as_ref()) {
+            let rule_metadata = RuleMetadata::from(choice.type1.comments_after_type.as_ref());
+            let base_name = match &rule_metadata {
                 RuleMetadata {
                     name: Some(name), ..
-                } => convert_to_camel_case(&name),
+                } => convert_to_camel_case(name),
                 _ => rust_type.for_variant().to_string(),
             };
             let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
-            EnumVariant::new(VariantIdent::new_custom(variant_name), rust_type, false)
+            EnumVariant::new(
+                VariantIdent::new_custom(variant_name),
+                rust_type,
+                false,
+                rule_metadata.comment.clone(),
+            )
         })
         .collect()
 }
@@ -1594,7 +1600,12 @@ pub fn parse_group(
                     });
                     let variant_ident =
                         VariantIdent::new_custom(convert_to_camel_case(&ident_name));
-                    EnumVariant::new(variant_ident, ty, serialize_as_embedded)
+                    EnumVariant::new(
+                        variant_ident,
+                        ty,
+                        serialize_as_embedded,
+                        rule_metadata.comment.clone(),
+                    )
                     // None => {
                     //     // TODO: Weird case, group choice with only one fixed-value field.
                     //     // What should we do here? In the future we could make this a
@@ -1632,15 +1643,27 @@ pub fn parse_group(
                                 RustStructType::Record(record) => record,
                                 _ => unreachable!(),
                             };
-                        EnumVariant::new_embedded(name, embedded_record)
+                        EnumVariant::new_embedded(
+                            name,
+                            embedded_record,
+                            rule_metadata.comment.clone(),
+                        )
                     } else {
-                        EnumVariant::new(name, variant_ident.into(), true)
+                        EnumVariant::new(
+                            name,
+                            variant_ident.into(),
+                            true,
+                            rule_metadata.comment.clone(),
+                        )
                     }
                 }
             })
             .collect();
-        let rule_metadata = RuleMetadata::from(
-            get_comment_after(parent_visitor, &CDDLType::from(group), None).as_ref(),
+        let rule_metadata = merge_metadata(
+            &RuleMetadata::from(
+                get_comment_after(parent_visitor, &CDDLType::from(group), None).as_ref(),
+            ),
+            parent_rule_metadata,
         );
         types.register_rust_struct(
             parent_visitor,

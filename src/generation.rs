@@ -5162,6 +5162,7 @@ fn codegen_struct(
         }
         wasm_new.vis("pub");
         let mut wasm_new_args = Vec::new();
+        let mut wasm_new_comments = Vec::new();
         for field in &record.fields {
             // Fixed values don't need constructors or getters or fields in the rust code
             if !field.rust_type.is_fixed_value() {
@@ -5249,6 +5250,9 @@ fn codegen_struct(
                             .from_wasm_boundary_clone(types, &field.name, false)
                             .into_iter(),
                     ));
+                    if let Some(comment) = &field.rule_metadata.comment {
+                        wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
+                    }
                     // do we want setters here later for mandatory types covered by new?
                     // getter
                     let mut getter = codegen::Function::new(&field.name);
@@ -5278,6 +5282,12 @@ fn codegen_struct(
                 wasm_new_args.join(", ")
             ));
         }
+        if !wasm_new_comments.is_empty() {
+            wasm_new.doc(wasm_new_comments.join("\n"));
+        }
+        if let Some(doc) = config.doc.as_ref() {
+            wrapper.s.doc(doc);
+        }
         wrapper.s_impl.push_fn(wasm_new);
         wrapper.push(gen_scope, types);
     }
@@ -5287,6 +5297,9 @@ fn codegen_struct(
     // Struct (fields) + constructor
     let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name, false, cli);
     native_struct.vis("pub");
+    if let Some(doc) = config.doc.as_ref() {
+        native_struct.doc(doc);
+    }
     let mut native_new = codegen::Function::new("new");
     let (ctor_ret, ctor_before) = if new_can_fail {
         ("Result<Self, DeserializeError>", "Ok(Self")
@@ -5298,6 +5311,7 @@ fn codegen_struct(
     if new_can_fail {
         native_new_block.after(")");
     }
+    let mut native_new_comments = Vec::new();
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
     for field in &record.fields {
@@ -5313,37 +5327,35 @@ fn codegen_struct(
         }
         // Fixed values only exist in (de)serialization code (outside of preserve-encodings=true)
         if !field.rust_type.is_fixed_value() {
-            if let Some(default_value) = &field.rust_type.config.default {
-                // field
-                native_struct.field(
-                    &format!("pub {}", field.name),
-                    field.rust_type.for_rust_member(types, false, cli),
-                );
+            let mut codegen_field = if let Some(default_value) = &field.rust_type.config.default {
                 // new
                 native_new_block.line(format!(
                     "{}: {},",
                     field.name,
                     default_value.to_primitive_str_assign()
                 ));
-            } else if field.optional {
                 // field
-                native_struct.field(
+                codegen::Field::new(
+                    &format!("pub {}", field.name),
+                    field.rust_type.for_rust_member(types, false, cli),
+                )
+            } else if field.optional {
+                // new
+                native_new_block.line(format!("{}: None,", field.name));
+                // field
+                codegen::Field::new(
                     &format!("pub {}", field.name),
                     format!(
                         "Option<{}>",
                         field.rust_type.for_rust_member(types, false, cli)
                     ),
-                );
-                // new
-                native_new_block.line(format!("{}: None,", field.name));
+                )
             } else {
-                // field
-                native_struct.field(
-                    &format!("pub {}", field.name),
-                    field.rust_type.for_rust_member(types, false, cli),
-                );
                 // new
                 native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
+                if let Some(comment) = &field.rule_metadata.comment {
+                    native_new_comments.push(format!("* `{}` - {}", field.name, comment));
+                }
                 new_arg_count += 1;
                 native_new_block.line(format!("{},", field.name));
                 if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
@@ -5363,8 +5375,20 @@ fn codegen_struct(
                         }
                     }
                 }
+                // field
+                codegen::Field::new(
+                    &format!("pub {}", field.name),
+                    field.rust_type.for_rust_member(types, false, cli),
+                )
+            };
+            if let Some(comment) = &field.rule_metadata.comment {
+                codegen_field.doc(comment);
             }
+            native_struct.push_field(codegen_field);
         }
+    }
+    if !native_new_comments.is_empty() {
+        native_new.doc(native_new_comments.join("\n"));
     }
     let len_encoding_var = if cli.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{name}Encoding")));
@@ -6850,6 +6874,9 @@ fn generate_enum(
     // rust enum containing the data
     let mut e = codegen::Enum::new(name.to_string());
     e.vis("pub");
+    if let Some(doc) = config.doc.as_ref() {
+        e.doc(doc);
+    }
     let mut e_impl = codegen::Impl::new(name.to_string());
     // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
@@ -6959,6 +6986,10 @@ fn generate_enum(
                     v.named(&name_with_macros, type_str);
                 }
             }
+        }
+        if let Some(doc) = &variant.doc {
+            // we must repurpose annotations since there is no doc support on enum variants
+            v.annotation(format!("/// {doc}"));
         }
         e.push_variant(v);
         // new (particularly useful if we have encoding variables)

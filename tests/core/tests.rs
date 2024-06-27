@@ -562,4 +562,19 @@ mod tests {
         let from_bytes = WrapperList::from_cbor_bytes(&bytes).unwrap();
         deser_test(&from_bytes);
     }
+
+    #[test]
+    fn docs() {
+        use std::str::FromStr;
+        // reading the file is the only way to test for comments being generated
+        let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
+        // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
+        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        assert!(lib_rs.contains("this is a field-level comment"));
+        assert!(lib_rs.contains("bar is a u64"));
+        assert!(lib_rs.contains("struct documentation here"));
+        assert!(lib_rs.contains("comment-about-first"));
+        assert!(lib_rs.contains("comments about second"));
+        assert!(lib_rs.contains("type-level comment"));
+    }
 }
