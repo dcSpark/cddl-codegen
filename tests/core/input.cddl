@@ -265,3 +265,15 @@ struct_with_custom_serialization = [
   tagged1: #6.9(custom_bytes),
   tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]
+
+docs = [
+  foo: text, ; @doc this is a field-level comment
+  bar: uint, ; @doc bar is a u64
+] ; @doc struct documentation here
+
+docs_groupchoice = [
+  ; @name first @doc comment-about-first
+  0, uint //
+  ; @doc comments about second @name second
+  text
+] ; @doc type-level comment
