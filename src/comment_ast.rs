@@ -15,6 +15,7 @@ pub struct RuleMetadata {
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
+    pub comment: Option<String>,
 }
 
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
@@ -53,6 +54,13 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
             (val @ Some(_), _) => val.cloned(),
             (_, val) => val.cloned(),
         },
+        comment: match (r1.comment.as_ref(), r2.comment.as_ref()) {
+            (Some(val1), Some(val2)) => {
+                panic!("Key \"comment\" specified twice: {:?} {:?}", val1, val2)
+            }
+            (val @ Some(_), _) => val.cloned(),
+            (_, val) => val.cloned(),
+        },
     };
     merged.verify();
     merged
@@ -66,6 +74,7 @@ enum ParseResult {
     CustomJson,
     CustomSerialize(String),
     CustomDeserialize(String),
+    Comment(String),
 }
 
 impl RuleMetadata {
@@ -120,6 +129,14 @@ impl RuleMetadata {
                         }
                     }
                 }
+                ParseResult::Comment(comment) => match base.comment.as_ref() {
+                    Some(old) => {
+                        panic!("Key \"comment\" specified twice: {:?} {:?}", old, comment)
+                    }
+                    None => {
+                        base.comment = Some(comment.to_string());
+                    }
+                },
             }
         }
         base.verify();
@@ -188,6 +205,13 @@ fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
     ))
 }
 
+fn tag_comment(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@doc")(input)?;
+    let (input, comment) = take_while1(|c| c != '@')(input)?;
+
+    Ok((input, ParseResult::Comment(comment.trim().to_string())))
+}
+
 fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, result) = alt((
@@ -198,6 +222,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_custom_json,
         tag_custom_serialize,
         tag_custom_deserialize,
+        tag_comment,
     ))(input)?;
 
     Ok((input, result))
@@ -242,6 +267,7 @@ fn parse_comment_name() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -261,6 +287,7 @@ fn parse_comment_newtype() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -280,6 +307,7 @@ fn parse_comment_newtype_and_name() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -299,6 +327,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -318,6 +347,7 @@ fn parse_comment_used_as_key() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -337,6 +367,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -356,6 +387,7 @@ fn parse_comment_name_noalias() {
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -375,6 +407,7 @@ fn parse_comment_newtype_and_custom_json() {
                 custom_json: true,
                 custom_serialize: None,
                 custom_deserialize: None,
+                comment: None,
             }
         ))
     );
@@ -400,6 +433,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                comment: None,
             }
         ))
     );
@@ -409,7 +443,7 @@ fn parse_comment_custom_serialize_deserialize() {
 #[test]
 fn parse_comment_all_except_no_alias() {
     assert_eq!(
-        rule_metadata("@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json"),
+        rule_metadata("@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json @doc this is a doc comment"),
         Ok((
             "",
             RuleMetadata {
@@ -420,6 +454,7 @@ fn parse_comment_all_except_no_alias() {
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                comment: Some("this is a doc comment".to_string()),
             }
         ))
     );
