@@ -260,7 +260,11 @@ casing_test = [
 	; @name NFT
 	1 //
 	; @name IPAddress
-	2
+	2 //
+  ; @name ShelleyMA
+  3 //
+  ; @name VRF_vkey
+  4
 ]
 
 custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes

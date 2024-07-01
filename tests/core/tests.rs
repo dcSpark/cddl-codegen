@@ -509,8 +509,15 @@ mod tests {
 
     #[test]
     fn casing_test() {
-        CasingTest::new_nft();
-        CasingTest::new_ip_address();
+        // these are just testing that these exist under these names
+        let _ = CasingTest::new_nft();
+        let _ = CasingTest::NFT;
+        let _ = CasingTest::new_ip_address();
+        let _ = CasingTest::IPAddress;
+        let _ = CasingTest::new_shelley_ma();
+        let _ = CasingTest::ShelleyMA;
+        let _ = CasingTest::new_vrf_vkey();
+        let _ = CasingTest::VRFVkey;
     }
   
     fn custom_serialization() {
