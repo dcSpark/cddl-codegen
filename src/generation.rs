@@ -3344,6 +3344,9 @@ impl GenerationScope {
                 let variant_arg = variant.name_as_var();
                 let mut new_func = codegen::Function::new(&format!("new_{variant_arg}"));
                 new_func.vis("pub");
+                if let Some(doc) = &variant.doc {
+                    new_func.doc(doc);
+                }
                 let can_fail = variant.rust_type().needs_bounds_check_if_inlined(types);
                 if !variant.rust_type().is_fixed_value() {
                     new_func.arg(&variant_arg, variant.rust_type().for_wasm_param(types));
@@ -6225,7 +6228,9 @@ fn codegen_group_choices(
             // TODO: verify if variant.serialize_as_embedded_group impacts ctor generation
             let mut new_func = codegen::Function::new(&format!("new_{}", variant.name_as_var()));
             new_func.vis("pub");
-
+            if let Some(doc) = &variant.doc {
+                new_func.doc(doc);
+            }
             let mut output_comma = false;
             // We only want to generate Variant::new() calls when we created a special struct
             // for the variant, which happens in the general case for multi-field group choices
@@ -6995,6 +7000,9 @@ fn generate_enum(
         // new (particularly useful if we have encoding variables)
         let mut new_func = codegen::Function::new(&format!("new_{variant_var_name}"));
         new_func.vis("pub");
+        if let Some(doc) = &variant.doc {
+            new_func.doc(doc);
+        }
         let mut output_comma = false;
         let (mut init_fields, can_fail) = match &variant.data {
             EnumVariantData::RustType(ty) => {
