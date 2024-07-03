@@ -508,6 +508,18 @@ mod tests {
     }
 
     #[test]
+    fn casing_test() {
+        // these are just testing that these exist under these names
+        let _ = CasingTest::new_nft();
+        let _ = CasingTest::NFT;
+        let _ = CasingTest::new_ip_address();
+        let _ = CasingTest::IPAddress;
+        let _ = CasingTest::new_shelley_ma();
+        let _ = CasingTest::ShelleyMA;
+        let _ = CasingTest::new_vrf_vkey();
+        let _ = CasingTest::VRFVkey;
+    }
+  
     fn custom_serialization() {
         let struct_with_custom_bytes = StructWithCustomSerialization::new(
             vec![0xCA, 0xFE, 0xF0, 0x0D],
