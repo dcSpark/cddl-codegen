@@ -256,6 +256,17 @@ enum_opt_embed_fields = [
   1, ? overlapping_inlined, #6.13(13)
 ]
 
+casing_test = [
+	; @name NFT
+	1 //
+	; @name IPAddress
+	2 //
+  ; @name ShelleyMA
+  3 //
+  ; @name VRF_vkey
+  4
+]
+
 custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
 
 struct_with_custom_serialization = [
