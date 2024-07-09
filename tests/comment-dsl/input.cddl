@@ -21,7 +21,7 @@ typechoice =
     /
     [1, bytes] ; @name case_2
 
-protocol_magic = uint ; @newtype
+protocol_magic = uint ; @newtype get
 
 typechoice_variants =
     text      ; @name case_1

@@ -9,7 +9,8 @@ use nom::{
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
-    pub is_newtype: bool,
+    /// None = not newtype, Some(Some) = generate getter, Some(None) = no getter
+    pub newtype: Option<Option<String>>,
     pub no_alias: bool,
     pub used_as_key: bool,
     pub custom_json: bool,
@@ -18,56 +19,46 @@ pub struct RuleMetadata {
     pub comment: Option<String>,
 }
 
-pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
-    let merged = RuleMetadata {
-        name: match (r1.name.as_ref(), r2.name.as_ref()) {
+macro_rules! merge_metadata_fields {
+    ($lhs:expr, $rhs:expr, $field_name:literal) => {
+        match ($lhs.as_ref(), $rhs.as_ref()) {
             (Some(val1), Some(val2)) => {
-                panic!("Key \"name\" specified twice: {:?} {:?}", val1, val2)
+                panic!(
+                    concat!("Key \"", $field_name, "\" specified twice: {:?} {:?}"),
+                    val1, val2
+                )
             }
             (val @ Some(_), _) => val.cloned(),
             (_, val) => val.cloned(),
-        },
-        is_newtype: r1.is_newtype || r2.is_newtype,
+        }
+    };
+}
+
+pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
+    let merged = RuleMetadata {
+        name: merge_metadata_fields!(r1.name, r2.name, "name"),
+        newtype: merge_metadata_fields!(r1.newtype, r2.newtype, "newtype"),
         no_alias: r1.no_alias || r2.no_alias,
         used_as_key: r1.used_as_key || r2.used_as_key,
         custom_json: r1.custom_json || r2.custom_json,
-        custom_serialize: match (r1.custom_serialize.as_ref(), r2.custom_serialize.as_ref()) {
-            (Some(val1), Some(val2)) => {
-                panic!(
-                    "Key \"custom_serialize\" specified twice: {:?} {:?}",
-                    val1, val2
-                )
-            }
-            (val @ Some(_), _) => val.cloned(),
-            (_, val) => val.cloned(),
-        },
-        custom_deserialize: match (
-            r1.custom_deserialize.as_ref(),
-            r2.custom_deserialize.as_ref(),
-        ) {
-            (Some(val1), Some(val2)) => {
-                panic!(
-                    "Key \"custom_deserialize\" specified twice: {:?} {:?}",
-                    val1, val2
-                )
-            }
-            (val @ Some(_), _) => val.cloned(),
-            (_, val) => val.cloned(),
-        },
-        comment: match (r1.comment.as_ref(), r2.comment.as_ref()) {
-            (Some(val1), Some(val2)) => {
-                panic!("Key \"comment\" specified twice: {:?} {:?}", val1, val2)
-            }
-            (val @ Some(_), _) => val.cloned(),
-            (_, val) => val.cloned(),
-        },
+        custom_serialize: merge_metadata_fields!(
+            r1.custom_serialize,
+            r2.custom_serialize,
+            "custom_serialize"
+        ),
+        custom_deserialize: merge_metadata_fields!(
+            r1.custom_deserialize,
+            r2.custom_deserialize,
+            "custom_deserialize"
+        ),
+        comment: merge_metadata_fields!(r1.comment, r2.comment, "comment"),
     };
     merged.verify();
     merged
 }
 
 enum ParseResult {
-    NewType,
+    NewType(Option<String>),
     Name(String),
     DontGenAlias,
     UsedAsKey,
@@ -77,21 +68,30 @@ enum ParseResult {
     Comment(String),
 }
 
+macro_rules! merge_parse_fields {
+    ($base:expr, $new:expr, $field_name:literal) => {
+        match $base.as_ref() {
+            Some(old) => {
+                panic!(
+                    concat!("Key \"", $field_name, "\" specified twice: {:?} {:?}"),
+                    old, $new
+                )
+            }
+            None => {
+                $base = Some($new.to_owned());
+            }
+        }
+    };
+}
+
 impl RuleMetadata {
     fn from_parse_results(results: &[ParseResult]) -> RuleMetadata {
         let mut base = RuleMetadata::default();
         for result in results {
             match result {
-                ParseResult::Name(name) => match base.name.as_ref() {
-                    Some(old_name) => {
-                        panic!("Key \"name\" specified twice: {:?} {:?}", old_name, name)
-                    }
-                    None => {
-                        base.name = Some(name.to_string());
-                    }
-                },
-                ParseResult::NewType => {
-                    base.is_newtype = true;
+                ParseResult::Name(name) => merge_parse_fields!(base.name, name, "name"),
+                ParseResult::NewType(newtype) => {
+                    merge_parse_fields!(base.newtype, newtype, "newtype")
                 }
                 ParseResult::DontGenAlias => {
                     base.no_alias = true;
@@ -104,39 +104,16 @@ impl RuleMetadata {
                     base.custom_json = true;
                 }
                 ParseResult::CustomSerialize(custom_serialize) => {
-                    match base.custom_serialize.as_ref() {
-                        Some(old) => {
-                            panic!(
-                                "Key \"custom_serialize\" specified twice: {:?} {:?}",
-                                old, custom_serialize
-                            )
-                        }
-                        None => {
-                            base.custom_serialize = Some(custom_serialize.to_string());
-                        }
-                    }
+                    merge_parse_fields!(base.custom_serialize, custom_serialize, "custom_serialize")
                 }
-                ParseResult::CustomDeserialize(custom_deserialize) => {
-                    match base.custom_deserialize.as_ref() {
-                        Some(old) => {
-                            panic!(
-                                "Key \"custom_deserialize\" specified twice: {:?} {:?}",
-                                old, custom_deserialize
-                            )
-                        }
-                        None => {
-                            base.custom_deserialize = Some(custom_deserialize.to_string());
-                        }
-                    }
+                ParseResult::CustomDeserialize(custom_deserialize) => merge_parse_fields!(
+                    base.custom_deserialize,
+                    custom_deserialize,
+                    "custom_deserialize"
+                ),
+                ParseResult::Comment(comment) => {
+                    merge_parse_fields!(base.comment, comment, "comment")
                 }
-                ParseResult::Comment(comment) => match base.comment.as_ref() {
-                    Some(old) => {
-                        panic!("Key \"comment\" specified twice: {:?} {:?}", old, comment)
-                    }
-                    None => {
-                        base.comment = Some(comment.to_string());
-                    }
-                },
             }
         }
         base.verify();
@@ -144,7 +121,7 @@ impl RuleMetadata {
     }
 
     fn verify(&self) {
-        if self.is_newtype && self.no_alias {
+        if self.newtype.is_some() && self.no_alias {
             // this would make no sense anyway as with newtype we're already not making an alias
             panic!("cannot use both @newtype and @no_alias on the same alias");
         }
@@ -161,8 +138,16 @@ fn tag_name(input: &str) -> IResult<&str, ParseResult> {
 
 fn tag_newtype(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@newtype")(input)?;
-
-    Ok((input, ParseResult::NewType))
+    // to get around type annotations
+    fn parse_newtype(input: &str) -> IResult<&str, ParseResult> {
+        let (input, _) = take_while(char::is_whitespace)(input)?;
+        let (input, getter) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+        Ok((input, ParseResult::NewType(Some(getter.trim().to_owned()))))
+    }
+    match parse_newtype(input) {
+        Ok(ret) => Ok(ret),
+        Err(_) => Ok((input.trim_start(), ParseResult::NewType(None))),
+    }
 }
 
 fn tag_no_alias(input: &str) -> IResult<&str, ParseResult> {
@@ -261,7 +246,7 @@ fn parse_comment_name() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
-                is_newtype: false,
+                newtype: None,
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
@@ -281,9 +266,49 @@ fn parse_comment_newtype() {
             "",
             RuleMetadata {
                 name: None,
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_comment_newtype_getter_before() {
+    assert_eq!(
+        rule_metadata("@newtype custom_getter @used_as_key"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: Some(Some("custom_getter".to_owned())),
+                no_alias: false,
+                used_as_key: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_comment_newtype_getter_after() {
+    assert_eq!(
+        rule_metadata("@used_as_key @newtype custom_getter"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: Some(Some("custom_getter".to_owned())),
+                no_alias: false,
+                used_as_key: true,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -301,7 +326,7 @@ fn parse_comment_newtype_and_name() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
@@ -321,7 +346,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: true,
                 custom_json: false,
@@ -341,7 +366,7 @@ fn parse_comment_used_as_key() {
             "",
             RuleMetadata {
                 name: None,
-                is_newtype: false,
+                newtype: None,
                 no_alias: false,
                 used_as_key: true,
                 custom_json: false,
@@ -361,7 +386,7 @@ fn parse_comment_newtype_and_name_inverse() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
@@ -381,7 +406,7 @@ fn parse_comment_name_noalias() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
-                is_newtype: false,
+                newtype: None,
                 no_alias: true,
                 used_as_key: false,
                 custom_json: false,
@@ -401,7 +426,7 @@ fn parse_comment_newtype_and_custom_json() {
             "",
             RuleMetadata {
                 name: None,
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
                 custom_json: true,
@@ -427,7 +452,7 @@ fn parse_comment_custom_serialize_deserialize() {
             "",
             RuleMetadata {
                 name: None,
-                is_newtype: false,
+                newtype: None,
                 no_alias: false,
                 used_as_key: false,
                 custom_json: false,
@@ -448,7 +473,7 @@ fn parse_comment_all_except_no_alias() {
             "",
             RuleMetadata {
                 name: Some("baz".to_string()),
-                is_newtype: true,
+                newtype: Some(None),
                 no_alias: false,
                 used_as_key: true,
                 custom_json: true,

@@ -7560,12 +7560,14 @@ fn generate_wrapper_struct(
                 ToWasmBoundaryOperations::format(ops.into_iter())
             ));
         }
-        let mut get = codegen::Function::new("get");
-        get.vis("pub")
-            .arg_ref_self()
-            .ret(field_type.for_wasm_return(types))
-            .line(field_type.to_wasm_boundary(types, "self.0.get()", false));
-        wrapper.s_impl.push_fn(get);
+        if let Some(Some(getter)) = struct_config.newtype_getter.as_ref() {
+            let mut get = codegen::Function::new(getter);
+            get.vis("pub")
+                .arg_ref_self()
+                .ret(field_type.for_wasm_return(types))
+                .line(field_type.to_wasm_boundary(types, &format!("self.0.{getter}()"), false));
+            wrapper.s_impl.push_fn(get);
+        }
         wrapper.push(gen_scope, types);
     }
 
@@ -7734,29 +7736,28 @@ fn generate_wrapper_struct(
         }
         Some(enc_fields)
     } else {
-        s.tuple_field(
-            Some("pub".to_string()),
-            field_type.for_rust_member(types, false, cli),
-        );
+        s.tuple_field(None, field_type.for_rust_member(types, false, cli));
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
     if field_type.is_copy(types) && !cli.preserve_encodings {
         s.derive("Copy");
     }
-    let mut get = codegen::Function::new("get");
-    get.vis("pub").arg_ref_self();
-    if field_type.is_copy(types) {
-        get.ret(field_type.for_rust_member(types, false, cli))
-            .line(field_type.clone_if_not_copy(types, self_var));
-    } else {
-        get.ret(format!(
-            "&{}",
-            field_type.for_rust_member(types, false, cli)
-        ))
-        .line(format!("&{self_var}"));
+    if let Some(Some(getter)) = struct_config.newtype_getter.as_ref() {
+        let mut get = codegen::Function::new(getter);
+        get.vis("pub").arg_ref_self();
+        if field_type.is_copy(types) {
+            get.ret(field_type.for_rust_member(types, false, cli))
+                .line(field_type.clone_if_not_copy(types, self_var));
+        } else {
+            get.ret(format!(
+                "&{}",
+                field_type.for_rust_member(types, false, cli)
+            ))
+            .line(format!("&{self_var}"));
+        }
+        s_impl.push_fn(get);
     }
-    s_impl.push_fn(get);
     let mut ser_func = make_serialization_function("serialize", cli);
     let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
     gen_scope.generate_serialize(

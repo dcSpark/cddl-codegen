@@ -517,7 +517,9 @@ fn parse_type(
                                     min_max.1,
                                     ident_to_primitive(&cddl_ident).unwrap(),
                                 );
-                                if ranged_type.config.bounds.is_some() || rule_metadata.is_newtype {
+                                if ranged_type.config.bounds.is_some()
+                                    || rule_metadata.newtype.is_some()
+                                {
                                     // without bounds since passed in other param
                                     ranged_type.config.bounds = None;
                                     // has non-rust-primitive matching bounds
@@ -603,7 +605,7 @@ fn parse_type(
                                         ))
                                     }
                                     None => {
-                                        if rule_metadata.is_newtype {
+                                        if rule_metadata.newtype.is_some() {
                                             types.register_rust_struct(
                                                 parent_visitor,
                                                 RustStruct::new_wrapper(
@@ -1469,7 +1471,7 @@ fn parse_group_choice(
     };
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
         GroupParsingType::HomogenousArray(element_type) => {
-            if rule_metadata.is_newtype {
+            if rule_metadata.newtype.is_some() {
                 // generate newtype over array
                 RustStruct::new_wrapper(
                     name.clone(),
@@ -1484,7 +1486,7 @@ fn parse_group_choice(
             }
         }
         GroupParsingType::HomogenousMap(key_type, value_type) => {
-            if rule_metadata.is_newtype {
+            if rule_metadata.newtype.is_some() {
                 // generate newtype over map
                 RustStruct::new_wrapper(
                     name.clone(),
@@ -1506,7 +1508,7 @@ fn parse_group_choice(
         }
         GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
             assert!(
-                !rule_metadata.is_newtype,
+                rule_metadata.newtype.is_none(),
                 "Can only use @newtype on primtives + heterogenious arrays/maps"
             );
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
@@ -1551,7 +1553,7 @@ pub fn parse_group(
         if generic_params.is_some() {
             todo!("{}: generic group choices not supported", name);
         }
-        assert!(!parent_rule_metadata.is_newtype);
+        assert!(parent_rule_metadata.newtype.is_none());
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
 

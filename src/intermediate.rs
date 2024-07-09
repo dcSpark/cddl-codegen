@@ -2308,6 +2308,7 @@ pub struct RustStructConfig {
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
     pub doc: Option<String>,
+    pub newtype_getter: Option<Option<String>>,
 }
 
 impl From<Option<&RuleMetadata>> for RustStructConfig {
@@ -2318,6 +2319,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_serialize: rule_metadata.custom_serialize.clone(),
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
                 doc: rule_metadata.comment.clone(),
+                newtype_getter: rule_metadata.newtype.clone(),
             },
             None => Self::default(),
         }

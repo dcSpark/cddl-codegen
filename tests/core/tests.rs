@@ -576,6 +576,12 @@ mod tests {
     }
 
     #[test]
+    fn wrapper_getter() {
+        let x = WrapperInt::new(128);
+        assert_eq!(128, x.custom_getter());
+    }
+
+    #[test]
     fn docs() {
         use std::str::FromStr;
         // reading the file is the only way to test for comments being generated
