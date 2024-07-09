@@ -53,6 +53,16 @@ script = [
 
 With code like `foo = uint` this creates an alias e.g. `pub type Foo = u64;` in rust. When we use `foo = uint ; @newtype` it instead creates a `pub struct Foo(u64);`.
 
+`@newtype` can also optionally specify a getter function e.g. `foo = uint ; @newtype custom_getter` will generate:
+
+```rust
+impl Foo {
+    pub fn custom_getter(&self) -> u64 {
+        self.0
+    }
+}
+```
+
 ## @no_alias
 
 ```cddl

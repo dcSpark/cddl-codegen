@@ -187,6 +187,7 @@ top_level_single_elem = [uint]
 
 wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
+wrapper_int = uint ; @newtype custom_getter
 
 overlapping_inlined = [
 	; @name one
