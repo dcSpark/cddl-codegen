@@ -2934,21 +2934,21 @@ impl GenericInstance {
         match &mut instance.variant {
             RustStructType::Record(record) => {
                 for field in record.fields.iter_mut() {
-                    field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
+                    Self::resolve_type(&resolved_args, &mut field.rust_type);
                 }
             }
             RustStructType::Table { domain, range } => {
-                *domain = Self::resolve_type(&resolved_args, domain);
-                *range = Self::resolve_type(&resolved_args, range);
+                Self::resolve_type(&resolved_args, domain);
+                Self::resolve_type(&resolved_args, range);
             }
             RustStructType::Array { element_type } => {
-                *element_type = Self::resolve_type(&resolved_args, element_type);
+                Self::resolve_type(&resolved_args, element_type);
             }
             RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
                 for variant in variants.iter_mut() {
                     match &mut variant.data {
                         EnumVariantData::RustType(ty) => {
-                            *ty = Self::resolve_type(&resolved_args, ty);
+                            Self::resolve_type(&resolved_args, ty);
                         }
                         EnumVariantData::Inlined(_) => unreachable!(),
                     }
@@ -2973,13 +2973,25 @@ impl GenericInstance {
         GenericResolved::Resolved(instance)
     }
 
-    fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
-        if let ConceptualRustType::Rust(ident) = &orig.conceptual_type {
-            if let Some(resolved_type) = args.get(ident) {
-                return (*resolved_type).clone();
+    fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &mut RustType) {
+        match &mut orig.conceptual_type {
+            ConceptualRustType::Rust(ident) => {
+                if let Some(resolved_type) = args.get(ident) {
+                    *orig = (*resolved_type).clone();
+                }
             }
+            ConceptualRustType::Array(element_type) => {
+                Self::resolve_type(args, element_type);
+            }
+            ConceptualRustType::Optional(inner_type) => {
+                Self::resolve_type(args, inner_type);
+            }
+            ConceptualRustType::Map(domain, range) => {
+                Self::resolve_type(args, domain);
+                Self::resolve_type(args, range);
+            }
+            _ => {}
         }
-        orig.clone()
     }
 }
 
