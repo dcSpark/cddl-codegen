@@ -17,17 +17,13 @@ cbor_event = "2.4.0"
 # we don't update due to https://github.com/anweiss/cddl/issues/222
 cddl = "=0.9.1"
 clap = { version = "4.5", features = ["derive"] }
+# dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
 nom = "8"
 pathdiff = "0.2.3"
 # default-features=false to drop the optional `regex` dep; `real-sys` (the actual lookup impl) is
 # off by default in which 8, so enable it explicitly.
 which = { version = "8", optional = true, default-features = false, features = ["real-sys"] }
-# Not used directly: declared so the `codegen` dep's `syn` (pinned to 1.x) gets the `full` feature
-# via normal-dep unification. Edition 2024 defaults to the v2 feature resolver, which (unlike v1)
-# no longer leaks `full` in from proc-macro deps, so `codegen`'s syn parser panics without this.
-# Must match codegen's syn major version (1.x); revisit when codegen moves to syn 2.x.
-syn = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 # golden snapshot tests of generated output (see tests/*/snapshots/)

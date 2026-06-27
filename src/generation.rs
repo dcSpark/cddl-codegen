@@ -1417,9 +1417,7 @@ impl GenerationScope {
     /// Used for all the generated structs and associated traits (besides serialization ones)
     pub fn rust(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
         let scope_name = types.scope(ident).to_owned();
-        self.rust_scopes
-            .entry(scope_name)
-            .or_insert(codegen::Scope::new())
+        self.rust_scopes.entry(scope_name).or_default()
     }
 
     /// Scope header above the rest of the "lib" rust scope.
@@ -1436,9 +1434,7 @@ impl GenerationScope {
         ident: &RustIdent,
     ) -> &mut codegen::Scope {
         let scope_name = types.scope(ident).to_owned();
-        self.serialize_scopes
-            .entry(scope_name)
-            .or_insert(codegen::Scope::new())
+        self.serialize_scopes.entry(scope_name).or_default()
     }
 
     /// Serialization scope for lib.cddl
@@ -1451,9 +1447,7 @@ impl GenerationScope {
     /// Used for all the generated WASM wrapper structs and associated traits
     pub fn wasm(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
         let scope_name = types.scope(ident).to_owned();
-        self.wasm_scopes
-            .entry(scope_name)
-            .or_insert(codegen::Scope::new())
+        self.wasm_scopes.entry(scope_name).or_default()
     }
 
     /// Scope header above the rest of the "lib" WASM scope.
@@ -1470,9 +1464,7 @@ impl GenerationScope {
         ident: &RustIdent,
     ) -> &mut codegen::Scope {
         let scope = types.scope(ident).clone();
-        self.cbor_encodings_scopes
-            .entry(scope)
-            .or_insert(codegen::Scope::new())
+        self.cbor_encodings_scopes.entry(scope).or_default()
     }
 
     /// Write code for serializing {serializing_rust_type} directly into {body}
@@ -3742,7 +3734,7 @@ fn declare_modules(
             for (i, component) in components.iter().enumerate().skip(1) {
                 gen_scopes
                     .entry(module_scope.parents(i))
-                    .or_insert(codegen::Scope::new())
+                    .or_default()
                     .raw(format!("pub mod {};", component));
             }
         }
