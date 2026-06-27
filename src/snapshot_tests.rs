@@ -142,6 +142,37 @@ fn feature_corpus() {
     }
 }
 
+/// Generation must be deterministic: same input + flags → byte-identical output every run.
+/// Emission is all-`BTreeMap`/`BTreeSet` (never `HashMap`) precisely so output can't depend on
+/// hash iteration order. This guards against a future `HashMap` silently reintroducing
+/// nondeterminism — which would otherwise surface only as intermittently flaky snapshots. Two
+/// runs in one process suffice: each `HashMap` instance gets a fresh random seed, so a hash-order
+/// dependency would diverge between the runs. Rich whole-program inputs across the three emission
+/// profiles (default/preserve/json) exercise the flag-gated emission paths too.
+#[test]
+fn generation_is_deterministic() {
+    let cases: &[(&str, &[&str])] = &[
+        ("tests/core/input.cddl", &[]),
+        (
+            "tests/preserve-encodings/input.cddl",
+            &["--preserve-encodings=true"],
+        ),
+        (
+            "tests/json/input.cddl",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ];
+    for (input, extra) in cases {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let first = crate::api::generated_strings(&cli).unwrap();
+        let second = crate::api::generated_strings(&cli).unwrap();
+        assert_eq!(
+            first, second,
+            "nondeterministic generation for {input} — a HashMap on the IR/emission path?"
+        );
+    }
+}
+
 /// The existing integration inputs, each under the flag profile it is known-safe with (the same
 /// pairings the heavy integration tests use). Captures the full output to cover cross-feature
 /// interactions, the multifile scope/module path, and the edition/deps Cargo.toml logic.

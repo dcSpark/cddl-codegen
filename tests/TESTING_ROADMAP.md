@@ -32,13 +32,20 @@ The foundation is solid and independently validated:
    `CARGO_TARGET_DIR`. Note for this repo: corpus inputs using `int` need the extern `Int` defs
    (see `tests/external_rust_defs`), so either provide them or keep an `int`-free check subset.
 
-2. **Golden hex known-answer vectors.** *(~a few hours)* `hex-literal`, ~a dozen hand-verified
-   `(value ↔ exact bytes)` pairs anchored to RFC 8949 / the CDDL spec. The only cheap guard
-   against a *symmetric* encode+decode bug that round-trip tests structurally cannot see.
+2. ~~**Golden hex known-answer vectors.**~~ **Done** — `tests/golden_hex/` (input.cddl + tests.rs,
+   wired as the `golden_hex` integration test): 39 `(value ↔ exact bytes)` pairs hand-derived from
+   RFC 8949 Appendix A, asserting both encode and decode against spec-anchored bytes. Catches a
+   *symmetric* encode+decode bug that round-trip tests structurally cannot see. Used raw byte
+   slices (no `hex-literal` dep needed). Covers every major type emitted under default flags
+   (0 uint incl. u64::MAX, 1 nint, 2 bstr, 3 tstr, 4 array+nesting, 5 map text/int keys, 6 tag,
+   7 bool/null + f64 float). Deliberately not covered (not applicable to default output):
+   indefinite-length encodings, half/single floats (generator uses f64), and `undefined`/simple
+   values (unsupported construct). **Full coverage map vs RFC 8949 Appendix A** (covered /
+   coverable-recommended / N/A, per row): `tests/golden_hex/COVERAGE.md`.
 
-3. **Generate-twice determinism test.** *(trivial)* `assert_eq!(emit(x), emit(x))`. We're already
-   all-`BTreeMap` (no hash-order nondeterminism), so this is cheap insurance + a guard against a
-   future `HashMap` creeping in.
+3. ~~**Generate-twice determinism test.**~~ **Done** — `generation_is_deterministic` in
+   `snapshot_tests.rs` generates the rich whole-program inputs twice each (default/preserve/json)
+   and asserts byte-identical output, guarding against a future `HashMap` on the emission path.
 
 ### Tier 2 — the strategic investment (a focused multi-day effort)
 
