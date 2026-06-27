@@ -1,0 +1,18 @@
+; Coverage fixture for the JS-side JSON contract (roundtrip.mjs): every field is a place where
+; to_json_value() (serde-wasm-bindgen json_compatible) could diverge from JSON.parse(to_json())
+; (serde_json). The discriminators that fail under the *default* serde-wasm-bindgen serializer:
+;   - maps (a_map, nested, and the externally-tagged top_choice enum) -> JS Map, not object
+;   - absent/null optionals (opt_text, maybe_num) -> undefined, not null
+; The rest (arrays, bytes-as-number-array, bool, ints) agree under both serializers and are here as
+; fidelity locks against future regressions.
+foo = {
+  a_map: { * text => uint },        ; string-keyed map -> JSON object
+  a_list: [* uint],                 ; array of primitives
+  nested: [* { * text => uint }],   ; map nested inside an array
+  a_bytes: bytes,                   ; Vec<u8> -> JSON number array
+  ? opt_text: text,                 ; optional: tested present AND absent
+  maybe_num: uint / null,           ; nullable: tested with a value AND null
+  flag: bool,
+}
+
+top_choice = uint / text            ; type choice -> externally-tagged enum (object)

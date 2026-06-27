@@ -6,6 +6,14 @@ use std::io::Write;
 
 /// If you have multiple tests that use the same directory, please use different export_suffix
 /// for each one or else the tests will be flaky as they are run concurrently.
+fn tool_exists(bin: &str) -> bool {
+    std::process::Command::new(bin)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -142,7 +150,7 @@ fn run_test(
         println!("   ------ testing (wasm) ------");
         let cargo_test_wasm = std::process::Command::new("cargo")
             .arg("test")
-            .current_dir(wasm_export_dir)
+            .current_dir(&wasm_export_dir)
             .output()
             .unwrap();
         if !cargo_test_wasm.status.success() {
@@ -159,7 +167,7 @@ fn run_test(
     } else if wasm_export_dir.exists() {
         let cargo_build_wasm = std::process::Command::new("cargo")
             .arg("build")
-            .current_dir(wasm_export_dir)
+            .current_dir(&wasm_export_dir)
             .output()
             .unwrap();
         if !cargo_build_wasm.status.success() {
@@ -169,6 +177,47 @@ fn run_test(
             );
         }
         assert!(cargo_build_wasm.status.success());
+    }
+    // If the test ships a node round-trip script, build the bindings with wasm-pack and run them
+    // under node. This is the ONLY layer that executes generated bindings in a JS engine, so it's
+    // what catches Rust<->JS serialization-shape bugs (e.g. serde-wasm-bindgen emitting a JS `Map`
+    // where the JSON/TS type says object) that `cargo build` and the snapshot suite can't observe.
+    let roundtrip_script = test_path.join("roundtrip.mjs");
+    if roundtrip_script.exists() {
+        if tool_exists("wasm-pack") && tool_exists("node") {
+            println!("   ------ testing (wasm json roundtrip) ------");
+            let wasm_pack = std::process::Command::new("wasm-pack")
+                .args(["build", "--target=nodejs", "--dev"])
+                .current_dir(&wasm_export_dir)
+                .output()
+                .unwrap();
+            if !wasm_pack.status.success() {
+                eprintln!(
+                    "wasm-pack stderr:\n{}",
+                    String::from_utf8_lossy(&wasm_pack.stderr)
+                );
+            }
+            assert!(wasm_pack.status.success());
+            // Absolute path: node's require() treats a bare relative path as a node_modules lookup.
+            let pkg_dir = std::fs::canonicalize(wasm_export_dir.join("pkg")).unwrap();
+            let node = std::process::Command::new("node")
+                .arg(&roundtrip_script)
+                .arg(&pkg_dir)
+                .output()
+                .unwrap();
+            print!("{}", String::from_utf8_lossy(&node.stdout));
+            if !node.status.success() {
+                eprintln!("node stderr:\n{}", String::from_utf8_lossy(&node.stderr));
+            }
+            assert!(node.status.success());
+        } else {
+            // Don't let CI silently skip the only JS-execution coverage we have.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "wasm-pack and node are required to run {roundtrip_script:?} in CI"
+            );
+            eprintln!("skipping {roundtrip_script:?}: wasm-pack/node not found");
+        }
     }
     // check that the JSON schema export crate builds
     let json_export_dir = test_path.join(format!("{export_path}/wasm/json-gen"));
@@ -464,6 +513,22 @@ fn json() {
         &["--json-serde-derives=true", "--json-schema-export=true"],
         None,
         &[extern_rust_path],
+        &[],
+        false,
+        &[],
+    );
+}
+
+/// Builds the generated wasm bindings with wasm-pack and runs them under node (see the
+/// `roundtrip.mjs` hook in `run_test`). Regression test for the serde-wasm-bindgen JSON-shape
+/// contract: a CDDL map must come back from `to_json_value()` as an object, not a JS `Map`.
+#[test]
+fn wasm_json_roundtrip() {
+    run_test(
+        "wasm_json",
+        &["--json-serde-derives=true"],
+        None,
+        &[],
         &[],
         false,
         &[],

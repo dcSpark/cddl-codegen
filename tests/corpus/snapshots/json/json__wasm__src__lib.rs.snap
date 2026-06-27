@@ -34,7 +34,7 @@ impl BytesWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -84,7 +84,7 @@ impl CustomWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -134,7 +134,7 @@ impl I16Wrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -184,7 +184,7 @@ impl I64Wrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -234,7 +234,7 @@ impl Int {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -304,7 +304,7 @@ impl IntWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -354,7 +354,7 @@ impl NintWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -404,7 +404,7 @@ impl StrWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -454,7 +454,7 @@ impl StructWrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -504,7 +504,7 @@ impl U64Wrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 
@@ -554,7 +554,7 @@ impl U8Wrapper {
     }
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde_wasm_bindgen::to_value(&self.0)
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
     }
 

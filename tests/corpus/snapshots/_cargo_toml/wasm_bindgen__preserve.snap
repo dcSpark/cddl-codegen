@@ -14,4 +14,4 @@ crate-type = ["cdylib", "rlib"]
 cbor_event = "2.4.0"
 linked-hash-map = "0.5.3"
 derivative = "2.2.0"
-wasm-bindgen = { version = "0.2", features=["serde-serialize"] }
+wasm-bindgen = "0.2"
