@@ -3,7 +3,7 @@ use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use std::collections::BTreeMap;
 
-use crate::comment_ast::{merge_metadata, metadata_from_comments, RuleMetadata};
+use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
     GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
@@ -578,7 +578,9 @@ fn parse_type(
                         match &generic_params {
                             Some(_params) => {
                                 // this should be the only situation where you need this as otherwise the params would be unbound
-                                todo!("generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>");
+                                todo!(
+                                    "generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>"
+                                );
                                 // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
                             }
                             None => {
@@ -855,15 +857,14 @@ fn parse_group_type<'a>(
                         // change how it is (de)serialized
                         if let ConceptualRustType::Rust(elem_ident) =
                             elem_type.conceptual_type.resolve_alias_shallow()
+                            && types.is_plain_group(elem_ident)
                         {
-                            if types.is_plain_group(elem_ident) {
-                                return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
-                            }
+                            return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
                         }
                         // fall-through generic case. this is a general 1-element struct that needs creating
                     }
                     Some(bounds) => {
-                        return GroupParsingType::HomogenousArray(elem_type.with_bounds(bounds))
+                        return GroupParsingType::HomogenousArray(elem_type.with_bounds(bounds));
                     }
                 }
             }
@@ -1221,7 +1222,10 @@ fn rust_type_from_type2(
                             );
                             let name = match rule_metadata.name.as_ref() {
                                 Some(name) => name,
-                                None => panic!("Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}", group)
+                                None => panic!(
+                                    "Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}",
+                                    group
+                                ),
                             };
                             let cddl_ident = CDDLIdent::new(name);
                             let rust_ident = RustIdent::new(cddl_ident.clone());
@@ -1378,7 +1382,9 @@ fn group_entry_to_type(
                 // and member ones are created elsewhere. I thought that if you had a field like
                 // foo: bar<uint> it would be here but it turns out it's in the ValueMemberKey
                 // variant instead.
-                todo!("If you run into this please create a github issue and include the .cddl that caused it");
+                todo!(
+                    "If you run into this please create a github issue and include the .cddl that caused it"
+                );
             }
             let cddl_ident = CDDLIdent::new(ge.name.to_string());
             types.new_type(&cddl_ident, cli)

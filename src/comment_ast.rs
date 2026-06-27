@@ -1,9 +1,9 @@
 extern crate nom;
 use nom::{
+    IResult,
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     multi::many0,
-    IResult,
 };
 
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -468,7 +468,9 @@ fn parse_comment_custom_serialize_deserialize() {
 #[test]
 fn parse_comment_all_except_no_alias() {
     assert_eq!(
-        rule_metadata("@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json @doc this is a doc comment"),
+        rule_metadata(
+            "@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json @doc this is a doc comment"
+        ),
         Ok((
             "",
             RuleMetadata {

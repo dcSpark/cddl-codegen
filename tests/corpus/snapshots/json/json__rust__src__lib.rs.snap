@@ -61,8 +61,8 @@ impl schemars::JsonSchema for BytesWrapper {
         String::from("BytesWrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        String::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -141,8 +141,8 @@ impl schemars::JsonSchema for I16Wrapper {
         String::from("I16Wrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        i16::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        i16::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -206,8 +206,8 @@ impl schemars::JsonSchema for I64Wrapper {
         String::from("I64Wrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        i64::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        i64::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -254,8 +254,8 @@ impl schemars::JsonSchema for NintWrapper {
         String::from("NintWrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        u64::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        u64::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -302,8 +302,8 @@ impl schemars::JsonSchema for StrWrapper {
         String::from("StrWrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        String::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -356,8 +356,8 @@ impl schemars::JsonSchema for StructWrapper {
         String::from("StructWrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        U64Wrapper::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        U64Wrapper::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -410,8 +410,8 @@ impl schemars::JsonSchema for U64Wrapper {
         String::from("U64Wrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        u64::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        u64::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
@@ -475,8 +475,8 @@ impl schemars::JsonSchema for U8Wrapper {
         String::from("U8Wrapper")
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        u8::json_schema(gen)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        u8::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {

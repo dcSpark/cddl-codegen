@@ -12,7 +12,7 @@ use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::dep_graph;
 use crate::generation::GenerationScope;
-use crate::intermediate::{CDDLIdent, IntermediateTypes, PlainGroupInfo, RustIdent, ROOT_SCOPE};
+use crate::intermediate::{CDDLIdent, IntermediateTypes, PlainGroupInfo, ROOT_SCOPE, RustIdent};
 use crate::parsing::{self, parse_rule, rule_ident, rule_is_scope_marker};
 
 fn cddl_paths(
@@ -76,10 +76,10 @@ pub fn with_types<R>(
                         _ => None,
                     })
                     .collect::<Vec<_>>();
-                if let Some(c) = components.last() {
-                    if *c == "mod" {
-                        components.pop();
-                    }
+                if let Some(c) = components.last()
+                    && *c == "mod"
+                {
+                    components.pop();
                 }
                 components.join("::")
             } else {
@@ -149,7 +149,11 @@ pub fn with_types<R>(
 
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        println!("\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------", scope, cddl_rule.name());
+        println!(
+            "\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------",
+            scope,
+            cddl_rule.name()
+        );
         parse_rule(&mut types, &pv, cddl_rule, cli);
     }
     types.finalize(&pv, cli)?;
@@ -160,7 +164,9 @@ pub fn with_types<R>(
 /// Run the full pipeline and write the generated crate(s) to `cli.output` (the CLI behaviour).
 pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     with_types(cli, |types, export_raw_bytes_encoding_trait| {
-        println!("\n-----------------------------------------\n- Generating code...\n------------------------------------");
+        println!(
+            "\n-----------------------------------------\n- Generating code...\n------------------------------------"
+        );
         let mut gen_scope = GenerationScope::new();
         gen_scope.generate(types, cli);
         gen_scope.export(types, export_raw_bytes_encoding_trait, cli)?;

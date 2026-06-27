@@ -141,31 +141,31 @@ mod tests {
                                     cbor_int(9, def_enc),
                                     cbor_str_sz("abcd", str_4.clone()),
                                     cbor_bytes_sz(vec![0xB4, 0xD3, 0x09, 0x00], str_4.clone()),
-                        ].into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        ].into_iter().flatten().collect::<Vec<u8>>(),
                         if has_5 {
                             [
                                 cbor_int(5, def_enc),
                                     cbor_str_sz("XYZ", str_3.clone()),
-                            ].into_iter().flatten().copied().collect::<Vec<u8>>()
+                            ].into_iter().flatten().collect::<Vec<u8>>()
                         } else {
                             vec![]
                         },
                         [
                             cbor_int(1, def_enc),
                                 vec![NULL],
-                        ].into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        ].into_iter().flatten().collect::<Vec<u8>>(),
                         if has_derp {
                             [
                                 cbor_str_sz("derp", str_4.clone()),
                                     cbor_int(19, def_enc),
-                            ].into_iter().flatten().copied().collect::<Vec<u8>>()
+                            ].into_iter().flatten().collect::<Vec<u8>>()
                         } else {
                             vec![]
                         },
                         [
                             cbor_str_sz("five", str_4.clone()),
                                 cbor_int(5, def_enc),
-                        ].into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        ].into_iter().flatten().collect::<Vec<u8>>(),
                     ];
                     // just a subset of permutations to not take forever
                     for key_order in [[0, 1, 2, 3, 4], [4, 3, 2, 1, 0], [3, 1, 0, 4, 2], [0, 2, 4, 1, 3], [2, 0, 3, 4, 1]] {

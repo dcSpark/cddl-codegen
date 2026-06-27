@@ -8,9 +8,9 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, ModuleScope, Primitive, Representation, RustField, RustIdent,
-    RustRecord, RustStructCBORLen, RustStructConfig, RustStructType, RustType,
-    RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, ROOT_SCOPE,
+    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RustField,
+    RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType, RustType,
+    RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
 };
 use crate::utils::{cbor_type_code_str, convert_to_snake_case};
 
@@ -1028,15 +1028,15 @@ impl GenerationScope {
                     content.push_import("std::collections", "BTreeMap", None);
                 }
                 // external macros
-                if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro {
-                    if let Some((path, m)) = cbor_json_macro.rsplit_once("::") {
-                        content.push_import(path, m, None);
-                    }
+                if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro
+                    && let Some((path, m)) = cbor_json_macro.rsplit_once("::")
+                {
+                    content.push_import(path, m, None);
                 }
-                if let Some(conversion_macro) = &cli.wasm_conversions_macro {
-                    if let Some((path, m)) = conversion_macro.rsplit_once("::") {
-                        content.push_import(path, m, None);
-                    }
+                if let Some(conversion_macro) = &cli.wasm_conversions_macro
+                    && let Some((path, m)) = conversion_macro.rsplit_once("::")
+                {
+                    content.push_import(path, m, None);
                 }
             }
             // declare submodules
@@ -1225,7 +1225,7 @@ impl GenerationScope {
             rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
         }
         if cli.json_schema_export {
-            rust_cargo_toml.push_str("schemars = \"0.8.8\"\n");
+            rust_cargo_toml.push_str("schemars = \"0.8.22\"\n");
         }
         if export_raw_bytes_encoding_trait
             || types
@@ -2514,13 +2514,13 @@ impl GenerationScope {
                                 // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
                                 let bounds_fn = match &type_cfg.bounds {
                                     Some(bounds) => Cow::Owned(format!(
-                                    ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
-                                    bounds_check_if_block(
-                                        bounds,
-                                        &bounds_check_expr(*p, "x"),
-                                        false
-                                    ),
-                                )),
+                                        ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
+                                        bounds_check_if_block(
+                                            bounds,
+                                            &bounds_check_expr(*p, "x"),
+                                            false
+                                        ),
+                                    )),
                                     None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).abs() as u64)"),
                                 };
                                 deser_code.content.line(&format!(
@@ -2645,10 +2645,10 @@ impl GenerationScope {
                                         .final_exprs
                                         .push("StringEncoding::from(enc)".to_owned());
                                     let from_raw_bytes_with_conversions = format!(
-                                "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
-                                ident,
-                                final_expr(config.final_exprs, Some("bytes".to_owned()))
-                            );
+                                        "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
+                                        ident,
+                                        final_expr(config.final_exprs, Some("bytes".to_owned()))
+                                    );
                                     deser_code.content.line(&format!(
                                         "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
                                         before_after.before_str(true),
@@ -2659,8 +2659,8 @@ impl GenerationScope {
                                     ));
                                 } else {
                                     let from_raw_bytes_with_conversions = format!(
-                            "{ident}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
-                        );
+                                        "{ident}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
+                                    );
                                     deser_code.content.line(&format!(
                                         "{}{}.bytes(){}.and_then(|bytes| {}){}",
                                         before_after.before_str(true),
@@ -2722,8 +2722,8 @@ impl GenerationScope {
                         special_block
                             .line(format!("let special = {deserializer_name}.special()?;"));
                         special_block.line(format!(
-                        "{deserializer_name}.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();"
-                    ));
+                            "{deserializer_name}.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();"
+                        ));
                         let mut special_match = Block::new("match special");
                         // TODO: we need to check that we don't have null / null somewhere
                         special_match.line("cbor_event::Special::Null => false,");
@@ -3386,9 +3386,11 @@ impl GenerationScope {
     ) {
         // I don't believe this is even possible (wouldn't be a single CBOR value + nowhere to embed)
         // Just sanity checking since it's not handled in the wrapper code here
-        assert!(variants
-            .iter()
-            .all(|v| !matches!(v.data, EnumVariantData::Inlined(_))));
+        assert!(
+            variants
+                .iter()
+                .all(|v| !matches!(v.data, EnumVariantData::Inlined(_)))
+        );
         // Rust only
         generate_enum(self, types, name, variants, None, true, tag, config, cli);
         if cli.wasm {
@@ -4280,12 +4282,10 @@ fn create_deserialize_impls(
                 } else {
                     deser_body.line("let len = raw.array()?;");
                 }
-                if !generate_deserialize_embedded {
-                    if let Some(encoding_var_name) = store_encoding {
-                        deser_body.line(&format!(
-                            "let {encoding_var_name}: LenEncoding = len.into();"
-                        ));
-                    }
+                if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
+                    deser_body.line(&format!(
+                        "let {encoding_var_name}: LenEncoding = len.into();"
+                    ));
                 }
                 if let Some(len_info) = len_info {
                     add_deserialize_initial_len_check(deser_body, len_info);
@@ -4302,12 +4302,10 @@ fn create_deserialize_impls(
                 } else {
                     deser_body.line("let len = raw.map()?;");
                 }
-                if !generate_deserialize_embedded {
-                    if let Some(encoding_var_name) = store_encoding {
-                        deser_body.line(&format!(
-                            "let {encoding_var_name}: LenEncoding = len.into();"
-                        ));
-                    }
+                if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
+                    deser_body.line(&format!(
+                        "let {encoding_var_name}: LenEncoding = len.into();"
+                    ));
                 }
                 if let Some(len_info) = len_info {
                     add_deserialize_initial_len_check(deser_body, len_info);
@@ -4385,14 +4383,19 @@ fn codegen_table_type(
     cli: &Cli,
 ) {
     assert!(cli.wasm);
-    assert!(tag.is_none(), "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?");
+    assert!(
+        tag.is_none(),
+        "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?"
+    );
     // this would interfere with loop code generation unless we
     // specially handle this case since you wouldn't know whether you hit a break
     // or are reading a key here, unless we check, but then you'd need to store the
     // non-break special value once read
-    assert!(!key_type
-        .cbor_types(types)
-        .contains(&cbor_event::Type::Special));
+    assert!(
+        !key_type
+            .cbor_types(types)
+            .contains(&cbor_event::Type::Special)
+    );
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false, cli);
 
     let inner_type = if exists_in_rust {
@@ -4862,7 +4865,12 @@ fn generate_array_struct_serialization(
                 (
                     if cli.preserve_encodings {
                         if vars_in_self {
-                            format!("if {} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)", field_expr, default_value.to_primitive_str_compare(), field.name)
+                            format!(
+                                "if {} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)",
+                                field_expr,
+                                default_value.to_primitive_str_compare(),
+                                field.name
+                            )
                         } else {
                             format!(
                                 "if {} != {} || {}_default_present",
@@ -5045,7 +5053,9 @@ fn generate_array_struct_deserialization(
                             "if raw.as_mut_ref().fill_buf().ok().and_then(|buf| buf.get(0)).map(|byte: &u8| vec![{types_str}].contains(&cbor_event::Type::from(*byte)) && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)",
                         )
                     } else {
-                        format!("if raw.cbor_type().map(|ty| vec![{types_str}].contains(&ty)).unwrap_or(false)")
+                        format!(
+                            "if raw.cbor_type().map(|ty| vec![{types_str}].contains(&ty)).unwrap_or(false)"
+                        )
                     }
                 } else {
                     format!("if vec![{types_str}].contains(&raw.cbor_type()?)")
@@ -5416,21 +5426,20 @@ fn codegen_struct(
                 }
                 new_arg_count += 1;
                 native_new_block.line(format!("{},", field.name));
-                if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
-                    if let Some(check_expr) =
+                if let Some(bounds) = field.rust_type.config.bounds.as_ref()
+                    && let Some(check_expr) =
                         bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                {
+                    if let ConceptualRustType::Primitive(Primitive::N64) =
+                        field.rust_type.resolve_alias_shallow()
                     {
-                        if let ConceptualRustType::Primitive(Primitive::N64) =
-                            field.rust_type.resolve_alias_shallow()
-                        {
-                            native_new.line(bounds_check_if_block(
-                                &nint_bounds_to_u64(bounds),
-                                &check_expr,
-                                true,
-                            ));
-                        } else {
-                            native_new.line(bounds_check_if_block(bounds, &check_expr, true));
-                        }
+                        native_new.line(bounds_check_if_block(
+                            &nint_bounds_to_u64(bounds),
+                            &check_expr,
+                            true,
+                        ));
+                    } else {
+                        native_new.line(bounds_check_if_block(bounds, &check_expr, true));
                     }
                 }
                 // field
@@ -5583,17 +5592,17 @@ fn codegen_struct(
                     // {a, d, c, b}, {c, a, b, d}, etc which doesn't fit with the nature of deserialize_as_embedded_group
                     // A possible solution would be to take all fields into one big map, either in generation to begin with,
                     // or just for deserialization then constructing at the end with locals like a, b, bar_c, bar_d.
-                    if let ConceptualRustType::Rust(ident) = &field.rust_type.conceptual_type {
-                        if types.is_plain_group(ident) {
-                            gen_scope.dont_generate_deserialize(
-                                name,
-                                format!(
-                                    "Map with plain group field {}: {}",
-                                    field.name,
-                                    field.rust_type.for_rust_member(types, false, cli)
-                                ),
-                            );
-                        }
+                    if let ConceptualRustType::Rust(ident) = &field.rust_type.conceptual_type
+                        && types.is_plain_group(ident)
+                    {
+                        gen_scope.dont_generate_deserialize(
+                            name,
+                            format!(
+                                "Map with plain group field {}: {}",
+                                field.name,
+                                field.rust_type.for_rust_member(types, false, cli)
+                            ),
+                        );
                     }
                     // declare variables for deser loop
                     if cli.preserve_encodings {
@@ -6449,7 +6458,11 @@ fn add_wasm_enum_getters(
                     // this seems to be unable to parseas ? (T / null)
                     // but we'll keep this here as it makes it easy to make this
                     // the behavior for skipping vs condensing on double nested ones (optional fields)
-                    println!("skipping {}::as_{}() due to triple nested Options unsupported by wasm_bindgen", name, variant.name_as_var());
+                    println!(
+                        "skipping {}::as_{}() due to triple nested Options unsupported by wasm_bindgen",
+                        name,
+                        variant.name_as_var()
+                    );
                     false
                 } else {
                     as_variant
@@ -7111,25 +7124,20 @@ fn generate_enum(
                             let field_name = variant.name_as_var();
                             new_func
                                 .arg(&field_name, variant.rust_type().for_rust_move(types, cli));
-                            if let Some(bounds) = &ty.config.bounds {
-                                if let Some(check_expr) =
+                            if let Some(bounds) = &ty.config.bounds
+                                && let Some(check_expr) =
                                     bounds_check_expr_rust_type(ty, &field_name)
+                            {
+                                if let ConceptualRustType::Primitive(Primitive::N64) =
+                                    ty.resolve_alias_shallow()
                                 {
-                                    if let ConceptualRustType::Primitive(Primitive::N64) =
-                                        ty.resolve_alias_shallow()
-                                    {
-                                        new_func.line(bounds_check_if_block(
-                                            &nint_bounds_to_u64(bounds),
-                                            &check_expr,
-                                            true,
-                                        ));
-                                    } else {
-                                        new_func.line(bounds_check_if_block(
-                                            bounds,
-                                            &check_expr,
-                                            true,
-                                        ));
-                                    }
+                                    new_func.line(bounds_check_if_block(
+                                        &nint_bounds_to_u64(bounds),
+                                        &check_expr,
+                                        true,
+                                    ));
+                                } else {
+                                    new_func.line(bounds_check_if_block(bounds, &check_expr, true));
                                 }
                             }
                             (vec![field_name], ty.config.bounds.is_some())
@@ -7152,25 +7160,24 @@ fn generate_enum(
                     .collect();
                 let can_fail = record.fields.iter().any(|field| {
                     let can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
-                    if can_fail {
-                        if let Some(check_expr) =
+                    if can_fail
+                        && let Some(check_expr) =
                             bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                    {
+                        if let ConceptualRustType::Primitive(Primitive::N64) =
+                            field.rust_type.resolve_alias_shallow()
                         {
-                            if let ConceptualRustType::Primitive(Primitive::N64) =
-                                field.rust_type.resolve_alias_shallow()
-                            {
-                                new_func.line(bounds_check_if_block(
-                                    &nint_bounds_to_u64(&field.rust_type.config.bounds.unwrap()),
-                                    &check_expr,
-                                    true,
-                                ));
-                            } else {
-                                new_func.line(bounds_check_if_block(
-                                    &field.rust_type.config.bounds.unwrap(),
-                                    &check_expr,
-                                    true,
-                                ));
-                            }
+                            new_func.line(bounds_check_if_block(
+                                &nint_bounds_to_u64(&field.rust_type.config.bounds.unwrap()),
+                                &check_expr,
+                                true,
+                            ));
+                        } else {
+                            new_func.line(bounds_check_if_block(
+                                &field.rust_type.config.bounds.unwrap(),
+                                &check_expr,
+                                true,
+                            ));
                         }
                     }
                     can_fail
@@ -7741,9 +7748,9 @@ fn generate_wrapper_struct(
                 .line(format!("String::from(\"{type_name}\")"));
             let mut json_schema_fn = codegen::Function::new("json_schema");
             json_schema_fn
-                .arg("gen", "&mut schemars::gen::SchemaGenerator")
+                .arg("generator", "&mut schemars::SchemaGenerator")
                 .ret("schemars::schema::Schema")
-                .line(format!("{json_schema_type}::json_schema(gen)"));
+                .line(format!("{json_schema_type}::json_schema(generator)"));
             let mut is_referenceable = codegen::Function::new("is_referenceable");
             is_referenceable
                 .ret("bool")
@@ -7825,10 +7832,12 @@ fn generate_wrapper_struct(
     let mut deser_func = make_deserialization_function("deserialize");
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
-    if let ConceptualRustType::Rust(id) = &field_type.conceptual_type {
-        if types.is_plain_group(id) {
-            unimplemented!("TODO: make len/read_len variables of appropriate sizes so the generated code compiles");
-        }
+    if let ConceptualRustType::Rust(id) = &field_type.conceptual_type
+        && types.is_plain_group(id)
+    {
+        unimplemented!(
+            "TODO: make len/read_len variables of appropriate sizes so the generated code compiles"
+        );
     }
     let mut new_func = codegen::Function::new("new");
     new_func
@@ -7881,37 +7890,41 @@ fn generate_wrapper_struct(
             }
         };
         let mut check = match (min, max) {
-            (Some(min), Some(max)) => if min == max {
-                Block::new(format!("if {against} != {min}"))
-            } else {
-                let non_negative = field_type.encodings.is_empty() && match &field_type.conceptual_type {
-                    ConceptualRustType::Primitive(p) => match p {
-                        Primitive::Bytes |
-                        Primitive::Str => true,
-                        Primitive::Bool |
-                        Primitive::U8 |
-                        Primitive::U16 |
-                        Primitive::U32 |
-                        Primitive::U64 => true,
-                        Primitive::I8 |
-                        Primitive::I16 |
-                        Primitive::I32 |
-                        Primitive::I64 |
-                        Primitive::N64 |
-                        Primitive::F32 |
-                        Primitive::F64 => false,
-                    },
-                    _ => unimplemented!(),
-                };
-                if min == 0 && non_negative {
-                    Block::new(format!("if {against} > {max}"))
+            (Some(min), Some(max)) => {
+                if min == max {
+                    Block::new(format!("if {against} != {min}"))
                 } else {
-                    Block::new(format!("if {against} < {min} || {against} > {max}"))
+                    let non_negative = field_type.encodings.is_empty()
+                        && match &field_type.conceptual_type {
+                            ConceptualRustType::Primitive(p) => match p {
+                                Primitive::Bytes | Primitive::Str => true,
+                                Primitive::Bool
+                                | Primitive::U8
+                                | Primitive::U16
+                                | Primitive::U32
+                                | Primitive::U64 => true,
+                                Primitive::I8
+                                | Primitive::I16
+                                | Primitive::I32
+                                | Primitive::I64
+                                | Primitive::N64
+                                | Primitive::F32
+                                | Primitive::F64 => false,
+                            },
+                            _ => unimplemented!(),
+                        };
+                    if min == 0 && non_negative {
+                        Block::new(format!("if {against} > {max}"))
+                    } else {
+                        Block::new(format!("if {against} < {min} || {against} > {max}"))
+                    }
                 }
-            },
+            }
             (Some(min), None) => Block::new(format!("if {against} < {min}")),
             (None, Some(max)) => Block::new(format!("if {against} > {max}")),
-            (None, None) => panic!("How did we end up with a range requirement of (None, None)? Entire thing should've been None then"),
+            (None, None) => panic!(
+                "How did we end up with a range requirement of (None, None)? Entire thing should've been None then"
+            ),
         };
         check.line(format!(
             "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",

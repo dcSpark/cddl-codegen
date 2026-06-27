@@ -34,7 +34,9 @@ fn dfs_visit<'a>(
     let (rule, neighbors) = adj_list.get(u).unwrap();
     for v in neighbors.iter() {
         if processing.contains(v.ident) {
-            eprintln!("Recursive type: '{u}' / '{v}' - code will possibly need to be edited by hand to use Box/etc");
+            eprintln!(
+                "Recursive type: '{u}' / '{v}' - code will possibly need to be edited by hand to use Box/etc"
+            );
             continue;
         }
         if unvisited.contains(v.ident) {
