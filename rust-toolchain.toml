@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned for reproducible builds. Bump deliberately, not automatically.
+# (was bare `nightly`, which reinstalled "latest nightly" on every CI run.)
+channel = "1.91.1"
+components = ["rustfmt", "clippy"]

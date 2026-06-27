@@ -46,7 +46,7 @@ fn dfs_visit<'a>(
     topo_order.push(rule);
 }
 
-fn find_references<'a>(cddl_rule: &'a Rule<'a>) -> (&'a Identifier, Vec<&'a Identifier<'a>>) {
+fn find_references<'a>(cddl_rule: &'a Rule<'a>) -> (&'a Identifier<'a>, Vec<&'a Identifier<'a>>) {
     let mut refs = Vec::new();
     let ident = match cddl_rule {
         Rule::Type { rule, .. } => {
