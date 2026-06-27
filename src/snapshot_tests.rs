@@ -20,6 +20,13 @@
 //!   independently), which `whole_program` alone does not produce.
 //! * [`serialization_prelude`] — the static serialization runtime, once per flag combination.
 //!
+//! A per-feature `serialization.rs` snapshot is sometimes empty, or just an import block. That's
+//! expected: these snapshots capture the *generated-only* code (the static runtime prelude that
+//! `export` prepends is excluded — it's the [`serialization_prelude`] suite), and some constructs
+//! emit no standalone (de)serialization impl at all (aliases, c-style enums — see
+//! `docs/docs/output_format.mdx` for which and why). The root file's lone import block is what that
+//! prepended prelude needs.
+//!
 //! Bless after an intentional change with `INSTA_UPDATE=always cargo test` (or `cargo insta review`).
 
 use crate::cli::Cli;

@@ -820,10 +820,17 @@ impl GenerationScope {
             self.rust_lib().raw(format!("pub mod {scope};"));
         }
 
-        // declare common modules in each module (struct files)
-        for content in self.rust_scopes.values_mut() {
+        // declare common modules in each module (struct files). cbor_encodings is declared only
+        // where a cbor_encodings.rs is actually emitted (mirror the condition in generated_files):
+        // a scope with no encoding structs (e.g. a root of only c-style enums) emits no such file,
+        // and declaring the module anyway yields a `pub mod cbor_encodings;` with no backing file
+        // (E0583, uncompilable).
+        for (scope, content) in self.rust_scopes.iter_mut() {
             content.raw("pub mod serialization;");
-            if cli.preserve_encodings {
+            if cli.preserve_encodings
+                && scope.export()
+                && self.cbor_encodings_scopes.contains_key(scope)
+            {
                 content.raw("pub mod cbor_encodings;");
             }
         }
@@ -947,9 +954,11 @@ impl GenerationScope {
         }
 
         // serialization
-        // generic imports (serialization)
-        for (scope, content) in self.serialize_scopes.iter_mut() {
-            content
+        // The imports every generated serialization.rs needs regardless of scope — the static
+        // prelude and all generated impls reference these. Shared by the per-scope loop and the
+        // lib-scope fallback below so the set can't drift between the two.
+        let push_base_serialize_imports = |scope: &mut codegen::Scope| {
+            scope
                 .push_import("super", "*", None)
                 .push_import("std::io", "BufRead", None)
                 .push_import("std::io", "Seek", None)
@@ -958,14 +967,21 @@ impl GenerationScope {
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
+            if !(cli.preserve_encodings && cli.canonical_form) {
+                scope.push_import("cbor_event::se", "Serialize", None);
+            }
+        };
+        for (scope, content) in self.serialize_scopes.iter_mut() {
+            push_base_serialize_imports(content);
             if let Some(common_import) = cli.common_import_override.as_ref() {
                 content.push_import(format!("{}::serialization", common_import), "*", None);
             }
-            if cli.preserve_encodings {
+            // Only import cbor_encodings where a cbor_encodings.rs is actually emitted for this
+            // scope (same condition as its `pub mod` declaration / generated_files): a scope with
+            // serialization but no encoding structs (e.g. a group/type choice) emits no such file,
+            // so importing it would be an unresolved import (E0432).
+            if cli.preserve_encodings && self.cbor_encodings_scopes.contains_key(scope) {
                 content.push_import("super::cbor_encodings", "*", None);
-            }
-            if !(cli.preserve_encodings && cli.canonical_form) {
-                content.push_import("cbor_event::se", "Serialize", None);
             }
             if *scope != *ROOT_SCOPE {
                 content.push_import(
@@ -974,6 +990,18 @@ impl GenerationScope {
                     None,
                 );
             }
+        }
+
+        // The static serialization prelude prepended to the root serialization.rs (when we own the
+        // static files) references Serializer/Deserializer/BufRead/DeserializeError/etc. Those
+        // imports are added to the ROOT_SCOPE serialize scope by the loop above — but a spec whose
+        // root has no per-type serialization (e.g. only c-style enums) produces no ROOT_SCOPE entry,
+        // leaving the prelude (and any rust_serialize_lib impls) without imports and the crate
+        // uncompilable. Add the base imports to the lib serialize scope in that case. (No
+        // cbor_encodings/non-root imports: no ROOT_SCOPE entry means no root struct, so no root
+        // encoding struct and nothing cross-module to reach.)
+        if cli.export_static_files() && !self.serialize_scopes.contains_key(&*ROOT_SCOPE) {
+            push_base_serialize_imports(self.rust_serialize_lib());
         }
 
         // declare submodules
@@ -6791,6 +6819,10 @@ fn generate_c_style_enum(
     for variant in variants.iter() {
         e.new_variant(variant.name.to_string());
     }
+    // Only the enum definition is emitted — no serialize/deserialize impl. A c-style enum's
+    // fixed-value encoding is generated inline wherever it's used (see the field/variant serializers)
+    // rather than via an `impl` on the enum, so a c-style enum that nothing references produces no
+    // serialization code at all (its `serialization.rs` ends up empty).
     gen_scope.rust(types, name).push_enum(e);
     true
 }
@@ -7724,8 +7756,17 @@ fn generate_wrapper_struct(
                         },
                         ConceptualRustType::Rust(_) => "StructVariant",
                     };
+                    // Unexpected::Str(&inner)/Bytes(&inner) borrow `inner` in the error closure,
+                    // but `Self::new(inner)` moves it first (String/Vec aren't Copy) → E0382. Clone
+                    // into the constructor in that case so the original survives for the error. The
+                    // other (Copy) variants need no clone.
+                    let new_arg = if unexpected.contains("&inner") {
+                        "inner.clone()"
+                    } else {
+                        "inner"
+                    };
                     serde_deser_fn
-                        .line("Self::new(inner)")
+                        .line(format!("Self::new({new_arg})"))
                         .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
                 } else {
                     serde_deser_fn.line("Ok(Self::new(inner))");
@@ -8227,10 +8268,65 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     add_struct_derives(
         &mut native_struct,
         types.used_as_key(&ident),
-        true,
-        true,
+        /* is_enum */ true,
+        /* custom_json */ true,
         cli,
     );
+
+    // JSON: Int's serde/schemars impls are written here by hand (the `custom_json` arg above) rather
+    // than derived — the derived enum form would leak the CBOR encoding quirk (`{"Nint":4}` actually
+    // meaning -5). Serialize as the signed decimal string (via Display/FromStr): it matches Int's own
+    // to_str/from_str API and safely covers the full [-2^64, 2^64) range a JSON number can't hold.
+    if cli.json_serde_derives {
+        let mut serde_ser_impl = codegen::Impl::new("Int");
+        let mut serde_ser_fn = codegen::Function::new("serialize");
+        serde_ser_fn
+            .generic("S")
+            .bound("S", "serde::Serializer")
+            .arg_ref_self()
+            .arg("serializer", "S")
+            .ret("Result<S::Ok, S::Error>")
+            .line("serializer.serialize_str(&self.to_string())");
+        serde_ser_impl
+            .impl_trait("serde::Serialize")
+            .push_fn(serde_ser_fn);
+        gen_scope.rust_lib().push_impl(serde_ser_impl);
+
+        let mut serde_deser_impl = codegen::Impl::new("Int");
+        let mut serde_deser_fn = codegen::Function::new("deserialize");
+        serde_deser_fn
+            .generic("D")
+            .bound("D", "serde::de::Deserializer<'de>")
+            .arg("deserializer", "D")
+            .ret("Result<Self, D::Error>")
+            .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
+            .line("std::str::FromStr::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid Int\"))");
+        serde_deser_impl
+            .impl_trait("serde::de::Deserialize<'de>")
+            .generic("'de")
+            .push_fn(serde_deser_fn);
+        gen_scope.rust_lib().push_impl(serde_deser_impl);
+    }
+    if cli.json_schema_export {
+        let mut json_schema_impl = codegen::Impl::new("Int");
+        let mut schema_name_fn = codegen::Function::new("schema_name");
+        schema_name_fn.ret("String").line("String::from(\"Int\")");
+        let mut json_schema_fn = codegen::Function::new("json_schema");
+        json_schema_fn
+            .arg("generator", "&mut schemars::SchemaGenerator")
+            .ret("schemars::schema::Schema")
+            .line("String::json_schema(generator)");
+        let mut is_referenceable_fn = codegen::Function::new("is_referenceable");
+        is_referenceable_fn
+            .ret("bool")
+            .line("String::is_referenceable()");
+        json_schema_impl
+            .impl_trait("schemars::JsonSchema")
+            .push_fn(schema_name_fn)
+            .push_fn(json_schema_fn)
+            .push_fn(is_referenceable_fn);
+        gen_scope.rust_lib().push_impl(json_schema_impl);
+    }
 
     // impl Int
     let mut native_impl = codegen::Impl::new("Int");
@@ -8308,14 +8404,18 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
 
     let mut display = codegen::Impl::new("Int");
     let mut display_match = Block::new("match self");
+    // Nint: RFC 8949 §3.1 says a major-type-1 value is `-1 - argument`, range -2^64..=-1. The
+    // argument is held as u64, so the most-negative Int (argument u64::MAX -> -2^64) overflows
+    // i64/u64; compute the signed value in i128 (same idiom as the serialize path below). Both
+    // branches below do this; they differ only in field syntax (named under preserve, else tuple).
     if cli.preserve_encodings {
         display_match
             .line("Self::Uint{ value, .. } => write!(f, \"{}\", value),")
-            .line("Self::Nint{ value, .. } => write!(f, \"-{}\", value + 1),");
+            .line("Self::Nint{ value, .. } => write!(f, \"{}\", -((*value as i128) + 1)),");
     } else {
         display_match
             .line("Self::Uint(x) => write!(f, \"{}\", x),")
-            .line("Self::Nint(x) => write!(f, \"-{}\", x + 1),");
+            .line("Self::Nint(x) => write!(f, \"{}\", -((*x as i128) + 1)),");
     }
     display
         .impl_trait("std::fmt::Display")

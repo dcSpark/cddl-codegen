@@ -4,6 +4,7 @@ u8_wrapper = uint .lt 256 ; @newtype
 u64_wrapper = uint ; @newtype
 i16_wrapper = int .size 2 ; @newtype
 i64_wrapper = int .size 8 ; @newtype
+int_wrapper = int ; @newtype
 nint_wrapper = nint ; @newtype
 
 ; TODO: issue: https://github.com/dcSpark/cddl-codegen/issues/223

@@ -110,6 +110,49 @@ impl Deserialize for I64Wrapper {
     }
 }
 
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer
+                .write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(
+                    (-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64,
+                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for IntWrapper {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for IntWrapper {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        Ok(Self(Int::deserialize(raw)?))
+    }
+}
+
 impl cbor_event::se::Serialize for NintWrapper {
     fn serialize<'se, W: Write>(
         &self,
