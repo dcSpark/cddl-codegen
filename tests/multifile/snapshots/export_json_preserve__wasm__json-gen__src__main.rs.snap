@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+expression: contents
+---
+fn main() {
+    multi_chain_test_json_schema_gen::export_schemas();
+}

@@ -1,0 +1,59 @@
+---
+source: src/test.rs
+expression: contents
+---
+#![allow(clippy::too_many_arguments)]
+
+extern crate derivative;
+pub mod a;
+pub mod b;
+pub mod qux;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use a::c::foo::Foo;
+use a::Baz;
+use b::bar::{Bar, BarTypedef};
+use cbor_encodings::EverythingEncoding;
+use extern_dep_crate::error::*;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use extern_dep_crate::ExternCrateFoo;
+use qux::Qux;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Everything {
+    pub foo: Foo,
+    pub extern_crate_foo: ExternCrateFoo,
+    pub bars: Vec<Bar>,
+    pub table: OrderedHashMap<u64, BarTypedef>,
+    pub baz: Baz,
+    pub qux: Qux,
+    pub encodings: Option<EverythingEncoding>,
+}
+
+impl Everything {
+    pub fn new(
+        foo: Foo,
+        extern_crate_foo: ExternCrateFoo,
+        bars: Vec<Bar>,
+        table: OrderedHashMap<u64, BarTypedef>,
+        baz: Baz,
+        qux: Qux,
+    ) -> Self {
+        Self {
+            foo,
+            extern_crate_foo,
+            bars,
+            table,
+            baz,
+            qux,
+            encodings: None,
+        }
+    }
+}

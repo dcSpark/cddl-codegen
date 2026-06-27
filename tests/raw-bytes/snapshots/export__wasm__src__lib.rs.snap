@@ -1,0 +1,57 @@
+---
+source: src/test.rs
+expression: contents
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo(cddl_lib::Foo);
+
+#[wasm_bindgen]
+impl Foo {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pub_key(&self) -> PubKey {
+        self.0.pub_key.clone().into()
+    }
+
+    pub fn new(pub_key: &PubKey) -> Self {
+        Self(cddl_lib::Foo::new(pub_key.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Foo> for Foo {
+    fn from(native: cddl_lib::Foo) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo> for cddl_lib::Foo {
+    fn from(wasm: Foo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo> for Foo {
+    fn as_ref(&self) -> &cddl_lib::Foo {
+        &self.0
+    }
+}

@@ -1,0 +1,17 @@
+---
+source: src/test.rs
+expression: contents
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct FooEncoding {
+    pub len_encoding: LenEncoding,
+    pub uint_typedef_encoding: Option<cbor_event::Sz>,
+    pub index_1_encoding: StringEncoding,
+    pub index_2_encoding: StringEncoding,
+}

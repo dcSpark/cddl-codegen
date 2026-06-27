@@ -1,0 +1,529 @@
+---
+source: src/test.rs
+expression: contents
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bar(cddl_lib::Bar);
+
+#[wasm_bindgen]
+impl Bar {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Bar, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> Foo {
+        self.0.foo.clone().into()
+    }
+
+    pub fn set_derp(&mut self, derp: u64) {
+        self.0.derp = Some(derp)
+    }
+
+    pub fn derp(&self) -> Option<u64> {
+        self.0.derp
+    }
+
+    pub fn key_1(&self) -> Option<u64> {
+        self.0.key_1
+    }
+
+    pub fn set_key_5(&mut self, key_5: String) {
+        self.0.key_5 = Some(key_5)
+    }
+
+    pub fn key_5(&self) -> Option<String> {
+        self.0.key_5.clone()
+    }
+
+    pub fn new(foo: &Foo, key_1: Option<u64>) -> Self {
+        Self(cddl_lib::Bar::new(foo.clone().into(), key_1))
+    }
+}
+
+impl From<cddl_lib::Bar> for Bar {
+    fn from(native: cddl_lib::Bar) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bar> for cddl_lib::Bar {
+    fn from(wasm: Bar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Bar> for Bar {
+    fn as_ref(&self) -> &cddl_lib::Bar {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo(cddl_lib::Foo);
+
+#[wasm_bindgen]
+impl Foo {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn index_2(&self) -> Vec<u8> {
+        self.0.index_2.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self(cddl_lib::Foo::new(index_0, index_1, index_2))
+    }
+}
+
+impl From<cddl_lib::Foo> for Foo {
+    fn from(native: cddl_lib::Foo) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo> for cddl_lib::Foo {
+    fn from(wasm: Foo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo> for Foo {
+    fn as_ref(&self) -> &cddl_lib::Foo {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo2(cddl_lib::Foo2);
+
+#[wasm_bindgen]
+impl Foo2 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo2, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn opt_text(&self) -> OptText {
+        self.0.opt_text.clone()
+    }
+
+    pub fn new(index_0: u64, opt_text: Option<String>) -> Self {
+        Self(cddl_lib::Foo2::new(index_0, opt_text))
+    }
+}
+
+impl From<cddl_lib::Foo2> for Foo2 {
+    fn from(native: cddl_lib::Foo2) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo2> for cddl_lib::Foo2 {
+    fn from(wasm: Foo2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo2> for Foo2 {
+    fn as_ref(&self) -> &cddl_lib::Foo2 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct GroupChoice(cddl_lib::GroupChoice);
+
+#[wasm_bindgen]
+impl GroupChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<GroupChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_foo(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self(cddl_lib::GroupChoice::new_foo(index_0, index_1, index_2))
+    }
+
+    pub fn new_group_choice1(x: u64) -> Self {
+        Self(cddl_lib::GroupChoice::new_group_choice1(x))
+    }
+
+    pub fn new_plain(d: u64, e: TaggedText) -> Self {
+        Self(cddl_lib::GroupChoice::new_plain(d, e))
+    }
+
+    pub fn kind(&self) -> GroupChoiceKind {
+        match &self.0 {
+            cddl_lib::GroupChoice::Foo(_) => GroupChoiceKind::Foo,
+            cddl_lib::GroupChoice::GroupChoice1(_) => GroupChoiceKind::GroupChoice1,
+            cddl_lib::GroupChoice::Plain(_) => GroupChoiceKind::Plain,
+        }
+    }
+
+    pub fn as_foo(&self) -> Option<Foo> {
+        match &self.0 {
+            cddl_lib::GroupChoice::Foo(foo) => Some(foo.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_group_choice1(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::GroupChoice::GroupChoice1(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_plain(&self) -> Option<Plain> {
+        match &self.0 {
+            cddl_lib::GroupChoice::Plain(plain) => Some(plain.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::GroupChoice> for GroupChoice {
+    fn from(native: cddl_lib::GroupChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<GroupChoice> for cddl_lib::GroupChoice {
+    fn from(wasm: GroupChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::GroupChoice> for GroupChoice {
+    fn as_ref(&self) -> &cddl_lib::GroupChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GroupChoiceKind {
+    Foo,
+    GroupChoice1,
+    Plain,
+}
+
+pub type OptTaggedText = Option<TaggedText>;
+
+pub type OptText = Option<String>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Outer(cddl_lib::Outer);
+
+#[wasm_bindgen]
+impl Outer {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Outer, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> Plain {
+        self.0.b.clone().into()
+    }
+
+    pub fn new(a: u64, b: &Plain) -> Self {
+        Self(cddl_lib::Outer::new(a, b.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Outer> for Outer {
+    fn from(native: cddl_lib::Outer) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Outer> for cddl_lib::Outer {
+    fn from(wasm: Outer) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Outer> for Outer {
+    fn as_ref(&self) -> &cddl_lib::Outer {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Plain(cddl_lib::Plain);
+
+#[wasm_bindgen]
+impl Plain {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Plain, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn d(&self) -> u64 {
+        self.0.d
+    }
+
+    pub fn e(&self) -> TaggedText {
+        self.0.e.clone()
+    }
+
+    pub fn new(d: u64, e: TaggedText) -> Self {
+        Self(cddl_lib::Plain::new(d, e))
+    }
+}
+
+impl From<cddl_lib::Plain> for Plain {
+    fn from(native: cddl_lib::Plain) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Plain> for cddl_lib::Plain {
+    fn from(wasm: Plain) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Plain> for Plain {
+    fn as_ref(&self) -> &cddl_lib::Plain {
+        &self.0
+    }
+}
+
+pub type TaggedText = String;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedTypeChoice(cddl_lib::TaggedTypeChoice);
+
+#[wasm_bindgen]
+impl TaggedTypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedTypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_stringliteral() -> Self {
+        Self(cddl_lib::TaggedTypeChoice::new_stringliteral())
+    }
+
+    pub fn new_foo(foo: &Foo) -> Self {
+        Self(cddl_lib::TaggedTypeChoice::new_foo(foo.clone().into()))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::TaggedTypeChoice::new_uint(uint))
+    }
+
+    pub fn kind(&self) -> TaggedTypeChoiceKind {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::Stringliteral => TaggedTypeChoiceKind::Stringliteral,
+            cddl_lib::TaggedTypeChoice::Foo(_) => TaggedTypeChoiceKind::Foo,
+            cddl_lib::TaggedTypeChoice::U64(_) => TaggedTypeChoiceKind::U64,
+        }
+    }
+
+    pub fn as_foo(&self) -> Option<Foo> {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::Foo(foo) => Some(foo.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedTypeChoice> for TaggedTypeChoice {
+    fn from(native: cddl_lib::TaggedTypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedTypeChoice> for cddl_lib::TaggedTypeChoice {
+    fn from(wasm: TaggedTypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedTypeChoice> for TaggedTypeChoice {
+    fn as_ref(&self) -> &cddl_lib::TaggedTypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedTypeChoiceKind {
+    Stringliteral,
+    Foo,
+    U64,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TypeChoice(cddl_lib::TypeChoice);
+
+#[wasm_bindgen]
+impl TypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_i0() -> Self {
+        Self(cddl_lib::TypeChoice::new_i0())
+    }
+
+    pub fn new_helloworld() -> Self {
+        Self(cddl_lib::TypeChoice::new_helloworld())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TypeChoice::new_text(text))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::TypeChoice::new_bytes(bytes))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::TypeChoice::new_uint(uint))
+    }
+
+    pub fn kind(&self) -> TypeChoiceKind {
+        match &self.0 {
+            cddl_lib::TypeChoice::I0 => TypeChoiceKind::I0,
+            cddl_lib::TypeChoice::Helloworld => TypeChoiceKind::Helloworld,
+            cddl_lib::TypeChoice::Text(_) => TypeChoiceKind::Text,
+            cddl_lib::TypeChoice::Bytes(_) => TypeChoiceKind::Bytes,
+            cddl_lib::TypeChoice::U64(_) => TypeChoiceKind::U64,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TypeChoice::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::TypeChoice::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TypeChoice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TypeChoice> for TypeChoice {
+    fn from(native: cddl_lib::TypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TypeChoice> for cddl_lib::TypeChoice {
+    fn from(wasm: TypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TypeChoice> for TypeChoice {
+    fn as_ref(&self) -> &cddl_lib::TypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TypeChoiceKind {
+    I0,
+    Helloworld,
+    Text,
+    Bytes,
+    U64,
+}

@@ -1,0 +1,488 @@
+---
+source: src/test.rs
+expression: contents
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Address(cddl_lib::Address);
+
+#[wasm_bindgen]
+impl Address {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Address, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn address(&self) -> Vec<u8> {
+        self.0.address.clone()
+    }
+
+    pub fn checksum(&self) -> u64 {
+        self.0.checksum
+    }
+
+    pub fn new(address: Vec<u8>, checksum: u64) -> Self {
+        Self(cddl_lib::Address::new(address, checksum))
+    }
+}
+
+impl From<cddl_lib::Address> for Address {
+    fn from(native: cddl_lib::Address) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Address> for cddl_lib::Address {
+    fn from(wasm: Address) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Address> for Address {
+    fn as_ref(&self) -> &cddl_lib::Address {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Block(cddl_lib::Block);
+
+#[wasm_bindgen]
+impl Block {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Block, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_ebb_block_wrapper(ebb_block_cbor: Vec<u8>) -> Self {
+        Self(cddl_lib::Block::new_ebb_block_wrapper(ebb_block_cbor))
+    }
+
+    pub fn new_main_block_wrapper(main_block_cbor: Vec<u8>) -> Self {
+        Self(cddl_lib::Block::new_main_block_wrapper(main_block_cbor))
+    }
+
+    pub fn kind(&self) -> BlockKind {
+        match &self.0 {
+            cddl_lib::Block::EbbBlockWrapper { .. } => BlockKind::EbbBlockWrapper,
+            cddl_lib::Block::MainBlockWrapper { .. } => BlockKind::MainBlockWrapper,
+        }
+    }
+
+    pub fn as_ebb_block_wrapper(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::Block::EbbBlockWrapper { ebb_block_cbor, .. } => Some(ebb_block_cbor.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_main_block_wrapper(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::Block::MainBlockWrapper {
+                main_block_cbor, ..
+            } => Some(main_block_cbor.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Block> for Block {
+    fn from(native: cddl_lib::Block) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Block> for cddl_lib::Block {
+    fn from(wasm: Block) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Block> for Block {
+    fn as_ref(&self) -> &cddl_lib::Block {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BlockKind {
+    EbbBlockWrapper,
+    MainBlockWrapper,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Case1(cddl_lib::Case1);
+
+#[wasm_bindgen]
+impl Case1 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Case1, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> Vec<u8> {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_1: Vec<u8>) -> Self {
+        Self(cddl_lib::Case1::new(index_1))
+    }
+}
+
+impl From<cddl_lib::Case1> for Case1 {
+    fn from(native: cddl_lib::Case1) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Case1> for cddl_lib::Case1 {
+    fn from(wasm: Case1) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Case1> for Case1 {
+    fn as_ref(&self) -> &cddl_lib::Case1 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Case2(cddl_lib::Case2);
+
+#[wasm_bindgen]
+impl Case2 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Case2, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> Vec<u8> {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_1: Vec<u8>) -> Self {
+        Self(cddl_lib::Case2::new(index_1))
+    }
+}
+
+impl From<cddl_lib::Case2> for Case2 {
+    fn from(native: cddl_lib::Case2) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Case2> for cddl_lib::Case2 {
+    fn from(wasm: Case2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Case2> for Case2 {
+    fn as_ref(&self) -> &cddl_lib::Case2 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ProtocolMagic(cddl_lib::ProtocolMagic);
+
+#[wasm_bindgen]
+impl ProtocolMagic {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ProtocolMagic, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::ProtocolMagic> for ProtocolMagic {
+    fn from(native: cddl_lib::ProtocolMagic) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ProtocolMagic> for cddl_lib::ProtocolMagic {
+    fn from(wasm: ProtocolMagic) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ProtocolMagic> for ProtocolMagic {
+    fn as_ref(&self) -> &cddl_lib::ProtocolMagic {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ProtocolParamUpdate(cddl_lib::ProtocolParamUpdate);
+
+#[wasm_bindgen]
+impl ProtocolParamUpdate {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ProtocolParamUpdate, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn minfee_a(&self) -> u64 {
+        self.0.minfee_a
+    }
+
+    pub fn minfee_b(&self) -> u64 {
+        self.0.minfee_b
+    }
+
+    pub fn new(minfee_a: u64, minfee_b: u64) -> Self {
+        Self(cddl_lib::ProtocolParamUpdate::new(minfee_a, minfee_b))
+    }
+}
+
+impl From<cddl_lib::ProtocolParamUpdate> for ProtocolParamUpdate {
+    fn from(native: cddl_lib::ProtocolParamUpdate) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ProtocolParamUpdate> for cddl_lib::ProtocolParamUpdate {
+    fn from(wasm: ProtocolParamUpdate) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ProtocolParamUpdate> for ProtocolParamUpdate {
+    fn as_ref(&self) -> &cddl_lib::ProtocolParamUpdate {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextList(Vec<String>);
+
+#[wasm_bindgen]
+impl TextList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<String>> for TextList {
+    fn from(native: Vec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextList> for Vec<String> {
+    fn from(wasm: TextList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<String>> for TextList {
+    fn as_ref(&self) -> &Vec<String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Typechoice(cddl_lib::Typechoice);
+
+#[wasm_bindgen]
+impl Typechoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Typechoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_case1(case1: &Case1) -> Self {
+        Self(cddl_lib::Typechoice::new_case1(case1.clone().into()))
+    }
+
+    pub fn new_case2(case2: &Case2) -> Self {
+        Self(cddl_lib::Typechoice::new_case2(case2.clone().into()))
+    }
+
+    pub fn kind(&self) -> TypechoiceKind {
+        match &self.0 {
+            cddl_lib::Typechoice::Case1(_) => TypechoiceKind::Case1,
+            cddl_lib::Typechoice::Case2(_) => TypechoiceKind::Case2,
+        }
+    }
+
+    pub fn as_case1(&self) -> Option<Case1> {
+        match &self.0 {
+            cddl_lib::Typechoice::Case1(case1) => Some(case1.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_case2(&self) -> Option<Case2> {
+        match &self.0 {
+            cddl_lib::Typechoice::Case2(case2) => Some(case2.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Typechoice> for Typechoice {
+    fn from(native: cddl_lib::Typechoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Typechoice> for cddl_lib::Typechoice {
+    fn from(wasm: Typechoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Typechoice> for Typechoice {
+    fn as_ref(&self) -> &cddl_lib::Typechoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TypechoiceKind {
+    Case1,
+    Case2,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TypechoiceVariants(cddl_lib::TypechoiceVariants);
+
+#[wasm_bindgen]
+impl TypechoiceVariants {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TypechoiceVariants, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_case1(case1: String) -> Self {
+        Self(cddl_lib::TypechoiceVariants::new_case1(case1))
+    }
+
+    pub fn new_case2(case2: &TextList) -> Self {
+        Self(cddl_lib::TypechoiceVariants::new_case2(
+            case2.clone().into(),
+        ))
+    }
+
+    pub fn kind(&self) -> TypechoiceVariantsKind {
+        match &self.0 {
+            cddl_lib::TypechoiceVariants::Case1 { .. } => TypechoiceVariantsKind::Case1,
+            cddl_lib::TypechoiceVariants::Case2 { .. } => TypechoiceVariantsKind::Case2,
+        }
+    }
+
+    pub fn as_case1(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TypechoiceVariants::Case1 { case1, .. } => Some(case1.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_case2(&self) -> Option<TextList> {
+        match &self.0 {
+            cddl_lib::TypechoiceVariants::Case2 { case2, .. } => Some(case2.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TypechoiceVariants> for TypechoiceVariants {
+    fn from(native: cddl_lib::TypechoiceVariants) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TypechoiceVariants> for cddl_lib::TypechoiceVariants {
+    fn from(wasm: TypechoiceVariants) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TypechoiceVariants> for TypechoiceVariants {
+    fn as_ref(&self) -> &cddl_lib::TypechoiceVariants {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TypechoiceVariantsKind {
+    Case1,
+    Case2,
+}

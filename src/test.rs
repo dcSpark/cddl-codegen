@@ -1,5 +1,62 @@
 use std::io::Write;
 
+/// Recursively collect generated source files (`.rs` + `Cargo.toml`) under `root`,
+/// skipping `target/` build dirs. Returns (relative path, contents) sorted by path.
+fn collect_generated_files(root: &std::path::Path) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                if path.file_name().and_then(|n| n.to_str()) != Some("target") {
+                    stack.push(path);
+                }
+            } else {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                if name.ends_with(".rs") || name == "Cargo.toml" {
+                    let rel = path
+                        .strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    files.push((rel, std::fs::read_to_string(&path).unwrap()));
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Golden-snapshot every generated source file so refactors that change generated
+/// output surface as reviewable diffs (`cargo insta review`, or `INSTA_UPDATE=always
+/// cargo test` to re-bless). Snapshots live in `tests/<dir>/snapshots/` and are named
+/// `<export_path>__<relative/path>`. Taken BEFORE the harness mutates the generated crate.
+fn snapshot_generated_output(test_path: &std::path::Path, export_path: &str) {
+    let export_dir = test_path.join(export_path);
+    let snapshot_dir = std::env::current_dir()
+        .unwrap()
+        .join(test_path)
+        .join("snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(snapshot_dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        for (rel, contents) in collect_generated_files(&export_dir) {
+            let name = format!("{export_path}__{}", rel.replace('/', "__"));
+            insta::assert_snapshot!(name, contents);
+        }
+    });
+}
+
 /// If you have multiple tests that use the same directory, please use different export_suffix
 /// for each one or else the tests will be flaky as they are run concurrently.
 fn run_test(
@@ -44,6 +101,9 @@ fn run_test(
         eprintln!("{}", String::from_utf8(cargo_run_result.stderr).unwrap());
     }
     assert!(cargo_run_result.status.success());
+    // golden snapshots of the generated source, taken before we mutate the generated
+    // crate below (appending test code / deps). Refactors that change output show up here.
+    snapshot_generated_output(&test_path, &export_path);
     // copy tests into generated code
     let mut lib_rs = std::fs::OpenOptions::new()
         .append(true)
