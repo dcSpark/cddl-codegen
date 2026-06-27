@@ -1,0 +1,2 @@
+text_alias = text
+holder = [val: text_alias]

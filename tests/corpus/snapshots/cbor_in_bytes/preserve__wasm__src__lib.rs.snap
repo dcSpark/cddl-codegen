@@ -1,0 +1,63 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Inner(cddl_lib::Inner);
+
+#[wasm_bindgen]
+impl Inner {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Inner, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::Inner::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Inner> for Inner {
+    fn from(native: cddl_lib::Inner) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Inner> for cddl_lib::Inner {
+    fn from(wasm: Inner) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Inner> for Inner {
+    fn as_ref(&self) -> &cddl_lib::Inner {
+        &self.0
+    }
+}
+
+pub type Wrapped = Inner;

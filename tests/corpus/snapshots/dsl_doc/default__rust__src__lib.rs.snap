@@ -1,0 +1,30 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+/// struct documentation here
+#[derive(Clone, Debug)]
+pub struct Documented {
+    /// this is a field-level comment
+    pub foo: String,
+    pub bar: u64,
+}
+
+impl Documented {
+    /// * `foo` - this is a field-level comment
+    pub fn new(foo: String, bar: u64) -> Self {
+        Self { foo, bar }
+    }
+}

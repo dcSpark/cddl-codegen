@@ -1,0 +1,101 @@
+---
+source: src/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "CustomNewtype",
+    ): RustStruct {
+        ident: RustIdent(
+            "CustomNewtype",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: true,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: Some(
+                None,
+            ),
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
+        "Customized",
+    ): RustStruct {
+        ident: RustIdent(
+            "Customized",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "field",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+}

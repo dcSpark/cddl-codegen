@@ -1,0 +1,55 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Nums(Vec<u64>);
+
+#[wasm_bindgen]
+impl Nums {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for Nums {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Nums> for Vec<u64> {
+    fn from(wasm: Nums) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for Nums {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}

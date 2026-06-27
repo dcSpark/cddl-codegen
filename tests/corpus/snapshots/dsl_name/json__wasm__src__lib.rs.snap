@@ -1,0 +1,76 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Named(cddl_lib::Named);
+
+#[wasm_bindgen]
+impl Named {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Named, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde_wasm_bindgen::to_value(&self.0)
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Named, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn address(&self) -> Vec<u8> {
+        self.0.address.clone()
+    }
+
+    pub fn checksum(&self) -> u64 {
+        self.0.checksum
+    }
+
+    pub fn new(address: Vec<u8>, checksum: u64) -> Self {
+        Self(cddl_lib::Named::new(address, checksum))
+    }
+}
+
+impl From<cddl_lib::Named> for Named {
+    fn from(native: cddl_lib::Named) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Named> for cddl_lib::Named {
+    fn from(wasm: Named) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Named> for Named {
+    fn as_ref(&self) -> &cddl_lib::Named {
+        &self.0
+    }
+}

@@ -1,0 +1,2 @@
+inner_alias = uint ; @no_alias
+uses_no_alias = [field: inner_alias]

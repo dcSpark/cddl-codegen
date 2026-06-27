@@ -1,0 +1,55 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Arr {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
+        serializer.write_bytes(&self.index_2)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Arr {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(3)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let index_0 = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 =
+                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let index_2 =
+                Ok(raw.bytes()? as Vec<u8>).map_err(|e: DeserializeError| e.annotate("index_2"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Arr {
+                index_0,
+                index_1,
+                index_2,
+            })
+        })()
+        .map_err(|e| e.annotate("Arr"))
+    }
+}

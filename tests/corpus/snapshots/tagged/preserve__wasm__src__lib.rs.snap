@@ -1,0 +1,16 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+pub type Tagged = String;

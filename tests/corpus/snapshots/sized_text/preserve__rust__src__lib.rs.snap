@@ -1,0 +1,60 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::error::*;
+use crate::ordered_hash_map::OrderedHashMap;
+use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::SizedTextEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct SizedText {
+    pub inner: String,
+    pub encodings: Option<SizedTextEncoding>,
+}
+
+impl SizedText {
+    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+        if inner.len() < 1 || inner.len() > 16 {
+            return Err(DeserializeError::new(
+                "SizedText",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(1),
+                    max: Some(16),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<String> for SizedText {
+    type Error = DeserializeError;
+
+    fn try_from(inner: String) -> Result<Self, Self::Error> {
+        SizedText::new(inner)
+    }
+}
+
+impl From<SizedText> for String {
+    fn from(wrapper: SizedText) -> Self {
+        wrapper.inner
+    }
+}

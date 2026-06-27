@@ -1,0 +1,49 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Hash(cddl_lib::Hash);
+
+#[wasm_bindgen]
+impl Hash {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Hash, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::Hash> for Hash {
+    fn from(native: cddl_lib::Hash) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Hash> for cddl_lib::Hash {
+    fn from(wasm: Hash) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Hash> for Hash {
+    fn as_ref(&self) -> &cddl_lib::Hash {
+        &self.0
+    }
+}
