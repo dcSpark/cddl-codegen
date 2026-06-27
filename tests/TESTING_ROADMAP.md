@@ -53,6 +53,17 @@ what's already covered.
    type shapes or `preserve`/`canonical` profiles is *not* tracked here: the emitted `to_json_value`
    line is flag-independent, so do it only if a divergence actually surfaces.
 
+7. **Output-validate `--json-schema-export` (today it's only compile-checked).** *(small–medium)* Two
+   concrete additions, both able to reuse the `wasm_json_roundtrip` node harness:
+   - run the json-gen crate and assert each type's `to_json()` output **validates against its own
+     emitted schema** — a real correctness oracle for the feature, not just a "does it build" gate;
+   - add a smoke test for the shipped `run-json2ts.js`/`json-ts-types.js` (schema → `.d.ts`), which
+     has zero coverage.
+
+   Why it's worth doing: the suite currently proves the json-gen crate *builds*
+   (`integration_tests::json`, `feature_corpus_compiles`) but never runs it or inspects what it emits,
+   so a schema can be valid Rust yet wrong JSON Schema and nothing notices
+
 ## Explicitly not worth it (decided, not overlooked)
 
 - Full `2^N` flag powerset / PICT pairwise — curated named profiles already cover this; revisit

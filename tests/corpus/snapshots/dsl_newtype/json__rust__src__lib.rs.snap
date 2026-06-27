@@ -49,16 +49,16 @@ impl<'de> serde::de::Deserialize<'de> for ProtocolMagic {
 }
 
 impl schemars::JsonSchema for ProtocolMagic {
-    fn schema_name() -> String {
-        String::from("ProtocolMagic")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ProtocolMagic")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         u64::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        u64::is_referenceable()
+    fn inline_schema() -> bool {
+        u64::inline_schema()
     }
 }
 

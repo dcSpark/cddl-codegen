@@ -14,5 +14,5 @@ crate-type = ["cdylib", "rlib"]
 cbor_event = "2.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.57"
-schemars = "0.8.22"
+schemars = "1.2.1"
 wasm-bindgen = "0.2"
