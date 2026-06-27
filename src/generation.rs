@@ -819,7 +819,7 @@ impl GenerationScope {
             })
             .collect::<BTreeSet<_>>()
         {
-            self.rust_lib().raw(&format!("pub mod {scope};"));
+            self.rust_lib().raw(format!("pub mod {scope};"));
         }
 
         // declare common modules in each module (struct files)
@@ -1006,7 +1006,7 @@ impl GenerationScope {
                 })
                 .collect::<BTreeSet<_>>()
             {
-                self.wasm_lib().raw(&format!("pub mod {scope};"));
+                self.wasm_lib().raw(format!("pub mod {scope};"));
             }
             // wasm imports
             let wasm_imports = types.scope_references(true);
@@ -1655,7 +1655,7 @@ impl GenerationScope {
                                 // https://github.com/primetype/cbor_event/issues/9
                                 // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
                                 // even when not preserving encodings
-                                neg.line(&format!("{serializer_use}.write_negative_integer_sz({expr_deref} as i128, cbor_event::Sz::canonical(({expr_deref} + 1).abs() as u64)){line_ender}"));
+                                neg.line(format!("{serializer_use}.write_negative_integer_sz({expr_deref} as i128, cbor_event::Sz::canonical(({expr_deref} + 1).abs() as u64)){line_ender}"));
                             } else {
                                 write_using_sz(
                                     &mut neg,
@@ -2014,7 +2014,7 @@ impl GenerationScope {
                     );
                     some_block.after(",");
                     opt_block.push_block(some_block);
-                    opt_block.line(&format!(
+                    opt_block.line(format!(
                         "None => {serializer_use}.write_special(cbor_event::Special::Null),"
                     ));
                     if !config.is_end {
@@ -2389,7 +2389,7 @@ impl GenerationScope {
                                         None => Cow::Borrowed(""),
                                     };
                                 let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
-                                pos.line(&format!(
+                                pos.line(format!(
                                     "let (x, enc) = {}.unsigned_integer_sz(){}?;",
                                     deserializer_name,
                                     bounds_fn(&positive_bounds)
@@ -2399,7 +2399,7 @@ impl GenerationScope {
                                 type_check.push_block(pos);
                                 // let this cover both the negative int case + error case
                                 let mut neg = Block::new("_ =>");
-                                neg.line(&format!(
+                                neg.line(format!(
                                     "let (x, enc) = {}.negative_integer_sz(){}?;",
                                     deserializer_name,
                                     bounds_fn(&negative_bounds)
@@ -2665,8 +2665,8 @@ impl GenerationScope {
                             Block::new(format!("let {is_some_check_var} = match cbor_type()?"));
                         let mut special_block = Block::new("cbor_event::Type::Special =>");
                         special_block
-                            .line(&format!("let special = {deserializer_name}.special()?;"));
-                        special_block.line(&format!(
+                            .line(format!("let special = {deserializer_name}.special()?;"));
+                        special_block.line(format!(
                         "{deserializer_name}.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();"
                     ));
                         let mut special_match = Block::new("match special");
@@ -3259,7 +3259,7 @@ impl GenerationScope {
                         }
                         tag_check
                     };
-                    tag_check.line(&format!(
+                    tag_check.line(format!(
                     "{} => {}Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),",
                     if cli.preserve_encodings { "(tag, _enc)" } else { "tag" },
                     if before_after.expects_result { "" } else { "return " },
@@ -3342,7 +3342,7 @@ impl GenerationScope {
             // new
             for variant in variants.iter() {
                 let variant_arg = variant.name_as_var();
-                let mut new_func = codegen::Function::new(&format!("new_{variant_arg}"));
+                let mut new_func = codegen::Function::new(format!("new_{variant_arg}"));
                 new_func.vis("pub");
                 if let Some(doc) = &variant.doc {
                     new_func.doc(doc);
@@ -3658,7 +3658,7 @@ fn declare_modules(
                 gen_scopes
                     .entry(module_scope.parents(i))
                     .or_insert(codegen::Scope::new())
-                    .raw(&format!("pub mod {};", component));
+                    .raw(format!("pub mod {};", component));
             }
         }
     }
@@ -3877,7 +3877,7 @@ impl<'a> WasmWrapper<'a> {
                     .impl_trait(format!("AsRef<{native_name}>"))
                     .new_fn("as_ref")
                     .arg_ref_self()
-                    .ret(&format!("&{native_name}"))
+                    .ret(format!("&{native_name}"))
                     .line("&self.0");
                 self.as_ref = Some(as_ref);
             }
@@ -4214,7 +4214,7 @@ fn create_deserialize_impls(
             deser_body.line("let tag = raw.tag()?;");
         }
         let mut tag_check = Block::new(format!("if tag != {tag}"));
-        tag_check.line(&format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
         deser_body.push_block(tag_check);
     }
     if let Some(rep) = rep {
@@ -4286,7 +4286,7 @@ fn create_deserialize_impls(
 // without having to put error annotation inside of every single cbor_event call.
 fn make_err_annotate_block(annotation: &str, before: &str, after: &str) -> Block {
     let mut if_block = Block::new(format!("{before}(|| -> Result<_, DeserializeError>"));
-    if_block.after(&format!(
+    if_block.after(format!(
         ")().map_err(|e| e.annotate(\"{annotation}\")){after}"
     ));
     if_block
@@ -5171,7 +5171,7 @@ fn codegen_struct(
             if !field.rust_type.is_fixed_value() {
                 if field.optional {
                     // setter
-                    let mut setter = codegen::Function::new(&format!("set_{}", field.name));
+                    let mut setter = codegen::Function::new(format!("set_{}", field.name));
                     setter
                         .arg_mut_self()
                         .arg(&field.name, field.rust_type.for_wasm_param(types))
@@ -5339,7 +5339,7 @@ fn codegen_struct(
                 ));
                 // field
                 codegen::Field::new(
-                    &format!("pub {}", field.name),
+                    format!("pub {}", field.name),
                     field.rust_type.for_rust_member(types, false, cli),
                 )
             } else if field.optional {
@@ -5347,7 +5347,7 @@ fn codegen_struct(
                 native_new_block.line(format!("{}: None,", field.name));
                 // field
                 codegen::Field::new(
-                    &format!("pub {}", field.name),
+                    format!("pub {}", field.name),
                     format!(
                         "Option<{}>",
                         field.rust_type.for_rust_member(types, false, cli)
@@ -5380,7 +5380,7 @@ fn codegen_struct(
                 }
                 // field
                 codegen::Field::new(
-                    &format!("pub {}", field.name),
+                    format!("pub {}", field.name),
                     field.rust_type.for_rust_member(types, false, cli),
                 )
             };
@@ -5396,7 +5396,7 @@ fn codegen_struct(
     let len_encoding_var = if cli.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{name}Encoding")));
         native_struct.field(
-            &format!(
+            format!(
                 "{}pub encodings",
                 encoding_var_macros(types.used_as_key(name), false, cli)
             ),
@@ -5421,14 +5421,11 @@ fn codegen_struct(
                 true,
                 cli,
             ) {
-                encoding_struct.field(
-                    &format!("pub {}", field_enc.field_name),
-                    field_enc.type_name,
-                );
+                encoding_struct.field(format!("pub {}", field_enc.field_name), field_enc.type_name);
             }
             if record.rep == Representation::Map {
                 let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
-                encoding_struct.field(&format!("pub {}", key_enc.field_name), key_enc.type_name);
+                encoding_struct.field(format!("pub {}", key_enc.field_name), key_enc.type_name);
             }
         }
 
@@ -5608,7 +5605,7 @@ fn codegen_struct(
                         } else {
                             Block::new(format!("if {}.is_some()", field.name))
                         };
-                        dup_check.line(&format!(
+                        dup_check.line(format!(
                             "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                         ));
                         deser_block_code.content.push_block(dup_check);
@@ -5696,7 +5693,7 @@ fn codegen_struct(
                         }
                     } else if field.rust_type.is_fixed_value() {
                         let mut dup_check = Block::new(format!("if {}_present", field.name));
-                        dup_check.line(&format!(
+                        dup_check.line(format!(
                             "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                         ));
                         deser_block_code.content.push_block(dup_check);
@@ -5747,7 +5744,7 @@ fn codegen_struct(
                         }
                     } else {
                         let mut dup_check = Block::new(format!("if {}.is_some()", field.name));
-                        dup_check.line(&format!(
+                        dup_check.line(format!(
                             "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
                         ));
                         deser_block_code.content.push_block(dup_check);
@@ -6226,7 +6223,7 @@ fn codegen_group_choices(
         // new (1 per variant)
         for variant in variants.iter() {
             // TODO: verify if variant.serialize_as_embedded_group impacts ctor generation
-            let mut new_func = codegen::Function::new(&format!("new_{}", variant.name_as_var()));
+            let mut new_func = codegen::Function::new(format!("new_{}", variant.name_as_var()));
             new_func.vis("pub");
             if let Some(doc) = &variant.doc {
                 new_func.doc(doc);
@@ -6413,7 +6410,7 @@ fn add_wasm_enum_getters(
                     true
                 }
             } else {
-                as_variant.ret(&format!("Option<{}>", ty.for_wasm_return(types)));
+                as_variant.ret(format!("Option<{}>", ty.for_wasm_return(types)));
                 variant_match.line(format!(
                     "{}::{}{} => Some({}),",
                     rust_crate_struct_from_wasm(types, name, cli),
@@ -6998,7 +6995,7 @@ fn generate_enum(
         }
         e.push_variant(v);
         // new (particularly useful if we have encoding variables)
-        let mut new_func = codegen::Function::new(&format!("new_{variant_var_name}"));
+        let mut new_func = codegen::Function::new(format!("new_{variant_var_name}"));
         new_func.vis("pub");
         if let Some(doc) = &variant.doc {
             new_func.doc(doc);
@@ -7148,7 +7145,7 @@ fn generate_enum(
             assert_eq!(enum_gen_info.names.len(), 1);
             // we use serialize() instead of serialize_as_embedded_group() to count as the outer array tag here
             // to simplify things (the size logic is there already)
-            ser_array_match_block.line(&format!(
+            ser_array_match_block.line(format!(
                 "{}::{}({}) => {}.serialize(serializer{}),",
                 name,
                 variant.name,
@@ -7521,7 +7518,7 @@ fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Op
             "let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{ident}\"))?;"
         ));
         let mut tag_check = Block::new(format!("if tag != {tag}"));
-        tag_check.line(&format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        tag_check.line(format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
         deser_func.push_block(tag_check);
     }
 }
@@ -7717,7 +7714,7 @@ fn generate_wrapper_struct(
 
         if !enc_fields.is_empty() {
             s.field(
-                &format!(
+                format!(
                     "{}pub encodings",
                     encoding_var_macros(types.used_as_key(type_name), true, cli)
                 ),
@@ -7726,7 +7723,7 @@ fn generate_wrapper_struct(
             let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
             for field_enc in &enc_fields {
                 encoding_struct.field(
-                    &format!("pub {}", field_enc.field_name),
+                    format!("pub {}", field_enc.field_name),
                     &field_enc.type_name,
                 );
             }
@@ -8140,14 +8137,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     let mut nint = codegen::Variant::new("Nint");
     if cli.preserve_encodings {
         uint.named("value", "u64").named(
-            &format!(
+            format!(
                 "{}encoding",
                 encoding_var_macros(types.used_as_key(&ident), true, cli)
             ),
             "Option<cbor_event::Sz>",
         );
         nint.named("value", "u64").named(
-            &format!(
+            format!(
                 "{}encoding",
                 encoding_var_macros(types.used_as_key(&ident), true, cli)
             ),
@@ -8305,17 +8302,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
 }
 
 /// Gets the rustfmt path to rustfmt the generated bindings.
-fn rustfmt_path<'a>() -> std::io::Result<Cow<'a, std::path::PathBuf>> {
+fn rustfmt_path() -> std::io::Result<std::path::PathBuf> {
     if let Ok(rustfmt) = std::env::var("RUSTFMT") {
-        return Ok(Cow::Owned(rustfmt.into()));
+        return Ok(rustfmt.into());
     }
     #[cfg(feature = "which-rustfmt")]
     match which::which("rustfmt") {
-        Ok(p) => Ok(Cow::Owned(p)),
-        Err(e) => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{e}"),
-        )),
+        Ok(p) => Ok(p),
+        Err(e) => Err(std::io::Error::other(format!("{e}"))),
     }
     #[cfg(not(feature = "which-rustfmt"))]
     Err(std::io::Error::new(
@@ -8325,8 +8319,8 @@ fn rustfmt_path<'a>() -> std::io::Result<Cow<'a, std::path::PathBuf>> {
 }
 
 /// Runs rustfmt on the string
-pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<str>> {
-    let mut cmd = Command::new(rustfmt_path().unwrap().as_ref());
+pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
+    let mut cmd = Command::new(rustfmt_path().unwrap());
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     // cmd.args(&["--config-path", path]);

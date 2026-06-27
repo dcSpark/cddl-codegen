@@ -2281,7 +2281,7 @@ impl RustField {
         }
     }
 
-    pub fn to_embedded_rust_type(&self) -> Cow<RustType> {
+    pub fn to_embedded_rust_type(&self) -> Cow<'_, RustType> {
         if self.optional {
             Cow::Owned(RustType::new(ConceptualRustType::Optional(Box::new(
                 self.rust_type.clone(),
@@ -2574,11 +2574,11 @@ impl RustStruct {
                 unreachable!("I don't think group choices should be using length?")
             }
             RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Extern { .. } => panic!(
+            RustStructType::Extern => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => "1".into(),
-            RustStructType::RawBytesType { .. } => "1".into(),
+            RustStructType::RawBytesType => "1".into(),
         }
     }
 
@@ -2598,7 +2598,7 @@ impl RustStruct {
                 unreachable!("I don't think group choices should be using length?")
             }
             RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Extern { .. } => panic!(
+            RustStructType::Extern => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => 1,
@@ -2619,7 +2619,7 @@ impl RustStruct {
                 unreachable!("I don't think group choices should be using length?")
             }
             RustStructType::Wrapper { .. } => unreachable!("wrapper types don't use length"),
-            RustStructType::Extern { .. } => panic!(
+            RustStructType::Extern => panic!(
                 "do we need to look this up ever? will the prelude have structs with fields?"
             ),
             RustStructType::CStyleEnum { .. } => RustStructCBORLen::Fixed(1),
@@ -2868,6 +2868,9 @@ pub struct GenericInstance {
 }
 
 #[derive(Debug, Clone)]
+// internal, short-lived during generic resolution and never stored in bulk,
+// so the size gap doesn't matter. Box the Resolved variant only if it ever lands in a hot collection.
+#[allow(clippy::large_enum_variant)]
 pub enum GenericResolved {
     // resolved with types swapped to concrete instance
     Resolved(RustStruct),
