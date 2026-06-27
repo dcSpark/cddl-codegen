@@ -48,5 +48,7 @@ jobs:
         with:
           tool: cargo-insta
 
+      # Filter must list every snapshot-producing test module, or this would falsely flag the
+      # missing module's snapshots as unreferenced.
       - name: Snapshot orphan check
-        run: cargo insta test --unreferenced=reject -- snapshot_tests
+        run: cargo insta test --unreferenced=reject -- snapshot_tests robustness
