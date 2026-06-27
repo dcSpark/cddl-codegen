@@ -1,0 +1,65 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptionalFields(cddl_lib::OptionalFields);
+
+#[wasm_bindgen]
+impl OptionalFields {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptionalFields, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_b(&mut self, b: String) {
+        self.0.b = Some(b)
+    }
+
+    pub fn b(&self) -> Option<String> {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::OptionalFields::new(a))
+    }
+}
+
+impl From<cddl_lib::OptionalFields> for OptionalFields {
+    fn from(native: cddl_lib::OptionalFields) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptionalFields> for cddl_lib::OptionalFields {
+    fn from(wasm: OptionalFields) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptionalFields> for OptionalFields {
+    fn as_ref(&self) -> &cddl_lib::OptionalFields {
+        &self.0
+    }
+}

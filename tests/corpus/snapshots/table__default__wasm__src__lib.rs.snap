@@ -1,0 +1,59 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Table(cddl_lib::Table);
+
+#[wasm_bindgen]
+impl Table {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::Table> for Table {
+    fn from(native: cddl_lib::Table) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Table> for cddl_lib::Table {
+    fn from(wasm: Table) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Table> for Table {
+    fn as_ref(&self) -> &cddl_lib::Table {
+        &self.0
+    }
+}

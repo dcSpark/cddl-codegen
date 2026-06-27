@@ -1,0 +1,36 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub enum TypeChoice {
+    U64(u64),
+    Text(String),
+    Bytes(Vec<u8>),
+}
+
+impl TypeChoice {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes(bytes)
+    }
+}

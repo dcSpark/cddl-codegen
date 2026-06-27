@@ -1,0 +1,1423 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::error::*;
+use crate::ordered_hash_map::OrderedHashMap;
+use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{
+    AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
+    BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, DeeplyNestedEncoding,
+    EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding,
+    MapWithDefaultsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
+    SignedIntsEncoding, String1632Encoding, String64Encoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, ThreeEncoding,
+    WrapperListEncoding, WrapperTableEncoding,
+};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct A {
+    pub a: u64,
+    pub b: String,
+    pub encodings: Option<AEncoding>,
+}
+
+impl A {
+    pub fn new(a: u64, b: String) -> Result<Self, DeserializeError> {
+        if b.len() > 4 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: b.len() as isize,
+                min: None,
+                max: Some(4),
+            }
+            .into());
+        }
+        Ok(Self {
+            a,
+            b,
+            encodings: None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ArrayOptFields {
+    pub a: Option<u64>,
+    pub b: Option<String>,
+    pub c: u64,
+    pub d: Option<String>,
+    pub e: Option<NonOverlappingTypeChoiceSome>,
+    pub encodings: Option<ArrayOptFieldsEncoding>,
+}
+
+impl ArrayOptFields {
+    pub fn new(c: u64) -> Self {
+        Self {
+            a: None,
+            b: None,
+            c,
+            d: None,
+            e: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Bar {
+    pub foo: Foo,
+    pub derp: Option<u64>,
+    pub key_1: Option<u64>,
+    pub key_5: Option<String>,
+    pub encodings: Option<BarEncoding>,
+}
+
+impl Bar {
+    pub fn new(foo: Foo, key_1: Option<u64>) -> Self {
+        Self {
+            foo,
+            derp: None,
+            key_1,
+            key_5: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Basic {
+    pub index_0: u64,
+    pub index_1: String,
+    pub encodings: Option<BasicEncoding>,
+}
+
+impl Basic {
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self {
+            index_0,
+            index_1,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BasicArr {
+    pub basic: Basic,
+    pub encodings: Option<BasicArrEncoding>,
+}
+
+impl BasicArr {
+    pub fn new(basic: Basic) -> Self {
+        Self {
+            basic,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Bounds {
+    pub w: i64,
+    pub x: u64,
+    pub y: u64,
+    pub z: String,
+    pub a: Vec<u64>,
+    pub b: OrderedHashMap<u64, u64>,
+    pub encodings: Option<BoundsEncoding>,
+}
+
+impl Bounds {
+    pub fn new(
+        w: i64,
+        x: u64,
+        y: u64,
+        z: String,
+        a: Vec<u64>,
+        b: OrderedHashMap<u64, u64>,
+    ) -> Result<Self, DeserializeError> {
+        if w < -1000 || w > 1000 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: w as isize,
+                min: Some(-1000),
+                max: Some(1000),
+            }
+            .into());
+        }
+        if x > 7 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: x as isize,
+                min: None,
+                max: Some(7),
+            }
+            .into());
+        }
+        if y < 4 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: y as isize,
+                min: Some(4),
+                max: None,
+            }
+            .into());
+        }
+        if z.len() < 3 || z.len() > 14 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: z.len() as isize,
+                min: Some(3),
+                max: Some(14),
+            }
+            .into());
+        }
+        if a.len() < 1 || a.len() > 3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: a.len() as isize,
+                min: Some(1),
+                max: Some(3),
+            }
+            .into());
+        }
+        if b.len() > 3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: b.len() as isize,
+                min: None,
+                max: Some(3),
+            }
+            .into());
+        }
+        Ok(Self {
+            w,
+            x,
+            y,
+            z,
+            a,
+            b,
+            encodings: None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BoundsGroupChoice {
+    A(A),
+    B { b: Hash, len_encoding: LenEncoding },
+    C(C),
+}
+
+impl BoundsGroupChoice {
+    pub fn new_a(a: u64, b: String) -> Result<Self, DeserializeError> {
+        Ok(Self::A(A::new(a, b)?))
+    }
+
+    pub fn new_b(b: Hash) -> Self {
+        Self::B {
+            b,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_c(x: Hash, y: Hash) -> Self {
+        Self::C(C::new(x, y))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BoundsTypeChoice {
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl BoundsTypeChoice {
+    pub fn new_bytes(bytes: Vec<u8>) -> Result<Self, DeserializeError> {
+        if bytes.len() > 64 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: bytes.len() as isize,
+                min: None,
+                max: Some(64),
+            }
+            .into());
+        }
+        Ok(Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        })
+    }
+
+    pub fn new_text(text: String) -> Result<Self, DeserializeError> {
+        if text.len() > 64 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: text.len() as isize,
+                min: None,
+                max: Some(64),
+            }
+            .into());
+        }
+        Ok(Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        })
+    }
+}
+
+pub type BytesList = Vec<Vec<u8>>;
+
+#[derive(Clone, Debug)]
+pub struct BytesUint {
+    pub index_0: Vec<u8>,
+    pub index_1: u64,
+    pub encodings: Option<BytesUintEncoding>,
+}
+
+impl BytesUint {
+    pub fn new(index_0: Vec<u8>, index_1: u64) -> Self {
+        Self {
+            index_0,
+            index_1,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct C {
+    pub x: Hash,
+    pub y: Hash,
+    pub encodings: Option<CEncoding>,
+}
+
+impl C {
+    pub fn new(x: Hash, y: Hash) -> Self {
+        Self {
+            x,
+            y,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub enum CEnum {
+    I3,
+    I1,
+    I4,
+}
+
+#[derive(Clone, Debug)]
+pub struct CborInCbor {
+    pub foo_bytes: FooBytes,
+    pub uint_bytes: u64,
+    pub tagged_foo_bytes: TaggedFooBytes,
+    pub encodings: Option<CborInCborEncoding>,
+}
+
+impl CborInCbor {
+    pub fn new(foo_bytes: FooBytes, uint_bytes: u64, tagged_foo_bytes: TaggedFooBytes) -> Self {
+        Self {
+            foo_bytes,
+            uint_bytes,
+            tagged_foo_bytes,
+            encodings: None,
+        }
+    }
+}
+
+pub type CustomBytes = Vec<u8>;
+
+pub type Data = OrderedHashMap<Vec<u8>, OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>>;
+
+#[derive(Clone, Debug)]
+pub struct DeeplyNested {
+    pub data: Data,
+    pub encodings: Option<DeeplyNestedEncoding>,
+}
+
+impl DeeplyNested {
+    pub fn new(data: Data) -> Self {
+        Self {
+            data,
+            encodings: None,
+        }
+    }
+}
+
+pub type DefaultUint = u64;
+
+#[derive(Clone, Debug)]
+pub struct Ed {
+    pub index_1: u64,
+    pub index_2: Option<String>,
+    pub encodings: Option<EdEncoding>,
+}
+
+impl Ed {
+    pub fn new(index_1: u64) -> Self {
+        Self {
+            index_1,
+            index_2: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Ee {
+    pub index_1: u64,
+    pub index_2: Option<Vec<u8>>,
+    pub index_3: u64,
+    pub encodings: Option<EeEncoding>,
+}
+
+impl Ee {
+    pub fn new(index_1: u64, index_3: u64) -> Self {
+        Self {
+            index_1,
+            index_2: None,
+            index_3,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum EnumOptEmbedFields {
+    Ea {
+        ea_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    Eb {
+        index_1: Option<String>,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        index_1_encoding: StringEncoding,
+        index_2_encoding: Option<cbor_event::Sz>,
+    },
+    Ec {
+        index_1: u64,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        index_1_encoding: Option<cbor_event::Sz>,
+        index_2_encoding: Option<cbor_event::Sz>,
+    },
+    Ed(Ed),
+    Ee(Ee),
+    Ef {
+        non_overlapping_type_choice_some: Option<NonOverlappingTypeChoiceSome>,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        index_2_tag_encoding: Option<cbor_event::Sz>,
+        index_2_encoding: Option<cbor_event::Sz>,
+    },
+    Eg {
+        overlapping_inlined: Option<OverlappingInlined>,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        index_2_tag_encoding: Option<cbor_event::Sz>,
+        index_2_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl EnumOptEmbedFields {
+    pub fn new_ea() -> Self {
+        Self::Ea {
+            ea_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_eb(index_1: Option<String>) -> Self {
+        Self::Eb {
+            index_1,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            index_1_encoding: StringEncoding::default(),
+            index_2_encoding: None,
+        }
+    }
+
+    pub fn new_ec(index_1: u64) -> Self {
+        Self::Ec {
+            index_1,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            index_1_encoding: None,
+            index_2_encoding: None,
+        }
+    }
+
+    pub fn new_ed(index_1: u64) -> Self {
+        Self::Ed(Ed::new(index_1))
+    }
+
+    pub fn new_ee(index_1: u64, index_3: u64) -> Self {
+        Self::Ee(Ee::new(index_1, index_3))
+    }
+
+    pub fn new_ef(non_overlapping_type_choice_some: Option<NonOverlappingTypeChoiceSome>) -> Self {
+        Self::Ef {
+            non_overlapping_type_choice_some,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            index_2_tag_encoding: None,
+            index_2_encoding: None,
+        }
+    }
+
+    pub fn new_eg(overlapping_inlined: Option<OverlappingInlined>) -> Self {
+        Self::Eg {
+            overlapping_inlined,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            index_2_tag_encoding: None,
+            index_2_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Enums {
+    pub c_enum: CEnum,
+    pub type_choice: TypeChoice,
+    pub encodings: Option<EnumsEncoding>,
+}
+
+impl Enums {
+    pub fn new(c_enum: CEnum, type_choice: TypeChoice) -> Self {
+        Self {
+            c_enum,
+            type_choice,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct First {
+    pub x: u64,
+    pub z: u64,
+    pub encodings: Option<FirstEncoding>,
+}
+
+impl First {
+    pub fn new(x: u64, z: u64) -> Self {
+        Self {
+            x,
+            z,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Foo {
+    pub index_0: u64,
+    pub index_1: String,
+    pub index_2: Vec<u8>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<FooEncoding>,
+}
+
+impl Foo {
+    pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self {
+            index_0,
+            index_1,
+            index_2,
+            encodings: None,
+        }
+    }
+}
+
+pub type FooBytes = Foo;
+
+#[derive(Clone, Debug)]
+pub enum GroupChoice {
+    I3 {
+        i3_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    I2 {
+        i2_tag_encoding: Option<cbor_event::Sz>,
+        i2_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    Foo {
+        foo: Foo,
+        len_encoding: LenEncoding,
+    },
+    GroupChoice3 {
+        x: u64,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        x_encoding: Option<cbor_event::Sz>,
+    },
+    Plain(Plain),
+}
+
+impl GroupChoice {
+    pub fn new_i3() -> Self {
+        Self::I3 {
+            i3_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_i2() -> Self {
+        Self::I2 {
+            i2_tag_encoding: None,
+            i2_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_foo(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self::Foo {
+            foo: Foo::new(index_0, index_1, index_2),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_group_choice3(x: u64) -> Self {
+        Self::GroupChoice3 {
+            x,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            x_encoding: None,
+        }
+    }
+
+    pub fn new_plain(d: u64, e: TaggedText) -> Self {
+        Self::Plain(Plain::new(d, e))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Hash {
+    pub inner: Vec<u8>,
+    pub encodings: Option<HashEncoding>,
+}
+
+impl Hash {
+    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+        if inner.len() > 8 {
+            return Err(DeserializeError::new(
+                "Hash",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(0),
+                    max: Some(8),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<Vec<u8>> for Hash {
+    type Error = DeserializeError;
+
+    fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
+        Hash::new(inner)
+    }
+}
+
+impl From<Hash> for Vec<u8> {
+    fn from(wrapper: Hash) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapWithDefaults {
+    pub key_1: DefaultUint,
+    pub key_2: String,
+    pub encodings: Option<MapWithDefaultsEncoding>,
+}
+
+impl MapWithDefaults {
+    pub fn new() -> Self {
+        Self {
+            key_1: 1337,
+            key_2: "two".to_owned(),
+            encodings: None,
+        }
+    }
+}
+
+impl Default for MapWithDefaults {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlapBasicEmbed {
+    First {
+        x: u64,
+        len_encoding: LenEncoding,
+        x_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Second {
+        y: String,
+        len_encoding: LenEncoding,
+        y_encoding: StringEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl NonOverlapBasicEmbed {
+    pub fn new_first(x: u64) -> Self {
+        Self::First {
+            x,
+            len_encoding: LenEncoding::default(),
+            x_encoding: None,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_second(y: String) -> Self {
+        Self::Second {
+            y,
+            len_encoding: LenEncoding::default(),
+            y_encoding: StringEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlapBasicEmbedMixed {
+    First {
+        x: u64,
+        len_encoding: LenEncoding,
+        x_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Second(Second),
+}
+
+impl NonOverlapBasicEmbedMixed {
+    pub fn new_first(x: u64) -> Self {
+        Self::First {
+            x,
+            len_encoding: LenEncoding::default(),
+            x_encoding: None,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self::Second(Second::new(y, z))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlapBasicEmbedMixedExplicit {
+    First {
+        x: u64,
+        len_encoding: LenEncoding,
+        x_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Second(Second),
+    Third(BytesUint),
+}
+
+impl NonOverlapBasicEmbedMixedExplicit {
+    pub fn new_first(x: u64) -> Self {
+        Self::First {
+            x,
+            len_encoding: LenEncoding::default(),
+            x_encoding: None,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self::Second(Second::new(y, z))
+    }
+
+    pub fn new_third(index_0: Vec<u8>, index_1: u64) -> Self {
+        Self::Third(BytesUint::new(index_0, index_1))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlapBasicEmbedMultiFields {
+    First(First),
+    Second(Second),
+}
+
+impl NonOverlapBasicEmbedMultiFields {
+    pub fn new_first(x: u64, z: u64) -> Self {
+        Self::First(First::new(x, z))
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self::Second(Second::new(y, z))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlapBasicNotBasic {
+    Group(Basic),
+    GroupArr {
+        group_arr: BasicArr,
+        len_encoding: LenEncoding,
+    },
+    GroupTagged {
+        group_tagged: Basic,
+        group_tagged_tag_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    GroupBytes {
+        group_bytes: BasicArr,
+        group_bytes_bytes_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl NonOverlapBasicNotBasic {
+    pub fn new_group(index_0: u64, index_1: String) -> Self {
+        Self::Group(Basic::new(index_0, index_1))
+    }
+
+    pub fn new_group_arr(basic: Basic) -> Self {
+        Self::GroupArr {
+            group_arr: BasicArr::new(basic),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_group_tagged(index_0: u64, index_1: String) -> Self {
+        Self::GroupTagged {
+            group_tagged: Basic::new(index_0, index_1),
+            group_tagged_tag_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_group_bytes(basic: Basic) -> Self {
+        Self::GroupBytes {
+            group_bytes: BasicArr::new(basic),
+            group_bytes_bytes_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonOverlappingTypeChoiceAll {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    N64 {
+        n64: u64,
+        n64_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+    Helloworld {
+        helloworld_tag_encoding: Option<cbor_event::Sz>,
+        helloworld_encoding: StringEncoding,
+    },
+    ArrU64 {
+        arr_u64: Vec<u64>,
+        arr_u64_encoding: LenEncoding,
+        arr_u64_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    },
+    MapTextToU64 {
+        map_text_to_u64: OrderedHashMap<String, u64>,
+        map_text_to_u64_encoding: LenEncoding,
+        map_text_to_u64_key_encodings: BTreeMap<String, StringEncoding>,
+        map_text_to_u64_value_encodings: BTreeMap<String, Option<cbor_event::Sz>>,
+    },
+}
+
+impl NonOverlappingTypeChoiceAll {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_n64(n64: u64) -> Self {
+        Self::N64 {
+            n64,
+            n64_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_helloworld() -> Self {
+        Self::Helloworld {
+            helloworld_tag_encoding: None,
+            helloworld_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_arr_u64(arr_u64: Vec<u64>) -> Self {
+        Self::ArrU64 {
+            arr_u64,
+            arr_u64_encoding: LenEncoding::default(),
+            arr_u64_elem_encodings: Vec::new(),
+        }
+    }
+
+    pub fn new_map_text_to_u64(map_text_to_u64: OrderedHashMap<String, u64>) -> Self {
+        Self::MapTextToU64 {
+            map_text_to_u64,
+            map_text_to_u64_encoding: LenEncoding::default(),
+            map_text_to_u64_key_encodings: BTreeMap::new(),
+            map_text_to_u64_value_encodings: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(
+    Eq,
+    PartialEq,
+    Ord = "feature_allow_slow_enum",
+    PartialOrd = "feature_allow_slow_enum",
+    Hash
+)]
+pub enum NonOverlappingTypeChoiceSome {
+    U64 {
+        uint: u64,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    N64 {
+        n64: u64,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        n64_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        text_encoding: StringEncoding,
+    },
+}
+
+impl NonOverlappingTypeChoiceSome {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_n64(n64: u64) -> Self {
+        Self::N64 {
+            n64,
+            n64_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OverlapBasicEmbed {
+    Identity {
+        identity_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    X {
+        hash: Vec<u8>,
+        len_encoding: LenEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+        hash_encoding: StringEncoding,
+    },
+}
+
+impl OverlapBasicEmbed {
+    pub fn new_identity() -> Self {
+        Self::Identity {
+            identity_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_x(hash: Vec<u8>) -> Result<Self, DeserializeError> {
+        if hash.len() < 32 || hash.len() > 32 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: hash.len() as isize,
+                min: Some(32),
+                max: Some(32),
+            }
+            .into());
+        }
+        Ok(Self::X {
+            hash,
+            len_encoding: LenEncoding::default(),
+            tag_encoding: None,
+            hash_encoding: StringEncoding::default(),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OverlappingInlined {
+    One {
+        one_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    Two {
+        index_1: u64,
+        len_encoding: LenEncoding,
+        index_0_encoding: Option<cbor_event::Sz>,
+        index_1_encoding: Option<cbor_event::Sz>,
+    },
+    Three(Three),
+}
+
+impl OverlappingInlined {
+    pub fn new_one() -> Self {
+        Self::One {
+            one_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_two(index_1: u64) -> Self {
+        Self::Two {
+            index_1,
+            len_encoding: LenEncoding::default(),
+            index_0_encoding: None,
+            index_1_encoding: None,
+        }
+    }
+
+    pub fn new_three(index_1: u64, index_2: String) -> Self {
+        Self::Three(Three::new(index_1, index_2))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Plain {
+    pub d: u64,
+    pub e: TaggedText,
+    pub encodings: Option<PlainEncoding>,
+}
+
+impl Plain {
+    pub fn new(d: u64, e: TaggedText) -> Self {
+        Self {
+            d,
+            e,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainArrays {
+    pub embedded: Plain,
+    pub single: Plain,
+    pub multi: Vec<Plain>,
+    pub encodings: Option<PlainArraysEncoding>,
+}
+
+impl PlainArrays {
+    pub fn new(embedded: Plain, single: Plain, multi: Vec<Plain>) -> Self {
+        Self {
+            embedded,
+            single,
+            multi,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Second {
+    pub y: String,
+    pub z: u64,
+    pub encodings: Option<SecondEncoding>,
+}
+
+impl Second {
+    pub fn new(y: String, z: u64) -> Self {
+        Self {
+            y,
+            z,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SignedInts {
+    pub u_8: u8,
+    pub u_16: u16,
+    pub u_32: u32,
+    pub u_64: u64,
+    pub i_8: i8,
+    pub i_16: i16,
+    pub i_32: i32,
+    pub i_64: i64,
+    pub n_64: u64,
+    pub encodings: Option<SignedIntsEncoding>,
+}
+
+impl SignedInts {
+    pub fn new(
+        u_8: u8,
+        u_16: u16,
+        u_32: u32,
+        u_64: u64,
+        i_8: i8,
+        i_16: i16,
+        i_32: i32,
+        i_64: i64,
+        n_64: u64,
+    ) -> Self {
+        Self {
+            u_8,
+            u_16,
+            u_32,
+            u_64,
+            i_8,
+            i_16,
+            i_32,
+            i_64,
+            n_64,
+            encodings: None,
+        }
+    }
+}
+
+impl From<String1632> for String {
+    fn from(wrapper: String1632) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<String64> for String {
+    fn from(wrapper: String64) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct String1632 {
+    pub inner: String,
+    pub encodings: Option<String1632Encoding>,
+}
+
+impl String1632 {
+    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+        if inner.len() < 16 || inner.len() > 32 {
+            return Err(DeserializeError::new(
+                "String1632",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(16),
+                    max: Some(32),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<String> for String1632 {
+    type Error = DeserializeError;
+
+    fn try_from(inner: String) -> Result<Self, Self::Error> {
+        String1632::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct String64 {
+    pub inner: String,
+    pub encodings: Option<String64Encoding>,
+}
+
+impl String64 {
+    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+        if inner.len() > 64 {
+            return Err(DeserializeError::new(
+                "String64",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(0),
+                    max: Some(64),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<String> for String64 {
+    type Error = DeserializeError;
+
+    fn try_from(inner: String) -> Result<Self, Self::Error> {
+        String64::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StructWithCustomSerialization {
+    pub custom_bytes: CustomBytes,
+    pub field: Vec<u8>,
+    pub overridden: CustomBytes,
+    pub tagged1: CustomBytes,
+    pub tagged2: u64,
+    pub encodings: Option<StructWithCustomSerializationEncoding>,
+}
+
+impl StructWithCustomSerialization {
+    pub fn new(
+        custom_bytes: CustomBytes,
+        field: Vec<u8>,
+        overridden: CustomBytes,
+        tagged1: CustomBytes,
+        tagged2: u64,
+    ) -> Self {
+        Self {
+            custom_bytes,
+            field,
+            overridden,
+            tagged1,
+            tagged2,
+            encodings: None,
+        }
+    }
+}
+
+pub type Table = OrderedHashMap<u64, String>;
+
+#[derive(Clone, Debug)]
+pub struct TableArrMembers {
+    pub arr: Vec<U32>,
+    pub arr2: Vec<Foo>,
+    pub table: Table,
+    pub encodings: Option<TableArrMembersEncoding>,
+}
+
+impl TableArrMembers {
+    pub fn new(arr: Vec<U32>, arr2: Vec<Foo>, table: Table) -> Self {
+        Self {
+            arr,
+            arr2,
+            table,
+            encodings: None,
+        }
+    }
+}
+
+pub type TaggedFooBytes = Foo;
+
+pub type TaggedText = String;
+
+#[derive(Clone, Debug)]
+pub struct Three {
+    pub index_1: u64,
+    pub index_2: String,
+    pub encodings: Option<ThreeEncoding>,
+}
+
+impl Three {
+    pub fn new(index_1: u64, index_2: String) -> Self {
+        Self {
+            index_1,
+            index_2,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeChoice {
+    I0 {
+        i0_encoding: Option<cbor_event::Sz>,
+    },
+    Helloworld {
+        helloworld_encoding: StringEncoding,
+    },
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+    ArrU64 {
+        arr_u64: Vec<u64>,
+        arr_u64_tag_encoding: Option<cbor_event::Sz>,
+        arr_u64_encoding: LenEncoding,
+        arr_u64_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    },
+}
+
+impl TypeChoice {
+    pub fn new_i0() -> Self {
+        Self::I0 { i0_encoding: None }
+    }
+
+    pub fn new_helloworld() -> Self {
+        Self::Helloworld {
+            helloworld_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_arr_u64(arr_u64: Vec<u64>) -> Self {
+        Self::ArrU64 {
+            arr_u64,
+            arr_u64_tag_encoding: None,
+            arr_u64_encoding: LenEncoding::default(),
+            arr_u64_elem_encodings: Vec::new(),
+        }
+    }
+}
+
+pub type U32 = u32;
+
+#[derive(Clone, Debug)]
+pub struct WrapperList {
+    pub inner: Vec<u64>,
+    pub encodings: Option<WrapperListEncoding>,
+}
+
+impl WrapperList {
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<u64>> for WrapperList {
+    fn from(inner: Vec<u64>) -> Self {
+        WrapperList::new(inner)
+    }
+}
+
+impl From<WrapperList> for Vec<u64> {
+    fn from(wrapper: WrapperList) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrapperTable {
+    pub inner: OrderedHashMap<u64, u64>,
+    pub encodings: Option<WrapperTableEncoding>,
+}
+
+impl WrapperTable {
+    pub fn new(inner: OrderedHashMap<u64, u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedHashMap<u64, u64>> for WrapperTable {
+    fn from(inner: OrderedHashMap<u64, u64>) -> Self {
+        WrapperTable::new(inner.clone().into())
+    }
+}
+
+impl From<WrapperTable> for OrderedHashMap<u64, u64> {
+    fn from(wrapper: WrapperTable) -> Self {
+        wrapper.inner
+    }
+}
