@@ -1,0 +1,43 @@
+; Golden known-answer vectors. The expected CBOR bytes in tests.rs are hand-derived from
+; RFC 8949 (Appendix A: the canonical CBOR encoding examples), independent of the generator.
+; Round-trip tests cannot catch a *symmetric* encode+decode bug (both sides wrong in a
+; compensating way); exact-byte assertions can, because the bytes are anchored to the spec.
+;
+; Coverage spans every CBOR major type the generator emits under default flags:
+;   0 uint, 1 nint, 2 bstr, 3 tstr, 4 array, 5 map, 6 tag, 7 simple (bool/null) + float.
+
+; major type 0 (unsigned) + 4 (array) + nesting
+triple    = [a: uint, b: uint, c: uint]
+point     = [x: uint, y: uint]
+nested    = [tag: uint, inner: point]
+
+; major type 3 (text) and 2 (bytes)
+one_text  = [s: tstr]
+one_bytes = [v: bstr]
+
+; major type 1 (negative integer)
+one_nint  = [n: nint]
+
+; major type 7 (simple: bool, null) and float
+one_bool  = [v: bool]
+one_float = [v: float]
+nullable  = [v: uint / null]
+
+; major type 5 (map) — text keys and integer keys
+text_map  = { a: uint, b: uint }
+int_map   = { 1 => uint, 2 => uint }
+
+; major type 6 (tag) — a tag wrapping an array record
+tagged_pair = #6.42([x: uint, y: uint])
+
+; variable-length array and map (the `*` occurrence). Bare `[* uint]` / `{ * uint => uint }`
+; generate as plain Vec/BTreeMap aliases with no serialization methods, so wrap each in a record
+; to get a testable struct; the inner bytes are the variable-length encoding under test.
+uint_array = [* uint]
+uint_map   = { * uint => uint }
+arr_holder = [a: uint_array]
+map_holder = [m: uint_map]
+
+; bignum — RFC 8949 tags 2 (unsigned) and 3 (negative), via the biguint/bignint prelude types
+big_uint = [b: biguint]
+big_nint = [b: bignint]

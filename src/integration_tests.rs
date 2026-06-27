@@ -232,6 +232,13 @@ fn core_no_wasm() {
 }
 
 #[test]
+fn golden_hex() {
+    // Known-answer CBOR vectors hand-derived from RFC 8949 (see tests/golden_hex/tests.rs).
+    // Rust-only: the encoding is identical on the wasm side, so skip the wasm build.
+    run_test("golden_hex", &["--wasm=false"], None, &[], &[], false, &[]);
+}
+
+#[test]
 fn comment_dsl() {
     run_test(
         "comment-dsl",
