@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+expression: contents
+---
+fn main() {
+    cddl_lib_json_schema_gen::export_schemas();
+}

@@ -1,0 +1,29 @@
+---
+source: src/test.rs
+expression: contents
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct BarEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub foo_tag_encoding: Option<cbor_event::Sz>,
+    pub foo_encoding: LenEncoding,
+    pub foo_key_encoding: StringEncoding,
+    pub derp_encoding: Option<cbor_event::Sz>,
+    pub derp_key_encoding: StringEncoding,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_5_encoding: StringEncoding,
+    pub key_5_key_encoding: Option<cbor_event::Sz>,
+    pub five_encoding: Option<cbor_event::Sz>,
+    pub five_key_encoding: StringEncoding,
+    pub foo_map_encoding: LenEncoding,
+    pub foo_map_key_encoding: StringEncoding,
+    pub baz_key_encoding: StringEncoding,
+}

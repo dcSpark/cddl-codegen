@@ -15,3 +15,7 @@ book/
 
 # Test files (generated output dirs, any export suffix e.g. export, export_wasm, export_json_preserve)
 tests/*/export*/
+
+# insta pending snapshots (transient; bless with `INSTA_UPDATE=always cargo test`, never commit)
+*.snap.new
+*.pending-snap

@@ -1,0 +1,33 @@
+---
+source: src/test.rs
+expression: contents
+---
+macro_rules! gen_json_schema {
+    ($name:ty) => {
+        let dest_path =
+            std::path::Path::new(&"schemas").join(&format!("{}.json", stringify!($name)));
+        std::fs::write(
+            &dest_path,
+            serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap(),
+        )
+        .unwrap();
+    };
+}
+
+pub fn export_schemas() {
+    let schema_path = std::path::Path::new(&"schemas");
+    if !schema_path.exists() {
+        std::fs::create_dir(schema_path).unwrap();
+    }
+    // a
+    gen_json_schema!(multi_chain_test::a::Baz);
+    // a::c::foo
+    gen_json_schema!(multi_chain_test::a::c::foo::Foo);
+    // b::bar
+    gen_json_schema!(multi_chain_test::b::bar::Bar);
+    // lib
+    gen_json_schema!(multi_chain_test::Everything);
+    gen_json_schema!(multi_chain_test::ExternalFoo);
+    // qux
+    gen_json_schema!(multi_chain_test::qux::Qux);
+}

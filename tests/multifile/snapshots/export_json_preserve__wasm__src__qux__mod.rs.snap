@@ -1,0 +1,67 @@
+---
+source: src/test.rs
+expression: contents
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use multi_chain_test::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Qux(multi_chain_test::qux::Qux);
+
+#[wasm_bindgen]
+impl Qux {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        multi_chain_test::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Qux, JsError> {
+        multi_chain_test::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde_wasm_bindgen::to_value(&self.0)
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Qux, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_1: String) -> Self {
+        Self(multi_chain_test::qux::Qux::new(index_1))
+    }
+}
+
+impl From<multi_chain_test::qux::Qux> for Qux {
+    fn from(native: multi_chain_test::qux::Qux) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Qux> for multi_chain_test::qux::Qux {
+    fn from(wasm: Qux) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<multi_chain_test::qux::Qux> for Qux {
+    fn as_ref(&self) -> &multi_chain_test::qux::Qux {
+        &self.0
+    }
+}
