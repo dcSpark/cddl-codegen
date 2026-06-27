@@ -1328,6 +1328,134 @@ impl GenerationScope {
         Ok(())
     }
 
+    /// Returns the *generated* source (post-rustfmt) keyed by a logical path mirroring the
+    /// on-disk layout (e.g. "rust/src/lib.rs"). Unlike [`Self::export`], this does no file I/O
+    /// and excludes static/copied files (error.rs, the serialization prelude, Cargo templates,
+    /// package.json) - it derives everything from the in-memory generated scopes. Intended for
+    /// fast in-process snapshot tests; the heavy integration tests still exercise `export`.
+    /// Test-only — it must live here for access to the private generated scopes, but the binary
+    /// only ever calls `export`.
+    #[cfg(test)]
+    pub fn emit_generated(&self, cli: &Cli) -> std::io::Result<BTreeMap<String, String>> {
+        fn merge_scopes_to_strings(
+            out: &mut BTreeMap<String, String>,
+            dir: &str,
+            mut merged_scope: codegen::Scope,
+            other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
+            root_name: &str,
+            inner_name: &str,
+        ) -> std::io::Result<()> {
+            for (scope, content) in other_scopes {
+                if *scope == *ROOT_SCOPE {
+                    merged_scope.append(&content.clone());
+                } else if scope.export() {
+                    let path = format!("{dir}/{}/{inner_name}", scope.components().join("/"));
+                    out.insert(
+                        path,
+                        rustfmt_generated_string(&content.to_string())?.into_owned(),
+                    );
+                }
+            }
+            out.insert(
+                format!("{dir}/{root_name}"),
+                rustfmt_generated_string(&merged_scope.to_string())?.into_owned(),
+            );
+            Ok(())
+        }
+
+        let mut out = BTreeMap::new();
+
+        // rust lib.rs / {module}/mod.rs
+        merge_scopes_to_strings(
+            &mut out,
+            "rust/src",
+            self.rust_lib_scope.clone(),
+            &self.rust_scopes,
+            "lib.rs",
+            "mod.rs",
+        )?;
+
+        // serialization.rs (generated impls only; the static prelude is excluded by design)
+        let mut serialize_scope = codegen::Scope::new();
+        serialize_scope.append(&self.rust_serialize_lib_scope);
+        merge_scopes_to_strings(
+            &mut out,
+            "rust/src",
+            serialize_scope,
+            &self.serialize_scopes,
+            "serialization.rs",
+            "serialization.rs",
+        )?;
+
+        // cbor_encodings.rs (generated)
+        if cli.preserve_encodings {
+            for (scope, contents) in self.cbor_encodings_scopes.iter() {
+                if scope.export() {
+                    let path = if *scope == *ROOT_SCOPE {
+                        "rust/src/cbor_encodings.rs".to_owned()
+                    } else {
+                        format!(
+                            "rust/src/{}/cbor_encodings.rs",
+                            scope.components().join("/")
+                        )
+                    };
+                    out.insert(
+                        path,
+                        rustfmt_generated_string(&contents.to_string())?.into_owned(),
+                    );
+                }
+            }
+        }
+
+        // wasm lib.rs / {module}/mod.rs
+        if cli.wasm {
+            merge_scopes_to_strings(
+                &mut out,
+                "wasm/src",
+                self.wasm_lib_scope.clone(),
+                &self.wasm_scopes,
+                "lib.rs",
+                "mod.rs",
+            )?;
+        }
+
+        // json-gen lib.rs / main.rs (generated; mirrors the json-gen block in `export`)
+        if cli.json_schema_export {
+            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
+            let mut macro_match = Block::new("($name:ty) => ");
+            macro_match
+                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
+                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
+            gen_json_schema.push_block(macro_match);
+            let mut lib_str = String::new();
+            gen_json_schema
+                .fmt(&mut codegen::Formatter::new(&mut lib_str))
+                .unwrap();
+            lib_str.push('\n');
+            let mut lib_scope = codegen::Scope::new();
+            let mut lib_export_fn = codegen::Function::new("export_schemas");
+            lib_export_fn.vis("pub").push_all(self.json_lines.clone());
+            lib_scope.push_fn(lib_export_fn);
+            lib_str.push_str(&lib_scope.to_string());
+            out.insert(
+                "wasm/json-gen/src/lib.rs".to_owned(),
+                rustfmt_generated_string(&lib_str)?.into_owned(),
+            );
+
+            let mut main_scope = codegen::Scope::new();
+            main_scope.new_fn("main").line(format!(
+                "{}_json_schema_gen::export_schemas();",
+                cli.lib_name_code()
+            ));
+            out.insert(
+                "wasm/json-gen/src/main.rs".to_owned(),
+                rustfmt_generated_string(&main_scope.to_string())?.into_owned(),
+            );
+        }
+
+        Ok(out)
+    }
+
     /// Generates in the appropriate scope for `ident`
     /// Used for all the generated structs and associated traits (besides serialization ones)
     pub fn rust(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {

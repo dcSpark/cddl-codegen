@@ -1,5 +1,0 @@
----
-source: src/test.rs
-expression: contents
----
-pub mod bar;

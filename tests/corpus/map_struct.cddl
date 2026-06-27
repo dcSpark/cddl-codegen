@@ -1,0 +1,1 @@
+record = { a: uint, b: text }

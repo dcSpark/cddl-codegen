@@ -1,0 +1,1 @@
+primitives = [a: uint, b: nint, c: int, d: text, e: bytes]

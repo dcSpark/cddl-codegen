@@ -1,0 +1,27 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Defaulted {
+    pub a: u64,
+    pub b: u64,
+}
+
+impl Defaulted {
+    pub fn new(a: u64) -> Self {
+        Self { a, b: 1337 }
+    }
+}

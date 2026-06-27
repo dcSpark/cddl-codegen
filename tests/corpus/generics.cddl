@@ -1,0 +1,2 @@
+container<T> = [value: T]
+uint_container = container<uint>

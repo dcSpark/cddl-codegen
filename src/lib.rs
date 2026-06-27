@@ -1,3 +1,4 @@
+pub mod api;
 pub mod cli;
 pub mod comment_ast;
 pub mod dep_graph;

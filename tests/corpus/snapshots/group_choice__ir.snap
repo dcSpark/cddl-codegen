@@ -1,0 +1,182 @@
+---
+source: src/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "GroupChoice",
+    ): RustStruct {
+        ident: RustIdent(
+            "GroupChoice",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: RustStruct(
+                        RustIdent(
+                            "GroupChoice0",
+                        ),
+                    ),
+                    data: Inlined(
+                        RustRecord {
+                            rep: Array,
+                            fields: [
+                                RustField {
+                                    name: "index_0",
+                                    rust_type: RustType {
+                                        conceptual_type: Fixed(
+                                            Uint(
+                                                0,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    optional: false,
+                                    key: None,
+                                    rule_metadata: RuleMetadata {
+                                        name: None,
+                                        newtype: None,
+                                        no_alias: false,
+                                        used_as_key: false,
+                                        custom_json: false,
+                                        custom_serialize: None,
+                                        custom_deserialize: None,
+                                        comment: None,
+                                    },
+                                },
+                                RustField {
+                                    name: "index_1",
+                                    rust_type: RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    optional: false,
+                                    key: None,
+                                    rule_metadata: RuleMetadata {
+                                        name: None,
+                                        newtype: None,
+                                        no_alias: false,
+                                        used_as_key: false,
+                                        custom_json: false,
+                                        custom_serialize: None,
+                                        custom_deserialize: None,
+                                        comment: None,
+                                    },
+                                },
+                            ],
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                },
+                EnumVariant {
+                    name: RustStruct(
+                        RustIdent(
+                            "GroupChoice1",
+                        ),
+                    ),
+                    data: Inlined(
+                        RustRecord {
+                            rep: Array,
+                            fields: [
+                                RustField {
+                                    name: "index_0",
+                                    rust_type: RustType {
+                                        conceptual_type: Fixed(
+                                            Uint(
+                                                1,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    optional: false,
+                                    key: None,
+                                    rule_metadata: RuleMetadata {
+                                        name: None,
+                                        newtype: None,
+                                        no_alias: false,
+                                        used_as_key: false,
+                                        custom_json: false,
+                                        custom_serialize: None,
+                                        custom_deserialize: None,
+                                        comment: None,
+                                    },
+                                },
+                                RustField {
+                                    name: "index_1",
+                                    rust_type: RustType {
+                                        conceptual_type: Primitive(
+                                            Str,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    optional: false,
+                                    key: None,
+                                    rule_metadata: RuleMetadata {
+                                        name: None,
+                                        newtype: None,
+                                        no_alias: false,
+                                        used_as_key: false,
+                                        custom_json: false,
+                                        custom_serialize: None,
+                                        custom_deserialize: None,
+                                        comment: None,
+                                    },
+                                },
+                            ],
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                },
+            ],
+            rep: Array,
+        },
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+}

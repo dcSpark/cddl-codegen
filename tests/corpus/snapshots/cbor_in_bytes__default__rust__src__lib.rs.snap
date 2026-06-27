@@ -1,0 +1,29 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Inner {
+    pub index_0: u64,
+    pub index_1: String,
+}
+
+impl Inner {
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self { index_0, index_1 }
+    }
+}
+
+pub type Wrapped = Inner;

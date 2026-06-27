@@ -1,0 +1,2 @@
+inner = [uint, text]
+wrapped = bytes .cbor inner

@@ -1,0 +1,105 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct BarEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub foo_tag_encoding: Option<cbor_event::Sz>,
+    pub foo_key_encoding: StringEncoding,
+    pub derp_encoding: Option<cbor_event::Sz>,
+    pub derp_key_encoding: StringEncoding,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_5_encoding: StringEncoding,
+    pub key_5_key_encoding: Option<cbor_event::Sz>,
+    pub five_encoding: Option<cbor_event::Sz>,
+    pub five_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CborInCborEncoding {
+    pub len_encoding: LenEncoding,
+    pub foo_bytes_bytes_encoding: StringEncoding,
+    pub uint_bytes_bytes_encoding: StringEncoding,
+    pub uint_bytes_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DeeplyNestedEncoding {
+    pub len_encoding: LenEncoding,
+    pub data_encoding: LenEncoding,
+    pub data_key_encodings: BTreeMap<Vec<u8>, (Option<cbor_event::Sz>, StringEncoding)>,
+    pub data_value_encodings: BTreeMap<
+        Vec<u8>,
+        (
+            LenEncoding,
+            BTreeMap<u64, Option<cbor_event::Sz>>,
+            BTreeMap<
+                u64,
+                (
+                    LenEncoding,
+                    BTreeMap<u64, (Option<cbor_event::Sz>, Option<cbor_event::Sz>)>,
+                    BTreeMap<
+                        u64,
+                        (
+                            LenEncoding,
+                            Vec<(Option<cbor_event::Sz>, LenEncoding, Vec<StringEncoding>)>,
+                        ),
+                    >,
+                ),
+            >,
+        ),
+    >,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FooEncoding {
+    pub len_encoding: LenEncoding,
+    pub tag_encoding: Option<cbor_event::Sz>,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub index_1_encoding: StringEncoding,
+    pub index_2_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PlainEncoding {
+    pub len_encoding: LenEncoding,
+    pub d_tag_encoding: Option<cbor_event::Sz>,
+    pub d_encoding: Option<cbor_event::Sz>,
+    pub e_tag_encoding: Option<cbor_event::Sz>,
+    pub e_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct String32Encoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct String64Encoding {
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TableArrMembersEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub arr_encoding: LenEncoding,
+    pub arr_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    pub arr_key_encoding: StringEncoding,
+    pub arr2_encoding: LenEncoding,
+    pub arr2_key_encoding: StringEncoding,
+    pub table_encoding: LenEncoding,
+    pub table_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub table_value_encodings: BTreeMap<u64, StringEncoding>,
+    pub table_key_encoding: StringEncoding,
+}
