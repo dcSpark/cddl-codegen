@@ -152,7 +152,7 @@ pub fn with_types<R>(
         println!("\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------", scope, cddl_rule.name());
         parse_rule(&mut types, &pv, cddl_rule, cli);
     }
-    types.finalize(&pv, cli);
+    types.finalize(&pv, cli)?;
 
     Ok(f(&types, export_raw_bytes_encoding_trait))
 }

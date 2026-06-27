@@ -6,11 +6,10 @@
 //! previously-graceful input newly panic (shows up as a snapshot diff), and when a current panic
 //! is fixed its entry flips (re-bless then).
 //!
-//! NB: several inputs currently record `PANIC` — the generator `unwrap`s/asserts on invalid input
-//! instead of returning a clean error (see `draft/prelude-bug-report.md`). Those are real bugs,
-//! recorded here so the class is visible and tracked rather than silently lurking. The catalog
-//! deliberately records only the outcome *category* (not panic messages/line numbers) so it stays
-//! stable across refactors that don't change behaviour.
+//! NB: every input currently records `ok` or `error (graceful)` — a `PANIC` here is a regression:
+//! the generator must reject malformed input with a clean error, never `panic!`/`assert!`.
+//! The catalog deliberately records only the outcome *category*
+//! (not panic messages/line numbers) so it stays stable across refactors that don't change behaviour.
 
 use crate::cli::Cli;
 use clap::Parser;
@@ -87,7 +86,7 @@ fn input_robustness_catalog() {
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let mut catalog =
-        String::from("# generator outcome per malformed/edge input\n# PANIC = known bug to fix (see draft/prelude-bug-report.md)\n\n");
+        String::from("# generator outcome per malformed/edge input\n# PANIC = regression: malformed input must error gracefully, never panic\n\n");
     for path in &inputs {
         let name = path.file_stem().unwrap().to_str().unwrap();
         let cli = Cli::parse_from([
