@@ -31,13 +31,13 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                 // shelley_MA -> shelley_ma
                 if in_uppercase_run {
                     if c.is_ascii_uppercase() {
-                        if let Some(next) = iter.peek() {
-                            if next.is_ascii_lowercase() {
-                                if !snake_case.is_empty() {
-                                    snake_case.push('_');
-                                }
-                                in_uppercase_run = false;
+                        if let Some(next) = iter.peek()
+                            && next.is_ascii_lowercase()
+                        {
+                            if !snake_case.is_empty() {
+                                snake_case.push('_');
                             }
+                            in_uppercase_run = false;
                         }
                     } else {
                         in_uppercase_run = false;

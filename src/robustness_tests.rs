@@ -85,8 +85,9 @@ fn input_robustness_catalog() {
     // We deliberately trigger panics below; silence the default hook so the test output stays clean.
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-    let mut catalog =
-        String::from("# generator outcome per malformed/edge input\n# PANIC = regression: malformed input must error gracefully, never panic\n\n");
+    let mut catalog = String::from(
+        "# generator outcome per malformed/edge input\n# PANIC = regression: malformed input must error gracefully, never panic\n\n",
+    );
     for path in &inputs {
         let name = path.file_stem().unwrap().to_str().unwrap();
         let cli = Cli::parse_from([

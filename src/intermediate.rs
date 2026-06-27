@@ -388,10 +388,10 @@ impl<'a> IntermediateTypes<'a> {
             // if we're not literally bytes/bstr, and instead an alias for it
             // we would have generated a named wrapper object so we should
             // refer to that instead
-            if !is_identifier_reserved(&raw.to_string()) {
-                if let ConceptualRustType::Primitive(Primitive::Bytes) = resolved_inner {
-                    return ConceptualRustType::Rust(RustIdent::new(raw.clone())).into();
-                }
+            if !is_identifier_reserved(&raw.to_string())
+                && let ConceptualRustType::Primitive(Primitive::Bytes) = resolved_inner
+            {
+                return ConceptualRustType::Rust(RustIdent::new(raw.clone())).into();
             }
         }
         // this would interfere with map/array loop code generation unless we
@@ -450,7 +450,10 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn register_type_alias(&mut self, alias: RustIdent, info: AliasInfo) {
         if let ConceptualRustType::Alias(_ident, _ty) = &info.base_type.conceptual_type {
-            panic!("register_type_alias*({}, {:?}) wraps automatically in Alias, no need to provide it.", alias, info.base_type);
+            panic!(
+                "register_type_alias*({}, {:?}) wraps automatically in Alias, no need to provide it.",
+                alias, info.base_type
+            );
         }
         self.type_aliases.insert(alias.into(), info);
     }
@@ -655,10 +658,10 @@ impl<'a> IntermediateTypes<'a> {
     pub fn is_referenced(&self, ident: &RustIdent) -> bool {
         let mut found = false;
         self.visit_types(&mut |ty| {
-            if let ConceptualRustType::Rust(id) = ty {
-                if id == ident {
-                    found = true
-                }
+            if let ConceptualRustType::Rust(id) = ty
+                && id == ident
+            {
+                found = true
             }
         });
         found
@@ -729,13 +732,13 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     pub fn mark_scope(&mut self, ident: RustIdent, scope: ModuleScope) {
-        if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone()) {
-            if old_scope != scope {
-                panic!(
-                    "{} defined multiple times, first referenced in scope '{}' then in '{}'",
-                    ident, old_scope, scope
-                );
-            }
+        if let Some(old_scope) = self.scopes.insert(ident.clone(), scope.clone())
+            && old_scope != scope
+        {
+            panic!(
+                "{} defined multiple times, first referenced in scope '{}' then in '{}'",
+                ident, old_scope, scope
+            );
         }
     }
 
@@ -1203,11 +1206,7 @@ impl RustType {
     }
 
     pub fn tag_if(self, tag: Option<usize>) -> Self {
-        if let Some(t) = tag {
-            self.tag(t)
-        } else {
-            self
-        }
+        if let Some(t) = tag { self.tag(t) } else { self }
     }
 
     pub fn default(mut self, default_value: FixedValue) -> Self {
@@ -2030,10 +2029,10 @@ impl ConceptualRustType {
             }
             Self::Primitive(_) => (),
             Self::Rust(ident) => {
-                if already_visited.insert(ident.clone()) {
-                    if let Some(t) = types.rust_struct(ident) {
-                        t.visit_types_excluding(types, f, already_visited)
-                    }
+                if already_visited.insert(ident.clone())
+                    && let Some(t) = types.rust_struct(ident)
+                {
+                    t.visit_types_excluding(types, f, already_visited)
                 }
             }
         }
@@ -2996,20 +2995,20 @@ impl GenericInstance {
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
-        if let ConceptualRustType::Rust(ident) = &orig.conceptual_type {
-            if let Some(resolved_type) = args.get(ident) {
-                return (*resolved_type).clone();
-            }
+        if let ConceptualRustType::Rust(ident) = &orig.conceptual_type
+            && let Some(resolved_type) = args.get(ident)
+        {
+            return (*resolved_type).clone();
         }
         orig.clone()
     }
 }
 
 fn enum_variant_constant(variant: &EnumVariant) -> Option<FixedValue> {
-    if let EnumVariantData::RustType(ty) = &variant.data {
-        if let ConceptualRustType::Fixed(constant) = ty.conceptual_type.resolve_alias_shallow() {
-            return Some(constant.clone());
-        }
+    if let EnumVariantData::RustType(ty) = &variant.data
+        && let ConceptualRustType::Fixed(constant) = ty.conceptual_type.resolve_alias_shallow()
+    {
+        return Some(constant.clone());
     }
     None
 }
