@@ -40,3 +40,13 @@ jobs:
 
       - name: Test
         run: cargo test --all-features --all-targets
+
+      # Plain `cargo test` catches changed/missing snapshots but not orphaned ones (a `.snap`
+      # left behind when a refactor stops generating a file). This rejects those.
+      - name: Install cargo-insta
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-insta
+
+      - name: Snapshot orphan check
+        run: cargo insta test --unreferenced=reject -- snapshot_tests

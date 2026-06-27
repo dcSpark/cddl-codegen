@@ -6,16 +6,19 @@
 //! compilation, no `target/` bloat. They give a localized diff when generation output changes;
 //! the integration tests remain the "does it actually compile & round-trip" correctness gate.
 //!
-//! Two layers:
+//! Four suites:
 //! * [`feature_corpus`] — one tiny CDDL file per language construct (in `tests/corpus/`), each
-//!   snapshotted under every applicable flag profile plus an IR dump. A one-feature regression
-//!   yields a one-file diff. Snapshots are grouped per feature under `tests/corpus/snapshots/<feature>/`.
-//! * [`whole_program`] — the existing integration-test inputs, each under one known-safe profile,
-//!   to catch cross-feature interactions at scale.
-//!
-//! By default a corpus file is generated under all of [`ALL_PROFILES`]. A file whose construct is
-//! not valid under some flag (e.g. fixed-value fields + `--preserve-encodings`, see cddl-codegen
-//! issue #205) opts out via a first-line directive: `; snapshot-profiles: default json`.
+//!   snapshotted under every flag profile plus an IR dump. A one-feature regression yields a
+//!   one-file diff. Grouped under `tests/corpus/snapshots/<feature>/`. The generated `Cargo.toml`
+//!   and the json-gen `main.rs` are skipped here (near-constant — they're covered by
+//!   [`whole_program`], [`cargo_toml_matrix`] and [`serialization_prelude`] instead).
+//! * [`whole_program`] — the existing integration inputs (incl. multifile) each under one
+//!   known-safe profile, capturing the *full* output (incl. `Cargo.toml`s) to cover cross-feature
+//!   interactions, the scope/module path, and the edition/deps logic.
+//! * [`cargo_toml_matrix`] — a curated input × profile matrix covering every distinct generated
+//!   `Cargo.toml` dependency combination (the type-conditional `hex`/`wasm-bindgen` deps toggled
+//!   independently), which `whole_program` alone does not produce.
+//! * [`serialization_prelude`] — the static serialization runtime, once per flag combination.
 //!
 //! Bless after an intentional change with `INSTA_UPDATE=always cargo test` (or `cargo insta review`).
 
@@ -24,7 +27,9 @@ use clap::Parser;
 
 type Profile = (&'static str, &'static [&'static str]);
 
-/// The flag axes that drive meaningfully different generation paths.
+/// The flag axes that drive meaningfully different generation paths. (`canonical` is a
+/// serialization sub-mode of `preserve` and differs only where maps/sets exist, so it's covered
+/// once at whole-program scale rather than duplicated per feature.)
 const ALL_PROFILES: &[Profile] = &[
     ("default", &[]),
     ("preserve", &["--preserve-encodings=true"]),
@@ -34,8 +39,8 @@ const ALL_PROFILES: &[Profile] = &[
     ),
 ];
 
-/// Build a `Cli` for in-process generation. `--output`/`--static-dir` are unused because
-/// `generated_strings` does no disk I/O, but clap requires `--output` to be present.
+/// Build a `Cli` for in-process generation. `--output` is unused (`generated_strings` does no disk
+/// I/O) but clap requires it; `--static-dir` defaults to `static/`, read for Cargo.toml/prelude.
 fn cli_for(input: &std::path::Path, extra: &[&str]) -> Cli {
     let input = input.to_str().unwrap();
     let mut args = vec![
@@ -49,33 +54,21 @@ fn cli_for(input: &std::path::Path, extra: &[&str]) -> Cli {
     Cli::parse_from(args)
 }
 
-/// Profiles a corpus file should be generated under: all of [`ALL_PROFILES`] unless the file's
-/// first line is a `; snapshot-profiles: <names...>` directive restricting them.
-fn profiles_for(input: &std::path::Path) -> Vec<Profile> {
-    let contents = std::fs::read_to_string(input).unwrap();
-    let first_line = contents.lines().next().unwrap_or("").trim();
-    match first_line.strip_prefix("; snapshot-profiles:") {
-        Some(rest) => {
-            let wanted: Vec<&str> = rest.split_whitespace().collect();
-            let profiles: Vec<Profile> = ALL_PROFILES
-                .iter()
-                .filter(|(name, _)| wanted.contains(name))
-                .copied()
-                .collect();
-            assert!(
-                !profiles.is_empty(),
-                "{:?}: snapshot-profiles directive matched no known profiles",
-                input
-            );
-            profiles
-        }
-        None => ALL_PROFILES.to_vec(),
-    }
+/// Near-constant generated files skipped by the per-feature corpus (they don't vary by construct).
+fn is_per_feature_noise(path: &str) -> bool {
+    path.ends_with("Cargo.toml") || path == "wasm/json-gen/src/main.rs"
 }
 
 /// Snapshot the generated source for `input` under each profile (grouped under
-/// `tests/corpus/snapshots/<label>/`), and optionally the IR.
-fn snapshot_input(input: &std::path::Path, label: &str, profiles: &[Profile], with_ir: bool) {
+/// `tests/corpus/snapshots/<label>/`). `full` keeps every generated file; otherwise the
+/// near-constant manifest/main files are skipped. `with_ir` adds one IR dump.
+fn snapshot_input(
+    input: &std::path::Path,
+    label: &str,
+    profiles: &[Profile],
+    full: bool,
+    with_ir: bool,
+) {
     let dir = std::env::current_dir()
         .unwrap()
         .join("tests/corpus/snapshots")
@@ -95,6 +88,9 @@ fn snapshot_input(input: &std::path::Path, label: &str, profiles: &[Profile], wi
                 profile
             );
             for (path, content) in files {
+                if !full && is_per_feature_noise(&path) {
+                    continue;
+                }
                 let name = format!("{}__{}", profile, path.replace('/', "__"));
                 insta::assert_snapshot!(name, content);
             }
@@ -109,8 +105,18 @@ fn snapshot_input(input: &std::path::Path, label: &str, profiles: &[Profile], wi
     });
 }
 
+/// Labels used by [`whole_program`]; a corpus file with one of these stems would clobber its
+/// snapshot dir, so [`feature_corpus`] guards against the collision.
+const WHOLE_PROGRAM_LABELS: &[&str] = &[
+    "core",
+    "preserve_encodings",
+    "canonical",
+    "json",
+    "multifile",
+];
+
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every
-/// applicable flag profile.
+/// flag profile.
 #[test]
 fn feature_corpus() {
     let corpus_dir = std::path::Path::new("tests/corpus");
@@ -127,13 +133,18 @@ fn feature_corpus() {
     );
     for path in entries {
         let label = path.file_stem().unwrap().to_str().unwrap().to_owned();
-        snapshot_input(&path, &label, &profiles_for(&path), true);
+        assert!(
+            !WHOLE_PROGRAM_LABELS.contains(&label.as_str()),
+            "corpus file {:?} collides with a whole_program snapshot dir; rename it",
+            path
+        );
+        snapshot_input(&path, &label, ALL_PROFILES, false, true);
     }
 }
 
-/// The existing integration-test inputs, each under the flag profile it is known-safe with
-/// (the same pairings the heavy integration tests use). Covers cross-feature interactions and
-/// the preserve / canonical / json codegen paths at scale.
+/// The existing integration inputs, each under the flag profile it is known-safe with (the same
+/// pairings the heavy integration tests use). Captures the full output to cover cross-feature
+/// interactions, the multifile scope/module path, and the edition/deps Cargo.toml logic.
 #[test]
 fn whole_program() {
     let cases: &[(&str, &str, Profile)] = &[
@@ -159,13 +170,84 @@ fn whole_program() {
                 &["--json-serde-derives=true", "--json-schema-export=true"],
             ),
         ),
+        // directory input — exercises the multi-file scope/module codegen path.
+        ("multifile", "tests/multifile/inputs", ("default", &[])),
     ];
     for (label, input, profile) in cases {
         snapshot_input(
             &std::path::PathBuf::from(input),
             label,
             std::slice::from_ref(profile),
+            true,
             false,
         );
     }
+}
+
+/// The static serialization runtime prelude ships verbatim into every generated crate but is
+/// assembled differently per flag combination. It's excluded from the per-feature snapshots (it's
+/// feature-independent and would be pure repeated noise), so snapshot it once per combination here
+/// — this is the fast net for changes to the `static/serialization*.rs` runtime.
+#[test]
+fn serialization_prelude() {
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/corpus/snapshots/_serialization_prelude");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    // serialization_prelude only reads --static-dir; the input is irrelevant but clap needs one.
+    let dummy = std::path::Path::new("tests/corpus/primitives.cddl");
+    settings.bind(|| {
+        for (name, extra) in [
+            ("default", &[][..]),
+            ("preserve", &["--preserve-encodings=true"][..]),
+            (
+                "canonical",
+                &["--preserve-encodings=true", "--canonical-form=true"][..],
+            ),
+        ] {
+            let cli = cli_for(dummy, extra);
+            let prelude = crate::generation::GenerationScope::serialization_prelude(false, &cli)
+                .unwrap_or_else(|e| panic!("prelude failed for {}: {}", name, e));
+            insta::assert_snapshot!(name, prelude);
+        }
+    });
+}
+
+/// The generated rust `Cargo.toml`'s dependency set is driven by conditional logic: the edition,
+/// flag-deps (serde/schemars/linked-hash-map/derivative), and *type*-conditional deps — `hex` for
+/// byte wrappers, `wasm-bindgen` for c-style enums. The per-feature corpus skips `Cargo.toml` as
+/// near-constant noise, but the distinct dep *combinations* are not all produced by
+/// [`whole_program`]. So cover them here with a curated matrix that toggles each type-conditional
+/// dep independently × each profile — the fast net for the deps/edition logic.
+#[test]
+fn cargo_toml_matrix() {
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/corpus/snapshots/_cargo_toml");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    // inputs chosen so `hex` and `wasm-bindgen` toggle independently (core, which has both, is
+    // covered by whole_program):
+    let inputs = [
+        ("base", "tests/corpus/map_struct.cddl"),   // neither
+        ("hex", "tests/corpus/bounded_bytes.cddl"), // byte wrapper -> hex
+        ("wasm_bindgen", "tests/corpus/c_style_enum.cddl"), // c-style enum -> wasm-bindgen
+    ];
+    settings.bind(|| {
+        for (label, input) in inputs {
+            for (profile, extra) in ALL_PROFILES {
+                let cli = cli_for(std::path::Path::new(input), extra);
+                let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| {
+                    panic!("generation failed for {}/{}: {}", label, profile, e)
+                });
+                let toml = files
+                    .get("rust/Cargo.toml")
+                    .unwrap_or_else(|| panic!("no rust/Cargo.toml for {}/{}", label, profile));
+                insta::assert_snapshot!(format!("{}__{}", label, profile), toml);
+            }
+        }
+    });
 }

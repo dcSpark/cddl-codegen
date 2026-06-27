@@ -176,10 +176,10 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
 pub fn generated_strings(
     cli: &Cli,
 ) -> Result<std::collections::BTreeMap<String, String>, Box<dyn std::error::Error>> {
-    with_types(cli, |types, _raw_bytes| {
+    with_types(cli, |types, raw_bytes| {
         let mut gen_scope = GenerationScope::new();
         gen_scope.generate(types, cli);
-        gen_scope.emit_generated(cli)
+        gen_scope.generated_files(types, raw_bytes, cli)
     })?
     .map_err(Into::into)
 }
