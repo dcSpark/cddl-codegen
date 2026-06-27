@@ -33,6 +33,18 @@ changing the *runtime behaviour* of generated code usually means editing `static
   `HashMap` — so generated output never depends on hash iteration order. Introducing a `HashMap` on
   an IR/emission path makes output nondeterministic and the snapshot suite flaky. This is a hard
   rule, not a style preference.
+- **Top-level item ordering is the `codegen` sort's job, not ours — don't conflate it with the
+  determinism rule above.** Two *different* properties are in play. (1) *Reproducibility* (same input
+  → byte-identical output) comes from the `BTreeMap`/`BTreeSet` rule, which makes our insertion order
+  deterministic. (2) *Canonical layout* — top-level items in each emitted file appear sorted
+  **name-primary, kind-secondary** (alphabetically by the bare type name with module path/generics
+  stripped, interleaving structs/enums/impls/type-aliases/modules; within one name the struct comes
+  first via codegen's deliberate `astruct` sort key) — comes *only* from `codegen`'s `Scope::fmt`. We
+  generate items in *passes* (e.g. all type aliases, then per-type struct+impl blocks), so our raw
+  insertion order is pass-grouped; the sort regroups it by name. Consequence: dropping/altering that
+  sort doesn't break reproducibility (the `BTreeMap`s still do) but reshuffles every multi-item file
+  (a large but purely cosmetic snapshot re-bless). This sort lives in the `codegen` dependency, not in
+  this repo — see `Cargo.toml`'s `codegen` line.
 - **The IR borrows the AST.** `IntermediateTypes<'a>` holds references into the parsed CDDL AST, so
   it can't be returned from a function that parses internally. The pipeline is driven through a
   scoped callback in `api.rs` that owns the AST for the duration of the call — use that pattern
