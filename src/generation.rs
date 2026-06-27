@@ -708,10 +708,8 @@ impl GenerationScope {
                     RustStructType::Extern => {
                         #[allow(clippy::single_match)]
                         match rust_ident.to_string().as_ref() {
-                            "Int" => {
-                                if types.is_referenced(rust_ident) {
-                                    generate_int(self, types, cli)
-                                }
+                            "Int" if types.is_referenced(rust_ident) => {
+                                generate_int(self, types, cli)
                             }
                             _ => (), /* user-specified external types */
                         }

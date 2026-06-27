@@ -13,7 +13,5 @@ book/
 # Mac files
 **/.DS_STore
 
-# Test files
-tests/*/export/**
-tests/*/export_wasm/**
-tests/*/export_preserve/**
+# Test files (generated output dirs, any export suffix e.g. export, export_wasm, export_json_preserve)
+tests/*/export*/
