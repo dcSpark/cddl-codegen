@@ -1371,18 +1371,15 @@ impl RustType {
                 Some(1) => 1,
                 _ => 0,
             },
-            ConceptualRustType::Rust(ident) => {
-                if types.is_plain_group(ident) {
-                    match types.rust_structs.get(ident) {
-                        Some(x) => x.expanded_mandatory_field_count(types),
-                        None => panic!(
-                            "rust struct {} not found but referenced by {:?}",
-                            ident, self
-                        ),
-                    }
-                } else {
-                    // C-style enums + extern + raw bytes should all be 1 too so don't bother checking
-                    1
+            // C-style enums + extern + raw bytes should all be 1 too, so anything that
+            // isn't a plain group falls through to the `_ => 1` arm below.
+            ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
+                match types.rust_structs.get(ident) {
+                    Some(x) => x.expanded_mandatory_field_count(types),
+                    None => panic!(
+                        "rust struct {} not found but referenced by {:?}",
+                        ident, self
+                    ),
                 }
             }
             _ => 1,
