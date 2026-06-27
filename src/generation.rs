@@ -1084,103 +1084,137 @@ impl GenerationScope {
             cli.output.clone()
         };
 
-        fn merge_scopes_and_export(
-            src_dir: std::path::PathBuf,
-            mut merged_scope: codegen::Scope,
-            other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
-            root_name: &str,
-            inner_name: &str,
-        ) -> std::io::Result<()> {
-            std::fs::create_dir_all(&src_dir)?;
-            for (scope, content) in other_scopes {
+        // All generated files come from the single producer the snapshot tests also use, so the
+        // shipped output and the tested output can't drift.
+        let mut files = self.generated_files(types, export_raw_bytes_encoding_trait, cli)?;
+
+        // `generated_files` produces serialization.rs generated-only; the shipped root one has the
+        // static serialization prelude prepended and is rustfmt'd together (exactly as before).
+        if cli.export_static_files() {
+            let mut merged = codegen::Scope::new();
+            merged.raw(Self::serialization_prelude(
+                export_raw_bytes_encoding_trait,
+                cli,
+            )?);
+            merged.append(&self.rust_serialize_lib_scope);
+            for (scope, content) in &self.serialize_scopes {
                 if *scope == *ROOT_SCOPE {
-                    assert!(scope.export());
-                    merged_scope.append(&content.clone());
-                } else if scope.export() {
-                    let mod_dir = scope
-                        .components()
-                        .iter()
-                        .fold(src_dir.clone(), |dir, part| dir.join(part));
-                    std::fs::create_dir_all(&mod_dir)?;
-                    std::fs::write(
-                        mod_dir.join(inner_name),
-                        rustfmt_generated_string(&content.to_string())?.as_ref(),
-                    )?;
+                    merged.append(&content.clone());
                 }
             }
-            std::fs::write(
-                src_dir.join(root_name),
-                rustfmt_generated_string(&merged_scope.to_string())?.as_ref(),
-            )
+            files.insert(
+                "rust/src/serialization.rs".to_owned(),
+                rustfmt_generated_string(&merged.to_string())?.into_owned(),
+            );
         }
-        // lib.rs / {module}/mod.rs files (if input is a directory)
-        merge_scopes_and_export(
-            rust_dir.join("rust/src"),
-            self.rust_lib_scope.clone(),
-            &self.rust_scopes,
-            "lib.rs",
-            "mod.rs",
-        )?;
 
-        // serialiation.rs / {module}/serialization.rs files (if input is a directory)
-        let mut merged_rust_serialize_scope = codegen::Scope::new();
+        for (rel_path, content) in &files {
+            let path = rust_dir.join(rel_path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, content)?;
+        }
+
+        // static files copied/assembled verbatim (only when we own the common types)
         if cli.export_static_files() {
-            let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
+            // error.rs
+            std::fs::copy(
+                cli.static_dir.join("error.rs"),
+                rust_dir.join("rust/src/error.rs"),
+            )?;
+
+            // ordered_hash_map.rs
             if cli.preserve_encodings {
-                serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
-                if cli.canonical_form {
-                    serialize_paths.push(
-                        cli.static_dir
-                            .join("serialization_preserve_force_canonical.rs"),
-                    );
-                } else {
-                    serialize_paths.push(
-                        cli.static_dir
-                            .join("serialization_preserve_non_force_canonical.rs"),
-                    );
-                    serialize_paths
-                        .push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+                let mut ordered_hash_map_rs =
+                    std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
+                if cli.json_serde_derives {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_json.rs"),
+                    )?);
                 }
+                if cli.json_schema_export {
+                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("ordered_hash_map_schemars.rs"),
+                    )?);
+                }
+                std::fs::write(
+                    rust_dir.join("rust/src/ordered_hash_map.rs"),
+                    rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Shared scope-merge producer used by both [`Self::export`] and [`Self::generated_files`]:
+    /// merges the root scope into `merged_scope`, emits each non-root module scope as its own
+    /// file, and inserts the (rustfmt'd) results into `out` keyed by `<dir>/.../<name>`.
+    fn merge_scopes_to_strings(
+        out: &mut BTreeMap<String, String>,
+        dir: &str,
+        mut merged_scope: codegen::Scope,
+        other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
+        root_name: &str,
+        inner_name: &str,
+    ) -> std::io::Result<()> {
+        for (scope, content) in other_scopes {
+            if *scope == *ROOT_SCOPE {
+                merged_scope.append(&content.clone());
+            } else if scope.export() {
+                let path = format!("{dir}/{}/{inner_name}", scope.components().join("/"));
+                out.insert(
+                    path,
+                    rustfmt_generated_string(&content.to_string())?.into_owned(),
+                );
+            }
+        }
+        out.insert(
+            format!("{dir}/{root_name}"),
+            rustfmt_generated_string(&merged_scope.to_string())?.into_owned(),
+        );
+        Ok(())
+    }
+
+    /// The static serialization runtime prelude (concatenated from `static/serialization*.rs`)
+    /// that `export` prepends to the root serialization.rs. Exposed so it can be snapshotted on
+    /// its own (it ships verbatim but varies by `--preserve-encodings`/`--canonical-form`).
+    pub(crate) fn serialization_prelude(
+        export_raw_bytes_encoding_trait: bool,
+        cli: &Cli,
+    ) -> std::io::Result<String> {
+        let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
+        if cli.preserve_encodings {
+            serialize_paths.push(cli.static_dir.join("serialization_preserve.rs"));
+            if cli.canonical_form {
+                serialize_paths.push(
+                    cli.static_dir
+                        .join("serialization_preserve_force_canonical.rs"),
+                );
             } else {
-                serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
+                serialize_paths.push(
+                    cli.static_dir
+                        .join("serialization_preserve_non_force_canonical.rs"),
+                );
                 serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
             }
-            // raw_bytes_encoding in serialization too
-            if export_raw_bytes_encoding_trait {
-                serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
-            }
-            merged_rust_serialize_scope.raw(concat_files(&serialize_paths)?);
+        } else {
+            serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
+            serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
         }
-        merged_rust_serialize_scope.append(&self.rust_serialize_lib_scope);
-        merge_scopes_and_export(
-            rust_dir.join("rust/src"),
-            merged_rust_serialize_scope,
-            &self.serialize_scopes,
-            "serialization.rs",
-            "serialization.rs",
-        )?;
-
-        // cbor_encodings.rs / {module}/cbor_encodings.rs (if input is a directory)
-        if cli.preserve_encodings {
-            for (scope, contents) in self.cbor_encodings_scopes.iter() {
-                if scope.export() {
-                    let path = if *scope == *ROOT_SCOPE {
-                        Cow::from("rust/src/cbor_encodings.rs")
-                    } else {
-                        Cow::from(format!(
-                            "rust/src/{}/cbor_encodings.rs",
-                            scope.components().join("/")
-                        ))
-                    };
-                    std::fs::write(
-                        rust_dir.join(path.as_ref()),
-                        rustfmt_generated_string(&contents.to_string())?.as_ref(),
-                    )?;
-                }
-            }
+        if export_raw_bytes_encoding_trait {
+            serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
         }
+        concat_files(&serialize_paths)
+    }
 
-        // Cargo.toml
+    /// The generated rust crate `Cargo.toml` (static template + conditionally-added dependencies).
+    fn rust_cargo_toml(
+        types: &IntermediateTypes,
+        export_raw_bytes_encoding_trait: bool,
+        cli: &Cli,
+    ) -> std::io::Result<String> {
         let mut rust_cargo_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_rust.toml"))?;
         if cli.preserve_encodings {
             rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
@@ -1221,152 +1255,25 @@ impl GenerationScope {
             rust_cargo_toml
                 .push_str("wasm-bindgen = { version = \"0.2\", features=[\"serde-serialize\"] }\n");
         }
-        std::fs::write(
-            rust_dir.join("rust/Cargo.toml"),
-            rust_cargo_toml.replace("cddl-lib", &cli.lib_name),
-        )?;
-
-        if cli.export_static_files() {
-            // error.rs
-            std::fs::copy(
-                cli.static_dir.join("error.rs"),
-                rust_dir.join("rust/src/error.rs"),
-            )?;
-
-            // ordered_hash_map.rs
-            if cli.preserve_encodings {
-                let mut ordered_hash_map_rs =
-                    std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
-                if cli.json_serde_derives {
-                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("ordered_hash_map_json.rs"),
-                    )?);
-                }
-                if cli.json_schema_export {
-                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("ordered_hash_map_schemars.rs"),
-                    )?);
-                }
-                std::fs::write(
-                    rust_dir.join("rust/src/ordered_hash_map.rs"),
-                    rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
-                )?;
-            }
-        }
-
-        // wasm crate
-        if cli.wasm {
-            // main files
-            merge_scopes_and_export(
-                rust_dir.join("wasm/src"),
-                self.wasm_lib_scope.clone(),
-                &self.wasm_scopes,
-                "lib.rs",
-                "mod.rs",
-            )?;
-            // Cargo.toml
-            let mut wasm_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_wasm.toml"))?;
-            if cli.json_serde_derives {
-                wasm_toml.push_str("serde_json = \"1.0.57\"\n");
-                wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
-            }
-            std::fs::write(
-                rust_dir.join("wasm/Cargo.toml"),
-                wasm_toml.replace("cddl-lib", &cli.lib_name),
-            )?;
-        }
-
-        // json-gen crate for exporting JSON schemas
-        if cli.json_schema_export {
-            // Cargo.toml
-            std::fs::create_dir_all(rust_dir.join("wasm/json-gen/src"))?;
-            let json_gen_toml =
-                std::fs::read_to_string(cli.static_dir.join("Cargo_json_gen.toml")).unwrap();
-            std::fs::write(
-                rust_dir.join("wasm/json-gen/Cargo.toml"),
-                json_gen_toml.replace("cddl-lib", &cli.lib_name),
-            )?;
-
-            // lib.rs
-            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
-            let mut macro_match = Block::new("($name:ty) => ");
-            macro_match
-                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
-                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
-            gen_json_schema.push_block(macro_match);
-            // we can't push a codegen::Block to a codegen::Scope
-            // so we instead paste it into the file before
-            let mut lib_str = String::new();
-            gen_json_schema
-                .fmt(&mut codegen::Formatter::new(&mut lib_str))
-                .unwrap();
-
-            lib_str.push('\n');
-            let mut lib_scope = codegen::Scope::new();
-            let mut lib_export_fn = codegen::Function::new("export_schemas");
-            lib_export_fn.vis("pub").push_all(self.json_lines.clone());
-            lib_scope.push_fn(lib_export_fn);
-            lib_str.push_str(&lib_scope.to_string());
-
-            std::fs::write(
-                rust_dir.join("wasm/json-gen/src/lib.rs"),
-                rustfmt_generated_string(&lib_str)?.as_ref(),
-            )?;
-
-            // main.rs
-            let mut main_scope = codegen::Scope::new();
-            main_scope.new_fn("main").line(format!(
-                "{}_json_schema_gen::export_schemas();",
-                cli.lib_name_code()
-            ));
-            std::fs::write(
-                rust_dir.join("wasm/json-gen/src/main.rs"),
-                rustfmt_generated_string(&main_scope.to_string())?.as_ref(),
-            )?;
-        }
-
-        Ok(())
+        Ok(rust_cargo_toml.replace("cddl-lib", &cli.lib_name))
     }
 
-    /// Returns the *generated* source (post-rustfmt) keyed by a logical path mirroring the
-    /// on-disk layout (e.g. "rust/src/lib.rs"). Unlike [`Self::export`], this does no file I/O
-    /// and excludes static/copied files (error.rs, the serialization prelude, Cargo templates,
-    /// package.json) - it derives everything from the in-memory generated scopes. Intended for
-    /// fast in-process snapshot tests; the heavy integration tests still exercise `export`.
-    /// Test-only — it must live here for access to the private generated scopes, but the binary
-    /// only ever calls `export`.
-    #[cfg(test)]
-    pub fn emit_generated(&self, cli: &Cli) -> std::io::Result<BTreeMap<String, String>> {
-        fn merge_scopes_to_strings(
-            out: &mut BTreeMap<String, String>,
-            dir: &str,
-            mut merged_scope: codegen::Scope,
-            other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
-            root_name: &str,
-            inner_name: &str,
-        ) -> std::io::Result<()> {
-            for (scope, content) in other_scopes {
-                if *scope == *ROOT_SCOPE {
-                    merged_scope.append(&content.clone());
-                } else if scope.export() {
-                    let path = format!("{dir}/{}/{inner_name}", scope.components().join("/"));
-                    out.insert(
-                        path,
-                        rustfmt_generated_string(&content.to_string())?.into_owned(),
-                    );
-                }
-            }
-            out.insert(
-                format!("{dir}/{root_name}"),
-                rustfmt_generated_string(&merged_scope.to_string())?.into_owned(),
-            );
-            Ok(())
-        }
-
+    /// Single producer for every generated source file (post-rustfmt), keyed by path relative to
+    /// the crate root (e.g. "rust/src/lib.rs"). Used by BOTH [`Self::export`] (which writes these
+    /// to disk, after prepending the static serialization prelude to the root serialization.rs)
+    /// and the snapshot tests — so the shipped path and the tested path can't drift. The
+    /// serialization.rs here is generated-only; the static prelude and verbatim-copied files
+    /// (error.rs, ordered_hash_map.rs, package.json, scripts) are handled directly by `export`.
+    pub(crate) fn generated_files(
+        &self,
+        types: &IntermediateTypes,
+        export_raw_bytes_encoding_trait: bool,
+        cli: &Cli,
+    ) -> std::io::Result<BTreeMap<String, String>> {
         let mut out = BTreeMap::new();
 
         // rust lib.rs / {module}/mod.rs
-        merge_scopes_to_strings(
+        Self::merge_scopes_to_strings(
             &mut out,
             "rust/src",
             self.rust_lib_scope.clone(),
@@ -1375,10 +1282,10 @@ impl GenerationScope {
             "mod.rs",
         )?;
 
-        // serialization.rs (generated impls only; the static prelude is excluded by design)
+        // serialization.rs (generated impls only; export prepends the static prelude to the root)
         let mut serialize_scope = codegen::Scope::new();
         serialize_scope.append(&self.rust_serialize_lib_scope);
-        merge_scopes_to_strings(
+        Self::merge_scopes_to_strings(
             &mut out,
             "rust/src",
             serialize_scope,
@@ -1387,7 +1294,7 @@ impl GenerationScope {
             "serialization.rs",
         )?;
 
-        // cbor_encodings.rs (generated)
+        // cbor_encodings.rs / {module}/cbor_encodings.rs
         if cli.preserve_encodings {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
                 if scope.export() {
@@ -1407,9 +1314,15 @@ impl GenerationScope {
             }
         }
 
-        // wasm lib.rs / {module}/mod.rs
+        // rust Cargo.toml (template + conditional deps)
+        out.insert(
+            "rust/Cargo.toml".to_owned(),
+            Self::rust_cargo_toml(types, export_raw_bytes_encoding_trait, cli)?,
+        );
+
+        // wasm crate
         if cli.wasm {
-            merge_scopes_to_strings(
+            Self::merge_scopes_to_strings(
                 &mut out,
                 "wasm/src",
                 self.wasm_lib_scope.clone(),
@@ -1417,10 +1330,26 @@ impl GenerationScope {
                 "lib.rs",
                 "mod.rs",
             )?;
+            let mut wasm_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_wasm.toml"))?;
+            if cli.json_serde_derives {
+                wasm_toml.push_str("serde_json = \"1.0.57\"\n");
+                wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
+            }
+            out.insert(
+                "wasm/Cargo.toml".to_owned(),
+                wasm_toml.replace("cddl-lib", &cli.lib_name),
+            );
         }
 
-        // json-gen lib.rs / main.rs (generated; mirrors the json-gen block in `export`)
+        // json-gen crate for exporting JSON schemas
         if cli.json_schema_export {
+            let json_gen_toml =
+                std::fs::read_to_string(cli.static_dir.join("Cargo_json_gen.toml"))?;
+            out.insert(
+                "wasm/json-gen/Cargo.toml".to_owned(),
+                json_gen_toml.replace("cddl-lib", &cli.lib_name),
+            );
+
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
             let mut macro_match = Block::new("($name:ty) => ");
             macro_match

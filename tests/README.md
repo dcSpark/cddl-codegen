@@ -15,29 +15,32 @@ untouched — if one moves, you see exactly what changed.
 ## Golden snapshots (`snapshot_tests.rs`)
 
 Drives the generator as a library (`crate::api`) and snapshots the post-rustfmt generated source
-with [`insta`]. No subprocess, no compilation, no `target/` bloat. Two sub-suites:
+with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-suites:
 
 - **`feature_corpus`** — one tiny CDDL file per language construct in [`tests/corpus/`](corpus),
-  generated under every applicable flag profile, plus an IR dump. A one-feature regression yields a
-  one-file diff. Snapshots are grouped per feature in `tests/corpus/snapshots/<feature>/`.
+  generated under every flag profile in `ALL_PROFILES` (`default`, `preserve`, `json`), plus an IR
+  dump. A one-feature regression yields a one-file diff. Snapshots are grouped per feature in
+  `tests/corpus/snapshots/<feature>/`. The generated `Cargo.toml` and json-gen `main.rs` are
+  *skipped* here — they barely vary by construct, so they'd be repeated noise; they're covered by
+  `whole_program` and `serialization_prelude` instead.
 - **`whole_program`** — the larger integration inputs (`core`, `preserve-encodings`, `canonical`,
-  `json`) each under one known-safe profile, to catch cross-feature interactions.
+  `json`, and the `multifile` directory) each under one known-safe profile, capturing the *full*
+  output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path, and the
+  edition/deps logic.
+- **`cargo_toml_matrix`** — a small curated `input × profile` matrix that snapshots every distinct
+  generated `Cargo.toml` dependency combination (the type-conditional `hex`/`wasm-bindgen` deps
+  toggled independently). The per-feature corpus skips `Cargo.toml` as near-constant noise, and
+  `whole_program` doesn't produce every combination, so this is where they're all pinned.
+- **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
+  combination (it ships verbatim into every crate but is assembled differently per flag).
 
-### Profiles
-
-`ALL_PROFILES` in `snapshot_tests.rs` lists the flag axes that change codegen (`default`,
-`preserve`, `json`). By default a corpus file is generated under all of them. If a construct isn't
-valid under some flag (e.g. fixed-value fields + `--preserve-encodings`, cddl-codegen issue #205),
-restrict it with a first-line directive:
-
-```cddl
-; snapshot-profiles: default json
-my_rule = ...
-```
+`canonical` is a serialization sub-mode of `preserve` (differs only where maps/sets exist), so it's
+covered at whole-program scale rather than duplicated per feature.
 
 ### Adding a feature
 
 1. Drop a tiny `tests/corpus/<feature>.cddl` exercising exactly one construct (see existing files).
+   The stem must not collide with a `whole_program` label (asserted by the test).
 2. `INSTA_UPDATE=always cargo test snapshot_tests` to generate its snapshots.
 3. Eyeball the new files under `tests/corpus/snapshots/<feature>/`, then commit them.
 
@@ -53,6 +56,9 @@ cargo insta review                    # interactive per-snapshot accept/reject
 
 `*.snap` files are committed (they're the golden reference); `*.snap.new` / `*.pending-snap` are
 gitignored.
+
+CI also runs `cargo insta test --unreferenced=reject` so a snapshot orphaned by a refactor (one
+that stops generating a file) fails the build instead of lingering unnoticed.
 
 ## Integration tests (`integration_tests.rs`)
 

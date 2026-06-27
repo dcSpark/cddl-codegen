@@ -19,3 +19,6 @@ tests/*/export*/
 # insta pending snapshots (transient; bless with `INSTA_UPDATE=always cargo test`, never commit)
 *.snap.new
 *.pending-snap
+
+# Scratch area for draft/investigation artifacts (not committed)
+/draft/

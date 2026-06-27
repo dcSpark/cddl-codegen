@@ -1,0 +1,39 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::a::c::foo::Foo;
+use crate::a::Baz;
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Bar {
+    pub foo: Vec<Foo>,
+    pub derp: Option<u64>,
+    pub key_1: Option<u64>,
+    pub key_5: Option<String>,
+    pub foo_map: BTreeMap<Foo, Foo>,
+    pub baz: Option<Baz>,
+}
+
+impl Bar {
+    pub fn new(foo: Vec<Foo>, key_1: Option<u64>, foo_map: BTreeMap<Foo, Foo>) -> Self {
+        Self {
+            foo,
+            derp: None,
+            key_1,
+            key_5: None,
+            foo_map,
+            baz: None,
+        }
+    }
+}
+
+pub type BarTypedef = Bar;

@@ -1,0 +1,52 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod a;
+pub mod b;
+pub mod error;
+pub mod qux;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use a::c::foo::Foo;
+use a::Baz;
+use b::bar::{Bar, BarTypedef};
+use qux::Qux;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Everything {
+    pub foo: Foo,
+    pub external_foo: ExternalFoo,
+    pub bars: Vec<Bar>,
+    pub table: BTreeMap<u64, BarTypedef>,
+    pub baz: Baz,
+    pub qux: Qux,
+}
+
+impl Everything {
+    pub fn new(
+        foo: Foo,
+        external_foo: ExternalFoo,
+        bars: Vec<Bar>,
+        table: BTreeMap<u64, BarTypedef>,
+        baz: Baz,
+        qux: Qux,
+    ) -> Self {
+        Self {
+            foo,
+            external_foo,
+            bars,
+            table,
+            baz,
+            qux,
+        }
+    }
+}

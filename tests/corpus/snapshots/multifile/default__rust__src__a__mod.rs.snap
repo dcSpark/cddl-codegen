@@ -1,0 +1,24 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod c;
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Baz {
+    pub index_1: u64,
+}
+
+impl Baz {
+    pub fn new(index_1: u64) -> Self {
+        Self { index_1 }
+    }
+}
