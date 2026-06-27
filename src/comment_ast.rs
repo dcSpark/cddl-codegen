@@ -1,6 +1,6 @@
 extern crate nom;
 use nom::{
-    IResult,
+    IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     multi::many0,
@@ -208,13 +208,14 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_custom_serialize,
         tag_custom_deserialize,
         tag_comment,
-    ))(input)?;
+    ))
+    .parse(input)?;
 
     Ok((input, result))
 }
 
 fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, parse_results) = many0(whitespace_then_tag)(input)?;
+    let (input, parse_results) = many0(whitespace_then_tag).parse(input)?;
 
     Ok((input, RuleMetadata::from_parse_results(&parse_results)))
 }

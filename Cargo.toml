@@ -18,9 +18,7 @@ cbor_event = "2.4.0"
 cddl = "=0.9.1"
 clap = { version = "4.5", features = ["derive"] }
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
-# nom kept on 7.x: nom 8 requires rewriting every `combinator(input)` call to `.parse(input)`
-# across the comment-DSL parser for no functional gain. `cargo update` tracks the latest 7.x.
-nom = "7.1.3"
+nom = "8"
 pathdiff = "0.2.3"
 # default-features=false to drop the optional `regex` dep; `real-sys` (the actual lookup impl) is
 # off by default in which 8, so enable it explicitly.
