@@ -2,27 +2,14 @@ const fs = require('fs');
 const json2ts = require('json-schema-to-typescript');
 const path = require('path');
 
-const schemasDir = path.join('rust', 'json-gen', 'schemas');
+const schemasDir = path.join('rust', 'wasm', 'json-gen', 'schemas');
 const schemaFiles = fs.readdirSync(schemasDir).filter(file => path.extname(file) === '.json');
 
-// schemars 0.8 (draft-07) nests subschemas under `#/definitions/`; schemars 1.x (draft 2020-12)
-// uses `#/$defs/`. Accept both so the per-type cross-file `X.json` ref rewriting keeps working.
-const DEF_REF_PREFIX = /^#\/(?:\$defs|definitions)\//;
-function replaceRef(obj) {
-  if (obj['$ref'] != null && typeof obj['$ref'] === 'string' && DEF_REF_PREFIX.test(obj['$ref'])) {
-    obj['$ref'] = obj['$ref'].replace(DEF_REF_PREFIX, '') + '.json';
-    console.log(`replacing: ${obj['$ref']}`);
-  }
-}
-
-function replaceRefs(node) {
-  Object.entries(node).forEach(([k, v]) => {
-    if (typeof v === 'object') {
-      replaceRef(v);
-      replaceRefs(v);
-    }
-  });
-}
+// Each schema is self-contained: schemars emits every referenced type inline under the file's own
+// `$defs`, so json2ts resolves all `#/$defs/...` refs locally — no cross-file `$ref` rewriting is
+// needed. With `declareExternallyReferenced: false` (below), a referenced type is declared once by
+// its own per-type schema file and only *referenced* in others; the dedup pass after compile
+// collapses any duplicate declarations before the JSON-suffix rename.
 
 Promise.all(schemaFiles.map(schemaFile => {
   const completeName = path.join(schemasDir, schemaFile);
@@ -42,7 +29,7 @@ Promise.all(schemaFiles.map(schemaFile => {
   }).catch(e => { console.error(`${schemaFile}: ${e}`); });
   
 })).then(tsDefs => {
-  fs.mkdirSync(path.join('rust', 'json-gen', 'output'), { recursive: true });
+  fs.mkdirSync(path.join('rust', 'wasm', 'json-gen', 'output'), { recursive: true });
   const defs = tsDefs.join('').split(/\r?\n/);
   let dedupedDefs = [];
   let start = null;
@@ -79,6 +66,6 @@ Promise.all(schemaFiles.map(schemaFile => {
       dedupedDefs[i] = dedupedDefs[i].replace(new RegExp(`\\b${id}\\b`), id + 'JSON');
     }
   }
-  return fs.writeFileSync(path.join('rust', 'json-gen', 'output', 'json-types.d.ts'), dedupedDefs.join('\n'));
+  return fs.writeFileSync(path.join('rust', 'wasm', 'json-gen', 'output', 'json-types.d.ts'), dedupedDefs.join('\n'));
 });
 

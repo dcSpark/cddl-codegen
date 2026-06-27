@@ -15,7 +15,7 @@ for (let i = 0; i < inputFile.length; ++i) {
   }
   inputFile[i] = line.replace(/(\s?\*\s?\@returns\s\{)(any)(\})/, `$1${currentClass}JSON$3`);
 }
-const jsonDefs = fs.readFileSync('./rust/json-gen/output/json-types.d.ts', 'utf8');
+const jsonDefs = fs.readFileSync('./rust/wasm/json-gen/output/json-types.d.ts', 'utf8');
 fs.writeFile(
   './rust/wasm/pkg/cddl_lib_wasm.d.ts',
   `${inputFile.join('\n')}\n${jsonDefs}`,
