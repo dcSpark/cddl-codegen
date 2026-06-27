@@ -1,0 +1,237 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Prelude(cddl_lib::Prelude);
+
+#[wasm_bindgen]
+impl Prelude {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Prelude, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn big_u(&self) -> PreludeBiguint {
+        self.0.big_u.clone()
+    }
+
+    pub fn uri(&self) -> PreludeUri {
+        self.0.uri.clone()
+    }
+
+    pub fn big_i(&self) -> PreludeBigint {
+        self.0.big_i.clone().into()
+    }
+
+    pub fn unsigned(&self) -> PreludeUnsigned {
+        self.0.unsigned.clone().into()
+    }
+
+    pub fn new(
+        big_u: PreludeBiguint,
+        uri: PreludeUri,
+        big_i: &PreludeBigint,
+        unsigned: &PreludeUnsigned,
+    ) -> Self {
+        Self(cddl_lib::Prelude::new(
+            big_u,
+            uri,
+            big_i.clone().into(),
+            unsigned.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Prelude> for Prelude {
+    fn from(native: cddl_lib::Prelude) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Prelude> for cddl_lib::Prelude {
+    fn from(wasm: Prelude) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Prelude> for Prelude {
+    fn as_ref(&self) -> &cddl_lib::Prelude {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeBigint(cddl_lib::PreludeBigint);
+
+#[wasm_bindgen]
+impl PreludeBigint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeBigint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self(cddl_lib::PreludeBigint::new_prelude_biguint(
+            prelude_biguint,
+        ))
+    }
+
+    pub fn new_prelude_bignint(prelude_bignint: PreludeBignint) -> Self {
+        Self(cddl_lib::PreludeBigint::new_prelude_bignint(
+            prelude_bignint,
+        ))
+    }
+
+    pub fn kind(&self) -> PreludeBigintKind {
+        match &self.0 {
+            cddl_lib::PreludeBigint::PreludeBiguint(_) => PreludeBigintKind::PreludeBiguint,
+            cddl_lib::PreludeBigint::PreludeBignint(_) => PreludeBigintKind::PreludeBignint,
+        }
+    }
+
+    pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
+        match &self.0 {
+            cddl_lib::PreludeBigint::PreludeBiguint(prelude_biguint) => {
+                Some(prelude_biguint.clone())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_prelude_bignint(&self) -> Option<PreludeBignint> {
+        match &self.0 {
+            cddl_lib::PreludeBigint::PreludeBignint(prelude_bignint) => {
+                Some(prelude_bignint.clone())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::PreludeBigint> for PreludeBigint {
+    fn from(native: cddl_lib::PreludeBigint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeBigint> for cddl_lib::PreludeBigint {
+    fn from(wasm: PreludeBigint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeBigint> for PreludeBigint {
+    fn as_ref(&self) -> &cddl_lib::PreludeBigint {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum PreludeBigintKind {
+    PreludeBiguint,
+    PreludeBignint,
+}
+
+pub type PreludeBignint = Vec<u8>;
+
+pub type PreludeBiguint = Vec<u8>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeUnsigned(cddl_lib::PreludeUnsigned);
+
+#[wasm_bindgen]
+impl PreludeUnsigned {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeUnsigned, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::PreludeUnsigned::new_uint(uint))
+    }
+
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self(cddl_lib::PreludeUnsigned::new_prelude_biguint(
+            prelude_biguint,
+        ))
+    }
+
+    pub fn kind(&self) -> PreludeUnsignedKind {
+        match &self.0 {
+            cddl_lib::PreludeUnsigned::U64(_) => PreludeUnsignedKind::U64,
+            cddl_lib::PreludeUnsigned::PreludeBiguint(_) => PreludeUnsignedKind::PreludeBiguint,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::PreludeUnsigned::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
+        match &self.0 {
+            cddl_lib::PreludeUnsigned::PreludeBiguint(prelude_biguint) => {
+                Some(prelude_biguint.clone())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::PreludeUnsigned> for PreludeUnsigned {
+    fn from(native: cddl_lib::PreludeUnsigned) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeUnsigned> for cddl_lib::PreludeUnsigned {
+    fn from(wasm: PreludeUnsigned) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeUnsigned> for PreludeUnsigned {
+    fn as_ref(&self) -> &cddl_lib::PreludeUnsigned {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum PreludeUnsignedKind {
+    U64,
+    PreludeBiguint,
+}
+
+pub type PreludeUri = String;

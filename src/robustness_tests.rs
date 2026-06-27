@@ -15,6 +15,63 @@
 use crate::cli::Cli;
 use clap::Parser;
 
+/// Every CDDL standard-prelude type we claim to support (RFC 8610 Appendix D) must drive the
+/// generator without panicking or erroring.
+///
+/// Default flags only: the float-bearing types (`number`, `time`) work here but not under
+/// `--preserve-encodings` (a separate, pre-existing `unimplemented!` for floats).
+#[test]
+fn all_supported_prelude_types_generate() {
+    // Keep in sync with the `Some(..)` arms of `cddl_prelude()` in utils.rs.
+    const PRELUDE_TYPES: &[&str] = &[
+        "tdate",
+        "time",
+        "number",
+        "biguint",
+        "bignint",
+        "bigint",
+        "integer",
+        "unsigned",
+        "decfrac",
+        "bigfloat",
+        "encoded-cbor",
+        "uri",
+        "b64url",
+        "b64legacy",
+        "regexp",
+        "mime-message",
+    ];
+    let dir = std::env::temp_dir().join("cddl_codegen_prelude_guard");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut failures = Vec::new();
+    for ty in PRELUDE_TYPES {
+        let input = dir.join(format!("{}.cddl", ty.replace('-', "_")));
+        std::fs::write(&input, format!("holder = [val: {ty}]\n")).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            "prelude_guard_unused",
+        ]);
+        // catch_unwind (without touching the global panic hook, to avoid racing other tests)
+        // so we report *all* failing types at once rather than aborting on the first.
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::api::generated_strings(&cli)
+        })) {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => failures.push(format!("{ty}: error: {e}")),
+            Err(_) => failures.push(format!("{ty}: PANIC")),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        failures.is_empty(),
+        "supported prelude types failed to generate:\n{}",
+        failures.join("\n")
+    );
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");

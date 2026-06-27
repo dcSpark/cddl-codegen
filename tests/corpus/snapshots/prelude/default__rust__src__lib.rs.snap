@@ -1,0 +1,77 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Prelude {
+    pub big_u: PreludeBiguint,
+    pub uri: PreludeUri,
+    pub big_i: PreludeBigint,
+    pub unsigned: PreludeUnsigned,
+}
+
+impl Prelude {
+    pub fn new(
+        big_u: PreludeBiguint,
+        uri: PreludeUri,
+        big_i: PreludeBigint,
+        unsigned: PreludeUnsigned,
+    ) -> Self {
+        Self {
+            big_u,
+            uri,
+            big_i,
+            unsigned,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum PreludeBigint {
+    PreludeBiguint(PreludeBiguint),
+    PreludeBignint(PreludeBignint),
+}
+
+impl PreludeBigint {
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self::PreludeBiguint(prelude_biguint)
+    }
+
+    pub fn new_prelude_bignint(prelude_bignint: PreludeBignint) -> Self {
+        Self::PreludeBignint(prelude_bignint)
+    }
+}
+
+pub type PreludeBignint = Vec<u8>;
+
+pub type PreludeBiguint = Vec<u8>;
+
+#[derive(Clone, Debug)]
+pub enum PreludeUnsigned {
+    U64(u64),
+    PreludeBiguint(PreludeBiguint),
+}
+
+impl PreludeUnsigned {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self::PreludeBiguint(prelude_biguint)
+    }
+}
+
+pub type PreludeUri = String;

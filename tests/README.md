@@ -85,8 +85,9 @@ only.
 
 ## Known gap
 
-The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) currently panics the generator
-(`is_enum` assertion in `intermediate.rs`), so it has no corpus entry despite being listed as a
-documented capability. Add one once the generator supports it.
+The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) is covered by `tests/corpus/prelude.cddl`.
+The float-bearing prelude types (`number`, `time`) are omitted from it because floats don't support
+`--preserve-encodings` (a pre-existing `unimplemented!` in `generation.rs`), which the corpus
+exercises for every entry.
 
 [`insta`]: https://insta.rs
