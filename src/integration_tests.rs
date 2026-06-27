@@ -535,6 +535,96 @@ fn wasm_json_roundtrip() {
     );
 }
 
+/// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over committed
+/// schema fixtures using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
+/// (installed via `npm install` of that exact file), then asserts the emitted types. This is the only
+/// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
+/// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
+/// and `tests/TESTING_ROADMAP.md` item 7.
+#[test]
+fn js_schema_to_ts() {
+    use std::str::FromStr;
+    let static_dir = std::path::PathBuf::from_str("static").unwrap();
+    let fixtures = std::path::PathBuf::from_str("tests/json2ts/schemas").unwrap();
+    // gitignored (tests/*/export*/), so it's regenerated each run and never committed.
+    let work = std::path::PathBuf::from_str("tests/json2ts/export").unwrap();
+
+    if !(tool_exists("node") && tool_exists("npm")) {
+        // Don't let CI silently skip the only schema -> .d.ts coverage we have.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "node and npm are required to run js_schema_to_ts in CI"
+        );
+        eprintln!("skipping js_schema_to_ts: node/npm not found");
+        return;
+    }
+
+    // Lay out what run-json2ts.js expects relative to its cwd: scripts/, package.json (the shipped
+    // one, so npm installs the pinned json2ts), and rust/wasm/json-gen/schemas/*.json.
+    let _ = std::fs::remove_dir_all(&work);
+    let schemas_out = work.join("rust/wasm/json-gen/schemas");
+    std::fs::create_dir_all(work.join("scripts")).unwrap();
+    std::fs::create_dir_all(&schemas_out).unwrap();
+    std::fs::copy(
+        static_dir.join("run-json2ts.js"),
+        work.join("scripts/run-json2ts.js"),
+    )
+    .unwrap();
+    std::fs::copy(
+        static_dir.join("package_json_schemas.json"),
+        work.join("package.json"),
+    )
+    .unwrap();
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            std::fs::copy(&path, schemas_out.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+
+    let npm = std::process::Command::new("npm")
+        .args(["install", "--silent", "--no-audit", "--no-fund"])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !npm.status.success() {
+        eprintln!(
+            "npm install stderr:\n{}",
+            String::from_utf8_lossy(&npm.stderr)
+        );
+    }
+    assert!(npm.status.success());
+
+    let node = std::process::Command::new("node")
+        .arg("scripts/run-json2ts.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !node.status.success() {
+        eprintln!("node stderr:\n{}", String::from_utf8_lossy(&node.stderr));
+    }
+    assert!(node.status.success());
+
+    let dts =
+        std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts")).unwrap();
+    println!("generated json-types.d.ts:\n{dts}");
+    // Identifiers are JSON-suffixed; the cross-file ref resolved (bar -> BarJSON); the enum became a
+    // union.
+    assert!(dts.contains("export interface FooJSON"), "{dts}");
+    assert!(dts.contains("export type BarJSON"), "{dts}");
+    assert!(dts.contains("bar: BarJSON"), "{dts}");
+    assert!(dts.contains("\"x\" | \"y\""), "{dts}");
+    // additionalProperties guard, both sides: injected `false` on the struct dropped its index
+    // signature, but the map type's existing `additionalProperties` object was kept (Table.json).
+    let foo_block = {
+        let start = dts.find("export interface FooJSON").unwrap();
+        &dts[start..start + dts[start..].find('}').unwrap()]
+    };
+    assert!(!foo_block.contains("[k: string]"), "{foo_block}");
+    assert!(dts.contains("export interface TableJSON"), "{dts}");
+    assert!(dts.contains("[k: string]: number"), "{dts}");
+}
+
 #[test]
 fn json_preserve() {
     use std::str::FromStr;

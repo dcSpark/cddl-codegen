@@ -57,8 +57,15 @@ what's already covered.
    concrete additions, both able to reuse the `wasm_json_roundtrip` node harness:
    - run the json-gen crate and assert each type's `to_json()` output **validates against its own
      emitted schema** — a real correctness oracle for the feature, not just a "does it build" gate;
-   - add a smoke test for the shipped `run-json2ts.js`/`json-ts-types.js` (schema → `.d.ts`), which
-     has zero coverage.
+   - the second shipped script, `json-ts-types.js` (merges the `.d.ts` into the wasm-pack `pkg`
+     output), still has zero coverage — it needs a real `pkg/<lib>.d.ts`, so it'd extend the
+     `wasm_json_roundtrip` harness (which already runs wasm-pack) rather than the fixture harness
+     below. Note it hardcodes the `cddl_lib_wasm` lib name, so cover the default-name case first.
+
+   `run-json2ts.js` (schema → `.d.ts`) is already covered by `integration_tests::js_schema_to_ts`
+   (shipped script over `tests/json2ts/` fixtures, pinned `json-schema-to-typescript`), and those
+   fixtures cover its live branches — so the only remaining gaps are `json-ts-types.js` and the full
+   end-to-end `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack).
 
    Why it's worth doing: the suite currently proves the json-gen crate *builds*
    (`integration_tests::json`, `feature_corpus_compiles`) but never runs it or inspects what it emits,
