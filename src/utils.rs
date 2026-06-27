@@ -99,8 +99,8 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         "bigint" => Some("biguint / bignint"),
         "integer" => Some("int / bigint"),
         "unsigned" => Some("uint / biguint"),
-        "decfrac" => Some("#6.4([e10: int), m: integer])"),
-        "bigfloat" => Some("#6.5([e2: int), m: integer])"),
+        "decfrac" => Some("#6.4([e10: int, m: integer])"),
+        "bigfloat" => Some("#6.5([e2: int, m: integer])"),
         "encoded-cbor" => Some("#6.24(bstr)"),
         "uri" => Some("#6.32(tstr)"),
         "b64url" => Some("#6.33(tstr)"),
@@ -155,7 +155,7 @@ pub fn is_identifier_reserved(name: &str) -> bool {
         "b64url"     |
         "b64legacy"  |
         "regexp"     |
-        "mime-messag e" |
+        "mime-message" |
         "cbor-any"   |
         "null"       |
         "nil"        |

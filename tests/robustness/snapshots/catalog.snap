@@ -11,7 +11,7 @@ empty_array                ok
 empty_group                ok
 garbage                    error (graceful)
 generic_arity_mismatch     PANIC
-prelude_biguint            PANIC
+prelude_biguint            ok
 self_recursive             ok
 undefined_generic          PANIC
 undefined_reference        error (graceful)

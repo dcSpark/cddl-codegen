@@ -432,11 +432,14 @@ impl<'a> IntermediateTypes<'a> {
                             )
                         });
                         self.emit_prelude(reserved.clone(), cli);
+                        // Resolve to whatever the emitted `prelude_<x>` rule resolves to, exactly
+                        // as a user-written reference to that rule would. This yields a proper
+                        // Alias (for plain prelude types like biguint) or a Rust struct ref (for
+                        // type-choice prelude types like bigint), instead of a bare Rust ident
+                        // pointing at an unregistered type alias - which panics downstream lookups
+                        // (is_enum, cbor_types, ...) that assume Rust(ident) names a real struct.
                         Some((
-                            ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(format!(
-                                "prelude_{reserved}"
-                            ))))
-                            .into(),
+                            self.new_type(&CDDLIdent::new(format!("prelude_{reserved}")), cli),
                             true,
                         ))
                     }

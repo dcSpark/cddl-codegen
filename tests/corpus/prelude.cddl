@@ -1,0 +1,9 @@
+; CDDL standard-prelude types (RFC 8610 Appendix D), pulled in as raw CDDL.
+; Each distinct generated shape is covered once; float-bearing prelude types
+; (number/time) are omitted as floats don't support --preserve-encodings.
+prelude = [
+  big_u:    biguint,    ; #6.2(bstr)      — tagged-bytes alias
+  uri:      uri,        ; #6.32(tstr)     — tagged-text alias
+  big_i:    bigint,     ; biguint/bignint — type-choice over nested prelude types
+  unsigned: unsigned,   ; uint/biguint    — type-choice mixing a primitive with a prelude type
+]
