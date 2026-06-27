@@ -89,4 +89,23 @@ mod tests {
         assert_eq!(json_str, serde_json::to_string_pretty(&from_value).unwrap());
         assert_eq!(json_str, serde_json::to_string_pretty(&from_json).unwrap());
     }
+
+    // The bare `Int` serializes as the signed decimal *string* (see its serde impls): a JSON number
+    // can't hold the full RFC 8949 §3.1 range (-2^64..=2^64-1), and the derived enum form would leak
+    // the nint encoding (`{"Nint":4}` actually meaning -5). Known-answer pairs (Int <-> exact JSON),
+    // incl. the RFC's own -500 example and both range extremes.
+    #[test]
+    fn int_json() {
+        for (int, json) in [
+            (Int::new_uint(0), "\"0\""),
+            (Int::new_uint(u64::MAX), "\"18446744073709551615\""), // 2^64 - 1, uint ceiling
+            (Int::new_nint(0), "\"-1\""),                          // nint 0 == -1
+            (Int::new_nint(499), "\"-500\""),                      // RFC 8949 §3.1 worked example
+            (Int::new_nint(u64::MAX), "\"-18446744073709551616\""), // -2^64, nint floor
+        ] {
+            assert_eq!(serde_json::to_string(&int).unwrap(), json);
+            let from_json: Int = serde_json::from_str(json).unwrap();
+            assert_eq!(serde_json::to_string(&from_json).unwrap(), json);
+        }
+    }
 }

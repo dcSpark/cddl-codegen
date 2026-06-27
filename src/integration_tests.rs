@@ -188,6 +188,84 @@ fn run_test(
     }
 }
 
+/// Generate + `cargo check` every `tests/corpus/*.cddl` crate under each emission profile. The
+/// snapshot suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a
+/// construct that emits non-compiling Rust would be snapshotted as "correct"; this is the compile
+/// gate for it. Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted
+/// under, since non-compiling output can be flag-specific (a bare construct compiled but its
+/// preserve/json variant did not). Rust-only (`--wasm=false`) and one shared `CARGO_TARGET_DIR` so
+/// the deps build once. `int` needs no extern defs here — the generator emits its own `Int` type.
+#[test]
+fn feature_corpus_compiles() {
+    use std::str::FromStr;
+    // Mirrors snapshot_tests::ALL_PROFILES (kept in sync by hand — both are tiny).
+    let profiles: &[(&str, &[&str])] = &[
+        ("default", &[]),
+        ("preserve", &["--preserve-encodings=true"]),
+        (
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ];
+    let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
+
+    // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3).
+    let root = std::env::temp_dir().join("cddl_codegen_corpus_compile");
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![];
+    for input in &entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        for (profile, extra) in profiles {
+            let label = format!("{stem}/{profile}");
+            let out = root.join(format!("{stem}__{profile}"));
+            // generate (rust only)
+            let gen_out = std::process::Command::new("cargo")
+                .args(["run", "--"])
+                .arg(format!("--input={}", input.to_str().unwrap()))
+                .arg(format!("--output={}", out.to_str().unwrap()))
+                .arg("--wasm=false")
+                .args(*extra)
+                .output()
+                .unwrap();
+            if !gen_out.status.success() {
+                failures.push(format!(
+                    "{label}: generation failed\n{}",
+                    String::from_utf8_lossy(&gen_out.stderr)
+                ));
+                continue;
+            }
+            // cargo check the generated rust crate
+            let check = std::process::Command::new("cargo")
+                .arg("check")
+                .current_dir(out.join("rust"))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            if !check.status.success() {
+                failures.push(format!(
+                    "{label}: cargo check failed\n{}",
+                    String::from_utf8_lossy(&check.stderr)
+                ));
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        failures.is_empty(),
+        "corpus crates failed to compile:\n\n{}",
+        failures.join("\n\n")
+    );
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;
