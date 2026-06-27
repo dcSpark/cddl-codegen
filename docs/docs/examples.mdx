@@ -17,8 +17,8 @@ Type alias
 hash = bytes
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -34,7 +34,6 @@ hash = bytes
 pub type Hash = Vec<u8>;
 ```
 
-</p>
 </details>
 
 
@@ -43,10 +42,10 @@ Create a newtype around another type instead of an alias
 special_hash = bytes ; @newtype
 ```
 
-<details><summary>See generated output</summary>
+<details>
+<summary>See generated output</summary>
 
 
-<p>
 
 #### input 
 
@@ -85,7 +84,6 @@ impl From<SpecialHash> for Vec<u8> {
 }
 ```
 
-</p>
 </details>
 
 
@@ -107,7 +105,6 @@ hashes = [
 
 <details>
   <summary>See generated output</summary>
-<p>
 
 #### input 
 
@@ -175,7 +172,6 @@ impl From<SpecialHash> for Vec<u8> {
 }
 ```
 
-</p>
 </details>
 
 
@@ -238,8 +234,8 @@ or to a range e.g. between 10 and 20 bytes
 bounded: text .size (10..20)
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -298,7 +294,6 @@ impl Limitations {
 }
 ```
 
-</p>
 </details>
 
 
@@ -336,8 +331,8 @@ As well as floats (without --preserve-encodings=true)
   fp: float64
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -421,7 +416,6 @@ pub enum IntError {
 }
 ```
 
-</p>
 </details>
 
 
@@ -434,8 +428,8 @@ user has to insert/import code for this type after generation
 extern_foo = _CDDL_CODEGEN_EXTERN_TYPE_
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -465,7 +459,6 @@ impl Bar {
 }
 ```
 
-</p>
 </details>
 
 
@@ -530,8 +523,8 @@ This will not be an optional field in rust, as when it is not present, it will b
 ```
 
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -574,7 +567,6 @@ impl Bar {
 }
 ```
 
-</p>
 </details>
 
 
@@ -630,8 +622,8 @@ outer_map = {
 }
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -717,7 +709,6 @@ impl OuterMap {
 }
 ```
 
-</p>
 </details>
 
 
@@ -740,8 +731,8 @@ type_choice =
 ```
 
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -814,7 +805,6 @@ impl TypeChoice {
 }
 ```
 
-</p>
 </details>
 
 
@@ -829,8 +819,8 @@ c_style_enum =
   / 2 ; @name baz
 ```
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -869,7 +859,6 @@ impl CStyleEnum {
 
 ```
 
-</p>
 </details>
 
 
@@ -890,8 +879,8 @@ choices = [
 ```
 
 
-<details><summary>See generated output</summary>
-<p>
+<details>
+<summary>See generated output</summary>
 
 #### input 
 
@@ -1144,7 +1133,6 @@ impl TypeChoice {
 }
 ```
 
-</p>
 </details>
 
 
