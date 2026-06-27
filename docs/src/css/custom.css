@@ -5,9 +5,6 @@
  */
 
 /* You can override the default Infima variables here. */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 @font-face {
   font-family: 'Manrope';
@@ -53,26 +50,41 @@
 }
 
 img {
-  @apply max-w-[300px] mb-3;
+  max-width: 300px;
+  margin-bottom: 0.75rem;
 }
 
 .img-full {
-  @apply w-full max-w-full;
+  width: 100%;
+  max-width: 100%;
 }
 
 .img-card {
-  @apply max-w-[300px] mb-4;
+  max-width: 300px;
+  margin-bottom: 1rem;
 }
 .img-icon {
-  @apply w-5 mb-0;
+  width: 1.25rem;
+  margin-bottom: 0;
 }
 
 .tabs-container [role="tab"] {
-  @apply rounded-t-md rounded-b-none border-[1px] border-solid border-gray-300 py-2 bg-[color:var(--tabs-bg-active)] border-b-0;
+  border-top-left-radius: 0.375rem;
+  border-top-right-radius: 0.375rem;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border: 1px solid rgb(209 213 219);
+  border-bottom: 0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  background-color: var(--tabs-bg-active);
 }
 .tabs-container [role="tab"][aria-selected="false"] {
-  @apply bg-[color:var(--tabs-bg)] text-gray-400;
+  background-color: var(--tabs-bg);
+  color: rgb(156 163 175);
 }
 .tabs-container [role="tabpanel"] {
-  @apply border-[1px] border-solid border-gray-300 p-5 -mt-[17px];
+  border: 1px solid rgb(209 213 219);
+  padding: 1.25rem;
+  margin-top: -17px;
 }
