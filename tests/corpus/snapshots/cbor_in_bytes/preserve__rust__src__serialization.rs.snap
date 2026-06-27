@@ -1,0 +1,90 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Inner {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.index_0,
+            fit_sz(
+                self.index_0,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.index_0_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.index_1,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.index_1_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.index_1.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Inner {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (index_0, index_0_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let (index_1, index_1_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Inner {
+                index_0,
+                index_1,
+                encodings: Some(InnerEncoding {
+                    len_encoding,
+                    index_0_encoding,
+                    index_1_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Inner"))
+    }
+}

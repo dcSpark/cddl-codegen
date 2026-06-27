@@ -1,0 +1,57 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::error::*;
+use crate::ordered_hash_map::OrderedHashMap;
+use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{InnerEncoding, OuterEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Inner {
+    pub a: u64,
+    pub b: u64,
+    pub encodings: Option<InnerEncoding>,
+}
+
+impl Inner {
+    pub fn new(a: u64, b: u64) -> Self {
+        Self {
+            a,
+            b,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Outer {
+    pub x: u64,
+    pub inner: Inner,
+    pub y: u64,
+    pub encodings: Option<OuterEncoding>,
+}
+
+impl Outer {
+    pub fn new(x: u64, inner: Inner, y: u64) -> Self {
+        Self {
+            x,
+            inner,
+            y,
+            encodings: None,
+        }
+    }
+}

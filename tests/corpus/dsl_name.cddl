@@ -1,0 +1,4 @@
+named = [
+    bytes, ; @name address
+    uint   ; @name checksum
+]

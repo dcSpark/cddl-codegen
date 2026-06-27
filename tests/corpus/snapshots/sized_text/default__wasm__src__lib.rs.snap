@@ -1,0 +1,49 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SizedText(cddl_lib::SizedText);
+
+#[wasm_bindgen]
+impl SizedText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SizedText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::SizedText> for SizedText {
+    fn from(native: cddl_lib::SizedText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SizedText> for cddl_lib::SizedText {
+    fn from(wasm: SizedText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SizedText> for SizedText {
+    fn as_ref(&self) -> &cddl_lib::SizedText {
+        &self.0
+    }
+}

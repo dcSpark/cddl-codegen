@@ -1,0 +1,107 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Inner {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for Inner {
+    fn serialize_as_embedded_group<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_unsigned_integer(self.a)?;
+        serializer.write_unsigned_integer(self.b)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Inner {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        match len {
+            cbor_event::Len::Len(_) => (),
+            cbor_event::Len::Indefinite => match raw.special()? {
+                cbor_event::Special::Break => (),
+                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+            },
+        }
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for Inner {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        _read_len: &mut CBORReadLen,
+        len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let a = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let b = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("b"))?;
+            Ok(Inner { a, b })
+        })()
+        .map_err(|e| e.annotate("Inner"))
+    }
+}
+
+impl cbor_event::se::Serialize for Outer {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(4))?;
+        serializer.write_unsigned_integer(self.x)?;
+        self.inner.serialize_as_embedded_group(serializer)?;
+        serializer.write_unsigned_integer(self.y)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Outer {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(4)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let x = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let inner = Inner::deserialize_as_embedded_group(raw, &mut read_len, len)
+                .map_err(|e: DeserializeError| e.annotate("inner"))?;
+            let y = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("y"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Outer { x, inner, y })
+        })()
+        .map_err(|e| e.annotate("Outer"))
+    }
+}

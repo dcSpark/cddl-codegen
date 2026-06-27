@@ -1,0 +1,4 @@
+custom_newtype = uint ; @newtype @custom_json
+customized = [
+    field: text ; @custom_serialize my_ser @custom_deserialize my_deser
+]

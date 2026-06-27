@@ -1,0 +1,17 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct ArrEncoding {
+    pub len_encoding: LenEncoding,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub index_1_encoding: StringEncoding,
+    pub index_2_encoding: StringEncoding,
+}

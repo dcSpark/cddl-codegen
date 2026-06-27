@@ -1,0 +1,165 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            Self::Uint { value, encoding } => {
+                serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding))
+            }
+            Self::Nint { value, encoding } => serializer
+                .write_negative_integer_sz(-((*value as i128) + 1), fit_sz(*value, *encoding)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| Self::Uint {
+                        value: x,
+                        encoding: Some(enc),
+                    })
+                    .map_err(std::convert::Into::into),
+                cbor_event::Type::NegativeInteger => raw
+                    .negative_integer_sz()
+                    .map(|(x, enc)| Self::Nint {
+                        value: (-1 - x) as u64,
+                        encoding: Some(enc),
+                    })
+                    .map_err(std::convert::Into::into),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for Primitives {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(5),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.a,
+            fit_sz(
+                self.a,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.a_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_negative_integer_sz(
+            -(self.b as i128 + 1),
+            fit_sz(
+                self.b,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.b_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        self.c.serialize(serializer)?;
+        serializer.write_text_sz(
+            &self.d,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.d_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.d.len() as u64),
+        )?;
+        serializer.write_bytes_sz(
+            &self.e,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.e_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.e.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Primitives {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(5)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (a, a_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let (b, b_encoding) = raw
+                .negative_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| ((x + 1).abs() as u64, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("b"))?;
+            let c = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("c"))?;
+            let (d, d_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("d"))?;
+            let (e, e_encoding) = raw
+                .bytes_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("e"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Primitives {
+                a,
+                b,
+                c,
+                d,
+                e,
+                encodings: Some(PrimitivesEncoding {
+                    len_encoding,
+                    a_encoding,
+                    b_encoding,
+                    d_encoding,
+                    e_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Primitives"))
+    }
+}
