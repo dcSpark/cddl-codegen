@@ -3,3 +3,5 @@
 # (was bare `nightly`, which reinstalled "latest nightly" on every CI run.)
 channel = "1.96.0"
 components = ["rustfmt", "clippy"]
+# wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node.
+targets = ["wasm32-unknown-unknown"]

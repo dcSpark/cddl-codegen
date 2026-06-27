@@ -1280,8 +1280,7 @@ impl GenerationScope {
                     matches!(rust_struct.variant(), RustStructType::CStyleEnum { .. })
                 })
         {
-            rust_cargo_toml
-                .push_str("wasm-bindgen = { version = \"0.2\", features=[\"serde-serialize\"] }\n");
+            rust_cargo_toml.push_str("wasm-bindgen = \"0.2\"\n");
         }
         Ok(rust_cargo_toml.replace("cddl-lib", &cli.lib_name))
     }
@@ -1360,8 +1359,9 @@ impl GenerationScope {
             )?;
             let mut wasm_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_wasm.toml"))?;
             if cli.json_serde_derives {
+                wasm_toml.push_str("serde = \"1.0\"\n");
                 wasm_toml.push_str("serde_json = \"1.0.57\"\n");
-                wasm_toml.push_str("serde-wasm-bindgen = \"0.4.5\"\n");
+                wasm_toml.push_str("serde-wasm-bindgen = \"0.6.5\"\n");
             }
             out.insert(
                 "wasm/Cargo.toml".to_owned(),
@@ -4039,7 +4039,7 @@ fn create_base_wasm_struct<'a>(
                         .ret("Result<JsValue, JsError>")
                         .arg_ref_self()
                         .vis("pub")
-                        .line("serde_wasm_bindgen::to_value(&self.0).map_err(|e| JsError::new(&format!(\"to_js_value: {}\", e)))");
+                        .line("serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible()).map_err(|e| JsError::new(&format!(\"to_js_value: {}\", e)))");
                     s_impl.push_fn(to_json_value);
                     s_impl
                         .new_fn("from_json")

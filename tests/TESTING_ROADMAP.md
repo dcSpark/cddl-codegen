@@ -44,6 +44,15 @@ what's already covered.
    churn and the `which` dependency, compiles fast, never bails (`syn` is already a dep). Lower
    urgency only because the pinned toolchain already mitigates churn.
 
+6. **Large-integer boundary in the wasm/JSON path.** *(small)* `integration_tests::wasm_json_roundtrip`
+   (wasm-pack + node, `to_json_value()` vs `JSON.parse(to_json())`) is the only oracle that runs
+   bindings in a JS engine, but it stays in the JS safe-integer range. A `u64 > 2^53` is the one
+   known gap with teeth: `to_json` emits it full-precision, while the JS path loses precision
+   (`JSON.parse`) or throws (`json_compatible` doesn't enable bigint). Add a boundary fixture there —
+   to pin whichever behaviour is intended and document the limitation. Broadening that test to more
+   type shapes or `preserve`/`canonical` profiles is *not* tracked here: the emitted `to_json_value`
+   line is flag-independent, so do it only if a divergence actually surfaces.
+
 ## Explicitly not worth it (decided, not overlooked)
 
 - Full `2^N` flag powerset / PICT pairwise — curated named profiles already cover this; revisit

@@ -12,4 +12,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cbor_event = "2.4.0"
-wasm-bindgen = { version = "0.2", features=["serde-serialize"] }
+wasm-bindgen = "0.2"

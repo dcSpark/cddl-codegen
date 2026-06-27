@@ -38,6 +38,13 @@ jobs:
       - name: Build
         run: cargo build --locked --workspace --all-features --all-targets
 
+      # wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node
+      # (node is preinstalled on ubuntu-latest; the wasm32 target comes from rust-toolchain.toml).
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
       - name: Test
         run: cargo test --all-features --all-targets
 
