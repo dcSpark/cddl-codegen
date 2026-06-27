@@ -10,9 +10,9 @@ pub(crate) mod utils;
 
 use clap::Parser;
 use cli::Cli;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-pub static CLI_ARGS: Lazy<Cli> = Lazy::new(Cli::parse);
+pub static CLI_ARGS: LazyLock<Cli> = LazyLock::new(Cli::parse);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     api::generate_to_disk(&CLI_ARGS)

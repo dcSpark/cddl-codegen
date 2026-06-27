@@ -12,8 +12,8 @@ use crate::utils::{
     is_identifier_user_defined,
 };
 
-use once_cell::sync::Lazy;
-pub static ROOT_SCOPE: Lazy<ModuleScope> = Lazy::new(|| vec![String::from("lib")].into());
+use std::sync::LazyLock;
+pub static ROOT_SCOPE: LazyLock<ModuleScope> = LazyLock::new(|| vec![String::from("lib")].into());
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ModuleScope {
