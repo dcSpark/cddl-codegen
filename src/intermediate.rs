@@ -568,14 +568,18 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // call this after all types have been registered
-    pub fn finalize(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
+    pub fn finalize(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        cli: &Cli,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
         let resolved_generics = self
             .generic_instances
             .values()
             .map(|instance| instance.resolve(self, cli))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         for resolved_instance in resolved_generics {
             match resolved_instance {
                 GenericResolved::Resolved(rs) => self.register_rust_struct(parent_visitor, rs, cli),
@@ -639,6 +643,7 @@ impl<'a> IntermediateTypes<'a> {
         for ident in used_as_key {
             self.mark_used_as_key(ident);
         }
+        Ok(())
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
@@ -2900,7 +2905,11 @@ impl GenericInstance {
     // (for the cases where the name came from the original generic param)
     // returns None when it can't be resolved i.e. extern defs
     // this will be left to the user instead to handle.
-    pub fn resolve(&self, types: &IntermediateTypes, cli: &Cli) -> GenericResolved {
+    pub fn resolve(
+        &self,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> Result<GenericResolved, Box<dyn std::error::Error>> {
         let def = match types.generic_defs.get(&self.generic_ident) {
             Some(def) => def,
             None => {
@@ -2909,7 +2918,7 @@ impl GenericInstance {
                     .map(|rs| matches!(rs.variant(), RustStructType::Extern))
                     .unwrap_or(false)
                 {
-                    return GenericResolved::Extern {
+                    return Ok(GenericResolved::Extern {
                         instance_ident: self.instance_ident.clone(),
                         real_ident: RustIdent::new_generic(
                             &self.generic_ident,
@@ -2917,15 +2926,25 @@ impl GenericInstance {
                             types,
                             cli,
                         ),
-                    };
+                    });
                 }
-                panic!(
-                    "Generic instance used on {} without definition | {:?}",
-                    self.generic_ident, self
-                );
+                return Err(format!(
+                    "generic instance `{}` references undefined generic type `{}`",
+                    self.instance_ident, self.generic_ident
+                )
+                .into());
             }
         };
-        assert_eq!(def.generic_params.len(), self.generic_args.len());
+        if def.generic_params.len() != self.generic_args.len() {
+            return Err(format!(
+                "generic `{}` expects {} argument(s) but `{}` supplies {}",
+                self.generic_ident,
+                def.generic_params.len(),
+                self.instance_ident,
+                self.generic_args.len()
+            )
+            .into());
+        }
         let resolved_args = def
             .generic_params
             .iter()
@@ -2973,7 +2992,7 @@ impl GenericInstance {
                 panic!("generics not supported on raw bytes types")
             }
         };
-        GenericResolved::Resolved(instance)
+        Ok(GenericResolved::Resolved(instance))
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {

@@ -76,11 +76,6 @@ The foundation is solid and independently validated:
    churn and the `which` dependency, compiles fast, never bails (`syn` is already a dep). Lower
    urgency only because the pinned toolchain already mitigates churn.
 
-9. **Fix the generator panics** found by the robustness catalog (`draft/prelude-bug-report.md`):
-   prelude types, undefined generics, generic-arity mismatch. Each fix flips a
-   `tests/robustness/snapshots/catalog.snap` entry from `PANIC` to `error (graceful)`. (Generator
-   work, not test work, but the catalog tracks the progress.)
-
 ## Explicitly not worth it (decided, not overlooked)
 
 - Full `2^N` flag powerset / PICT pairwise — curated named profiles already cover this; revisit
@@ -92,4 +87,3 @@ The foundation is solid and independently validated:
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
 - Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
-- Generator panic backlog: `draft/prelude-bug-report.md`
