@@ -1253,7 +1253,7 @@ impl GenerationScope {
             rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
         }
         if cli.json_schema_export {
-            rust_cargo_toml.push_str("schemars = \"0.8.22\"\n");
+            rust_cargo_toml.push_str("schemars = \"1.2.1\"\n");
         }
         if export_raw_bytes_encoding_trait
             || types
@@ -7785,22 +7785,22 @@ fn generate_wrapper_struct(
         if cli.json_schema_export {
             let mut schema_name_fn = codegen::Function::new("schema_name");
             schema_name_fn
-                .ret("String")
-                .line(format!("String::from(\"{type_name}\")"));
+                .ret("::std::borrow::Cow<'static, str>")
+                .line(format!("::std::borrow::Cow::Borrowed(\"{type_name}\")"));
             let mut json_schema_fn = codegen::Function::new("json_schema");
             json_schema_fn
                 .arg("generator", "&mut schemars::SchemaGenerator")
-                .ret("schemars::schema::Schema")
+                .ret("schemars::Schema")
                 .line(format!("{json_schema_type}::json_schema(generator)"));
-            let mut is_referenceable = codegen::Function::new("is_referenceable");
-            is_referenceable
+            let mut inline_schema = codegen::Function::new("inline_schema");
+            inline_schema
                 .ret("bool")
-                .line(format!("{json_schema_type}::is_referenceable()"));
+                .line(format!("{json_schema_type}::inline_schema()"));
             json_schema_impl
                 .impl_trait("schemars::JsonSchema")
                 .push_fn(schema_name_fn)
                 .push_fn(json_schema_fn)
-                .push_fn(is_referenceable);
+                .push_fn(inline_schema);
         }
     }
     s.vis("pub");
@@ -8310,21 +8310,21 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     if cli.json_schema_export {
         let mut json_schema_impl = codegen::Impl::new("Int");
         let mut schema_name_fn = codegen::Function::new("schema_name");
-        schema_name_fn.ret("String").line("String::from(\"Int\")");
+        schema_name_fn
+            .ret("::std::borrow::Cow<'static, str>")
+            .line("::std::borrow::Cow::Borrowed(\"Int\")");
         let mut json_schema_fn = codegen::Function::new("json_schema");
         json_schema_fn
             .arg("generator", "&mut schemars::SchemaGenerator")
-            .ret("schemars::schema::Schema")
+            .ret("schemars::Schema")
             .line("String::json_schema(generator)");
-        let mut is_referenceable_fn = codegen::Function::new("is_referenceable");
-        is_referenceable_fn
-            .ret("bool")
-            .line("String::is_referenceable()");
+        let mut inline_schema_fn = codegen::Function::new("inline_schema");
+        inline_schema_fn.ret("bool").line("String::inline_schema()");
         json_schema_impl
             .impl_trait("schemars::JsonSchema")
             .push_fn(schema_name_fn)
             .push_fn(json_schema_fn)
-            .push_fn(is_referenceable_fn);
+            .push_fn(inline_schema_fn);
         gen_scope.rust_lib().push_impl(json_schema_impl);
     }
 

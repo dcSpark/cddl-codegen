@@ -5,9 +5,12 @@ const path = require('path');
 const schemasDir = path.join('rust', 'json-gen', 'schemas');
 const schemaFiles = fs.readdirSync(schemasDir).filter(file => path.extname(file) === '.json');
 
+// schemars 0.8 (draft-07) nests subschemas under `#/definitions/`; schemars 1.x (draft 2020-12)
+// uses `#/$defs/`. Accept both so the per-type cross-file `X.json` ref rewriting keeps working.
+const DEF_REF_PREFIX = /^#\/(?:\$defs|definitions)\//;
 function replaceRef(obj) {
-  if (obj['$ref'] != null && typeof obj['$ref'] === 'string' && obj['$ref'].startsWith('#/definitions/')) {
-    obj['$ref'] = obj['$ref'].replace(/^(#\/definitions\/)/, '') + '.json';
+  if (obj['$ref'] != null && typeof obj['$ref'] === 'string' && DEF_REF_PREFIX.test(obj['$ref'])) {
+    obj['$ref'] = obj['$ref'].replace(DEF_REF_PREFIX, '') + '.json';
     console.log(`replacing: ${obj['$ref']}`);
   }
 }

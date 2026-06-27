@@ -57,16 +57,16 @@ impl<'de> serde::de::Deserialize<'de> for BytesWrapper {
 }
 
 impl schemars::JsonSchema for BytesWrapper {
-    fn schema_name() -> String {
-        String::from("BytesWrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("BytesWrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         String::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        String::is_referenceable()
+    fn inline_schema() -> bool {
+        String::inline_schema()
     }
 }
 
@@ -137,16 +137,16 @@ impl<'de> serde::de::Deserialize<'de> for I16Wrapper {
 }
 
 impl schemars::JsonSchema for I16Wrapper {
-    fn schema_name() -> String {
-        String::from("I16Wrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("I16Wrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         i16::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        i16::is_referenceable()
+    fn inline_schema() -> bool {
+        i16::inline_schema()
     }
 }
 
@@ -202,16 +202,16 @@ impl<'de> serde::de::Deserialize<'de> for I64Wrapper {
 }
 
 impl schemars::JsonSchema for I64Wrapper {
-    fn schema_name() -> String {
-        String::from("I64Wrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("I64Wrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         i64::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        i64::is_referenceable()
+    fn inline_schema() -> bool {
+        i64::inline_schema()
     }
 }
 
@@ -243,16 +243,16 @@ impl<'de> serde::de::Deserialize<'de> for Int {
 }
 
 impl schemars::JsonSchema for Int {
-    fn schema_name() -> String {
-        String::from("Int")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Int")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         String::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        String::is_referenceable()
+    fn inline_schema() -> bool {
+        String::inline_schema()
     }
 }
 
@@ -344,16 +344,16 @@ impl<'de> serde::de::Deserialize<'de> for IntWrapper {
 }
 
 impl schemars::JsonSchema for IntWrapper {
-    fn schema_name() -> String {
-        String::from("IntWrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("IntWrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         Int::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        Int::is_referenceable()
+    fn inline_schema() -> bool {
+        Int::inline_schema()
     }
 }
 
@@ -392,16 +392,16 @@ impl<'de> serde::de::Deserialize<'de> for NintWrapper {
 }
 
 impl schemars::JsonSchema for NintWrapper {
-    fn schema_name() -> String {
-        String::from("NintWrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("NintWrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         u64::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        u64::is_referenceable()
+    fn inline_schema() -> bool {
+        u64::inline_schema()
     }
 }
 
@@ -440,16 +440,16 @@ impl<'de> serde::de::Deserialize<'de> for StrWrapper {
 }
 
 impl schemars::JsonSchema for StrWrapper {
-    fn schema_name() -> String {
-        String::from("StrWrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("StrWrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         String::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        String::is_referenceable()
+    fn inline_schema() -> bool {
+        String::inline_schema()
     }
 }
 
@@ -494,16 +494,16 @@ impl<'de> serde::de::Deserialize<'de> for StructWrapper {
 }
 
 impl schemars::JsonSchema for StructWrapper {
-    fn schema_name() -> String {
-        String::from("StructWrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("StructWrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         U64Wrapper::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        U64Wrapper::is_referenceable()
+    fn inline_schema() -> bool {
+        U64Wrapper::inline_schema()
     }
 }
 
@@ -548,16 +548,16 @@ impl<'de> serde::de::Deserialize<'de> for U64Wrapper {
 }
 
 impl schemars::JsonSchema for U64Wrapper {
-    fn schema_name() -> String {
-        String::from("U64Wrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("U64Wrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         u64::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        u64::is_referenceable()
+    fn inline_schema() -> bool {
+        u64::inline_schema()
     }
 }
 
@@ -613,16 +613,16 @@ impl<'de> serde::de::Deserialize<'de> for U8Wrapper {
 }
 
 impl schemars::JsonSchema for U8Wrapper {
-    fn schema_name() -> String {
-        String::from("U8Wrapper")
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("U8Wrapper")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         u8::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        u8::is_referenceable()
+    fn inline_schema() -> bool {
+        u8::inline_schema()
     }
 }
 
