@@ -1,0 +1,1 @@
+fixed_fields = [a: uint, b: "marker", c: 5]
