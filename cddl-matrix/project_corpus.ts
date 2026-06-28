@@ -26,25 +26,29 @@
  *
  * ponytail: COVERAGE.md IS this generated artifact — the hand doc was subsumed once two independent
  * reviews judged the projection a clear win (compile-gated support, per-control-op support, the c-style
- * enum feature, full ➖ rationale + findings). Regenerate after changing the matrix or overlay. One piece
- * is honestly DISCLOSED as deferred, not faked: per-role coverage
- * (item 6 — the floor is a text scan, can't say WHICH role) and per-control-op support (item 7 — the
- * matrix has 0 per-op support annotations). The support seam (C) is reported non-fatal for the same
- * reason it always was — reconciling isolated-probe vs in-context support is its own step.
+ * enum feature, full ➖ rationale + findings). Regenerate after changing the matrix or overlay.
+ * PER-CELL (role × feature) coverage (item 6) is wired: a [[cover]] with a `role` is verified against a
+ * real cddl-crate AST walk (examples/ast_roles.rs) + the matrix's per-cell support verdict, so a construct
+ * ➖ as a standalone type still shows its supported member/choice role. The support seam (C) is reported
+ * non-fatal — reconciling isolated-probe vs in-context support is its own step.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { featuresIn } from "./corpus_detect.ts";
+import { featuresIn, rolesIn } from "./corpus_detect.ts";
 import overlay from "./annotations/corpus/cddl_codegen.toml";
 
 const HERE = import.meta.dir;
 const CORPUS = `${HERE}/../tests/corpus`;
 const OUT = `${CORPUS}/COVERAGE.md`;
 
-interface Cover { id: string; fixture: string; note?: string }
+// A [[cover]] with `role` is a per-CELL coverage claim (role × feature), verified against the AST role
+// floor + the cell's per-cell support verdict; without `role` it is a feature-axis claim (text scan).
+interface Cover { id: string; fixture: string; role?: string; note?: string }
 interface Note { id: string; status: "partial" | "unsupported"; reason: string; code_anchor?: string }
 interface Finding { text: string }
 const ov = overlay as { cover: Cover[]; note?: Note[]; finding?: Finding[] };
 const cover = ov.cover;
+const featureCovers = cover.filter(c => !c.role);   // feature-axis (role-agnostic)
+const cellCovers = cover.filter(c => c.role);       // per-cell (role × feature) — item 6
 const notes = ov.note ?? [];
 const findings = ov.finding ?? [];
 
@@ -65,14 +69,16 @@ const files = [...new Glob("*.cddl").scanSync({ cwd: CORPUS })].sort();
 const detected = new Set<string>();
 for (const f of files) { const d = featuresIn(readFileSync(`${CORPUS}/${f}`, "utf8")); for (const id of [...d.rfc, ...d.ctl, ...d.dsl]) detected.add(id); }
 
-const driftA: string[] = [];   // content: named fixture doesn't contain the construct
-const staleB: string[] = [];   // unknown id / missing fixture
+const driftA: string[] = [];   // content: named fixture doesn't contain the construct (in the claimed role)
+const staleB: string[] = [];   // unknown id / missing fixture / unverifiable cell
 const seamC: { id: string; status: string }[] = [];
-const coverIds = new Set<string>();
+const driftH: string[] = [];   // per-cell cover whose cell isn't `supported` in the matrix (can't claim ✅)
+const coverIds = new Set<string>();   // feature-axis cover ids only (drive the ✅ per-feature mark)
 const fixtureCache = new Map<string, ReturnType<typeof featuresIn>>();
 const detect = (fix: string) => fixtureCache.get(fix) ?? fixtureCache.set(fix, featuresIn(readFileSync(`${CORPUS}/${fix}`, "utf8"))).get(fix)!;
 
-for (const c of cover) {
+// --- feature-axis covers (role-agnostic; text-scan verified, handles dsl.*) ---
+for (const c of featureCovers) {
   coverIds.add(c.id);
   // B: stale
   if (!universe.has(c.id)) staleB.push(`unknown construct id \`${c.id}\``);
@@ -84,6 +90,31 @@ for (const c of cover) {
   // C: support seam
   const st = supportById.get(c.id);
   if (st && st !== "supported") seamC.push({ id: c.id, status: st });
+}
+
+// --- per-cell (role × feature) covers — ROADMAP item 6. A cell cover legitimately coexists with an
+//     unsupported per-feature note (the note = top-level gap; the cover = a supported role), because
+//     `coverIds` above is feature-axis only, so the driftE "cover + unsupported note" rule doesn't fire. ---
+const cellFloor = cellCovers.length
+  ? rolesIn([...new Set(cellCovers.map(c => c.fixture))])
+  : new Map<string, Set<string>>();
+const cellCoversById = new Map<string, { role: string; fixture: string; note?: string }[]>();
+for (const c of cellCovers) {
+  const role = c.role!;
+  // B: stale id / fixture
+  if (!universe.has(c.id)) { staleB.push(`unknown construct id \`${c.id}\` (cell cover)`); continue; }
+  if (!existsSync(`${CORPUS}/${c.fixture}`)) { staleB.push(`missing fixture \`${c.fixture}\` (cell \`${c.id}@${role}\`)`); continue; }
+  // H: the matrix must model this (role × feature) cell AND mark it `supported` — else we'd be claiming ✅
+  //    on a non-modelled or unsupported cell (the per-cell analog of the feature-axis support-seam).
+  const cellId = `contain.${role.replace(/^role\./, "")}.${c.id}`;
+  const cellSupport = supportById.get(cellId);
+  if (cellSupport === undefined) staleB.push(`cell cover \`${c.id}@${role}\`: no containment cell \`${cellId}\` to verify against`);
+  else if (cellSupport !== "supported") driftH.push(`\`${c.id}@${role}\` claims coverage but the matrix marks cell \`${cellId}\` \`${cellSupport}\``);
+  // A: content drift — the AST role floor must actually exercise F in this role in the fixture
+  if (!cellFloor.get(c.fixture)?.has(`${c.id}@${role}`))
+    driftA.push(`\`${c.fixture}\` does not exercise \`${c.id}\` in \`${role}\` (AST role floor) — the per-cell claim is false`);
+  if (!cellCoversById.has(c.id)) cellCoversById.set(c.id, []);
+  cellCoversById.get(c.id)!.push({ role, fixture: c.fixture, note: c.note });
 }
 
 // D: floor completeness — a SUPPORTED construct the corpus exercises must have a canonical fixture.
@@ -109,20 +140,24 @@ for (const n of notes) {
     driftE.push(`\`${n.id}\` noted partial (⚠️ parsed-but-not-honored) but matrix support is \`${sup}\` (must be supported)`);
   else if (n.status === "unsupported" && sup !== "unsupported" && sup !== "out_of_profile")
     driftE.push(`\`${n.id}\` noted ➖ unsupported but matrix support is \`${sup}\``);
+  // feature-axis cover only (coverIds excludes cell covers) — a per-cell cover legitimately coexists with
+  // an unsupported per-feature note (the note = top-level gap; the cover = a supported role).
   if (n.status === "unsupported" && coverIds.has(n.id))
-    driftE.push(`\`${n.id}\` is noted ➖ unsupported yet also has a canonical-fixture (cover) entry — can't be both`);
+    driftE.push(`\`${n.id}\` is noted ➖ unsupported yet also has a feature-axis cover entry — can't be both`);
   if (n.code_anchor && !srcText.includes(n.code_anchor))
     driftG.push(`\`${n.id}\`: code_anchor \`${n.code_anchor}\` not found in src/ (renamed/removed? the note is stale)`);
 }
 
 const w = (s = "") => console.log(s);
-w(`corpus overlay: ${cover.length} canonical-fixture assignments over ${files.length} fixtures`);
+w(`corpus overlay: ${featureCovers.length} feature-axis + ${cellCovers.length} per-cell (role×feature) assignments over ${files.length} fixtures`);
 w(`detected floor: ${detected.size} constructs exercised; ${coverIds.size} assigned a canonical fixture`);
 w();
 if (driftA.length) { w(`❌ A. CONTENT DRIFT (${driftA.length}):`); for (const x of driftA) w(`   - ${x}`); }
-else w(`✅ A. content drift: every canonical fixture actually exercises its construct.`);
+else w(`✅ A. content drift: every cover (feature-axis + per-cell role) is exercised by its fixture.`);
 if (staleB.length) { w(`❌ B. STALE (${staleB.length}):`); for (const x of staleB) w(`   - ${x}`); }
-else w(`✅ B. stale: every overlay id is a real matrix id and every fixture exists.`);
+else w(`✅ B. stale: every overlay id/fixture is real and every cell cover has a containment cell.`);
+if (driftH.length) { w(`❌ H. CELL SUPPORT (${driftH.length}) — per-cell cover claims ✅ on a non-supported cell:`); for (const x of driftH) w(`   - ${x}`); }
+else w(`✅ H. per-cell coverage: every role-keyed cover targets a \`supported\` (role × feature) cell.`);
 if (unassigned.length) { w(`❌ D. UNASSIGNED (corpus exercises these, no canonical fixture) (${unassigned.length}):`); w(`   ${unassigned.join(", ")}`); }
 else w(`✅ D. completeness: every construct the corpus exercises has a canonical fixture.`);
 if (phantom.length) w(`⚠️  overlay ids the corpus never exercises (review): ${phantom.join(", ")}`);
@@ -146,16 +181,17 @@ for (const s of seamC.sort((a, b) => (a.id < b.id ? -1 : 1))) w(`   - ${s.id}  (
 // RENDER — join the validated overlay onto the matrix and write the COVERAGE doc (golden_hex shape).
 // Sections are derived: profile (spec-first) -> production (alpha) -> id (alpha). No authored layout.
 // ============================================================================================
-const coverById = new Map(cover.map(c => [c.id, c]));
+const coverById = new Map(featureCovers.map(c => [c.id, c]));   // feature-axis covers drive the ✅ mark
 const noteById = new Map(notes.map(n => [n.id, n]));
 const MARK = { covered: "✅", untested: "➕", unsupported: "➖", partial: "⚠️" } as const;
 const shortProbe = (id: string) => evidenceById.get(id)?.replace(/^probe: /, "").split(";")[0] ?? "";
 const anchor = (n: Note) => n.code_anchor ? `  [\`${n.code_anchor}\`]` : "";
+const roleTail = (r: string) => r.replace(/^role\./, "");
 
-// Per-feature mark. Note-first: a ⚠️/➖ note is the more informative verdict, and the validator already
-// forbids an `unsupported` note coexisting with a cover (driftE), so this can't contradict the matrix.
+// The per-feature verdict (note-first: a ⚠️/➖ note is the more informative verdict; the validator forbids
+// an `unsupported` note coexisting with a FEATURE-AXIS cover, so this can't contradict the matrix).
 const unexplained: string[] = [];   // unsupported feature with no rationale note (overlay TODO; surfaced)
-function markFeature(id: string, track = true): { mark: string; ev: string } {
+function featureVerdict(id: string, track: boolean): { mark: string; ev: string } {
   const n = noteById.get(id);
   if (n?.status === "partial") return { mark: MARK.partial, ev: n.reason + anchor(n) };
   if (n?.status === "unsupported") return { mark: MARK.unsupported, ev: n.reason + anchor(n) };
@@ -170,6 +206,17 @@ function markFeature(id: string, track = true): { mark: string; ev: string } {
   if (st === "out_of_profile") return { mark: MARK.unsupported, ev: `out of profile — ${shortProbe(id)}` };
   if (track) unexplained.push(id);   // control ops aren't tracked: 28/37 unsupported is expected, not an overlay gap
   return { mark: MARK.unsupported, ev: `${shortProbe(id)}${track ? " — ⚠️ no rationale note yet (overlay gap)" : ""}` };
+}
+
+// markFeature = the per-feature verdict PLUS any per-cell (role × feature) coverage (item 6). A construct
+// can be ➖ as a standalone type yet ✅ in a member/choice role — appended as "also ✅ @role" so the
+// context axis is visible without overloading the single per-feature mark.
+function markFeature(id: string, track = true): { mark: string; ev: string } {
+  const base = featureVerdict(id, track);
+  const cells = cellCoversById.get(id);
+  if (!cells?.length) return base;
+  const roles = cells.map(c => `✅ @${roleTail(c.role)} (\`${c.fixture}\`${c.note ? `: ${c.note}` : ""})`).join("; ");
+  return { mark: base.mark, ev: `${base.ev} — also ${roles}` };
 }
 
 const PROFILE_ORDER = ["RFC8610", "RFC9682", "CDDL_CODEGEN"];
@@ -276,22 +323,27 @@ o(`- Features: **${matrix.features.length}** — ✅ ${feC} covered · ➕ ${feP
 o(`- Control operators: **${matrix.control_operators.length}** — ✅ ${ctC} covered · ➕ ${ctP} supported-untested · ➖ ${ctN} not supported (cddl-codegen implements ${ctC + ctP} of ${matrix.control_operators.length})`);
 o(`- Corpus fixtures: ${files.length}`);
 o();
-o("**Deferred (disclosed, not faked):**");
-o("- **Per-role coverage (ROADMAP item 6).** Coverage here is feature-axis only — the corpus floor is a");
-o("  text scan that detects THAT a construct appears, not in WHICH container role. Per-cell *support*");
-o("  (role × feature) exists in the matrix but role-keyed *coverage* awaits the `cddl`-crate AST walk.");
+o(`**Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,`);
+o("coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk");
+o("(`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's per-cell support verdict — so a");
+o("➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level");
+o(`type, ✅ as a choice-member). **${cellCovers.length} such cells** are mapped (appended as "also ✅ @role" on the`);
+o("rows above); constructs whose support doesn't vary by role stay feature-axis (the role is unremarkably");
+o("top-level). A full role × feature coverage grid for *every* construct is future work — the floor data");
+o("(`rolesIn`) already supports it.");
 if (unexplained.length) {
-  o(`- **Overlay rationale gap.** ${unexplained.length} unsupported feature(s) render ➖ with no rationale note —`);
-  o(`  add a \`[[note]]\` (reason + code_anchor) to the overlay: ${unexplained.sort().map(x => `\`${x}\``).join(", ")}.`);
+  o();
+  o(`**Overlay rationale gap (disclosed).** ${unexplained.length} unsupported feature(s) render ➖ with no rationale note —`);
+  o(`add a \`[[note]]\` (reason + code_anchor) to the overlay: ${unexplained.sort().map(x => `\`${x}\``).join(", ")}.`);
 }
 o();
 
 await Bun.write(OUT, L.join("\n"));
 w();
 w(`wrote ${OUT.replace(`${HERE}/../`, "")}`);
-w(`  features: ✅ ${feC}  ➕ ${feP}  ⚠️ ${feW}  ➖ ${feN}; control-ops: ✅ ${ctC} ➕ ${ctP} ➖ ${ctN}; unexplained ➖: ${unexplained.length}`);
+w(`  features: ✅ ${feC}  ➕ ${feP}  ⚠️ ${feW}  ➖ ${feN}; control-ops: ✅ ${ctC} ➕ ${ctP} ➖ ${ctN}; per-cell covers: ${cellCovers.length}; unexplained ➖: ${unexplained.length}`);
 
-const hardFail = driftA.length || staleB.length || unassigned.length || driftE.length || staleF.length || driftG.length;
+const hardFail = driftA.length || staleB.length || driftH.length || unassigned.length || driftE.length || staleF.length || driftG.length;
 w();
 w(hardFail ? "RESULT: FAIL (overlay drift — see above)" : "RESULT: PASS (editorial mapping holds mechanically)");
 process.exit(hardFail ? 1 : 0);

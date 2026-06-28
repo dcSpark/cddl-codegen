@@ -4,8 +4,9 @@ Read `README.md` first. This is the forward-looking list. Status today: **gate-g
 (81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), all axes reconciled, deterministic, with
 **compile-gated execution-grounded support per-feature, per-cell (role × feature), AND per-control-op**
 (all 37 IANA ops probed). **Both flagship projections now GENERATE their hand docs:** **golden_hex** (Q3)
-and the **corpus feature-axis** projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md`
-(`corpus_detect.ts` floor + `annotations/corpus/` overlay). The north-star target (subsuming COVERAGE.md)
+and the **corpus** projection (feature-axis + per-cell **role × feature** coverage, item 6) —
+`project_corpus.ts` generates `tests/corpus/COVERAGE.md` (`corpus_detect.ts` text + AST role floor via
+`examples/ast_roles.rs` + `annotations/corpus/` overlay). The north-star target (subsuming COVERAGE.md)
 is **DONE** — judged a clear win by two independent cold reviews. What follows is everything *not* yet
 done, roughly in priority order.
 
@@ -36,8 +37,8 @@ subsume a doc we sweated over, the premise is unproven).
 **DONE — the thesis is proven.** Both flagship projections now generate their hand docs: `golden_hex`
 (encoding axis) and the corpus feature-axis projection (`project_corpus.ts` → `tests/corpus/COVERAGE.md`,
 subsumed; judged a clear win by two independent cold reviews). The build-order/findings below are retained
-as the historical record of *how* corpus was subsumed; the remaining open items are role-aware coverage
-(build-order item 6) and the secondary projection targets + queries.
+as the historical record of *how* corpus was subsumed. Role-aware coverage (build-order item 6) has since
+landed; the remaining open items are the secondary projection targets (`current_capacities.mdx`) + queries.
 
 **Done — the golden_hex (encoding-axis / Q3) projection.** `project_golden_hex.ts` generates
 `tests/golden_hex/COVERAGE.md` from `matrix.json` + `sources/appendix_a.json` + `tests.rs`, joining the
@@ -123,7 +124,7 @@ machinery.
    joins cover/note/support). Shipped via: render to a `*.generated.md` draft → diff vs the hand doc → two
    independent cold reviews (1st: "not yet a win", which drove the compile-gate + items 6/7 scoping; 2nd:
    "clear win" after the fixes) → flip `OUT` to the live `COVERAGE.md`. Role-aware coverage in the render
-   still awaits item 6 (disclosed in the doc, not faked).
+   landed in item 6 (the per-cell `[[cover]]` with a `role`, appended as "also ✅ @role").
 5. ~~per-cell support (role × feature)~~ **done** — `verify.ts` now probes each containment cell's example
    through cddl-codegen → an execution-grounded support bit **per (feature, role)**, keyed by the
    containment id in the same `[[support]]` table (28 cells). This is the matrix's core "supported HERE,
@@ -134,14 +135,20 @@ machinery.
    `value.number`/`value.text`/`type2.value` supported as array-elements, `prelude.null` supported as a
    choice-member — all `unsupported` at top-level. Example payoff: `type2.map` is supported as tag-content
    but unsupported inline in choice/array/cbor/generic/map-value (the anonymous-group limit — see Findings).
-6. **Step 3 (remaining) — role-aware corpus coverage.** The corpus floor (`corpus_detect` `featuresIn`) is a
-   text scan: it detects THAT a construct appears, not WHICH role. To key corpus coverage on `(feature,
-   role)` — e.g. "null is covered as a choice-member by `nullable.cddl`" vs the uncovered top-level cell (the
-   `nullable.cddl` mis-naming) — replace the ad-hoc scan with a real **AST walk via the `cddl` crate**
-   (=0.9.1, the exact one cddl-codegen builds with) through a small `cargo run` JSON-AST dump: walk the AST
-   and read each construct's enclosing role directly. Caveat (parse-coverage) is soft — the crate parses
-   *CDDL* not CBOR, and since cddl-codegen uses it, anything in our corpus parses by construction;
-   role-detection only needs the crate to PARSE (see nesting), not for cddl-codegen to support it.
+6. ~~**Step 3 (remaining) — role-aware corpus coverage.**~~ **done.** The corpus floor was a text scan that
+   detected THAT a construct appears, not WHICH role. Now `corpus_detect.ts` `rolesIn` keys coverage on
+   `(feature, role)` via a real **AST walk through the `cddl` crate** (=0.9.1, the exact one cddl-codegen
+   builds with) — `examples/ast_roles.rs`, a `Visitor` impl whose `walk_*` defaults do the recursion while a
+   small role stack tracks the enclosing container; it emits `(role, node-kind)` records that TS maps to
+   feature ids. **NOTE — not the `cargo run` JSON-AST dump the original plan assumed:** the `cddl` AST's
+   `Serialize` is gated on `target_arch = "wasm32"`, so there is no free serde dump on a native build (the
+   helper hand-walks instead). `project_corpus.ts` consumes it: a `[[cover]]` may carry a `role`, verified
+   against the AST role floor AND the matrix's per-cell support verdict (check H), so a construct ➖ as a
+   standalone type surfaces its supported member/choice role (`prelude.null` ➖ top-level, ✅ as a
+   choice-member; the literal values ✅ as array-elements). Caveat (parse-coverage) is soft — role-detection
+   only needs the crate to PARSE, which it does for the whole corpus by construction. A full role × feature
+   coverage grid for *every* construct (not just the cells where support varies by role) is the remaining
+   stretch — the floor data (`rolesIn`) already supports it.
 7. ~~**Control-op support.** Probe each of the 37 IANA control operators through cddl-codegen → a per-op
    support annotation keyed by `ctl.<name>`~~ **done.** `control_examples.toml` carries a minimal `example`
    per op (the byte-pinned CSV can't), joined by `lib.ts`; `verify.ts` probes all 37 (compile-gated;
@@ -236,9 +243,12 @@ derives from the repo root).
   `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl` (set `RUST_CDDL`),
   cddl-codegen builds from this repo. Slow (probes ~156 examples × generate+compile via `cargo`).
 - `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
-  (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness).
+  (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
+  per-cell role coverage drift + cell-support check H). Now also builds/runs `examples/ast_roles.rs` (the
+  role floor), so it needs the cargo toolchain like `verify.ts`.
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
-- `bun run corpus_detect.ts` — runs the `featuresIn` detector's self-check (and prints the floor diagnostic).
+- `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
+  text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 
 Remaining:
 - **Wire both into CI** so the drift-check, snapshot guard, and reconciliation run automatically.

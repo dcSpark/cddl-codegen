@@ -44,8 +44,10 @@ fixture = "primitives.cddl"
 id = "prelude.bool"
 fixture = "bool.cddl"
 
-# (prelude.null is NOT covered here: a top-level `x = null` type panics — same Fixed-type gap as the
-#  literal values. nullable.cddl exercises null only inside a `T / null` choice. See the ➖ note below.)
+# prelude.null is ➖ at TOP LEVEL (a `x = null` type panics — see the ➖ note below) but SUPPORTED as a
+# choice-member (the `T / null` -> Option<T> pattern). That per-cell coverage is a role-keyed [[cover]] in
+# the "per-cell (role × feature) coverage" section below — verified against the AST role floor AND the
+# matrix's per-cell support verdict (contain.choice-member.prelude.null = supported).
 
 # ---- extended prelude (tagged/nested aliases) ----
 [[cover]]
@@ -112,9 +114,10 @@ fixture = "group_choice.cddl"
 id = "type.enum"
 fixture = "c_style_enum.cddl"
 
-# (literal-value features type2.value / value.number / value.text are NOT covered here: the matrix marks
-#  them unsupported because a TOP-LEVEL fixed-value type panics — a real gap. fixed_value.cddl exercises a
-#  fixed value only as a struct MEMBER, a different aspect. See the ➖ notes below.)
+# literal-value features type2.value / value.number / value.text are ➖ at TOP LEVEL (a `version = 5` /
+#  `answer = 42` type panics — see the ➖ notes below) but SUPPORTED as array-element members. That
+#  per-cell coverage is role-keyed in the "per-cell (role × feature) coverage" section below (fixed_value.cddl
+#  exercises them as members; verified against the AST floor + contain.array-element.* = supported).
 
 # ---- tags ----
 [[cover]]
@@ -190,6 +193,42 @@ fixture = "dsl_custom.cddl"
 [[cover]]
 id = "dsl.custom_deserialize"
 fixture = "dsl_custom.cddl"
+
+# ============================================================================================
+# PER-CELL (role × feature) COVERAGE — ROADMAP item 6. A [[cover]] with a `role` is a per-CELL claim:
+# "feature F is exercised in container-role R by fixture X." It is verified two ways by project_corpus.ts:
+#   (1) the AST role floor (examples/ast_roles.rs, a real cddl-crate parse) must show `F@role` in the
+#       fixture — a regex can't track the enclosing role, so this is what the AST walk buys us; and
+#   (2) the matrix's per-cell support verdict for that cell (contain.<role-tail>.F) must be `supported`
+#       — so a role cover can't claim ✅ on a cell the generator doesn't actually handle.
+# These are the constructs whose support DIFFERS BY ROLE: ➖ as a standalone top-level type (the per-feature
+# verdict + ➖ note below), yet ✅ in a member/choice context. Before item 6 this was only PROSE in the note;
+# now it's a mechanically-checked role-keyed cover. A role cover legitimately coexists with the ➖ top-level
+# note (different context) — that is the whole "supported HERE, not THERE" point of the matrix.
+
+[[cover]]
+id = "prelude.null"
+fixture = "nullable.cddl"
+role = "role.choice-member"
+note = "the `T / null` -> Option<T> nullable pattern"
+
+[[cover]]
+id = "type2.value"
+fixture = "fixed_value.cddl"
+role = "role.array-element"
+note = "a literal as a fixed array-element value (`c: 5`)"
+
+[[cover]]
+id = "value.number"
+fixture = "fixed_value.cddl"
+role = "role.array-element"
+note = "numeric literal member (`c: 5`)"
+
+[[cover]]
+id = "value.text"
+fixture = "fixed_value.cddl"
+role = "role.array-element"
+note = "text literal member (`b: \"marker\"`)"
 
 # ============================================================================================
 # NUANCE — the non-derivable half (golden_hex style: status / reason / code_anchor), joined into
@@ -367,25 +406,25 @@ code_anchor = "Type2::ChoiceFromInlineGroup"
 [[note]]
 id = "type2.value"
 status = "unsupported"
-reason = "a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap."
+reason = "a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap. Its supported array-element role is the [[cover]] above."
 code_anchor = "should not expose Fixed type in member"
 
 [[note]]
 id = "value.number"
 status = "unsupported"
-reason = "top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `c: 5`)"
+reason = "top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above."
 code_anchor = "should not expose Fixed type in member"
 
 [[note]]
 id = "value.text"
 status = "unsupported"
-reason = "top-level text-literal type (`marker = \"v1\"`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `b: \"marker\"`)"
+reason = "top-level text-literal type (`marker = \"v1\"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above."
 code_anchor = "should not expose Fixed type in member"
 
 [[note]]
 id = "prelude.null"
 status = "unsupported"
-reason = "top-level `x = null` type panics — same Fixed-type gap; null works inside a `T / null` choice (nullable.cddl -> Option)"
+reason = "top-level `x = null` type panics — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values). Its supported choice-member role is the [[cover]] above."
 code_anchor = "should not expose Fixed type in member"
 
 # ---- doc-level notable findings (rendered as a narrative section; not per-id) ----
