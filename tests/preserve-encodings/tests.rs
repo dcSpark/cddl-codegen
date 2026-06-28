@@ -684,6 +684,8 @@ mod tests {
                         // TypeChoice
                         cbor_int(0, *def_enc),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let irregular = Enums::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
             }
         }
     }
