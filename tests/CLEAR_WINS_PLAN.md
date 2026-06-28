@@ -58,10 +58,10 @@ All test-only; no generator/runtime/static or snapshot files changed. Commit sub
   and raw-bytes emit paths are already compile+round-trip tested in `tests/extern-deps` and
   `tests/raw-bytes`. Snapshot-only corpus coverage would need a `feature_corpus_compiles` skip-list —
   a test-strategy call → **deferred to maintainer**.
-- All remaining items in the **Deferred** section below (behaviour-contract decisions such as
-  trailing-bytes acceptance and the u64 > 2^53 JSON divergence, generator/spec changes, value-choice
-  assertion upgrades, the snapshot-only-corpus skip-list policy, and the preserve-encodings golden
-  set) are untouched and still require maintainer judgment.
+- The remaining items in the **Deferred** section below still require maintainer judgment:
+  trailing-bytes acceptance (behaviour-contract), generator/spec changes, value-choice assertion
+  upgrades, the snapshot-only-corpus skip-list policy, and the preserve-encodings golden set.
+  (The u64 > 2^53 JSON contract is now **resolved** — see the Deferred section.)
 
 ---
 
@@ -153,10 +153,11 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
 - **Trailing bytes after a complete value are silently accepted** (`from_cbor_bytes` never checks
   cursor==len). Reject vs accept is a runtime change affecting every generated crate → maintainer
   call. (Asserting `is_err()` today would fail.)
-- **u64 > 2^53 JSON divergence**: `to_json` keeps precision, `JSON.parse` truncates,
-  `to_json_value()` *throws*. TESTING_ROADMAP item 6's "gap with teeth" — decide whether throw
-  (vs bigint vs lossy) is the blessed contract before freezing it. (Merges the two duplicate
-  roadmap entries.) The safe sub-part (≤2^53-1) is cw17.
+- **u64 > 2^53 JSON divergence** — ✅ *Resolved.* Blessed the current contract: `to_json()` lossless,
+  `to_json_value()` fails loud (throws), `JSON.parse` lossy by JS definition. Pinned above 2^53 in
+  `roundtrip.mjs` (alongside cw17's ≤2^53-1 lock) and documented in `docs/docs/wasm_differences.mdx`.
+  bigint was rejected: it breaks `JSON.stringify` and retypes every integer field. Closes roadmap
+  item 6.
 - **Missing-key / indefinite-vs-definite on the `bar` tagged-1337 map** (item 8 residual): fragile
   hand-built valid baseline (tag-1337 nesting, int/text keys, `five:5` constant, float64) **and** an
   indefinite-encoding accept/reject behaviour question. The clean versions are already cw11/cw12/cw13.
