@@ -6,6 +6,13 @@ multi-agent review (`draft/testing-recommendations/RECOMMENDATIONS.md` — the e
 findings from building the current suite. See `tests/README.md` for how the current setup works and
 what's already covered.
 
+> **Recently completed (clear-wins sweep — full per-task log + the complete deferred menu live in
+> `tests/CLEAR_WINS_PLAN.md`):** corpus coverage for sized/bounded ints, bool, and fixed/constant
+> fields; the full negative-path structural slice (item 8); the JS safe-integer boundary (item 6,
+> safe half); json-gen now actually *runs* `export_schemas()` (item 7 residual); `error.rs` Display
+> and `RawBytesEncoding` hex coverage; plus several dead/weak tests fixed. What's left below is the
+> bigger-ticket work plus a few maintainer decisions (new "Pending decisions" section).
+
 ## Recommended next steps, in priority order
 
 ### Tier 1 — the strategic investment (a focused multi-day effort)
@@ -44,14 +51,14 @@ what's already covered.
    churn and the `which` dependency, compiles fast, never bails (`syn` is already a dep). Lower
    urgency only because the pinned toolchain already mitigates churn.
 
-6. **Large-integer boundary in the wasm/JSON path.** *(small)* `integration_tests::wasm_json_roundtrip`
-   (wasm-pack + node, `to_json_value()` vs `JSON.parse(to_json())`) is the only oracle that runs
-   bindings in a JS engine, but it stays in the JS safe-integer range. A `u64 > 2^53` is the one
-   known gap with teeth: `to_json` emits it full-precision, while the JS path loses precision
-   (`JSON.parse`) or throws (`json_compatible` doesn't enable bigint). Add a boundary fixture there —
-   to pin whichever behaviour is intended and document the limitation. Broadening that test to more
-   type shapes or `preserve`/`canonical` profiles is *not* tracked here: the emitted `to_json_value`
-   line is flag-independent, so do it only if a divergence actually surfaces.
+6. **Large-integer boundary in the wasm/JSON path.** *(small)*
+   - ✅ *Done (safe half).* `wasm_json_roundtrip` now pins the `u64 = 2^53-1` round-trip
+     (`tests/wasm_json/roundtrip.mjs`) — a judgment-free lock just below the JS safe-integer cliff.
+   - **Pending decision (the gap with teeth):** for `u64 > 2^53`, `to_json` emits full precision,
+     `JSON.parse(to_json())` truncates, and `to_json_value()` *throws* (`json_compatible` has no
+     bigint). Pin a fixture only after a maintainer blesses the intended contract — see "Pending
+     decisions" below. Broadening to more type shapes or `preserve`/`canonical` is still not tracked
+     (the emitted `to_json_value` line is flag-independent); do it only if a divergence surfaces.
 
 7. **Output-validate `--json-schema-export` (today it's only compile-checked).** *(small–medium)*
    - ✅ *Done.* `integration_tests::json` / `json_preserve` now run
@@ -65,16 +72,42 @@ what's already covered.
      wasm-pack needed (it's pure string-munging). This surfaced and fixed a **live bug**: the script
      keyed off `to_js_value`, but generated output renamed that method to `to_json_value` long ago, so
      the return-type substitution had silently been a no-op.
+   - ✅ *Done.* `integration_tests` now `cargo run`s the json-gen crate (was `build`-only), so its
+     `export_schemas()` actually executes, and asserts the `schemas/` dir is non-empty (cw16 + a
+     surfaced follow-up). Touches json / json_preserve / multifile_json_preserve.
    - **Still open:** the full end-to-end `--package-json` run (json-gen `cargo run` → both scripts →
-     wasm-pack), and running the json-gen crate's own `export_schemas()` (the in-Rust check above
-     bypasses it). `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
+     wasm-pack). `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
 
-8. ✅ **Negative-path / rejection testing.** *Done* (the structural slice). `tests::structural_rejects`
-   in `tests/core/tests.rs` pins that malformed CBOR is **rejected**: empty input, too-short array,
-   wrong element type, wrong/missing tag — each with an `is_ok()` baseline so a reject can't pass for
-   the wrong reason. (Numeric/size-bound rejection was already covered by the `bounds` test.) Room to
-   grow if wanted: missing required map key, wrong major type per primitive, indefinite-vs-definite
-   mismatches — but the high-value structural shapes are now pinned.
+8. ✅ **Negative-path / rejection testing.** *Done.* `tests::structural_rejects` in
+   `tests/core/tests.rs` now pins a comprehensive structural slice — empty input, too-short/over-long
+   arrays, wrong major type per slot, wrong/missing tag, duplicate map keys (`DuplicateKey`), missing
+   required key (`MandatoryFieldMissing`), and indefinite/definite length-framing errors
+   (`DefiniteLenMismatch`/`EndingBreakMissing`/`BreakInDefiniteLen`) — each with an `is_ok()` baseline.
+   `DeserializeError`/`Key` Display formatting is also asserted (cw14). (Numeric/size bounds were
+   already covered by `bounds`.) **One thing remains, and it's a decision not a task:** trailing bytes
+   after a complete value are currently *accepted* (`from_cbor_bytes` never checks cursor==len) — see
+   "Pending decisions."
+
+## Pending decisions (maintainer call — blocks the related test, not on effort)
+
+Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call. Full context + the
+rest of the deferred menu (incl. medium next-tasks like a preserve-encodings golden known-answer set
+and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`.
+
+- **Trailing-bytes contract.** `from_cbor_bytes` accepts extra bytes after a complete value. Reject
+  (stricter; matches most CBOR expectations) or keep? Affects every generated crate — asserting
+  `is_err()` today would fail. Decide, then pin the test.
+- **`u64 > 2^53` JSON contract** (item 6). Throw vs bigint vs lossy — pick the intended behaviour,
+  then freeze it with a fixture.
+- **Snapshot-only corpus policy.** A ~5-line `feature_corpus_compiles` skip-list would unblock
+  *snapshot* coverage of the extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes
+  (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`) emit paths — they emit undefined user-supplied types so they
+  can't `cargo check` standalone (only compile-tested today via `tests/extern-deps` / `tests/raw-bytes`).
+  Introduces a "snapshot-only corpus" concept the docs don't have yet.
+- **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
+  float under the `json` profile; `OrderedHashMap` JSON serde/`JsonSchema` (needs a map-bearing json
+  fixture — `tests/json/input.cddl` has none); re-enabling `bool_wrapper` JSON newtype (blocked on
+  generator issue #223).
 
 ## Explicitly not worth it (decided, not overlooked)
 
