@@ -1,0 +1,139 @@
+# CDDL_CODEGEN profile — cddl-codegen's OWN extension surface (the comment DSL + sentinel typenames).
+# These are NOT RFC 8610; they are a VENDOR profile, modelled "as if its own RFC" so they ride the same
+# pipeline (feature ids -> bidirectional lint -> support annotations -> the D3 corpus coverage join) with
+# zero special-casing. `profile = "CDDL_CODEGEN"` is the tag a non-cddl-codegen consumer filters out as
+# out-of-profile (exactly as it filters RFC 9682).
+#
+# PINNED SOURCE (the backward-lint condition — every feature must resolve to a real source, like prelude
+# features resolve to cddl.prelude): the `alt` token is the literal directive/marker, and verify.ts
+# asserts it appears in the in-repo source — `src/comment_ast.rs` (the `tag("@…")` handlers) for the
+# `comment_dsl` directives, `src/parsing.rs` (the *_MARKER consts) for the `sentinel` typenames. Same-repo
+# means the source is "pinned" for free and structurally can't drift from the implementation. verify.ts
+# also runs the FORWARD lint: every directive/marker in those files must have a feature here.
+#
+# SPEC-VALIDITY AUTHORITY: for this profile, cddl-codegen IS the spec author, so the ruby/rust reference
+# oracles do NOT gate validity (they don't know these constructs — ruby rejects the sentinel typenames,
+# which is expected, not a failure). verify.ts treats CDDL_CODEGEN features as spec-valid by definition
+# (they resolve to the vendor source) and reports support from the cddl-codegen probe alone.
+#
+# Schema matches features/type2.toml; examples mirror the tests/corpus/dsl_*.cddl fixtures (probe-supported).
+
+# ---- comment DSL (`; @directive`) — src/comment_ast.rs ----
+[[feature]]
+id = "dsl.name"
+production = "comment_dsl"
+alt = "@name"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@name; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@name — explicit field/variant name"
+desc = "Overrides the generated name of a map field, array element, or choice variant (e.g. integer-keyed map fields become readable names)."
+example = '''
+named = [
+  bytes, ; @name address
+  uint ; @name checksum
+]'''
+
+[[feature]]
+id = "dsl.doc"
+production = "comment_dsl"
+alt = "@doc"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@doc; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@doc — rust doc comment"
+desc = "Attaches a rust doc-comment at field, struct, or variant level. Cannot contain '@'."
+example = '''
+documented = [
+  foo: text, ; @doc a field comment
+  bar: uint
+] ; @doc struct doc'''
+
+[[feature]]
+id = "dsl.newtype"
+production = "comment_dsl"
+alt = "@newtype"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@newtype; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@newtype — wrapper struct instead of alias"
+desc = "Turns `foo = uint` from a `type Foo = u64` alias into a `struct Foo(u64)` newtype; may name an optional getter."
+example = "protocol_magic = uint ; @newtype"
+
+[[feature]]
+id = "dsl.no_alias"
+production = "comment_dsl"
+alt = "@no_alias"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_alias; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@no_alias — inline the type, emit no alias"
+desc = "Skips generating a named alias for the type; uses the underlying type directly at every use site."
+example = '''
+inner_alias = uint ; @no_alias
+uses = [field: inner_alias]'''
+
+[[feature]]
+id = "dsl.used_as_key"
+production = "comment_dsl"
+alt = "@used_as_key"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@used_as_key — force Ord/Hash derives"
+desc = "Forces a type to derive Ord/PartialOrd or Hash even if it isn't used as a map key in the spec (so hand-written utility code can key on it)."
+example = "keyed = [a: uint, b: text] ; @used_as_key"
+
+[[feature]]
+id = "dsl.custom_json"
+production = "comment_dsl"
+alt = "@custom_json"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_json; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@custom_json — suppress generated JSON traits"
+desc = "Avoids generating/deriving JSON-related traits, on the assumption the user supplies their own."
+example = "cj = uint ; @newtype @custom_json"
+
+[[feature]]
+id = "dsl.custom_serialize"
+production = "comment_dsl"
+alt = "@custom_serialize"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_serialize; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@custom_serialize — override serialization"
+desc = "Replaces generated serialization with a named user function (type-level or field-level)."
+example = '''
+cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
+holder = [f: cb]'''
+
+[[feature]]
+id = "dsl.custom_deserialize"
+production = "comment_dsl"
+alt = "@custom_deserialize"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_deserialize; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@custom_deserialize — override deserialization"
+desc = "Replaces generated deserialization with a named user function (type-level or field-level)."
+example = '''
+cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
+holder = [f: cb]'''
+
+# ---- sentinel typenames (magic identifiers, not comments) — src/parsing.rs *_MARKER ----
+[[feature]]
+id = "ext.extern"
+production = "sentinel"
+alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+profile = "CDDL_CODEGEN"
+title = "_CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type"
+desc = "Treats the rule as an externally-defined type implementing Serialize/Deserialize; no code is generated for it. (ruby/rust reject the undefined typename — expected for a vendor extension.)"
+example = '''
+foo = _CDDL_CODEGEN_EXTERN_TYPE_
+bar = [x: uint, y: foo]'''
+
+[[feature]]
+id = "ext.raw_bytes"
+production = "sentinel"
+alt = "_CDDL_CODEGEN_RAW_BYTES_TYPE_"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER"
+profile = "CDDL_CODEGEN"
+title = "_CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints"
+desc = "Encodes as bytes but defers to an external type implementing the RawBytesEncoding trait. (ruby/rust reject the undefined typename — expected.)"
+example = '''
+rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+bar = [rb]'''

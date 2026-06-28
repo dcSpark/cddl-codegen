@@ -12,6 +12,56 @@
         "status": "supported"
       },
       {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.custom_deserialize",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.custom_json",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.custom_serialize",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.doc",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.name",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.newtype",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.no_alias",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.used_as_key",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "ext.extern",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "ext.raw_bytes",
+        "status": "supported"
+      },
+      {
         "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
         "id": "genericarg.multiple",
         "status": "supported"
@@ -67,9 +117,9 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
         "id": "memberkey.bareword",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
@@ -97,9 +147,9 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
         "id": "occur.optional",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
@@ -357,9 +407,9 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
         "id": "type2.map",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
@@ -405,6 +455,146 @@
         "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "value.text",
         "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.grpent.groupname",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.grpent.inline_group",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.type.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.array-element.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.array-element.type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.array-element.type2.unwrap",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.type2.value",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.value.number",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.array-element.value.text",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.cbor-payload.type.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.cbor-payload.type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.cbor-payload.type2.tag",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.null",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.tag",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.generic-arg.type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.map-key.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.map-value.type.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.map-value.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.map-value.type2.tag",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.map-value.type2.unwrap",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.occurrence-target.grpent.inline_group",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.occurrence-target.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.occurrence-target.type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.tag-content.type.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "contain.tag-content.type2.map",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.top-level.type2.unwrap",
+        "status": "unsupported"
       }
     ]
   },
@@ -426,10 +616,10 @@
       "spec": "allowed"
     },
     {
-      "example": "a = [{x: int}]",
+      "example": "a = [{x: int, y: uint}]",
       "feature": "type2.map",
       "id": "contain.array-element.type2.map",
-      "note": "A map is a type2, valid as an array element (anonymous nested struct). RFC8610 §3.4, §3.5; ABNF grpent -> type -> type2 map.",
+      "note": "An INLINE map as an array element. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.4, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
       "role": "role.array-element",
       "spec": "allowed"
     },
@@ -458,10 +648,34 @@
       "spec": "allowed"
     },
     {
-      "example": "b = bytes .cbor ({a: int})",
+      "example": "a = [v: 5]",
+      "feature": "value.number",
+      "id": "contain.array-element.value.number",
+      "note": "A numeric literal as a fixed array-element value (`[v: 5]`) — supported as a member; the top-level `version = 5` type is not. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [v: \"x\"]",
+      "feature": "value.text",
+      "id": "contain.array-element.value.text",
+      "note": "A text literal as a fixed array-element value (`[v: \"x\"]`) — supported as a member; the top-level `marker = \"x\"` type is not. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [w: uint, v: 5]",
+      "feature": "type2.value",
+      "id": "contain.array-element.type2.value",
+      "note": "A literal value as a member type (`[w: uint, v: 5]`) — supported in-composite; the standalone `answer = 42` type is not. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "b = bytes .cbor ({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.cbor-payload.type2.map",
-      "note": "A byte string constrained via .cbor to encode a map; the type2 controller is parenthesized: `bytes .cbor ({a: int})`. RFC8610 §3.8.4, §3.5; ABNF type1 / ctlop (type2 controller) -> map.",
+      "note": "A byte string constrained via .cbor to encode an INLINE map (controller parenthesized). Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.8.4, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
       "role": "role.cbor-payload",
       "spec": "allowed"
     },
@@ -482,10 +696,10 @@
       "spec": "allowed"
     },
     {
-      "example": "t = {a: int} / {b: tstr}",
+      "example": "t = {a: int, c: uint} / {b: tstr, d: uint}",
       "feature": "type2.map",
       "id": "contain.choice-member.type2.map",
-      "note": "Each `/` branch is a type1/type2, so a map may be a choice alternative (enum of structs): `{a: int} / {b: tstr}`. RFC8610 §2.2.2, §3.5; ABNF type-choice / type2 map.",
+      "note": "An INLINE map as a `/` choice alternative. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via named-type references (enum of named structs). RFC8610 §2.2.2, §3.5. (2-field maps, so the panic is the anonymous-group limit, not the single-field-map bug.)",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -506,10 +720,18 @@
       "spec": "allowed"
     },
     {
-      "example": "foo<a> = [a]\nbar = foo<{x: int}>",
+      "example": "a = tstr / null",
+      "feature": "prelude.null",
+      "id": "contain.choice-member.prelude.null",
+      "note": "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). Contrast contain.top-level via the per-feature bit: a standalone `x = null` type panics. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "foo<a> = [a]\nbar = foo<{x: int, y: uint}>",
       "feature": "type2.map",
       "id": "contain.generic-arg.type2.map",
-      "note": "A generic argument is a type1; a map (type2) may be bound to a parameter: `foo<{x: int}>`. RFC8610 §3.10; ABNF genericarg / type1 -> type2 map.",
+      "note": "An INLINE map bound to a generic parameter. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works by binding a named-type argument. RFC8610 §3.10. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
       "role": "role.generic-arg",
       "spec": "allowed"
     },
@@ -538,42 +760,42 @@
       "spec": "disallowed"
     },
     {
-      "example": "m = { k: int / tstr }",
+      "example": "m = { k: int / tstr, j: uint }",
       "feature": "type.choice",
       "id": "contain.map-value.type.choice",
-      "note": "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice: `{ k: int / tstr }`. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice.",
+      "note": "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
     {
-      "example": "m = { k: [int] }",
+      "example": "m = { k: [int], j: uint }",
       "feature": "type2.array",
       "id": "contain.map-value.type2.array",
-      "note": "An array (type2) as a member value. RFC8610 §3.5.1, §3.4; ABNF grpent value -> type2 array.",
+      "note": "An INLINE array as a member value. Unsupported: cddl-codegen requires an anonymous nested composite to be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference, not inline. RFC8610 §3.5.1, §3.4. (2-field map, so the panic is the anonymous-array limit, not the single-field-map bug.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
     {
-      "example": "m = { k: #6.10(int) }",
+      "example": "m = { k: #6.10(int), j: uint }",
       "feature": "type2.tag",
       "id": "contain.map-value.type2.tag",
-      "note": "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data.",
+      "note": "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
     {
-      "example": "a = [int]\nm = { k: ~a }",
+      "example": "arr = [int]\nm = { k: ~arr, j: uint }",
       "feature": "type2.unwrap",
       "id": "contain.map-value.type2.unwrap",
-      "note": "`~name` (unwrap) as a member value, inlining the unwrapped content into the value position. RFC8610 §3.5.1, §3.7; ABNF grpent value -> type2 unwrap.",
+      "note": "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field map to avoid the orthogonal single-field-map panic.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
     {
-      "example": "a = [* {x: int}]",
+      "example": "a = [* {x: int, y: uint}]",
       "feature": "type2.map",
       "id": "contain.occurrence-target.type2.map",
-      "note": "An occurrence indicator applies to a whole grpent, so it may repeat a map entry: `[* {x: int}]`. RFC8610 §3.2, §3.5; ABNF grpent [occur] ... type2 map.",
+      "note": "An occurrence repeating an INLINE map entry. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.2, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -594,10 +816,10 @@
       "spec": "allowed"
     },
     {
-      "example": "t = #6.10({a: int})",
+      "example": "t = #6.10({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.tag-content.type2.map",
-      "note": "The content of #6.n(...) is any `type`, so a map may be tagged: `#6.10({a: int})`. RFC8610 §3.6, §3.5; ABNF tagged-data -> type -> type2 map.",
+      "note": "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field map: a single-field struct hits an orthogonal panic.)",
       "role": "role.tag-content",
       "spec": "allowed"
     },
@@ -1401,6 +1623,106 @@
   ],
   "features": [
     {
+      "alt": "@name",
+      "desc": "Overrides the generated name of a map field, array element, or choice variant (e.g. integer-keyed map fields become readable names).",
+      "example": "\nnamed = [\n  bytes, ; @name address\n  uint ; @name checksum\n]",
+      "id": "dsl.name",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@name; src/comment_ast.rs",
+      "title": "@name — explicit field/variant name"
+    },
+    {
+      "alt": "@doc",
+      "desc": "Attaches a rust doc-comment at field, struct, or variant level. Cannot contain '@'.",
+      "example": "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc",
+      "id": "dsl.doc",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@doc; src/comment_ast.rs",
+      "title": "@doc — rust doc comment"
+    },
+    {
+      "alt": "@newtype",
+      "desc": "Turns `foo = uint` from a `type Foo = u64` alias into a `struct Foo(u64)` newtype; may name an optional getter.",
+      "example": "protocol_magic = uint ; @newtype",
+      "id": "dsl.newtype",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@newtype; src/comment_ast.rs",
+      "title": "@newtype — wrapper struct instead of alias"
+    },
+    {
+      "alt": "@no_alias",
+      "desc": "Skips generating a named alias for the type; uses the underlying type directly at every use site.",
+      "example": "\ninner_alias = uint ; @no_alias\nuses = [field: inner_alias]",
+      "id": "dsl.no_alias",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_alias; src/comment_ast.rs",
+      "title": "@no_alias — inline the type, emit no alias"
+    },
+    {
+      "alt": "@used_as_key",
+      "desc": "Forces a type to derive Ord/PartialOrd or Hash even if it isn't used as a map key in the spec (so hand-written utility code can key on it).",
+      "example": "keyed = [a: uint, b: text] ; @used_as_key",
+      "id": "dsl.used_as_key",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
+      "title": "@used_as_key — force Ord/Hash derives"
+    },
+    {
+      "alt": "@custom_json",
+      "desc": "Avoids generating/deriving JSON-related traits, on the assumption the user supplies their own.",
+      "example": "cj = uint ; @newtype @custom_json",
+      "id": "dsl.custom_json",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_json; src/comment_ast.rs",
+      "title": "@custom_json — suppress generated JSON traits"
+    },
+    {
+      "alt": "@custom_serialize",
+      "desc": "Replaces generated serialization with a named user function (type-level or field-level).",
+      "example": "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
+      "id": "dsl.custom_serialize",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_serialize; src/comment_ast.rs",
+      "title": "@custom_serialize — override serialization"
+    },
+    {
+      "alt": "@custom_deserialize",
+      "desc": "Replaces generated deserialization with a named user function (type-level or field-level).",
+      "example": "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
+      "id": "dsl.custom_deserialize",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_deserialize; src/comment_ast.rs",
+      "title": "@custom_deserialize — override deserialization"
+    },
+    {
+      "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
+      "desc": "Treats the rule as an externally-defined type implementing Serialize/Deserialize; no code is generated for it. (ruby/rust reject the undefined typename — expected for a vendor extension.)",
+      "example": "\nfoo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint, y: foo]",
+      "id": "ext.extern",
+      "production": "sentinel",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "title": "_CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type"
+    },
+    {
+      "alt": "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
+      "desc": "Encodes as bytes but defers to an external type implementing the RawBytesEncoding trait. (ruby/rust reject the undefined typename — expected.)",
+      "example": "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [rb]",
+      "id": "ext.raw_bytes",
+      "production": "sentinel",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER",
+      "title": "_CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints"
+    },
+    {
       "alt": "grpchoice *(S \"//\" S grpchoice)",
       "desc": "Alternation between whole groups: the group matches one of several grpchoice branches.",
       "example": "g = { a: uint // b: tstr }",
@@ -1481,7 +1803,7 @@
     {
       "alt": "bareword S \":\"",
       "desc": "A memberkey given as a bareword (id) followed by ':'; shorthand for the text-string key \"k\" => and carries an implicit cut.",
-      "example": "m = { name: tstr }",
+      "example": "m = [name: tstr]",
       "id": "memberkey.bareword",
       "production": "memberkey",
       "profile": "RFC8610",
@@ -1520,7 +1842,7 @@
     {
       "alt": "\"?\"",
       "desc": "The entry occurs zero or one time.",
-      "example": "g = { ? name: tstr }",
+      "example": "g = [? name: tstr]",
       "id": "occur.optional",
       "production": "occur",
       "profile": "RFC8610",
@@ -2243,7 +2565,7 @@
       "encodings": [
         "enc.major5"
       ],
-      "example": "foo = { a: uint, * tstr => int }",
+      "example": "foo = { * tstr => int }",
       "id": "type2.map",
       "production": "type2",
       "profile": "RFC8610",

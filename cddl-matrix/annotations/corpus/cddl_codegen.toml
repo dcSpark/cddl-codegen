@@ -1,0 +1,348 @@
+# cddl-codegen CORPUS coverage overlay — the D3 canonical-fixture mapping (the ✅ authority).
+#
+# Each [[cover]] asserts: the matrix construct `id` is CANONICALLY isolated by `fixture`
+# (tests/corpus/<fixture>). A construct appears INCIDENTALLY in many fixtures (`uint` is in 20, the `[]`
+# record wrapper in 18) — the canonical fixture is the one that *isolates* it. That editorial pick is the
+# D1-vs-D3 distinction, and it's lifted from tests/corpus/COVERAGE.md's existing calls, not re-derived.
+#
+# project_corpus.ts drift-checks every entry: featuresIn(<fixture>) MUST contain `id`, so the hand claim
+# can't silently rot (rename the fixture or drop the construct and the check fails). Authority model
+# mirrors golden_hex: the mechanical half guards the authored half.
+#
+# SEAM — the drift-check surfaced 7 constructs marked `unsupported` yet touched by a working fixture. On
+# investigation they split TWO ways (do NOT just edit the example to make the probe green — that hides gaps):
+#  * 3 were DEGENERATE-EXAMPLE artifacts: single-field / mixed maps hit ORTHOGONAL cddl-codegen bugs; the
+#    construct itself works. Fixed with minimal feature-isolating examples (memberkey.bareword,
+#    occur.optional -> single-field ARRAYS; type2.map -> a table) — now correctly `supported`.
+#  * 4 were GENUINE GAPS: top-level fixed-value / null types (`answer = 42`, `x = null`) panic — cddl-codegen
+#    only uses Fixed for serialization as a struct member, not as an exposed standalone type. These stay
+#    `unsupported`, REPORTED as real gaps (the ➖ notes below), not papered over. The corpus touches them
+#    only as MEMBERS — a different aspect; the directional reality the single support-bit can't hold (F3).
+
+# ---- primitives (RFC 8610 §2.2.3 / prelude) ----
+[[cover]]
+id = "prelude.uint"
+fixture = "primitives.cddl"
+
+[[cover]]
+id = "prelude.nint"
+fixture = "primitives.cddl"
+
+[[cover]]
+id = "prelude.int"
+fixture = "primitives.cddl"
+
+[[cover]]
+id = "prelude.text"
+fixture = "primitives.cddl"
+
+[[cover]]
+id = "prelude.bytes"
+fixture = "primitives.cddl"
+
+[[cover]]
+id = "prelude.bool"
+fixture = "bool.cddl"
+
+# (prelude.null is NOT covered here: a top-level `x = null` type panics — same Fixed-type gap as the
+#  literal values. nullable.cddl exercises null only inside a `T / null` choice. See the ➖ note below.)
+
+# ---- extended prelude (tagged/nested aliases) ----
+[[cover]]
+id = "prelude.biguint"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.uri"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.bigint"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.unsigned"
+fixture = "prelude.cddl"
+
+# ---- composition & structure ----
+[[cover]]
+id = "type2.array"
+fixture = "array.cddl"
+
+[[cover]]
+id = "type2.map"
+fixture = "map_struct.cddl"
+note = "canonical = pure struct map; table-style is table.cddl; MIXED struct+table ({a: uint, * k => v}) is unsupported (parsing.rs)"
+
+[[cover]]
+id = "type2.parenthesized"
+fixture = "nested_group.cddl"
+
+[[cover]]
+id = "type2.typename"
+fixture = "type_alias.cddl"
+
+[[cover]]
+id = "memberkey.bareword"
+fixture = "map_struct.cddl"
+
+[[cover]]
+id = "memberkey.type1"
+fixture = "table.cddl"
+
+# ---- occurrence ----
+[[cover]]
+id = "occur.optional"
+fixture = "optional.cddl"
+
+[[cover]]
+id = "occur.zero_or_more"
+fixture = "homogeneous_array.cddl"
+
+# ---- choices ----
+[[cover]]
+id = "type.choice"
+fixture = "type_choice.cddl"
+
+[[cover]]
+id = "group.choice"
+fixture = "group_choice.cddl"
+
+# (literal-value features type2.value / value.number / value.text are NOT covered here: the matrix marks
+#  them unsupported because a TOP-LEVEL fixed-value type panics — a real gap. fixed_value.cddl exercises a
+#  fixed value only as a struct MEMBER, a different aspect. See the ➖ notes below.)
+
+# ---- tags ----
+[[cover]]
+id = "type2.tag"
+fixture = "tagged.cddl"
+
+# ---- ranges ----
+[[cover]]
+id = "rangeop.inclusive"
+fixture = "sized_int.cddl"
+
+# ---- control operators (§3.8) ----
+[[cover]]
+id = "type1.ctlop"
+fixture = "bounded_bytes.cddl"
+
+[[cover]]
+id = "ctl.size"
+fixture = "bounded_bytes.cddl"
+
+[[cover]]
+id = "ctl.cbor"
+fixture = "cbor_in_bytes.cddl"
+
+[[cover]]
+id = "ctl.default"
+fixture = "default_value.cddl"
+
+[[cover]]
+id = "ctl.le"
+fixture = "sized_int.cddl"
+
+# ---- generics (§3.10) ----
+[[cover]]
+id = "genericparm.type"
+fixture = "generics.cddl"
+
+[[cover]]
+id = "genericarg.type"
+fixture = "generics.cddl"
+
+# ---- CDDL_CODEGEN profile (comment DSL) — each dsl_*.cddl isolates one directive ----
+# (The ext.* sentinels have no corpus fixture — they break feature_corpus_compiles, so they're ➕
+#  supported-but-untested in the corpus, covered by tests/extern-deps + tests/raw-bytes instead.)
+[[cover]]
+id = "dsl.name"
+fixture = "dsl_name.cddl"
+
+[[cover]]
+id = "dsl.doc"
+fixture = "dsl_doc.cddl"
+
+[[cover]]
+id = "dsl.newtype"
+fixture = "dsl_newtype.cddl"
+
+[[cover]]
+id = "dsl.no_alias"
+fixture = "dsl_no_alias.cddl"
+
+[[cover]]
+id = "dsl.used_as_key"
+fixture = "dsl_used_as_key.cddl"
+
+[[cover]]
+id = "dsl.custom_json"
+fixture = "dsl_custom.cddl"
+
+[[cover]]
+id = "dsl.custom_serialize"
+fixture = "dsl_custom.cddl"
+
+[[cover]]
+id = "dsl.custom_deserialize"
+fixture = "dsl_custom.cddl"
+
+# ============================================================================================
+# NUANCE — the non-derivable half (golden_hex style: status / reason / code_anchor), joined into
+# the render. `status` is cross-checked against the matrix support annotation by project_corpus.ts:
+#   partial      ⚠️ parsed-but-not-honored — accepted but the semantics aren't modeled. The matrix
+#                support MUST be `supported` (it parses/accepts); the note overrides ✅/➕ → ⚠️.
+#   unsupported  ➖ — adds the "where to fix" anchor to the matrix's ➖ verdict. Matrix support MUST
+#                be `unsupported`/`out_of_profile` (else contradiction).
+# `code_anchor` is a grep-able substring (NOT a line number); project_corpus.ts asserts it EXISTS in
+# ../src/, so a renamed panic message / removed branch self-invalidates the note (the COVERAGE.md
+# evidence rule, made mechanical). Control-operator nuance is deferred to the control-op-support step
+# (no per-op support data yet to cross-check `status` against).
+
+# ---- ⚠️ partial — parsed but the semantics aren't honored ----
+[[note]]
+id = "memberkey.cut"
+status = "unsupported"
+reason = "explicit cut `^` attaches to a `=>` (Type1) memberkey, which cddl-codegen doesn't support in this form — the example panics. (The IMPLICIT cut on `:`/bareword keys is a separate, supported-but-dropped story — see finding.)"
+code_anchor = "Encountered Type1 member key in multi-field map"
+
+[[note]]
+id = "assignt.extend"
+status = "partial"
+reason = "type socket plug (/=) is parsed but ignored; a $-socket reference is merely stripped ($x -> x)"
+code_anchor = "is_type_choice_alternate"
+
+[[note]]
+id = "assigng.extend"
+status = "partial"
+reason = "group socket plug (//=) is parsed but ignored — same socket-stripping story as the type socket; the Rule::Group arm of parse_rule processes it as a plain inline group with no plug semantics (no distinct code site to anchor)"
+
+[[note]]
+id = "prelude.float"
+status = "partial"
+reason = "de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)"
+code_anchor = "preserve_encodings is not implemented for float"
+
+# ---- ➖ not supported — where the generator gives up (anchors for the boundary) ----
+[[note]]
+id = "prelude.eb64url"
+status = "unsupported"
+reason = "extended-bytes prelude type reduces to `any`; rejected"
+code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "prelude.eb64legacy"
+status = "unsupported"
+reason = "extended-bytes prelude type reduces to `any`; rejected"
+code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "prelude.eb16"
+status = "unsupported"
+reason = "extended-bytes prelude type reduces to `any`; rejected"
+code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "prelude.cbor-any"
+status = "unsupported"
+reason = "reduces to `any`; rejected"
+code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "prelude.undefined"
+status = "unsupported"
+reason = "the `undefined` simple value is rejected"
+code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "type2.any"
+status = "unsupported"
+reason = "bare `#` (any) — Type2 variant unmatched, falls into the catch-all panic"
+code_anchor = "Ignoring Type2"
+
+[[note]]
+id = "type2.major"
+status = "unsupported"
+reason = "major-type sigils `#N` / `#N.n` — Type2::DataMajorType unmatched, catch-all panic"
+code_anchor = "Ignoring Type2"
+
+[[note]]
+id = "type2.major7"
+status = "unsupported"
+reason = "`#7` / `#7.n` simple/float sigils — unmatched, catch-all panic"
+code_anchor = "Ignoring Type2"
+
+[[note]]
+id = "value.bytes"
+status = "unsupported"
+reason = "byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)"
+code_anchor = "Ignoring Type2"
+
+[[note]]
+id = "type2.unwrap"
+status = "unsupported"
+reason = "unwrap `~` — Type2::Unwrap unmatched, catch-all panic"
+code_anchor = "Type2::Unwrap"
+
+[[note]]
+id = "type2.choice_from_group"
+status = "unsupported"
+reason = "choice-from-group `&groupname` — unmatched"
+code_anchor = "Type2::ChoiceFromGroup"
+
+[[note]]
+id = "type2.choice_from_inline_group"
+status = "unsupported"
+reason = "choice-from-inline-group `&(...)` — unmatched"
+code_anchor = "Type2::ChoiceFromInlineGroup"
+
+# ➖ genuine gaps: a top-level fixed-value/null TYPE panics (Fixed is only used for serialization as a
+# struct member, not as an exposed standalone type). Works as a member (fixed_value.cddl) — directional.
+[[note]]
+id = "type2.value"
+status = "unsupported"
+reason = "a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap."
+code_anchor = "should not expose Fixed type in member"
+
+[[note]]
+id = "value.number"
+status = "unsupported"
+reason = "top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `c: 5`)"
+code_anchor = "should not expose Fixed type in member"
+
+[[note]]
+id = "value.text"
+status = "unsupported"
+reason = "top-level text-literal type (`marker = \"v1\"`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `b: \"marker\"`)"
+code_anchor = "should not expose Fixed type in member"
+
+[[note]]
+id = "prelude.null"
+status = "unsupported"
+reason = "top-level `x = null` type panics — same Fixed-type gap; null works inside a `T / null` choice (nullable.cddl -> Option)"
+code_anchor = "should not expose Fixed type in member"
+
+# ---- doc-level notable findings (rendered as a narrative section; not per-id) ----
+[[finding]]
+text = "Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness)."
+
+[[finding]]
+text = "Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here)."
+
+[[finding]]
+text = "The IMPLICIT cut on `:`/bareword keys is parsed but silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The EXPLICIT `^` cut is unsupported (see the memberkey.cut note)."
+
+[[finding]]
+text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes)."
+
+[[finding]]
+text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats."
+
+[[finding]]
+text = "COVERAGE.md/matrix disagreement to reconcile: COVERAGE.md marks `any` as ➖, but the matrix probe finds `prelude.any` SUPPORTED (`x = any` exits 0). Trust the execution-grounded matrix; refresh the hand doc."
+
+[[finding]]
+text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"
+
+[[finding]]
+text = "Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work."

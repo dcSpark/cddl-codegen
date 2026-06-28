@@ -43,6 +43,7 @@ interface ProbeResult extends Derived {
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
   parser_limitation: boolean; contradiction: boolean; example: string;
+  codegen: number; support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
 }
 interface AltCoverage {
   abnf_alternatives: string[]; feature_rows: string[]; covered: string[]; uncovered: string[]; modeled: boolean;
@@ -90,14 +91,36 @@ const controlop_prod_names = new Set<string>([
   ...control_ops.map(co => co.name),
   ...control_ops.map(co => co.name.replace(/^\.+/, "")),
 ]);
+// CDDL_CODEGEN (vendor) profile: features resolve to the in-repo DSL source, not the ABNF/prelude/registry.
+const CDDL_CODEGEN_PSEUDO = new Set(["comment_dsl", "sentinel"]);
+const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\n" +
+  readFileSync(`${CODEGEN_DIR}/src/parsing.rs`, "utf8");
 const fabricated: { id: string; production: string | null }[] = [];
 for (const f of features) {
   const prod = f.production;
   if (prod === PRELUDE_PSEUDO) continue;
+  if (prod && CDDL_CODEGEN_PSEUDO.has(prod)) {
+    if (f.alt && dslSource.includes(f.alt)) continue;   // resolves to the pinned vendor source
+    fabricated.push({ id: f.id, production: prod });     // alt token absent from source -> fabricated
+    continue;
+  }
   if (prod && abnf_productions.has(prod)) continue;
   if (prod && controlop_prod_names.has(prod)) continue;
   fabricated.push({ id: f.id, production: prod ?? null });
 }
+
+// FORWARD lint (CDDL_CODEGEN): every USER-FACING @directive (comment_ast.rs tag("@…")) and *_MARKER
+// (parsing.rs) must be modelled by a feature — completeness in the vendor source's direction (mirrors the
+// prelude lint). "User-facing" = documented in comment_dsl.mdx: that gate excludes INTERNAL markers
+// cddl-codegen injects itself (e.g. _CDDL_CODEGEN_SCOPE_MARKER_, used for module scoping, never written by
+// a user and absent from the docs), while still catching a new documented extension the matrix forgot.
+const docsText = readFileSync(`${CODEGEN_DIR}/docs/docs/comment_dsl.mdx`, "utf8");
+const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
+const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
+const cddlCodegenAlts = new Set(features.filter(f => f.profile === "CDDL_CODEGEN").map(f => f.alt));
+const cddl_codegen_gaps: { kind: string; name: string }[] = [];
+for (const d of [...new Set([...dslDirectives, ...dslMarkers])].sort())
+  if (docsText.includes(d) && !cddlCodegenAlts.has(d)) cddl_codegen_gaps.push({ kind: "missing_cddl_codegen_feature", name: d });
 
 // 2b. Prelude type names.
 const preludeText = readFileSync(`${ROOT}/sources/cddl.prelude`, "utf8");
@@ -217,8 +240,12 @@ function oracles(example: string): [number, number, number] {
 function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, codegenExit: number): Derived {
   const valid_a = rubyExit === 0;
   const valid_b = rustExit === 0;
-  const spec_valid = valid_a;
-  const parser_limitation = valid_a && !valid_b;
+  // CDDL_CODEGEN is a vendor profile: cddl-codegen IS the spec authority, so the ruby/rust reference
+  // oracles don't gate validity (they reject the sentinel typenames — expected). Validity comes from the
+  // backward lint (the construct resolves to the in-repo vendor source), so treat it as spec-valid here.
+  const isVendor = profile === "CDDL_CODEGEN";
+  const spec_valid = isVendor ? true : valid_a;
+  const parser_limitation = !isVendor && valid_a && !valid_b;
   let support: string, support_detail: string;
   if (codegenExit === 0) { support = "supported"; support_detail = "exit 0"; }
   else if (codegenExit === 101) { support = "unsupported"; support_detail = "panic (exit 101)"; }
@@ -239,18 +266,27 @@ for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1
   probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: c, ...d });
 }
 
-// Containment corroboration (spec oracles only), reference-authority.
+// Containment corroboration + PER-CELL support. The role × feature axis: a feature's support can DIFFER
+// by nesting context (e.g. a literal value is supported as an array member but not as a top-level type).
+// ruby/rust corroborate the spec verdict; cddl-codegen is probed per cell for an execution-grounded
+// support bit, exactly like the per-feature probe — written to annotations keyed by the containment id.
 const containment_corroboration: ContainmentCorr[] = [];
 for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
   writeFileSync(probeFile, c.example + "\n");
   const a = RUBY_CDDL ? runExit([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runExit([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
+  // only probe support where the nesting is spec-valid (ruby accepts); a spec-disallowed cell isn't
+  // valid CDDL, so "does cddl-codegen support it" is meaningless.
+  const cg = a === 0
+    ? runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR)
+    : -2;
+  const support = a === 0 ? (cg === 0 ? "supported" : "unsupported") : null;
   const observed = a === 0 ? "allowed" : "disallowed";
   const parser_limitation = (a === 0) !== (b === 0);
   const contradiction = observed !== c.spec;
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
-    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!,
+    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!, codegen: cg, support,
   });
 }
 
@@ -290,11 +326,24 @@ const annoLines: string[] = [
 for (const pr of probe_results) {
   let ev = `probe: cddl-codegen ${pr.support_detail ?? "exit " + pr.codegen}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
+  if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
     ev += ` (out of profile: feature profile ${pr.profile} is newer than cddl-codegen target ${CDDL_CODEGEN_TARGET_PROFILE})`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(pr.id)}`);
   annoLines.push(`status = ${tomlStr(pr.status)}`);
+  annoLines.push(`evidence = ${tomlStr(ev)}`);
+  annoLines.push("");
+}
+// PER-CELL support (role × feature), keyed by containment id — same [[support]] table, since a
+// containment id is a master id. Lets the matrix say "supported HERE, not THERE" structurally.
+annoLines.push("# --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---");
+annoLines.push("");
+for (const c of containment_corroboration.filter(c => c.support !== null)) {
+  const ev = `probe (cell): cddl-codegen exit ${c.codegen}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
+  annoLines.push("[[support]]");
+  annoLines.push(`id = ${tomlStr(c.id)}`);
+  annoLines.push(`status = ${tomlStr(c.support!)}`);
   annoLines.push(`evidence = ${tomlStr(ev)}`);
   annoLines.push("");
 }
@@ -312,6 +361,7 @@ const out_of_profile = [...new Set(probe_results.filter(pr => pr.status === "out
 
 const report = {
   gaps,
+  cddl_codegen_gaps,
   fabricated,
   link_errors,
   type2_uncovered_alternatives: type2_uncovered,
@@ -338,6 +388,7 @@ const report = {
     uncertain: uncertain.length,
     fabricated: fabricated.length,
     gaps: gaps.length,
+    cddl_codegen_gaps: cddl_codegen_gaps.length,
     link_errors: link_errors.length,
     type2_alternatives: alt_coverage["type2"].abnf_alternatives.length,
     type2_covered: alt_coverage["type2"].covered.length,
@@ -409,7 +460,7 @@ for (const u of uncertain) console.log(`  - ${u}`);
 
 console.log("\nwrote annotations/cddl_codegen.toml and verify_report.json");
 
-const hard_fail = fabricated.length || gaps.length || link_errors.length || type2_uncovered.length ||
+const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || type2_uncovered.length ||
   spec_invalid.length || containment_contradictions.length;
 if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above)"); process.exit(1); }
 console.log("\nRESULT: PASS");

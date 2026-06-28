@@ -1,15 +1,26 @@
 # CDDL master matrix (canonical feature space)
 
-A machine-readable, **implementation-agnostic** enumeration of the CDDL feature space, anchored to the
-spec's own published artifacts. It is the single source of truth that other matrices *project from*:
-`tests/corpus/COVERAGE.md` is the projection onto the **feature** axis; `tests/golden_hex/COVERAGE.md`
-is the projection onto the **encoding** axis. Per-tool support (cddl-codegen's, or any other consumer's)
-lives in `annotations/`, keyed by id — so the master itself stays pure spec and reusable.
+A machine-readable enumeration of the CDDL feature space, anchored to the spec's own published artifacts.
+It is the single source of truth that other matrices *project from*: `tests/corpus/COVERAGE.md` is the
+projection onto the **feature** axis; `tests/golden_hex/COVERAGE.md` is the projection onto the
+**encoding** axis. Per-tool support (cddl-codegen's, or any other consumer's) lives in `annotations/`,
+keyed by id — so the master itself stays reusable.
 
-> **Start at [`OVERVIEW.md`](OVERVIEW.md)** (entry point: vision, architecture, current state) and
-> [`ROADMAP.md`](ROADMAP.md) (what's left). This file is the original model write-up, kept as deeper
-> reference. **The matrix has since been fully scaled** (81 features across all axes, gate-verified) —
-> any "seed / only `type2` worked" framing below this line is historical, superseded by OVERVIEW.
+The master is a **union of named profiles**, each feature tagged with the one that introduces it: mostly
+public spec (`RFC8610`/`RFC9682`), plus one **vendor profile** — `CDDL_CODEGEN`, cddl-codegen's own
+comment-DSL (`@name`/`@doc`/…) and sentinel typenames, modelled "as if its own RFC" so it rides the same
+pipeline with no special-casing. The `profile` tag is what keeps the master reusable: a *non*-cddl-codegen
+consumer filters `CDDL_CODEGEN` out as out-of-profile, exactly as it filters a newer RFC. Vendor features
+resolve to a pinned in-repo source (`src/comment_ast.rs` + `docs/docs/comment_dsl.mdx`) via the same
+bidirectional lint as spec features — so "not pure RFC" does not mean "unanchored."
+
+> **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
+> (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
+> consumer-query contract). The matrix is **fully scaled and gate-green**: 91 features across all axes
+> (incl. the `CDDL_CODEGEN` vendor profile), execution-grounded support **per-feature *and* per-cell
+> (role × feature)**, two projections wired (`golden_hex`, and the corpus feature-axis projection —
+> `corpus_detect.ts` / `project_corpus.ts` / `annotations/corpus/`). Any "seed / only `type2` worked"
+> framing below this line is historical.
 
 ## What is a feature?
 
@@ -65,9 +76,9 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 |------|------|------|
 | `features/*.toml` | one row per **serialization-relevant construct** (+ `profile` + stable ids); ABNF is a lint, not the spine — see "What is a feature?" | constructs + variations (A/B) |
 | `roles.toml` | nesting container-contexts (array-element, map-key, tag-content, …) | nesting (C) |
-| `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live** | nesting (C) |
+| `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live**; each cell carries an `example` that `verify.ts` also probes for **per-cell tool support** | nesting (C) |
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
-| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master) | — |
+| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). | — |
 
 **3. Generated view — `matrix.json`** (produced by `build_matrix.ts`) joins the overlay with the native
 sources into one universal artifact for downstream/cross-language consumption. Imported axes are
