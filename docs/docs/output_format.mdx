@@ -7,7 +7,7 @@ sidebar_position: 4
 - Inside of the output directly the tool always produces a `rust/` directory (including Cargo.toml, etc). 
 - Unless we pass in `--wasm=false` the tool also generates a corresponding `wasm/` directory.
 - The default format for `rust/` is to have a `lib.rs` containing the structs and `serialization.rs` containing their (de)serialization implementations/corresponding types.
-- The `wasm/` directory is full of wasm_bindgen-annotated wrappers all in `lib.rs` for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it.
+- The `wasm/` directory is full of wasm_bindgen-annotated wrappers all in `lib.rs` for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh).
 
 **Not every type gets its own (de)serialization in `serialization.rs`.** Some constructs carry their CBOR framing at the point of *use* rather than as a standalone impl on the type:
 

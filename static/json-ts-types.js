@@ -9,7 +9,7 @@ for (let i = 0; i < inputFile.length; ++i) {
     currentClass = classDef[1].trim();
     continue;
   }
-  inputFile[i] = line.replace(/(\s?to_js_value\(\)\s?:\s?)(any)(;)/, `$1${currentClass}JSON$3`);
+  inputFile[i] = line.replace(/(\s?to_json_value\(\)\s?:\s?)(any)(;)/, `$1${currentClass}JSON$3`);
   if (line != inputFile[i]) {
     continue;
   }

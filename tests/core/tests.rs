@@ -36,6 +36,36 @@ mod tests {
         deser_test(&Foo2::new(143546, None));
     }
 
+    // Round-trip tests only ever feed well-formed CBOR; these pin that *malformed* input is
+    // rejected rather than silently accepted (TESTING_ROADMAP.md item 8). Structural cases the
+    // bounds test doesn't reach: wrong shape, wrong element type, wrong/missing tag. Each case has
+    // an is_ok() baseline so a reject can't pass for the wrong reason (e.g. garbage encoding).
+    #[test]
+    fn structural_rejects() {
+        // Foo = [uint, text, bytes]
+        let bytes3 = vec![0x43u8, 1, 2, 3]; // cbor bytes(3)
+        let foo_ok = [arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat();
+        assert!(Foo::from_cbor_bytes(&foo_ok).is_ok());
+        assert!(Foo::from_cbor_bytes(&[]).is_err()); // empty input
+        // array too short: the bytes field is missing
+        assert!(Foo::from_cbor_bytes(&[arr_def(2), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a")].concat()).is_err());
+        // wrong type in the uint slot (text where a uint is required)
+        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_string("x"), cbor_string("a"), bytes3].concat()).is_err());
+
+        // Foo2 = #6.23([uint, opt_text]): the tag must be present and correct.
+        let foo2 = |tag: Option<u64>| {
+            let mut b = Vec::new();
+            if let Some(t) = tag {
+                b.extend(cbor_tag_sz(t, cbor_event::Sz::Inline));
+            }
+            b.extend([arr_def(2), cbor_int(1, cbor_event::Sz::Inline), vec![NULL]].concat());
+            Foo2::from_cbor_bytes(&b)
+        };
+        assert!(foo2(Some(23)).is_ok());
+        assert!(foo2(Some(22)).is_err()); // wrong tag
+        assert!(foo2(None).is_err()); // missing tag
+    }
+
     #[test]
     fn bar() {
         let mut bar = Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None, 3.3);
