@@ -227,7 +227,7 @@ fn run_test(
     if json_export_dir.exists() {
         let cargo_run_json = std::process::Command::new("cargo")
             .arg("run")
-            .current_dir(json_export_dir)
+            .current_dir(&json_export_dir)
             .output()
             .unwrap();
         if !cargo_run_json.status.success() {
@@ -237,6 +237,19 @@ fn run_test(
             );
         }
         assert!(cargo_run_json.status.success());
+        // `export_schemas()` succeeding isn't enough: a no-op body would also exit 0. Assert it
+        // actually wrote at least one `<Type>.json` into `schemas/`, so an empty/missing dir
+        // (export silently producing nothing) fails loudly instead of passing.
+        let schemas_dir = json_export_dir.join("schemas");
+        let schema_count = std::fs::read_dir(&schemas_dir)
+            .unwrap_or_else(|e| panic!("json-gen wrote no schemas dir {schemas_dir:?}: {e}"))
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .count();
+        assert!(
+            schema_count > 0,
+            "json-gen produced no schema files in {schemas_dir:?}"
+        );
     }
 }
 
