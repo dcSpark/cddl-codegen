@@ -79,6 +79,45 @@ mod tests {
         let wrapper_table_ok = [map_def(1), cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline)].concat();
         assert!(WrapperTable::from_cbor_bytes(&wrapper_table_ok).is_ok());
         assert!(WrapperTable::from_cbor_bytes(&arr_def(0)).is_err());
+
+        // Duplicate map keys are rejected (DeserializeFailure::DuplicateKey).
+        // WrapperTable = { * uint => uint } is a definite-map table (no read_elems pre-check), so the
+        // duplicate is caught directly when the second identical key fails to insert. Baseline: the
+        // same two-entry map with distinct keys round-trips, so only the repeated key can reject it.
+        let wrapper_table_two_keys = [
+            map_def(2),
+            cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline),
+            cbor_int(7, cbor_event::Sz::Inline), cbor_int(8, cbor_event::Sz::Inline),
+        ].concat();
+        assert!(WrapperTable::from_cbor_bytes(&wrapper_table_two_keys).is_ok());
+        let wrapper_table_dup = [
+            map_def(2),
+            cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline),
+            cbor_int(1, cbor_event::Sz::Inline), cbor_int(8, cbor_event::Sz::Inline),
+        ].concat();
+        let wrapper_table_dup_err = WrapperTable::from_cbor_bytes(&wrapper_table_dup).unwrap_err();
+        assert!(wrapper_table_dup_err.to_string().contains("Duplicate key"), "{wrapper_table_dup_err}");
+
+        // TableArrMembers is a struct-map keyed by its text field names. A *definite* map can't carry
+        // a duplicate while staying complete (the extra entry trips DefiniteLenMismatch before the
+        // loop), so the DuplicateKey path is reached only via an indefinite map. Empty inner map/array
+        // are valid values for the field types, so the baseline round-trips.
+        let table_arr_members_ok = [
+            vec![MAP_INDEF],
+                cbor_string("tab"), map_def(0),
+                cbor_string("arr"), arr_def(0),
+                cbor_string("arr2"), arr_def(0),
+            vec![BREAK],
+        ].concat();
+        assert!(TableArrMembers::from_cbor_bytes(&table_arr_members_ok).is_ok());
+        let table_arr_members_dup = [
+            vec![MAP_INDEF],
+                cbor_string("tab"), map_def(0),
+                cbor_string("tab"), map_def(0),
+            vec![BREAK],
+        ].concat();
+        let table_arr_members_dup_err = TableArrMembers::from_cbor_bytes(&table_arr_members_dup).unwrap_err();
+        assert!(table_arr_members_dup_err.to_string().contains("Duplicate key"), "{table_arr_members_dup_err}");
     }
 
     #[test]
