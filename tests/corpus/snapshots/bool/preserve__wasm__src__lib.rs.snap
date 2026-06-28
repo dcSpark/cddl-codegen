@@ -1,0 +1,57 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct HasBool(cddl_lib::HasBool);
+
+#[wasm_bindgen]
+impl HasBool {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<HasBool, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn flag(&self) -> bool {
+        self.0.flag
+    }
+
+    pub fn new(flag: bool) -> Self {
+        Self(cddl_lib::HasBool::new(flag))
+    }
+}
+
+impl From<cddl_lib::HasBool> for HasBool {
+    fn from(native: cddl_lib::HasBool) -> Self {
+        Self(native)
+    }
+}
+
+impl From<HasBool> for cddl_lib::HasBool {
+    fn from(wasm: HasBool) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::HasBool> for HasBool {
+    fn as_ref(&self) -> &cddl_lib::HasBool {
+        &self.0
+    }
+}
