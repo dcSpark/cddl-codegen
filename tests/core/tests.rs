@@ -550,6 +550,7 @@ mod tests {
         let _ = CasingTest::VRFVkey;
     }
   
+    #[test]
     fn custom_serialization() {
         let struct_with_custom_bytes = StructWithCustomSerialization::new(
             vec![0xCA, 0xFE, 0xF0, 0x0D],
