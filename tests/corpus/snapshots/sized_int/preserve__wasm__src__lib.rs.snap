@@ -1,0 +1,73 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoundedInts(cddl_lib::BoundedInts);
+
+#[wasm_bindgen]
+impl BoundedInts {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoundedInts, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn u_8(&self) -> u8 {
+        self.0.u_8
+    }
+
+    pub fn u_16(&self) -> u16 {
+        self.0.u_16
+    }
+
+    pub fn u_32(&self) -> u32 {
+        self.0.u_32
+    }
+
+    pub fn i_8(&self) -> i8 {
+        self.0.i_8
+    }
+
+    pub fn i_64(&self) -> i64 {
+        self.0.i_64
+    }
+
+    pub fn new(u_8: u8, u_16: u16, u_32: u32, i_8: i8, i_64: i64) -> Self {
+        Self(cddl_lib::BoundedInts::new(u_8, u_16, u_32, i_8, i_64))
+    }
+}
+
+impl From<cddl_lib::BoundedInts> for BoundedInts {
+    fn from(native: cddl_lib::BoundedInts) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoundedInts> for cddl_lib::BoundedInts {
+    fn from(wasm: BoundedInts) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoundedInts> for BoundedInts {
+    fn as_ref(&self) -> &cddl_lib::BoundedInts {
+        &self.0
+    }
+}
