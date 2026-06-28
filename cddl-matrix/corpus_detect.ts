@@ -19,10 +19,12 @@
  * table. Features with no detector are reported, not silently treated as absent.
  */
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Glob } from "bun";
 
 const HERE = import.meta.dir;
 const CORPUS = `${HERE}/../tests/corpus`;
+const CODEGEN = resolve(HERE, ".."); // the cddl-codegen repo (hosts examples/ast_roles.rs)
 
 const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
   features: { id: string; production?: string }[];
@@ -107,6 +109,71 @@ export function featuresIn(cddl: string): Detected {
   return { rfc, ctl, dsl };
 }
 
+// ============================================================================================
+// ROLE-AWARE detection (ROADMAP item 6). featuresIn (above) is a text scan: it sees THAT a construct
+// appears, not in WHICH container role. A regex can't track the enclosing role across nesting, so this
+// shells out to a real parse — examples/ast_roles.rs walks the `cddl` crate AST (=0.9.1, the exact one
+// cddl-codegen builds with) and emits (role, node-kind) records. Here we map those node-kinds onto
+// matrix feature ids (the editorial "what is a feature" mapping stays in TS), yielding the role-keyed
+// floor: per fixture, the set of `<feature-id>@<role-id>` cells it exercises.
+//
+// ponytail: built but NOT yet wired into project_corpus.ts — this is the data layer (prove it first).
+// dsl.*/ext.* still come from the text scan above (they live in comments / are sentinel typenames, which
+// the parser strips/erases); the AST floor covers the RFC + control-op constructs, where roles matter.
+
+interface RoleRec { role: string; kind: string; name?: string }
+
+// Map one AST record to a `<feature-id>@<role-id>` cell, or null if it has no matrix feature.
+// Most node-kinds ARE matrix feature ids already; only `typename`/`ctlop` need name resolution.
+function recToCell(r: RoleRec): string | null {
+  const role = `role.${r.role}`;
+  let feature: string | null;
+  if (r.kind === "typename") {
+    if (!r.name) return null;
+    if (r.name === "_CDDL_CODEGEN_EXTERN_TYPE_") feature = "ext.extern";
+    else if (r.name === "_CDDL_CODEGEN_RAW_BYTES_TYPE_") feature = "ext.raw_bytes";
+    else if (preludeNames.includes(r.name)) feature = `prelude.${r.name}`;
+    else feature = "type2.typename";
+  } else if (r.kind === "ctlop") {
+    feature = r.name ? `ctl.${r.name}` : null;
+  } else {
+    feature = r.kind; // type2.array, value.number, occur.optional, rangeop.inclusive, ...
+  }
+  return feature ? `${feature}@${role}` : null;
+}
+
+// Invoke the AST-role helper. With file args -> { path: records[] }; with stdin -> records[].
+function astRoles(args: string[], stdin?: string): unknown {
+  const proc = Bun.spawnSync(["cargo", "run", "-q", "--example", "ast_roles", "--", ...args], {
+    cwd: CODEGEN,
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: stdin === undefined ? undefined : new TextEncoder().encode(stdin),
+  });
+  if (!proc.success)
+    throw new Error(`ast_roles failed (exit ${proc.exitCode}):\n${proc.stderr.toString()}`);
+  return JSON.parse(proc.stdout.toString());
+}
+
+// Role-keyed floor for a set of corpus fixtures (filenames under tests/corpus). One batched cargo run.
+export function rolesIn(files: string[]): Map<string, Set<string>> {
+  const raw = astRoles(files.map(f => `${CORPUS}/${f}`)) as Record<string, RoleRec[]>;
+  const out = new Map<string, Set<string>>();
+  for (const f of files) {
+    const cells = new Set<string>();
+    for (const rec of raw[`${CORPUS}/${f}`] ?? []) { const c = recToCell(rec); if (c) cells.add(c); }
+    out.set(f, cells);
+  }
+  return out;
+}
+
+// Role-keyed cells for a single inline CDDL doc (used by the self-check; stdin mode).
+export function rolesInStr(cddl: string): Set<string> {
+  const cells = new Set<string>();
+  for (const rec of astRoles([], cddl) as RoleRec[]) { const c = recToCell(rec); if (c) cells.add(c); }
+  return cells;
+}
+
 // --- self-check (ponytail: one runnable check on the non-trivial logic) ---
 function selfCheck() {
   const a = featuresIn("arr = [uint, text, bytes]");
@@ -124,8 +191,27 @@ function selfCheck() {
   if (!featuresIn("foo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: foo]").dsl.has("ext.extern")) throw new Error("selfCheck: missing ext.extern");
 }
 
+// Role-aware self-check (item 6): the headline case — in `text / null`, `null` is covered as a
+// CHOICE-MEMBER, and must NOT be credited at top-level (the exact lie the text-scan floor told).
+function roleSelfCheck() {
+  const r = rolesInStr("maybe_text = text / null\nholder = [val: maybe_text]");
+  const must = [
+    "prelude.null@role.choice-member",
+    "prelude.text@role.choice-member",
+    "type.choice@role.top-level",
+    "type2.array@role.top-level",
+    "memberkey.bareword@role.map-key",
+    "type2.typename@role.array-element",
+  ];
+  for (const c of must)
+    if (!r.has(c)) throw new Error(`roleSelfCheck: expected ${c} — got {${[...r].sort().join(", ")}}`);
+  if (r.has("prelude.null@role.top-level"))
+    throw new Error("roleSelfCheck: null wrongly credited at top-level (the text-scan lie item 6 fixes)");
+}
+
 if (import.meta.main) {
   selfCheck();
+  roleSelfCheck();
   const files = [...new Glob("*.cddl").scanSync({ cwd: CORPUS })].sort();
   const allFeatureIds = new Set(matrix.features.map(f => f.id));
   const allCtlIds = new Set(matrix.control_operators.map(c => c.id));
@@ -166,4 +252,39 @@ if (import.meta.main) {
   console.log(`  ${undetected.join(", ")}`);
   if (spurious.length) console.log(`SPURIOUS (detected but not a matrix id — detector bug): ${spurious.join(", ")}`);
   console.log(`\nCDDL_CODEGEN profile ids seen across corpus: ${[...new Set(perFixture.flatMap(p => [...p.dsl]))].sort().join(" ")}`);
+
+  // ==========================================================================================
+  // ROLE-AWARE floor (item 6) — the AST walk's (feature, role) cells, vs the text-scan floor above.
+  // ==========================================================================================
+  console.log(`\n=== role-aware floor (item 6 — examples/ast_roles.rs, real cddl-crate parse) ===`);
+  const roleFloor = rolesIn(files);
+  const allCells = new Set<string>();
+  for (const cells of roleFloor.values()) for (const c of cells) allCells.add(c);
+  const astFeatureIds = new Set([...allCells].map(c => c.split("@")[0]));
+
+  // recall vs the text scan: AST-floor feature ids should (mostly) superset the text-scan RFC+ctl floor.
+  // Differences are usually the AST being MORE PRECISE (the text scan over-credits a digit inside a tag
+  // number / range bound as value.number); a genuine under-credit would be a finding to surface.
+  const textIds = new Set([...seen].filter(id => !id.startsWith("dsl.") && !id.startsWith("ext.")));
+  const astOnly = [...astFeatureIds].filter(id => !textIds.has(id)).sort();
+  const textOnly = [...textIds].filter(id => !astFeatureIds.has(id)).sort();
+  console.log(`role cells: ${allCells.size} across ${roleFloor.size} fixtures; distinct feature ids: ${astFeatureIds.size}`);
+  if (textOnly.length) console.log(`  text-scan-only (AST more precise, or a real under-credit — review): ${textOnly.join(", ")}`);
+  if (astOnly.length) console.log(`  AST-only (parse catches what the regex missed): ${astOnly.join(", ")}`);
+
+  // the payoff: constructs whose ROLE set differs — the context axis the text scan flattened.
+  const byFeature = new Map<string, Set<string>>();
+  for (const c of allCells) {
+    const [ft, ro] = c.split("@");
+    if (!byFeature.has(ft)) byFeature.set(ft, new Set());
+    byFeature.get(ft)!.add(ro);
+  }
+  const multiRole = [...byFeature].filter(([, rs]) => rs.size > 1).sort();
+  console.log(`\nconstructs exercised in >1 role (the context axis the flat scan couldn't see):`);
+  for (const [ft, rs] of multiRole) console.log(`  ${ft}: ${[...rs].sort().join(", ")}`);
+
+  // the canonical item-6 example: null / fixed-value cells, keyed by role.
+  const nullCells = [...allCells].filter(c => /^(prelude\.null|value\.(number|text|bytes)|type2\.value)@/.test(c)).sort();
+  console.log(`\nnull / fixed-value cells (item-6 canonical — note the ROLE):`);
+  for (const c of nullCells) console.log(`  ${c}`);
 }

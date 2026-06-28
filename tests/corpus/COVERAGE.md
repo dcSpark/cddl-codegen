@@ -132,7 +132,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.mime-message` | ➕ | mime-message | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type.  [`should not expose Fixed type in member`] |
 | `prelude.nint` | ✅ | nint | `primitives.cddl` |
-| `prelude.null` | ➖ | null | top-level `x = null` type panics — same Fixed-type gap; null works inside a `T / null` choice (nullable.cddl -> Option)  [`should not expose Fixed type in member`] |
+| `prelude.null` | ➖ | null | top-level `x = null` type panics — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values). Its supported choice-member role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
 | `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.regexp` | ➕ | regexp | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.tdate` | ➕ | tdate | supported, no corpus fixture (cddl-codegen exit 0) |
@@ -188,15 +188,15 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
-| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap.  [`should not expose Fixed type in member`] |
+| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
 
 ### `value` (3)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)  [`Ignoring Type2`] |
-| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `c: 5`)  [`should not expose Fixed type in member`] |
-| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `b: "marker"`)  [`should not expose Fixed type in member`] |
+| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
+| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
 
 ## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
 
@@ -295,7 +295,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 - Control operators: **37** — ✅ 4 covered · ➕ 5 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 28
 
-**Deferred (disclosed, not faked):**
-- **Per-role coverage (ROADMAP item 6).** Coverage here is feature-axis only — the corpus floor is a
-  text scan that detects THAT a construct appears, not in WHICH container role. Per-cell *support*
-  (role × feature) exists in the matrix but role-keyed *coverage* awaits the `cddl`-crate AST walk.
+**Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
+coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
+(`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's per-cell support verdict — so a
+➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level
+type, ✅ as a choice-member). **4 such cells** are mapped (appended as "also ✅ @role" on the
+rows above); constructs whose support doesn't vary by role stay feature-axis (the role is unremarkably
+top-level). A full role × feature coverage grid for *every* construct is future work — the floor data
+(`rolesIn`) already supports it.
