@@ -49,8 +49,14 @@ mod tests {
         assert!(Foo::from_cbor_bytes(&[]).is_err()); // empty input
         // array too short: the bytes field is missing
         assert!(Foo::from_cbor_bytes(&[arr_def(2), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a")].concat()).is_err());
+        // wrong outer container: a map where the array is required
+        assert!(Foo::from_cbor_bytes(&[map_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat()).is_err());
         // wrong type in the uint slot (text where a uint is required)
-        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_string("x"), cbor_string("a"), bytes3].concat()).is_err());
+        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_string("x"), cbor_string("a"), bytes3.clone()].concat()).is_err());
+        // wrong type in the text slot (bytes where text is required)
+        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), bytes3.clone(), bytes3.clone()].concat()).is_err());
+        // wrong type in the bytes slot (uint where bytes is required)
+        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), cbor_int(7, cbor_event::Sz::Inline)].concat()).is_err());
 
         // Foo2 = #6.23([uint, opt_text]): the tag must be present and correct.
         let foo2 = |tag: Option<u64>| {
@@ -64,6 +70,15 @@ mod tests {
         assert!(foo2(Some(23)).is_ok());
         assert!(foo2(Some(22)).is_err()); // wrong tag
         assert!(foo2(None).is_err()); // missing tag
+
+        // Hash = bytes .size (0..8): wrong major type (uint where bytes is required).
+        assert!(Hash::from_cbor_bytes(&bytes3).is_ok());
+        assert!(Hash::from_cbor_bytes(&cbor_int(5, cbor_event::Sz::Inline)).is_err());
+
+        // WrapperTable = { * uint => uint }: wrong major type (array where a map is required).
+        let wrapper_table_ok = [map_def(1), cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline)].concat();
+        assert!(WrapperTable::from_cbor_bytes(&wrapper_table_ok).is_ok());
+        assert!(WrapperTable::from_cbor_bytes(&arr_def(0)).is_err());
     }
 
     #[test]
