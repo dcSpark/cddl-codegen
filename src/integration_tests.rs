@@ -219,21 +219,24 @@ fn run_test(
             eprintln!("skipping {roundtrip_script:?}: wasm-pack/node not found");
         }
     }
-    // check that the JSON schema export crate builds
+    // Run (not just build) the JSON schema export crate so its `main()` -> `export_schemas()`
+    // actually executes: it creates the `schemas/` dir and writes a `<Type>.json` per root type.
+    // `cargo build` only typechecked that code; nothing ever ran it, so a runtime panic in the
+    // generated schema-export body (e.g. a bad path or `schemars` call) was invisible to CI.
     let json_export_dir = test_path.join(format!("{export_path}/wasm/json-gen"));
     if json_export_dir.exists() {
-        let cargo_build_json = std::process::Command::new("cargo")
-            .arg("build")
+        let cargo_run_json = std::process::Command::new("cargo")
+            .arg("run")
             .current_dir(json_export_dir)
             .output()
             .unwrap();
-        if !cargo_build_json.status.success() {
+        if !cargo_run_json.status.success() {
             eprintln!(
-                "wasm build stderr:\n{}",
-                String::from_utf8(cargo_build_json.stderr).unwrap()
+                "json-gen run stderr:\n{}",
+                String::from_utf8(cargo_run_json.stderr).unwrap()
             );
         }
-        assert!(cargo_build_json.status.success());
+        assert!(cargo_run_json.status.success());
     }
 }
 
