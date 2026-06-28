@@ -176,6 +176,80 @@ mod tests {
         assert!(table_arr_members_break_err.to_string().contains("Break while reading definite length sequence"), "{table_arr_members_break_err}");
     }
 
+    // cw14: exercise the shipped Display formatting in error.rs (DeserializeError::fmt_indent and
+    // Key::Display) that round-trip tests never reach. Each case pins stable substrings of
+    // unwrap_err().to_string() rather than whole strings, so cosmetic wording tweaks don't break it
+    // while the distinct formatting branches stay covered.
+    #[test]
+    fn error_display_formatting() {
+        // TagMismatch with a Some(location): Foo2 = #6.23(...) builds its tag error via
+        // DeserializeError::new("Foo2", ..), so Display takes the "failed in {loc} because:" branch
+        // and the TagMismatch arm ("Expected tag {expected}, found {found}").
+        let foo2_wrong_tag = [
+            cbor_tag_sz(22, cbor_event::Sz::Inline),
+            arr_def(2),
+            cbor_int(1, cbor_event::Sz::Inline),
+            vec![NULL],
+        ]
+        .concat();
+        let foo2_tag_err = Foo2::from_cbor_bytes(&foo2_wrong_tag)
+            .unwrap_err()
+            .to_string();
+        assert!(foo2_tag_err.contains("Foo2"), "{foo2_tag_err}");
+        assert!(
+            foo2_tag_err.contains("Expected tag 23, found 22"),
+            "{foo2_tag_err}"
+        );
+
+        // annotate() chaining: a wrong inner tag in Foo2's opt_text field (= #6.42(text)) is
+        // annotated "opt_text" then "Foo2", so the location reads "Foo2.opt_text". Tag 10 keeps the
+        // header in the inline form (Sz::Inline only encodes 0..=23) while still mismatching 42.
+        let foo2_inner_tag = [
+            cbor_tag_sz(23, cbor_event::Sz::Inline),
+            arr_def(2),
+            cbor_int(1, cbor_event::Sz::Inline),
+            cbor_tag_sz(10, cbor_event::Sz::Inline),
+            cbor_string("x"),
+        ]
+        .concat();
+        let foo2_inner_err = Foo2::from_cbor_bytes(&foo2_inner_tag)
+            .unwrap_err()
+            .to_string();
+        assert!(foo2_inner_err.contains("Foo2.opt_text"), "{foo2_inner_err}");
+        assert!(
+            foo2_inner_err.contains("Expected tag 42, found 10"),
+            "{foo2_inner_err}"
+        );
+
+        // DefiniteLenMismatch from finish() carries no location (From<DeserializeFailure>), so Display
+        // takes the None branch ("Deserialization: ") and the Some(expected) sub-branch (", expected:").
+        // Foo = [uint, text, bytes] declared as a 4-element array reads 3 then trips finish().
+        let foo_too_long = [
+            arr_def(4),
+            cbor_int(1, cbor_event::Sz::Inline),
+            cbor_string("a"),
+            vec![0x43u8, 1, 2, 3],
+            cbor_int(9, cbor_event::Sz::Inline),
+        ]
+        .concat();
+        let foo_len_err = Foo::from_cbor_bytes(&foo_too_long).unwrap_err().to_string();
+        assert!(
+            foo_len_err.starts_with("Deserialization: "),
+            "{foo_len_err}"
+        );
+        assert!(foo_len_err.contains("found 4"), "{foo_len_err}");
+        assert!(foo_len_err.contains("expected: 3"), "{foo_len_err}");
+
+        // MandatoryFieldMissing with a Key::Str: an empty indefinite Bar map drops every key; "foo"
+        // is the first required field checked, so Key::Display wraps it in quotes ("\"foo\"") and the
+        // outer annotate("Bar") supplies the location.
+        let bar_empty = [vec![MAP_INDEF], vec![BREAK]].concat();
+        let bar_err = Bar::from_cbor_bytes(&bar_empty).unwrap_err().to_string();
+        assert!(bar_err.contains("Bar"), "{bar_err}");
+        assert!(bar_err.contains("Mandatory field"), "{bar_err}");
+        assert!(bar_err.contains("\"foo\""), "{bar_err}");
+    }
+
     #[test]
     fn bar() {
         let mut bar = Bar::new(Foo::new(436, String::from("jfkdf"), vec![6, 4]), None, 3.3);
