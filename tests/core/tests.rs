@@ -170,6 +170,7 @@ mod tests {
     #[test]
     fn enums() {
         let enums = Enums::new(CEnum::I3, TypeChoice::U64(53435364));
+        deser_test(&enums);
     }
 
     #[test]
