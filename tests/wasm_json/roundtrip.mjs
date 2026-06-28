@@ -38,6 +38,16 @@ check(
   ),
   'Foo (sparse: absent optional, null, empties)',
 );
+// Boundary: maybe_num pinned at the JS safe-integer maximum (2^53-1 = Number.MAX_SAFE_INTEGER).
+// At/below this cliff a u64 survives JSON.parse losslessly, so both serializers must still agree
+// exactly. This locks the *safe* range; the >2^53 divergence (to_json_value() throws) stays a
+// deliberate maintainer call and is intentionally not asserted here.
+check(
+  lib.Foo.from_json(
+    '{"a_map":{},"a_list":[],"nested":[],"a_bytes":[],"maybe_num":9007199254740991,"flag":true}',
+  ),
+  'Foo (maybe_num at 2^53-1, JS safe-integer max)',
+);
 // Type choice: externally-tagged enum, serialized via serialize_map (a JS Map under the default
 // serializer), so both variants are discriminators.
 check(lib.TopChoice.new_uint(5n), 'TopChoice::uint');
