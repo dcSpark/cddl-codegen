@@ -32,8 +32,23 @@ rfc = "RFC8610 §2.2.2; ABNF type / type-choice"
 profile = "RFC8610"
 title = "Type choice (/)"
 desc = "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch."
-example = "t = int / tstr / bool"
+# Members chosen to compile: a `bool` member makes the generated choice need type annotations (E0282, a
+# cddl-codegen bug recorded as a finding). These three isolate the `/` construct and compile cleanly.
+example = "t = uint / tstr / bytes"
 roles = ["role.choice-member"]
+
+# --- all-fixed-value type choice -> c-style enum. A serialization-distinct SPECIALIZATION of type.choice:
+# when every alternative is a literal value, cddl-codegen emits a discriminated c-style enum (a distinct
+# code path), so it's its own feature per the semantic-individuation rule. Same `type` production/alt. ---
+[[feature]]
+id = "type.enum"
+production = "type"
+alt = 'type1 *("/" type1)'
+rfc = "RFC8610 §2.2.2; ABNF type / type-choice (all-fixed-value specialization)"
+profile = "RFC8610"
+title = "All-fixed-value type choice (c-style enum)"
+desc = "A type choice whose alternatives are all literal values (e.g. `0 / 1 / 2`); cddl-codegen emits a discriminated c-style enum rather than a general type-choice enum."
+example = "e = 0 / 1 / 2"
 
 # NOTE: the `T / null` special case is NOT a distinct ABNF alternative — it is the same
 # `type = type1 *("/" type1)` production as type.choice, privileged only by consumer behaviour

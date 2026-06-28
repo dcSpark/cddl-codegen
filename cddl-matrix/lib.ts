@@ -18,7 +18,7 @@ export interface Feature {
 export interface Role { id: string }
 export interface Encoding { id: string }
 export interface Containment { id: string; role: string; feature: string; spec?: string; example?: string }
-export interface ControlOp { id: string; name: string; rfc: string }
+export interface ControlOp { id: string; name: string; rfc: string; example?: string }
 
 export interface MatrixInputs {
   features: Feature[];
@@ -35,14 +35,19 @@ const globSorted = (pattern: string): string[] => [...new Bun.Glob(pattern).scan
 export const globRel = globSorted;
 
 // IANA control-op registry, derived from the CSV (id = "ctl." + name without leading dots; rfc =
-// Reference with surrounding []/whitespace stripped). No `profile` here — build adds it.
+// Reference with surrounding []/whitespace stripped). No `profile` here — build adds it. The minimal
+// support-probe `example` per op is joined from the authored control_examples.toml (the CSV is pinned).
 export function loadControlOps(): ControlOp[] {
+  const examples = new Map<string, string>(
+    ((loadToml("control_examples.toml").example ?? []) as { id: string; example: string }[]).map(e => [e.id, e.example]),
+  );
   const lines = readFileSync(`${ROOT}/sources/cddl-control-operators.csv`, "utf8").split("\n").filter(l => l.trim().length);
   return lines.slice(1).map(line => {
     const cells = line.split(","); // Name,Reference — registry is 2-col & unquoted; take the named columns
     const name = cells[0].trim();
     const rfc = (cells[1] ?? "").trim().replace(/^[[\]]+|[[\]]+$/g, "");
-    return { id: "ctl." + name.replace(/^\.+/, ""), name, rfc };
+    const id = "ctl." + name.replace(/^\.+/, "");
+    return { id, name, rfc, example: examples.get(id) };
   });
 }
 

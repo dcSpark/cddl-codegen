@@ -108,6 +108,10 @@ fixture = "type_choice.cddl"
 id = "group.choice"
 fixture = "group_choice.cddl"
 
+[[cover]]
+id = "type.enum"
+fixture = "c_style_enum.cddl"
+
 # (literal-value features type2.value / value.number / value.text are NOT covered here: the matrix marks
 #  them unsupported because a TOP-LEVEL fixed-value type panics — a real gap. fixed_value.cddl exercises a
 #  fixed value only as a struct MEMBER, a different aspect. See the ➖ notes below.)
@@ -223,6 +227,18 @@ status = "partial"
 reason = "de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)"
 code_anchor = "preserve_encodings is not implemented for float"
 
+[[note]]
+id = "prelude.float32"
+status = "partial"
+reason = "works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float32]` compiles default, fails preserve)"
+code_anchor = "preserve_encodings is not implemented for float"
+
+[[note]]
+id = "prelude.float64"
+status = "partial"
+reason = "works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float64]` compiles default, fails preserve)"
+code_anchor = "preserve_encodings is not implemented for float"
+
 # ---- ➖ not supported — where the generator gives up (anchors for the boundary) ----
 [[note]]
 id = "prelude.eb64url"
@@ -253,6 +269,56 @@ id = "prelude.undefined"
 status = "unsupported"
 reason = "the `undefined` simple value is rejected"
 code_anchor = "unsupported cddl prelude type"
+
+[[note]]
+id = "prelude.any"
+status = "unsupported"
+reason = "`x = any` generates `pub type X = Any;` referencing a type defined nowhere — does not compile (caught by the compile-gate; the exit-code-only probe formerly over-credited it). `any` is absent from is_identifier_reserved, so it's treated as an undefined user type."
+code_anchor = "is_identifier_reserved"
+
+# fixed-value simple-value types (true/false/nil) — same standalone Fixed-type gap as `null`/value literals
+[[note]]
+id = "prelude.true"
+status = "unsupported"
+reason = "the fixed boolean `true` used as a standalone type panics; cddl-codegen exposes fixed values only for serialization, not as types (fails as a struct member too). Same Fixed-type gap as `null`."
+code_anchor = "should not expose Fixed type in member"
+
+[[note]]
+id = "prelude.false"
+status = "unsupported"
+reason = "the fixed boolean `false` used as a standalone type panics — same Fixed-type gap as `true`/`null` (fails as a struct member too)."
+code_anchor = "should not expose Fixed type in member"
+
+[[note]]
+id = "prelude.nil"
+status = "unsupported"
+reason = "top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type."
+code_anchor = "should not expose Fixed type in member"
+
+# float aliases the float-alias system doesn't handle (no native Rust f16; float-choice aliases unsupported)
+[[note]]
+id = "prelude.float16"
+status = "unsupported"
+reason = "no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work)."
+code_anchor = "should be handled by the alias system instead"
+
+[[note]]
+id = "prelude.float16-32"
+status = "unsupported"
+reason = "the float16/float32 choice alias isn't handled by the float alias system (it includes the unsupported float16); panics even as a member."
+code_anchor = "should be handled by the alias system instead"
+
+[[note]]
+id = "prelude.float32-64"
+status = "unsupported"
+reason = "the float32/float64 choice alias isn't handled by the float alias system (the float-choice aliases are unsupported, though float32/float64 work on their own); panics even as a member."
+code_anchor = "should be handled by the alias system instead"
+
+[[note]]
+id = "genericparm.group"
+status = "unsupported"
+reason = "a generic GROUP definition (`set<a> = (* a)`) is rejected — generics are supported on type rules, not on plain groups."
+code_anchor = "Generics not supported on plain groups"
 
 [[note]]
 id = "type2.any"
@@ -339,7 +405,16 @@ text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain ide
 text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats."
 
 [[finding]]
-text = "COVERAGE.md/matrix disagreement to reconcile: COVERAGE.md marks `any` as ➖, but the matrix probe finds `prelude.any` SUPPORTED (`x = any` exits 0). Trust the execution-grounded matrix; refresh the hand doc."
+text = "Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested)."
+
+[[finding]]
+text = "Bug — a type choice containing `bool` generates non-compiling Rust (`error[E0282]: type annotations needed`): `bool / tstr` and `uint / bool` fail, while `int / tstr` and `uint / text / bytes` compile. Surfaced by the compile-gate (the `type.choice` example was changed off `bool` to isolate the construct). Candidate cddl-codegen fix."
+
+[[finding]]
+text = "Bug — a single-letter rule named `r` capitalizes to a struct `R` that collides with the generated deserializer's reader generic parameter `R` (`error[E0574]: ... found type parameter R`), so the crate fails to compile. Surfaced incidentally by the compile-gate; avoid `r` as a rule name. Candidate cddl-codegen fix."
+
+[[finding]]
+text = "Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix."
 
 [[finding]]
 text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"

@@ -1,158 +1,301 @@
-# Corpus coverage map — CDDL (RFC 8610) constructs
+# Corpus coverage map — CDDL constructs (GENERATED)
 
-Tracks which CDDL language constructs the snapshot **corpus** exercises, so a future revisit can see
-at a glance what's covered, what's *supported but untested* (a corpus gap to fill), and what the
-generator deliberately does **not** support (the boundary). This is the input-language analog of
-`tests/golden_hex/COVERAGE.md`.
+> **GENERATED** by `cddl-matrix/project_corpus.ts` — do not hand-edit. Status (✅/➕/➖/⚠️) is the
+> execution-grounded matrix support verdict joined with the corpus overlay (canonical fixture, nuance
+> notes, findings) in `cddl-matrix/annotations/corpus/cddl_codegen.toml`. Regenerate after changing
+> either; CI fails on overlay drift (a note/cover that contradicts the matrix or the fixtures).
+
+Tracks which CDDL constructs the snapshot **corpus** (`tests/corpus/*.cddl`) exercises, what's
+supported-but-untested (a corpus gap to fill), and what the generator does **not** support (the
+boundary). The feature universe + support are anchored to the spec (RFC 8610 grammar/prelude + the
+IANA control-op registry) and cddl-codegen's vendor profile — not to a self-feature-list, which is what
+makes the ➖ boundary rows visible. Sections are derived: **profile → production → id**.
+
+## How this map works
 
 - **Test:** `tests/corpus/<construct>.cddl`, driven by `snapshot_tests::feature_corpus` — each file is
   generated under every flag profile (`default`/`preserve`/`json`) plus an IR dump, and the generated
   *source* is snapshotted. Bless with `INSTA_UPDATE=always cargo test snapshot_tests`.
 - **Compile gate:** `integration_tests::feature_corpus_compiles` `cargo check`s every corpus file under
-  all three profiles, so a corpus entry must produce **compiling** Rust under *all* of them.
-- **RFC reference:** RFC 8610 (CDDL) — <https://www.rfc-editor.org/rfc/rfc8610>. Offline copy at
-  `draft/golden-vectors/rfc8610.txt` (gitignored): `curl -O https://www.rfc-editor.org/rfc/rfc8610.txt`.
-
-## Axis nuance (read before the tables)
-
-This map is anchored to the **external spec (RFC 8610)**, not to our own feature list
-(`docs/docs/current_capacities.mdx`) — anchoring to the spec is what makes the *unsupported* rows
-visible, which a self-feature-list structurally can't show. Two things stay out of this RFC matrix and
-get their own sections below: **(a)** the corpus snapshots generated *source*, not wire bytes — wire
-encodings are golden_hex's axis (RFC 8949); **(b)** cddl-codegen's invented features (comment DSL,
-extern/raw-bytes sentinels) aren't RFC 8610 and are tracked separately.
-
-## How evidence is cited (keep it robust)
-
-Evidence is a **stable, grep-able anchor — never a line number** (line numbers rot on the first edit
-above them). Pick the most specific stable thing:
-- **✅ covered** → the **corpus file** (`tagged.cddl`). It's the artifact; rename/delete it and the
-  snapshot test fails, so the claim can't silently rot.
-- **➕ supported, untested** → the **handler function** (e.g. `parse_control_operator`) and/or presence
-  in **`supported.cddl`**.
-- **➖ not supported** → the **quoted `panic!`/`todo!`/`unimplemented!` message**, or the **unmatched
-  AST variant** (e.g. `Type2::Unwrap`) plus the catch-all it falls into. A quoted message is the best
-  anchor: greppable, and if someone changes it they're almost certainly changing the behavior, so it
-  self-invalidates *meaningfully*.
-
-The two catch-all arms most ➖ rows fall into (both grep-able by message): `parse_type`'s
-`panic!("…ignored typename…")` (top-level rule bodies) and `rust_type_from_type2`'s
-`panic!("Ignoring Type2: …")` (inline members).
+  all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them.
+- **Axis:** the corpus snapshots generated *source*, not wire bytes — wire encodings are golden_hex's
+  axis (`tests/golden_hex/COVERAGE.md`, RFC 8949). A ✅ here means "a fixture isolates this construct,"
+  not "every encoding of it is asserted."
+- **Evidence convention** (stable grep-able anchors, never line numbers) and the spec-anchoring
+  rationale live in `cddl-matrix/README.md` — this doc is one projection of that master.
+- **RFC reference:** RFC 8610 — <https://www.rfc-editor.org/rfc/rfc8610>; control ops from the IANA
+  CDDL control-operators registry (spans RFC 8610/9090/9165/9741).
 
 ## Legend
 
 | mark | meaning |
 |------|---------|
-| ✅ | covered — a corpus file isolates this construct |
-| ➕ | **supported but untested** — handled in code, no corpus file yet (a real gap) |
-| ➖ | **not supported** — errors / `panic!` / `todo!` / no handling branch (documents the boundary) |
-| ⚠️ | partial / parsed-but-not-honored — accepted but the semantics aren't modeled |
-| ❓ | uncertain — needs verification |
+| ✅ | covered — a corpus fixture isolates this construct |
+| ➕ | **supported but untested** — accepted by the generator, no corpus fixture yet (an actionable gap) |
+| ➖ | **not supported** — rejected / `panic!` / no handling branch (documents the boundary) |
+| ⚠️ | partial — parsed but the semantics aren't honored (accepted, not modeled) |
 
-## RFC 8610 coverage
+## RFC 8610 / 9682 grammar + prelude (the spec backbone)
 
-### Primitives & representation (§2.2.3, Appendix D prelude)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| `uint` `nint` `int` `bstr`/`bytes` `tstr`/`text` `bool` `null`/`nil` | ✅ | `primitives.cddl`, `bool.cddl`, `nullable.cddl` (`int` is special-cased — `apply_type_aliases` returns `None` for it) |
-| `float` / `float16` / `float32` / `float64` | ⚠️ | de/ser works under `default`/`json`, but `--preserve-encodings` and bounds are unsupported: `unimplemented!("preserve_encodings is not implemented for float")` and `unimplemented!("bounds not supported for floats")` (`generation.rs`). **Can't be a corpus entry** (corpus runs `preserve`); same reason `prelude.cddl` omits float-bearing types |
-| extended prelude `biguint` `uri` `bigint` `unsigned` | ✅ | `prelude.cddl` (expanded from raw RFC CDDL by `emit_prelude`) |
-| extended prelude `tdate` `time` `number` `bignint` `integer` `decfrac` `bigfloat` `encoded-cbor` `b64url` `b64legacy` `regexp` `mime-message` | ➕ | handled by `emit_prelude`, no corpus (`time`/`number` pull in `float`, so blocked like float) |
-| `eb64url` `eb64legacy` `eb16` `cbor-any` | ➖ | `panic!("unsupported cddl prelude type")` (they reduce to `any`) |
-| `undefined`, `any`, simple values `#7.n` | ➖ | `any`/`undefined` → `panic!("unsupported cddl prelude type")`; `#7.n` / bare `#` → catch-all panic |
-| major-type sigils `#` `#0`..`#7`, bare `#6.n` (no parens) | ➖ | `Type2::Any` / `Type2::DataMajorType` unmatched → catch-all panic. Only `#6.n(T)` (`Type2::TaggedData`) is handled (see Tags) |
-| byte/text string literals `h'…'` `b64'…'` `'…'` | ➖ | `Type2::UTF8ByteString`/`B16ByteString`/`B64ByteString` unmatched → catch-all panic |
+### `assigng` (1)
 
-### Composition & structure (§2.1, §3.4, §3.5)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| Arrays `[…]` (fixed & variable) | ✅ | `array.cddl` (`[uint,text,bytes]`), `homogeneous_array.cddl` (`[* uint]`) |
-| Maps — struct-style `{ a: T }` & table `{ * K => V }` | ✅ | `map_struct.cddl`, `table.cddl` |
-| Groups `(…)` + embedding groups in groups | ✅ | `nested_group.cddl`; also `supported.cddl` (`pool_params`) |
-| Inline group at root `foo = (a: uint, b: uint)` | ✅ | `nested_group.cddl` |
-| Cuts in maps (`^`, implicit) (§3.5.4) | ⚠️ | parsed but **dropped, not enforced** — `// TODO: Do we need to handle cuts for what we're doing?` (`parse_group_type`, `parsing.rs`) |
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `assigng.extend` | ⚠️ | Incremental group-choice extension (//=) | group socket plug (//=) is parsed but ignored — same socket-stripping story as the type socket; the Rule::Group arm of parse_rule processes it as a plain inline group with no plug semantics (no distinct code site to anchor) |
 
-### Occurrence (§3.2)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| `?` optional | ✅ | `optional.cddl`, `default_value.cddl` |
-| `*` zero-or-more | ✅ | `homogeneous_array.cddl`, `table.cddl` |
-| `+` one-or-more | ➕ | `Occur::OneOrMore` in `parse_group_type`, no corpus |
-| `n*m` bounded occurrence | ➕ | `Occur::Exact` in `parse_group_type`, no corpus |
+### `assignt` (1)
 
-### Choices (§2.2.2)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| Type choice `/` (and `T / null` → `Option<T>`) | ✅ | `type_choice.cddl`, `nullable.cddl` |
-| Group choice `//` | ✅ | `group_choice.cddl`; also `supported.cddl` (`multisig_script`, `certificate`) |
-| All-fixed-value type choice → c-style enum | ✅ | `c_style_enum.cddl` (`0 / 1 / 2`) |
-| Choice-from-group `&` (`&basecolors`, `&(…)`) (§2.2.2.2) | ➖ | `Type2::ChoiceFromGroup` / `Type2::ChoiceFromInlineGroup` unmatched → catch-all panic |
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `assignt.extend` | ⚠️ | Incremental type-choice extension (/=) | type socket plug (/=) is parsed but ignored; a $-socket reference is merely stripped ($x -> x)  [`is_type_choice_alternate`] |
 
-### Ranges (§2.2.2.1)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| Inclusive `..` | ✅ | `sized_int.cddl` (`0..4294967295`, `-128..127`) |
-| Exclusive `...` | ➕ | same `RangeCtlOp::RangeOp` arm in `parse_control_operator` (`is_inclusive:false`), no corpus |
+### `genericarg` (2)
 
-### Tags, unwrap, generics, sockets (§3.6, §3.7, §3.10, §3.9)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| Tagged `#6.n(T)` | ✅ | `tagged.cddl` (`#6.42(text)`); `supported.cddl` (`unit_interval`). Doubly-nested tags panic → ➖ sub-case |
-| Generics `foo<T>` | ✅ | `generics.cddl`. Limits are `todo!`: generic-of-generic, `foo<T>=T/null`, generic group choices |
-| Unwrap `~` (§3.7) | ➖ | `Type2::Unwrap` unmatched → catch-all panic |
-| Type socket `$` / group socket `$$` (§3.9) | ⚠️/❓ | `$`/`$$` are merely *stripped* from identifiers (`$hash32`→`hash32`) so a socket *reference* aliases cosmetically (`supported.cddl` uses `$hash32`); true plugging (`/=`, `//=`) is ignored in `parse_rule`. `$$` group-socket semantics ❓ untested |
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `genericarg.multiple` | ➕ | Multiple generic arguments | supported, no corpus fixture (cddl-codegen exit 0) |
+| `genericarg.type1` | ➕ | Type-expression argument | supported, no corpus fixture (cddl-codegen exit 0) |
 
-### Control operators (§3.8)
-Dispatched in `parse_control_operator`; an unmatched operator hits
-`panic!("Unknown (not seen in RFC-8610) range control operator: …")`.
-| operator | status | corpus / evidence |
-|----------|--------|-------------------|
-| `.size` (§3.8.1) | ✅ | `bounded_bytes.cddl`, `sized_text.cddl`, `sized_int.cddl` (signed-int `.size` panics) |
-| `.cbor` (§3.8.4) | ✅ | `cbor_in_bytes.cddl` |
-| `.default` (§3.8.6) | ✅ | `default_value.cddl` |
-| `.le` (§3.8.6) | ✅ | `sized_int.cddl`; `supported.cddl` (`uint .le 65535`) |
-| `.lt` `.gt` `.ge` `.eq` `.ne` (§3.8.6) | ➕ | handled in `parse_control_operator`, no corpus (`.ne` is a `(v+1,v-1)` hack) |
-| `.bits` (§3.8.2) | ➖ | no arm → `panic!("Unknown (not seen in RFC-8610) range control operator: …")` |
-| `.regexp` / `.pcre` (§3.8.3) | ➖ | no arm → same control-op panic |
-| `.cborseq` (§3.8.4) | ➖ | `todo!("control operator cborseq not supported")` |
-| `.within` `.and` (§3.8.5) | ➖ | `todo!("control operator {} not supported", …)` |
+### `genericparm` (1)
 
-## cddl-codegen extensions (not RFC 8610)
-| construct | status | corpus / evidence |
-|-----------|--------|-------------------|
-| Comment DSL `@name` `@doc` `@newtype` `@no_alias` `@used_as_key` `@custom_serialize`/`@custom_deserialize` `@custom_json` | ✅ | `dsl_name/doc/newtype/no_alias/used_as_key/custom.cddl` (parsed in `comment_ast.rs`) |
-| `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` sentinels | ✅ (integration, no corpus) | handlers `new_extern` / `new_raw_bytes`; tests in `tests/raw-bytes/`, `tests/extern-deps/`. Snapshot-only corpus coverage is blocked (they emit undefined user types → break `feature_corpus_compiles`); see `CLEAR_WINS_PLAN.md` skip-list note |
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `genericparm.multiple` | ➕ | Multiple generic parameters | supported, no corpus fixture (cddl-codegen exit 0) |
 
-## Other documents to process later
-This pass covers **RFC 8610 only**. Known follow-ups (verify numbers/contents before relying on them):
-- **RFC 9165 — Additional Control Operators for CDDL** (`.plus` `.cat` `.det` `.abnf` `.abnfb` `.feature`):
-  the cddl crate has tokens for all of them, but cddl-codegen has **no arms**, so each hits the
-  `parse_control_operator` "Unknown … range control operator" panic — i.e. currently ➖. Worth its own
-  pass (fetch to `draft/golden-vectors/rfc9165.txt`).
-- **CDDL modules / later updates** (e.g. the `draft-ietf-cbor-cddl-modules` line of work): TBD — confirm
-  the exact RFC/draft before adding rows.
+### `group` (1)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `group.choice` | ✅ | Group choice (//) | `group_choice.cddl` |
+
+### `grpchoice` (1)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `grpchoice.sequence` | ➕ | Group-entry sequence | supported, no corpus fixture (cddl-codegen exit 0) |
+
+### `grpent` (3)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `grpent.groupname` | ➕ | Group-name reference entry | supported, no corpus fixture (cddl-codegen exit 0) |
+| `grpent.inline_group` | ➕ | Inline (parenthesized) group entry | supported, no corpus fixture (cddl-codegen exit 0) |
+| `grpent.member` | ➕ | Member entry (optional occur + optional memberkey + type) | supported, no corpus fixture (cddl-codegen exit 0) |
+
+### `memberkey` (4)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `memberkey.bareword` | ✅ | Bareword memberkey (k:) | `map_struct.cddl` |
+| `memberkey.cut` | ➖ | Cut in a => memberkey (^) | explicit cut `^` attaches to a `=>` (Type1) memberkey, which cddl-codegen doesn't support in this form — the example panics. (The IMPLICIT cut on `:`/bareword keys is a separate, supported-but-dropped story — see finding.)  [`Encountered Type1 member key in multi-field map`] |
+| `memberkey.type1` | ✅ | Type memberkey (t =>) | `table.cddl` |
+| `memberkey.value` | ➕ | Value memberkey (1:) | supported, no corpus fixture (cddl-codegen exit 0) |
+
+### `occur` (4)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `occur.bounded` | ➕ | Bounded occurrence (n*m) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `occur.one_or_more` | ➕ | One-or-more occurrence (+) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `occur.optional` | ✅ | Optional occurrence (?) | `optional.cddl` |
+| `occur.zero_or_more` | ✅ | Zero-or-more occurrence (*) | `homogeneous_array.cddl` |
+
+### `prelude` (40)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `prelude.any` | ➖ | any | `x = any` generates `pub type X = Any;` referencing a type defined nowhere — does not compile (caught by the compile-gate; the exit-code-only probe formerly over-credited it). `any` is absent from is_identifier_reserved, so it's treated as an undefined user type.  [`is_identifier_reserved`] |
+| `prelude.b64legacy` | ➕ | b64legacy | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.b64url` | ➕ | b64url | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.bigfloat` | ➕ | bigfloat | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.bigint` | ✅ | bigint | `prelude.cddl` |
+| `prelude.bignint` | ➕ | bignint | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.biguint` | ✅ | biguint | `prelude.cddl` |
+| `prelude.bool` | ✅ | bool | `bool.cddl` |
+| `prelude.bstr` | ➕ | bstr | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.bytes` | ✅ | bytes | `primitives.cddl` |
+| `prelude.cbor-any` | ➖ | cbor-any | reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.decfrac` | ➕ | decfrac | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.eb16` | ➖ | eb16 | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.eb64legacy` | ➖ | eb64legacy | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.eb64url` | ➖ | eb64url | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.encoded-cbor` | ➕ | encoded-cbor | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone type panics — same Fixed-type gap as `true`/`null` (fails as a struct member too).  [`should not expose Fixed type in member`] |
+| `prelude.float` | ⚠️ | float | de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)  [`preserve_encodings is not implemented for float`] |
+| `prelude.float16` | ➖ | float16 | no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work).  [`should be handled by the alias system instead`] |
+| `prelude.float16-32` | ➖ | float16-32 | the float16/float32 choice alias isn't handled by the float alias system (it includes the unsupported float16); panics even as a member.  [`should be handled by the alias system instead`] |
+| `prelude.float32` | ⚠️ | float32 | works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float32]` compiles default, fails preserve)  [`preserve_encodings is not implemented for float`] |
+| `prelude.float32-64` | ➖ | float32-64 | the float32/float64 choice alias isn't handled by the float alias system (the float-choice aliases are unsupported, though float32/float64 work on their own); panics even as a member.  [`should be handled by the alias system instead`] |
+| `prelude.float64` | ⚠️ | float64 | works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float64]` compiles default, fails preserve)  [`preserve_encodings is not implemented for float`] |
+| `prelude.int` | ✅ | int | `primitives.cddl` |
+| `prelude.integer` | ➕ | integer | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.mime-message` | ➕ | mime-message | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type.  [`should not expose Fixed type in member`] |
+| `prelude.nint` | ✅ | nint | `primitives.cddl` |
+| `prelude.null` | ➖ | null | top-level `x = null` type panics — same Fixed-type gap; null works inside a `T / null` choice (nullable.cddl -> Option)  [`should not expose Fixed type in member`] |
+| `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.regexp` | ➕ | regexp | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.tdate` | ➕ | tdate | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.text` | ✅ | text | `primitives.cddl` |
+| `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone type panics; cddl-codegen exposes fixed values only for serialization, not as types (fails as a struct member too). Same Fixed-type gap as `null`.  [`should not expose Fixed type in member`] |
+| `prelude.tstr` | ➕ | tstr | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.uint` | ✅ | uint | `primitives.cddl` |
+| `prelude.undefined` | ➖ | undefined | the `undefined` simple value is rejected  [`unsupported cddl prelude type`] |
+| `prelude.unsigned` | ✅ | unsigned | `prelude.cddl` |
+| `prelude.uri` | ✅ | uri | `prelude.cddl` |
+
+### `rangeop` (2)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `rangeop.exclusive` | ➕ | Exclusive range (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.inclusive` | ✅ | Inclusive range (a..b) | `sized_int.cddl` |
+
+### `rule` (2)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `genericparm.group` | ➖ | Generic group definition | a generic GROUP definition (`set<a> = (* a)`) is rejected — generics are supported on type rules, not on plain groups.  [`Generics not supported on plain groups`] |
+| `genericparm.type` | ✅ | Generic type definition | `generics.cddl` |
+
+### `type` (2)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `type.choice` | ✅ | Type choice (/) | `type_choice.cddl` |
+| `type.enum` | ✅ | All-fixed-value type choice (c-style enum) | `c_style_enum.cddl` |
+
+### `type1` (1)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `type1.ctlop` | ✅ | Control-operator application (.op) | `bounded_bytes.cddl` |
+
+### `type2` (13)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `genericarg.type` | ✅ | Generic type instantiation | `generics.cddl` |
+| `type2.any` | ➖ | Any (#) | bare `#` (any) — Type2 variant unmatched, falls into the catch-all panic  [`Ignoring Type2`] |
+| `type2.array` | ✅ | Array | `array.cddl` |
+| `type2.choice_from_group` | ➖ | Choice from named group (&) | choice-from-group `&groupname` — unmatched  [`Type2::ChoiceFromGroup`] |
+| `type2.choice_from_inline_group` | ➖ | Choice from inline group (&) | choice-from-inline-group `&(...)` — unmatched  [`Type2::ChoiceFromInlineGroup`] |
+| `type2.major` | ➖ | Major-type sigil (#N, #N.n) | major-type sigils `#N` / `#N.n` — Type2::DataMajorType unmatched, catch-all panic  [`Ignoring Type2`] |
+| `type2.major7` | ➖ | Major-type 7 / simple sigil (#7, #7.n) | `#7` / `#7.n` simple/float sigils — unmatched, catch-all panic  [`Ignoring Type2`] |
+| `type2.map` | ✅ | Map | `map_struct.cddl` — canonical = pure struct map; table-style is table.cddl; MIXED struct+table ({a: uint, * k => v}) is unsupported (parsing.rs) |
+| `type2.parenthesized` | ✅ | Parenthesized type | `nested_group.cddl` |
+| `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
+| `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
+| `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
+| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap.  [`should not expose Fixed type in member`] |
+
+### `value` (3)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)  [`Ignoring Type2`] |
+| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `c: 5`)  [`should not expose Fixed type in member`] |
+| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap; works as a member (fixed_value.cddl `b: "marker"`)  [`should not expose Fixed type in member`] |
+
+## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
+
+### `type2` (1)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `type2.tag_head_type` | ➖ | Tagged data item, type-valued tag number (#6.<T>) | out of profile — cddl-codegen rejected at parse/lex (exit 1) |
+
+## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
+
+### `comment_dsl` (8)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `dsl.custom_deserialize` | ✅ | @custom_deserialize — override deserialization | `dsl_custom.cddl` |
+| `dsl.custom_json` | ✅ | @custom_json — suppress generated JSON traits | `dsl_custom.cddl` |
+| `dsl.custom_serialize` | ✅ | @custom_serialize — override serialization | `dsl_custom.cddl` |
+| `dsl.doc` | ✅ | @doc — rust doc comment | `dsl_doc.cddl` |
+| `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
+| `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
+| `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
+| `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
+
+### `sentinel` (2)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `ext.extern` | ➕ | _CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type | supported; requires a user-provided extern type; integration-tested in tests/extern-deps |
+| `ext.raw_bytes` | ➕ | _CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints | supported; requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes |
+
+## Control operators (`ctlop`, §3.8 + IANA registry)
+
+> Support is execution-probed per operator (generate + compile), keyed `ctl.<name>` — same probe as
+> features. cddl-codegen implements **9 of the 37** IANA operators (`.size .cbor .default .eq .ne .le
+> .lt .ge .gt`); the rest panic or parse-reject. The generic "a control op is applied" feature
+> (`type1.ctlop`) appears under `RFC8610 / type1` above.
+
+| operator | | evidence |
+|----------|---|----------|
+| `.abnf` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.abnfb` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.and` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64c-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64u` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64u-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.base10` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.bits` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.cat` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.cbor` | ✅ | `cbor_in_bytes.cddl` |
+| `.cborseq` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.default` | ✅ | `default_value.cddl` |
+| `.det` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.eq` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.feature` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.ge` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.gt` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hexuc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.le` | ✅ | `sized_int.cddl` |
+| `.lt` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.ne` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.oid` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.plus` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.regexp` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.sdnv` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.sdnvseq` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.size` | ✅ | `bounded_bytes.cddl` |
+| `.within` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+
+## Notable findings
+
+1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
+2. Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
+3. The IMPLICIT cut on `:`/bareword keys is parsed but silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The EXPLICIT `^` cut is unsupported (see the memberkey.cut note).
+4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes).
+5. Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats.
+6. Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested).
+7. Bug — a type choice containing `bool` generates non-compiling Rust (`error[E0282]: type annotations needed`): `bool / tstr` and `uint / bool` fail, while `int / tstr` and `uint / text / bytes` compile. Surfaced by the compile-gate (the `type.choice` example was changed off `bool` to isolate the construct). Candidate cddl-codegen fix.
+8. Bug — a single-letter rule named `r` capitalizes to a struct `R` that collides with the generated deserializer's reader generic parameter `R` (`error[E0574]: ... found type parameter R`), so the crate fails to compile. Surfaced incidentally by the compile-gate; avoid `r` as a rule name. Candidate cddl-codegen fix.
+9. Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix.
+10. Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
+11. Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work.
 
 ## Summary
-- **Covered (✅):** all the core building blocks — primitives, fixed/variable arrays & maps (struct +
-  table), groups & embedding, inline root groups, type/group choices (+ `T/null`→Option, all-fixed
-  c-enum), inclusive ranges, `#6.n` tags, generics, `?`/`*` occurrence, `.size`/`.cbor`/`.default`/`.le`,
-  the tested prelude subset, and all comment-DSL features.
-- **Corpus gaps (➕) — actionable, all profile-safe to add:** `+` and `n*m` occurrence, exclusive range
-  `...`, `.lt`/`.gt`/`.ge`/`.eq`/`.ne`. (Float and float-bearing prelude types are ➕ in principle but
-  **blocked from the corpus** by the `preserve` `unimplemented!`, so they need a default/json-only home,
-  not a standard corpus file.)
-- **Boundary (➖):** `any`/`undefined`/`#7.n`/bare `#`/`#0..#7`, string literals, the `eb*`/`cbor-any`
-  prelude, choice-from-group `&`, unwrap `~`, `.bits`/`.regexp`/`.cborseq`/`.within`/`.and`, and all
-  RFC 9165 operators. Sockets are ⚠️ (reference-only), cuts are ⚠️ (ignored).
 
-## Notable findings (fell out of the gap analysis)
-1. **Unsupported constructs `panic!` instead of erroring gracefully** — feeding otherwise-valid CDDL
-   that uses an unsupported construct crashes the generator (the two catch-all arms + the control-op
-   panic). Relates to `tests/robustness`; a graceful "unsupported construct X" error would be friendlier.
-2. **Misleading panic message** — the control-op panic says *"not seen in RFC-8610"* even for RFC-8610
-   operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
-3. **Cuts in maps are parsed but not enforced** — a potential correctness gap.
-4. **Sockets aren't really implemented** — `$`/`$$` are stripped to plain identifiers, so `$x` silently
-   aliases to `x`; the extensible plug mechanism (`/=`, `//=`) is ignored.
-5. **Float is fine until `--preserve-encodings` or bounds** (the `unimplemented!` sites above) — known,
-   and the reason the corpus avoids floats.
+- Features: **92** — ✅ 34 covered · ➕ 27 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
+- Control operators: **37** — ✅ 4 covered · ➕ 5 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
+- Corpus fixtures: 28
+
+**Deferred (disclosed, not faked):**
+- **Per-role coverage (ROADMAP item 6).** Coverage here is feature-axis only — the corpus floor is a
+  text scan that detects THAT a construct appears, not in WHICH container role. Per-cell *support*
+  (role × feature) exists in the matrix but role-keyed *coverage* awaits the `cddl`-crate AST walk.

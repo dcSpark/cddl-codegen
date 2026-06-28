@@ -20,8 +20,8 @@ id = "contain.cbor-payload.type2.tag"
 role = "role.cbor-payload"
 feature = "type2.tag"
 spec = "allowed"
-note = "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(int))`. RFC8610 §3.8.4, §3.6; ABNF ctlop controller type2 tagged-data."
-example = "b = bytes .cbor (#6.10(int))"
+note = "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(uint))`. RFC8610 §3.8.4, §3.6; ABNF ctlop controller type2 tagged-data. (uint payload, not int: a bare `int` inside emits the un-emitted Int wrapper and fails the compile-gate — orthogonal to tag-in-cbor.)"
+example = "b = bytes .cbor (#6.10(uint))"
 
 [[contain]]
 id = "contain.cbor-payload.type.choice"
