@@ -51,14 +51,14 @@ what's already covered.
    churn and the `which` dependency, compiles fast, never bails (`syn` is already a dep). Lower
    urgency only because the pinned toolchain already mitigates churn.
 
-6. **Large-integer boundary in the wasm/JSON path.** *(small)*
-   - ✅ *Done (safe half).* `wasm_json_roundtrip` now pins the `u64 = 2^53-1` round-trip
-     (`tests/wasm_json/roundtrip.mjs`) — a judgment-free lock just below the JS safe-integer cliff.
-   - **Pending decision (the gap with teeth):** for `u64 > 2^53`, `to_json` emits full precision,
-     `JSON.parse(to_json())` truncates, and `to_json_value()` *throws* (`json_compatible` has no
-     bigint). Pin a fixture only after a maintainer blesses the intended contract — see "Pending
-     decisions" below. Broadening to more type shapes or `preserve`/`canonical` is still not tracked
-     (the emitted `to_json_value` line is flag-independent); do it only if a divergence surfaces.
+6. ✅ **Large-integer boundary in the wasm/JSON path.** *Done.* `wasm_json_roundtrip`
+   (`tests/wasm_json/roundtrip.mjs`) pins both halves: the `u64 = 2^53-1` round-trip just below the JS
+   safe-integer cliff, and the `u64 > 2^53` contract above it — `to_json()` stays lossless,
+   `to_json_value()` *fails loud* (throws rather than silently rounding), and `JSON.parse(to_json())`
+   is lossy by JS definition. The blessed contract (keep fail-loud; bigint would break
+   `JSON.stringify` and retype every int field) is documented in `docs/docs/wasm_differences.mdx`.
+   Broadening to more type shapes / `preserve`/`canonical` stays untracked (the `to_json_value` line
+   is flag-independent) — do it only if a divergence surfaces.
 
 7. **Output-validate `--json-schema-export` (today it's only compile-checked).** *(small–medium)*
    - ✅ *Done.* `integration_tests::json` / `json_preserve` now run
@@ -97,8 +97,6 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
 - **Trailing-bytes contract.** `from_cbor_bytes` accepts extra bytes after a complete value. Reject
   (stricter; matches most CBOR expectations) or keep? Affects every generated crate — asserting
   `is_err()` today would fail. Decide, then pin the test.
-- **`u64 > 2^53` JSON contract** (item 6). Throw vs bigint vs lossy — pick the intended behaviour,
-  then freeze it with a fixture.
 - **Snapshot-only corpus policy.** A ~5-line `feature_corpus_compiles` skip-list would unblock
   *snapshot* coverage of the extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes
   (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`) emit paths — they emit undefined user-supplied types so they

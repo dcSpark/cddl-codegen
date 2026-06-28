@@ -21,3 +21,15 @@ Map literals also generate a type for them with `len() -> usize` and `insert(K, 
 ## Enums
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.
+
+## JSON and large integers
+
+With `--json-serde-derives` a wasm type exposes two ways to produce JSON: `to_json()` returns a string (via `serde_json`) and `to_json_value()` returns a live JS value (via `serde-wasm-bindgen`). They agree for every value inside JavaScript's safe-integer range (`|n| ≤ 2^53 − 1`).
+
+Above that, a `uint` (Rust `u64`) can hold values JavaScript's `number` cannot represent exactly, and the two paths intentionally differ:
+
+- **`to_json()` is always lossless** — the full-precision integer is written into the JSON string.
+- **`to_json_value()` fails loud** — it throws (`... can't be represented as a JavaScript number`) instead of silently returning a rounded `number`. `serde-wasm-bindgen`'s `json_compatible` mode does not emit `BigInt` (a `BigInt` would not survive `JSON.stringify` and would change the JS type of *every* integer field), so refusing is the safe behaviour.
+- **`JSON.parse(to_json())` is lossy** for these values — that is a property of JavaScript's native `JSON.parse`, not of the generated code.
+
+If you need full precision above `2^53` on the JS side, take `to_json()` and parse it with a BigInt-aware JSON parser rather than `JSON.parse` / `to_json_value()`.

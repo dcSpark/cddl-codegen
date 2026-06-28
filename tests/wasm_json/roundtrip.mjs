@@ -40,14 +40,39 @@ check(
 );
 // Boundary: maybe_num pinned at the JS safe-integer maximum (2^53-1 = Number.MAX_SAFE_INTEGER).
 // At/below this cliff a u64 survives JSON.parse losslessly, so both serializers must still agree
-// exactly. This locks the *safe* range; the >2^53 divergence (to_json_value() throws) stays a
-// deliberate maintainer call and is intentionally not asserted here.
+// exactly. This locks the *safe* range; the >2^53 contract is pinned separately just below.
 check(
   lib.Foo.from_json(
     '{"a_map":{},"a_list":[],"nested":[],"a_bytes":[],"maybe_num":9007199254740991,"flag":true}',
   ),
   'Foo (maybe_num at 2^53-1, JS safe-integer max)',
 );
+// Above the cliff (u64 > 2^53) the three JSON paths deliberately diverge, and the current behaviour
+// is the *blessed* contract (empirically verified; documented in docs/docs/wasm_differences.mdx,
+// TESTING_ROADMAP.md item 6):
+//   - to_json() (serde_json) stays lossless / full precision;
+//   - to_json_value() (serde-wasm-bindgen json_compatible, no bigint) FAILS LOUD — it throws rather
+//     than silently handing back a rounded JS number;
+//   - JSON.parse(to_json()) is inherently lossy (native JS number) — a JS-engine limit, not our bug.
+// Lock the two guarantees that are ours to keep; the lossy JSON.parse value is JS-defined and not
+// asserted. A change that makes to_json() lossy, or to_json_value() round silently, fails here.
+{
+  const big = '9007199254740993'; // 2^53 + 1: first u64 not exactly representable as a JS number
+  const foo = lib.Foo.from_json(
+    `{"a_map":{},"a_list":[],"nested":[],"a_bytes":[],"maybe_num":${big},"flag":true}`,
+  );
+  assert.match(
+    foo.to_json(),
+    new RegExp(`"maybe_num":\\s*${big}\\b`),
+    'to_json() must keep a u64 > 2^53 at full precision',
+  );
+  assert.throws(
+    () => foo.to_json_value(),
+    /can't be represented as a JavaScript number/,
+    'to_json_value() must fail loud (not silently round) for a u64 > 2^53',
+  );
+  console.log('wasm_json u64 > 2^53: to_json() lossless + to_json_value() fails loud (contract pinned)');
+}
 // Type choice: externally-tagged enum, serialized via serialize_map (a JS Map under the default
 // serializer), so both variants are discriminators.
 check(lib.TopChoice.new_uint(5n), 'TopChoice::uint');
