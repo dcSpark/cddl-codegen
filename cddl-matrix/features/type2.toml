@@ -1,0 +1,210 @@
+# CDDL features — one row per ABNF production alternative (the construct + variation axis).
+# SEED: only the `type2` production (RFC 8610 §2.1 / ABNF) is worked here, plus the `value`
+# sub-production it references, to validate the schema. Other productions added in the scale step.
+#
+# Schema per [[feature]]:
+#   id          stable slug (production-path); referenced by containment.toml + annotations/*
+#   production  the ABNF production this alternative belongs to
+#   alt         the specific alternative within the production (verbatim-ish from the ABNF)
+#   rfc         spec anchor: RFC + section + production (NO line numbers)
+#   profile     CDDL language profile (the RFC) that INTRODUCES this construct, determined by diffing
+#               sources/cddl.abnf (RFC8610) vs sources/cddl-1-1-update.abnf (RFC9682). Default
+#               "RFC8610"; "RFC9682" for grammar additions present ONLY in the update grammar
+#               (the `#7` split, the type-valued tag head-number `head-number = uint / ("<" type ">")`).
+#   title       short human label
+#   desc        one-line description
+#   example     minimal CDDL snippet
+#   roles       (optional) container-roles this feature recurses into (links into roles.toml)
+#   encodings   (optional) CBOR encodings it can take (links into encodings.toml)
+#
+# Support status is NOT here — see annotations/cddl_codegen.toml (master stays pure spec).
+
+# --- type2 = value ---
+[[feature]]
+id = "type2.value"
+production = "type2"
+alt = "value"
+rfc = "RFC8610 §2.1; ABNF type2 / value"
+profile = "RFC8610"
+title = "Literal value as a type"
+desc = "A literal (number / text / byte string) used directly as a type."
+example = "answer = 42"
+# `value` decomposes — these sub-features carry distinct code paths (bytes literal differs from number):
+
+[[feature]]
+id = "value.number"
+production = "value"
+alt = "number"
+rfc = "RFC8610 §2.1; ABNF value / number"
+profile = "RFC8610"
+title = "Numeric literal value"
+desc = "An int or float literal used as a (fixed) value."
+example = "version = 5"
+encodings = ["enc.major0", "enc.major1", "enc.major7.float"]
+
+[[feature]]
+id = "value.text"
+production = "value"
+alt = "text"
+rfc = "RFC8610 §2.1; ABNF value / text"
+profile = "RFC8610"
+title = "Text literal value"
+desc = "A text-string literal used as a (fixed) value."
+example = 'marker = "v1"'
+encodings = ["enc.major3"]
+
+[[feature]]
+id = "value.bytes"
+production = "value"
+alt = "bytes"
+rfc = "RFC8610 §2.1; ABNF value / bytes (h'..' / b64'..' / '..')"
+profile = "RFC8610"
+title = "Byte-string literal value"
+desc = "A byte-string literal (hex/base64/raw) used as a value."
+example = "magic = h'cafe'"
+encodings = ["enc.major2"]
+
+# --- type2 = typename [genericarg] ---
+[[feature]]
+id = "type2.typename"
+production = "type2"
+alt = "typename [genericarg]"
+rfc = "RFC8610 §2.1, §3.10; ABNF type2 / typename"
+profile = "RFC8610"
+title = "Type reference (with optional generic args)"
+desc = "A reference to a named type, optionally instantiating generic parameters (the [genericarg] attach site; instantiation covered by genericarg.type)."
+example = "foo = bar\nbar = uint"
+roles = ["role.generic-arg"]
+
+# --- type2 = "(" type ")" ---
+[[feature]]
+id = "type2.parenthesized"
+production = "type2"
+alt = '"(" type ")"'
+rfc = "RFC8610 §2.1; ABNF type2 / parenthesized"
+profile = "RFC8610"
+title = "Parenthesized type"
+desc = "A type grouped in parentheses (also how inline groups appear at type position)."
+example = "foo = (uint)"
+
+# --- type2 = "{" group "}" ---
+[[feature]]
+id = "type2.map"
+production = "type2"
+alt = '"{" group "}"'
+rfc = "RFC8610 §3.5; ABNF type2 / map"
+profile = "RFC8610"
+title = "Map"
+desc = "A CBOR map; struct-style (named members) or table-style ({ * K => V })."
+example = "foo = { a: uint, * tstr => int }"
+roles = ["role.map-key", "role.map-value"]
+encodings = ["enc.major5"]
+
+# --- type2 = "[" group "]" ---
+[[feature]]
+id = "type2.array"
+production = "type2"
+alt = '"[" group "]"'
+rfc = "RFC8610 §3.4; ABNF type2 / array"
+profile = "RFC8610"
+title = "Array"
+desc = "A CBOR array; fixed (heterogeneous) or variable (homogeneous via occurrence)."
+example = "foo = [uint, tstr, * bytes]"
+roles = ["role.array-element"]
+encodings = ["enc.major4"]
+
+# --- type2 = "~" typename [genericarg] ---
+[[feature]]
+id = "type2.unwrap"
+production = "type2"
+alt = '"~" typename [genericarg]'
+rfc = "RFC8610 §3.7; ABNF type2 / unwrap"
+profile = "RFC8610"
+title = "Unwrap (~)"
+desc = "Strips the enclosing array/map/tag of a named type so its content can be inlined; the unwrapped typename may itself carry generic args (the [genericarg] attach site)."
+example = "bar = [uint]\nfoo = ~bar"
+roles = ["role.generic-arg"]
+
+# --- type2 = "&" "(" group ")" ---
+[[feature]]
+id = "type2.choice_from_inline_group"
+production = "type2"
+alt = '"&" "(" group ")"'
+rfc = "RFC8610 §2.2.2.2; ABNF type2 / choice-from-inline-group"
+profile = "RFC8610"
+title = "Choice from inline group (&)"
+desc = "Turns an inline group into a type choice over its entries."
+example = "color = &(red: 0, green: 1, blue: 2)"
+
+# --- type2 = "&" groupname [genericarg] ---
+[[feature]]
+id = "type2.choice_from_group"
+production = "type2"
+alt = '"&" groupname [genericarg]'
+rfc = "RFC8610 §2.2.2.2; ABNF type2 / choice-from-group"
+profile = "RFC8610"
+title = "Choice from named group (&)"
+desc = "Turns a named group into a type choice over its entries; the groupname may carry generic args (the [genericarg] attach site)."
+example = "color = &colors\ncolors = (red: 0, green: 1)"
+roles = ["role.generic-arg"]
+
+# --- type2 = "#" "6" ["." head-number] "(" type ")" ---
+[[feature]]
+id = "type2.tag"
+production = "type2"
+alt = '"#" "6" ["." head-number] "(" type ")"'
+rfc = 'RFC9682 ABNF type2 / tagged-data; head-number = uint / ("<" type ">"); RFC8610 §3.6 semantics'
+profile = "RFC8610"
+title = "Tagged data item (#6.n)"
+desc = "A CBOR tag wrapping a type; the tag number (head-number) is a literal uint here. RFC 9682 also allows head-number to be a type expression — see type2.tag_head_type."
+example = "rational = #6.30([uint, uint])"
+roles = ["role.tag-content"]
+encodings = ["enc.major6"]
+
+# --- type2 = "#" "6" ["." head-number] "(" type ")"  with head-number = "<" type ">" ---
+[[feature]]
+id = "type2.tag_head_type"
+production = "type2"
+alt = '"#" "6" ["." head-number] "(" type ")"  ; head-number = "<" type ">"'
+rfc = 'RFC9682 ABNF type2 / tagged-data; head-number = uint / ("<" type ">")'
+profile = "RFC9682"
+title = "Tagged data item, type-valued tag number (#6.<T>)"
+desc = "RFC 9682 variation of the #6 tag: the tag number (head-number) may be a TYPE expression (`<type>`), not only a literal uint."
+example = "t = #6.<n>(int)\nn = uint"
+roles = ["role.tag-content"]
+encodings = ["enc.major6"]
+
+# --- type2 = "#" "7" ["." head-number] ---
+[[feature]]
+id = "type2.major7"
+production = "type2"
+alt = '"#" "7" ["." head-number]'
+rfc = "RFC9682 ABNF type2 / data-major-type-7 (dedicated alternative); RFC8610 §2.2.3 (major 7 already expressible via the generic #DIGIT alternative)"
+profile = "RFC8610"
+title = "Major-type 7 / simple sigil (#7, #7.n)"
+desc = "Major type 7 (simple values and floats), e.g. #7.20 = false. The CAPABILITY exists in RFC 8610 (#7.n is reachable via the generic #DIGIT alternative); RFC 9682 only SPLIT it into a dedicated grammar production — a presentational refactor, not a new capability — so profile is RFC8610. Kept as its own row for per-alternative coverage of the RFC 9682 grammar."
+example = "foo = #7.20"
+encodings = ["enc.major7"]
+
+# --- type2 = "#" DIGIT ["." uint]  ; major/ai ---
+[[feature]]
+id = "type2.major"
+production = "type2"
+alt = '"#" DIGIT ["." uint]'
+rfc = "RFC8610 §2.2.3; ABNF type2 / data-major-type"
+profile = "RFC8610"
+title = "Major-type sigil (#N, #N.n)"
+desc = "Constrain to the CBOR major type selected by the digit N (0-7), with optional additional info n (#N.n); the digit ranges over all eight majors. Major 7 has its own dedicated alternative — see type2.major7."
+example = "foo = #1.2"
+encodings = ["enc.major0", "enc.major1", "enc.major2", "enc.major3", "enc.major4", "enc.major5", "enc.major6", "enc.major7"]
+
+# --- type2 = "#"  ; any ---
+[[feature]]
+id = "type2.any"
+production = "type2"
+alt = '"#"'
+rfc = "RFC8610 §2.2.3; ABNF type2 / any"
+profile = "RFC8610"
+title = "Any (#)"
+desc = "Matches any single CBOR data item."
+example = "foo = #"

@@ -1,0 +1,100 @@
+# CDDL features — generics: parametrized definitions (`genericparm`) and instantiations (`genericarg`).
+# One row per distinct ABNF alternative / type.
+#   genericparm = "<" S id S *("," S id S ) ">"      ; the DEFINITION (params are bare `id`s)
+#   genericarg  = "<" S type1 S *("," S type1 S ) ">" ; the INSTANTIATION (args are full `type1`s)
+# genericparm attaches to a `rule` head (typename- or groupname-rule); genericarg attaches to a
+# `type2`/`grpent` name reference (typename / "~" typename / "&" groupname / grpent groupname).
+# NOTE on `production`: a row's `production` is the host production the alternative actually belongs
+# to, not the generics sub-production. The two genericparm-bearing rule heads carry `production =
+# "rule"` (genericparm is optional on the rule head); the typename-instantiation row carries
+# `production = "type2"` (it IS the `typename [genericarg]` type2 alternative). The genericparm/
+# genericarg rows below model the repetition (`*("," ...)`) and the type1-argument forms proper.
+#
+# Schema per [[feature]] — matches features/type2.toml exactly:
+#   id          stable slug (production-path); referenced by containment.toml + annotations/*
+#   production  the ABNF production this alternative belongs to
+#   alt         the specific alternative within the production (verbatim-ish from the ABNF)
+#   rfc         spec anchor: RFC + section + production (NO line numbers)
+#   profile     CDDL language profile (RFC) that introduces the construct; default "RFC8610" (see type2.toml)
+#   title       short human label
+#   desc        one-line description
+#   example     minimal CDDL snippet
+#   roles       (optional) container-roles this feature recurses into (links into roles.toml)
+#   encodings   (optional) CBOR encodings it can take (links into encodings.toml)
+#
+# Support status is NOT here — see annotations/cddl_codegen.toml (master stays pure spec).
+# NOTE: generics are erased at instantiation, so these features carry no direct CBOR encoding
+# (the encoding is whatever the instantiated body produces) — hence no `encodings` field.
+
+# --- genericparm = parametrized DEFINITION ---
+
+# rule = typename [genericparm] S assignt S type   (generic on a TYPE rule)
+[[feature]]
+id = "genericparm.type"
+production = "rule"
+alt = "typename [genericparm]"
+rfc = "RFC8610 §3.10; ABNF rule / typename [genericparm]"
+profile = "RFC8610"
+title = "Generic type definition"
+desc = "A type rule parametrized over one or more identifiers; each param is usable as a type in the body."
+example = "foo<a> = [a]"
+
+# id S *("," S id S)   (the repetition: more than one parameter)
+[[feature]]
+id = "genericparm.multiple"
+production = "genericparm"
+alt = 'id *("," id)'
+rfc = "RFC8610 §3.10; ABNF genericparm"
+profile = "RFC8610"
+title = "Multiple generic parameters"
+desc = "A definition taking two or more comma-separated parameter identifiers."
+example = "pair<k, v> = [k, v]"
+
+# rule = groupname [genericparm] S assigng S grpent   (generic on a GROUP rule)
+[[feature]]
+id = "genericparm.group"
+production = "rule"
+alt = "groupname [genericparm]"
+rfc = "RFC8610 §3.10; ABNF rule / groupname [genericparm]"
+profile = "RFC8610"
+title = "Generic group definition"
+desc = "A group rule parametrized over identifiers; the params stand in for entry types when the group is spliced."
+example = "set<a> = (* a)"
+
+# --- genericarg = INSTANTIATION ---
+
+# type2 = typename [genericarg]   (instantiate a parametrized type reference)
+[[feature]]
+id = "genericarg.type"
+production = "type2"
+alt = "typename [genericarg]"
+rfc = "RFC8610 §3.10; ABNF type2 / typename [genericarg]"
+profile = "RFC8610"
+title = "Generic type instantiation"
+desc = "Referencing a parametrized type and binding each parameter to a concrete argument type."
+example = "foo<a> = [a]\nbar = foo<uint>"
+roles = ["role.generic-arg"]
+
+# type1 S *("," S type1 S)   (the repetition: more than one argument)
+[[feature]]
+id = "genericarg.multiple"
+production = "genericarg"
+alt = 'type1 *("," type1)'
+rfc = "RFC8610 §3.10; ABNF genericarg"
+profile = "RFC8610"
+title = "Multiple generic arguments"
+desc = "Binding two or more comma-separated argument types, positionally matched to the parameters."
+example = "pair<k, v> = [k, v]\nx = pair<uint, tstr>"
+roles = ["role.generic-arg"]
+
+# genericarg argument is a full `type1` (not merely a typename): ranges/ctlops/inline forms allowed.
+[[feature]]
+id = "genericarg.type1"
+production = "genericarg"
+alt = "type1"
+rfc = "RFC8610 §3.10; ABNF genericarg / type1"
+profile = "RFC8610"
+title = "Type-expression argument"
+desc = "A generic argument may be any type1 expression (e.g. a range or controlled type), not just a named type."
+example = "foo<a> = [a]\nr = foo<1..10>"
+roles = ["role.generic-arg"]

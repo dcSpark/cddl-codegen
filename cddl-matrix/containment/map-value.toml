@@ -1,0 +1,37 @@
+# Containment — role.map-value × feature. Nestings in a map member's VALUE position
+# (`{ k: <here> }` / `{ * K => <here> }`). Schema = containment/type2.toml (id, role, feature, spec,
+# note) PLUS an `example` parsed by the oracles to corroborate `spec` ("allowed"/"disallowed" per
+# ABNF). The map-as-value cell (incl. table-as-value) is already in containment/type2.toml; only the
+# further interesting value shapes are added here. Grammar anchor: grpent = [occur S] [memberkey S] type.
+
+[[contain]]
+id = "contain.map-value.type.choice"
+role = "role.map-value"
+feature = "type.choice"
+spec = "allowed"
+note = "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice: `{ k: int / tstr }`. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice."
+example = "m = { k: int / tstr }"
+
+[[contain]]
+id = "contain.map-value.type2.array"
+role = "role.map-value"
+feature = "type2.array"
+spec = "allowed"
+note = "An array (type2) as a member value. RFC8610 §3.5.1, §3.4; ABNF grpent value -> type2 array."
+example = "m = { k: [int] }"
+
+[[contain]]
+id = "contain.map-value.type2.tag"
+role = "role.map-value"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data."
+example = "m = { k: #6.10(int) }"
+
+[[contain]]
+id = "contain.map-value.type2.unwrap"
+role = "role.map-value"
+feature = "type2.unwrap"
+spec = "allowed"
+note = "`~name` (unwrap) as a member value, inlining the unwrapped content into the value position. RFC8610 §3.5.1, §3.7; ABNF grpent value -> type2 unwrap."
+example = "a = [int]\nm = { k: ~a }"

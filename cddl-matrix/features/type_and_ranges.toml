@@ -1,0 +1,100 @@
+# CDDL features — the `type` / `type1` assembly layer (construct + variation axis).
+# Covers the productions that sit ABOVE type2 and compose type2 instances together:
+#   type    = type1 *(S "/" S type1)            ; type-choice assembly
+#   type1   = type2 [S (rangeop / ctlop) S type2] ; range / control-operator application
+#   rangeop = "..." / ".."                       ; inclusive / exclusive range
+#   ctlop   = "." id                             ; the operator name; APPLIED as `type1 .name type2`
+#   assignt = "=" / "/="                         ; incremental type-choice extension (/=)
+#   assigng = "=" / "//="                        ; incremental group-choice extension (//=)
+#
+# Modeling notes (so the row count is justified against the ABNF, not arbitrary):
+# - `type` and `type1` each have a single RHS (a sequence with an optional/repeated tail), not an
+#   ABNF alternation. Their *no-op* base cases (`type` with no `/`, `type1` with no operator) just
+#   delegate to type2 — already enumerated in type2.toml — so they get no row of their own. The
+#   distinct constructs these productions INTRODUCE are the choice tail (type) and the rangeop/ctlop
+#   slot (type1); those are the rows below.
+# - `rangeop` IS a two-way alternation (`..` vs `...`) → one row per alternative.
+# - `ctlop` is `"." id`; its "alternatives" are the operator *names*, which are the IANA-derived
+#   control-operator axis (reference ids `ctl.*`, authored from sources/cddl-control-operators.csv —
+#   NOT re-listed here). So control operators contribute ONE construct row: the application binding.
+#
+# Schema per [[feature]] matches features/type2.toml exactly:
+#   id, production, alt, rfc, profile, title, desc, example, [roles], [encodings].
+# (`profile` = the RFC that introduces the construct; default "RFC8610" — see type2.toml.)
+# Support status is NOT here — see annotations/cddl_codegen.toml.
+
+# --- type = type1 *(S "/" S type1) ---
+[[feature]]
+id = "type.choice"
+production = "type"
+alt = 'type1 *("/" type1)'
+rfc = "RFC8610 §2.2.2; ABNF type / type-choice"
+profile = "RFC8610"
+title = "Type choice (/)"
+desc = "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch."
+example = "t = int / tstr / bool"
+roles = ["role.choice-member"]
+
+# NOTE: the `T / null` special case is NOT a distinct ABNF alternative — it is the same
+# `type = type1 *("/" type1)` production as type.choice, privileged only by consumer behaviour
+# (`T / null` -> Option<T>). Per the "master stays pure spec" invariant it is not a feature row;
+# the consumer fact is preserved as a note in annotations/cddl_codegen.toml.
+
+# --- rangeop = ".." ---
+[[feature]]
+id = "rangeop.inclusive"
+production = "rangeop"
+alt = '".."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
+profile = "RFC8610"
+title = "Inclusive range (a..b)"
+desc = "Applied inside type1 as `type2 .. type2`; constrains to the closed interval including both endpoints."
+example = "t = 0..10"
+
+# --- rangeop = "..." ---
+[[feature]]
+id = "rangeop.exclusive"
+production = "rangeop"
+alt = '"..."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
+profile = "RFC8610"
+title = "Exclusive range (a...b)"
+desc = "Applied inside type1 as `type2 ... type2`; constrains to the half-open interval that excludes the upper endpoint."
+example = "t = 0...10"
+
+# --- type1 = type2 ctlop type2  (control-operator application) ---
+[[feature]]
+id = "type1.ctlop"
+production = "type1"
+alt = "type2 ctlop type2"
+rfc = "RFC8610 §3.8; ABNF type1 / ctlop (ctlop = \".\" id)"
+profile = "RFC8610"
+title = "Control-operator application (.op)"
+desc = "Binds a target type2 to a controller type2 via a `.name` control operator (`type1 .op type2`). The operator vocabulary is the IANA-derived control-op axis — see reference ids `ctl.*` (e.g. ctl.size, ctl.cbor, ctl.lt); this row is the application construct only, not the operator list."
+example = "t = tstr .size 4"
+
+# --- rule incremental-extension operators (assignt = "=" / "/=", assigng = "=" / "//=") ---
+# The base "=" assignment is the ordinary rule form used by every example; the distinct constructs
+# these productions introduce are the incremental choice-extension operators "/=" and "//=".
+
+[[feature]]
+id = "assignt.extend"
+production = "assignt"
+alt = '"/="'
+rfc = "RFC8610 §3.9; ABNF assignt = \"=\" / \"/=\""
+profile = "RFC8610"
+title = "Incremental type-choice extension (/=)"
+desc = "`name /= type` adds a `/` alternative to an existing (or new) type rule of that name, building a type choice incrementally across multiple rule statements."
+example = "a = int\na /= tstr"
+roles = ["role.choice-member"]
+
+[[feature]]
+id = "assigng.extend"
+production = "assigng"
+alt = '"//="'
+rfc = "RFC8610 §3.9; ABNF assigng = \"=\" / \"//=\""
+profile = "RFC8610"
+title = "Incremental group-choice extension (//=)"
+desc = "`name //= grpent` adds a `//` group-choice branch to an existing (or new) group rule of that name, building a group choice incrementally across multiple rule statements."
+example = "tcpopts = (1: int)\ntcpopts //= (2: tstr)"
+roles = ["role.choice-member"]

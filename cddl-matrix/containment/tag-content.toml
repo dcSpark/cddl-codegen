@@ -1,0 +1,21 @@
+# Containment — role.tag-content × feature. Nestings inside `#6.n( ... )`. Schema =
+# containment/type2.toml (id, role, feature, spec, note) PLUS an `example` parsed by the oracles to
+# corroborate `spec`. The nested-tag and tagged-array cells are already in containment/type2.toml;
+# tag content is a full `type`, so anything a `type` admits may be tagged. Grammar anchor:
+# type2 tagged-data = "#" "6" ["." uint] "(" type ")".
+
+[[contain]]
+id = "contain.tag-content.type2.map"
+role = "role.tag-content"
+feature = "type2.map"
+spec = "allowed"
+note = "The content of #6.n(...) is any `type`, so a map may be tagged: `#6.10({a: int})`. RFC8610 §3.6, §3.5; ABNF tagged-data -> type -> type2 map."
+example = "t = #6.10({a: int})"
+
+[[contain]]
+id = "contain.tag-content.type.choice"
+role = "role.tag-content"
+feature = "type.choice"
+spec = "allowed"
+note = "Tag content is a full `type`, so a `/` type-choice may be tagged directly: `#6.10(int / tstr)`. RFC8610 §3.6, §2.2.2; ABNF tagged-data -> type (type-choice)."
+example = "t = #6.10(int / tstr)"

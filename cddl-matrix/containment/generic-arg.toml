@@ -1,0 +1,21 @@
+# Containment — role.generic-arg × feature. A type passed as a generic parameter (`foo<...>`).
+# Schema = containment/type2.toml (id, role, feature, spec, note) PLUS an `example` parsed by the
+# oracles to corroborate `spec`. Each argument is a `type1`, so composites are legal but the bare
+# `/` type-choice (a `type`) is NOT — it must be parenthesized. Grammar anchor:
+# genericarg = "<" S type1 S *("," S type1 S) ">".
+
+[[contain]]
+id = "contain.generic-arg.type2.map"
+role = "role.generic-arg"
+feature = "type2.map"
+spec = "allowed"
+note = "A generic argument is a type1; a map (type2) may be bound to a parameter: `foo<{x: int}>`. RFC8610 §3.10; ABNF genericarg / type1 -> type2 map."
+example = "foo<a> = [a]\nbar = foo<{x: int}>"
+
+[[contain]]
+id = "contain.generic-arg.type.choice"
+role = "role.generic-arg"
+feature = "type.choice"
+spec = "disallowed"
+note = "Each generic argument is a `type1`, which excludes the `/` type-choice (a `type`); bare `foo<int / tstr>` is rejected by both oracles. Parenthesize — `foo<(int / tstr)>` — to pass a choice as one argument. RFC8610 §3.10; ABNF genericarg / type1."
+example = "foo<a> = [a]\nbar = foo<int / tstr>"
