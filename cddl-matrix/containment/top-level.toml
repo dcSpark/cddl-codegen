@@ -1,0 +1,19 @@
+# Containment — role.top-level × feature. A type used as the right-hand side of a rule
+# (`name = <type>`). Schema = containment/type2.toml (id, role, feature, spec, note) PLUS an
+# `example` parsed by the oracles to corroborate `spec`. Most type2 alternatives are unremarkable at
+# top level (that is their natural position); the interesting case is a construct usually seen only
+# nested. Grammar anchor: rule = typename [genericparm] S assignt S type.
+#
+# NOTE on omitted cells: a leading occurrence or memberkey at a rule head (e.g. `g = ? uint`,
+# `g = a: int`) does NOT cleanly resolve to "disallowed" — the rule production also admits
+# `groupname assigng grpent`, so `=` can introduce a GROUP rule, and the two readings are genuinely
+# ambiguous (oracles disagree / both backtrack). Left UNCERTAIN rather than asserted, per the
+# ABNF-is-authority + never-silently-resolve discipline.
+
+[[contain]]
+id = "contain.top-level.type2.unwrap"
+role = "role.top-level"
+feature = "type2.unwrap"
+spec = "allowed"
+note = "`~name` is a type2, so it may be a whole rule body, not only nested inside a composite: `g = ~h`. RFC8610 §3.7; ABNF rule -> type -> type2 unwrap."
+example = "h = [uint]\ng = ~h"

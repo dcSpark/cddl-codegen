@@ -1,0 +1,56 @@
+# Containment — `role × feature -> spec-allowed?`. This is the relation that captures NESTING and
+# VARIATION coverage, so a top-level "feature supported" can't hide a "this nesting isn't" gap.
+# The master records ONLY what CDDL (the spec) allows; per-tool support for a cell lives in
+# annotations/<tool>.toml keyed by the same `id`.
+#
+# SEED: a representative set of cells centered on `type2.tag` (incl. the doubly-nested-tag case, the
+# concrete gap that motivated this relation). The full role×feature grid is filled in the scale step.
+#
+# Schema per [[contain]]:
+#   id        "contain.<role-id-tail>.<feature-id>" — stable, referenced by annotations/*
+#   role      role id (roles.toml)
+#   feature   feature id (features.toml)
+#   spec      "allowed" | "disallowed"  (what the CDDL grammar permits)
+#   note      why / grammar justification
+
+[[contain]]
+id = "contain.tag-content.type2.tag"
+role = "role.tag-content"
+feature = "type2.tag"
+spec = "allowed"
+note = "The content of #6.n(...) is any `type`, which includes another tag -> #6.x(#6.y(T)) is legal CDDL."
+
+[[contain]]
+id = "contain.tag-content.type2.array"
+role = "role.tag-content"
+feature = "type2.array"
+spec = "allowed"
+note = "Tagging an array, e.g. rational = #6.30([uint, uint])."
+
+[[contain]]
+id = "contain.array-element.type2.tag"
+role = "role.array-element"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tagged item as an array element."
+
+[[contain]]
+id = "contain.map-value.type2.map"
+role = "role.map-value"
+feature = "type2.map"
+spec = "allowed"
+note = "A map as a member value (nested map / table-as-value)."
+
+[[contain]]
+id = "contain.map-key.type2.tag"
+role = "role.map-key"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tagged type as a map key (memberkey can be a type)."
+
+[[contain]]
+id = "contain.cbor-payload.type2.array"
+role = "role.cbor-payload"
+feature = "type2.array"
+spec = "allowed"
+note = "bytes .cbor [..] — a byte string constrained to encode an array."

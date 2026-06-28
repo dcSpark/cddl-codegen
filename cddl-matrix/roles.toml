@@ -1,0 +1,63 @@
+# Nesting container-roles — the contexts a feature can recurse into. Small, finite, grammar-derived
+# (these are the spots the ABNF productions reference `type`/`group` recursively). The (role × feature)
+# cells in containment.toml are where nesting/variation gaps live.
+#
+# Schema per [[role]]:
+#   id        stable slug (referenced by containment.toml + annotations/*)
+#   title     short label
+#   desc      what occupies this role
+#   grammar   the ABNF production(s) that create this recursion point
+
+[[role]]
+id = "role.top-level"
+title = "Top-level rule body"
+desc = "A type used as the right-hand side of a rule (`name = <type>`)."
+grammar = "RFC8610 ABNF: rule / assignt / type"
+
+[[role]]
+id = "role.array-element"
+title = "Array element"
+desc = "A type/group entry appearing inside `[ ... ]`."
+grammar = "RFC8610 ABNF: type2 array -> group -> grpent"
+
+[[role]]
+id = "role.map-value"
+title = "Map member value"
+desc = "The value type of a struct-style member or a table `* K => V` entry."
+grammar = "RFC8610 ABNF: type2 map -> group -> grpent (memberkey type)"
+
+[[role]]
+id = "role.map-key"
+title = "Map member key"
+desc = "The key of a map member (`memberkey`: bareword, type, or value)."
+grammar = "RFC8610 ABNF: memberkey"
+
+[[role]]
+id = "role.tag-content"
+title = "Tag content"
+desc = "The type inside `#6.n( ... )`."
+grammar = "RFC8610 ABNF: type2 tagged-data -> type"
+
+[[role]]
+id = "role.choice-member"
+title = "Choice alternative"
+desc = "A member of a type choice (`/`) or group choice (`//`)."
+grammar = "RFC8610 ABNF: type (type1 *(\"/\" type1)) ; grpchoice"
+
+[[role]]
+id = "role.occurrence-target"
+title = "Occurrence target"
+desc = "The entry an occurrence indicator (`?`, `*`, `+`, `n*m`) applies to."
+grammar = "RFC8610 ABNF: grpent = [occur S] ..."
+
+[[role]]
+id = "role.cbor-payload"
+title = ".cbor / .cborseq payload"
+desc = "The type a byte string is constrained to encode via `.cbor` / `.cborseq`."
+grammar = "RFC8610 §3.8.4"
+
+[[role]]
+id = "role.generic-arg"
+title = "Generic argument"
+desc = "A type passed as a generic parameter (`foo<T>`)."
+grammar = "RFC8610 §3.10; ABNF genericarg"

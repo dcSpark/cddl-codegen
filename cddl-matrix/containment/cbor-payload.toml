@@ -1,0 +1,32 @@
+# Containment — role.cbor-payload × feature. The type a byte string is constrained to encode via
+# `.cbor` (the controller of the ctlop). Schema = containment/type2.toml (id, role, feature, spec,
+# note) PLUS an `example` parsed by the oracles to corroborate `spec`. The array-payload cell is
+# already in containment/type2.toml. The `.cbor` controller is a type2, so an inline composite (or a
+# choice) must be PARENTHESIZED; the bare `bytes .cbor int / tstr` binds the `/` at the enclosing
+# type level instead. Grammar anchor: RFC8610 §3.8.4; type1 = type2 ctlop type2.
+# Oracle note: the reference Ruby `cddl` cannot parse an inline bracketed/`#6` controller after a
+# ctlop (a parser limitation, not a spec issue); the parenthesized form below is accepted by both.
+
+[[contain]]
+id = "contain.cbor-payload.type2.map"
+role = "role.cbor-payload"
+feature = "type2.map"
+spec = "allowed"
+note = "A byte string constrained via .cbor to encode a map; the type2 controller is parenthesized: `bytes .cbor ({a: int})`. RFC8610 §3.8.4, §3.5; ABNF type1 / ctlop (type2 controller) -> map."
+example = "b = bytes .cbor ({a: int})"
+
+[[contain]]
+id = "contain.cbor-payload.type2.tag"
+role = "role.cbor-payload"
+feature = "type2.tag"
+spec = "allowed"
+note = "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(int))`. RFC8610 §3.8.4, §3.6; ABNF ctlop controller type2 tagged-data."
+example = "b = bytes .cbor (#6.10(int))"
+
+[[contain]]
+id = "contain.cbor-payload.type.choice"
+role = "role.cbor-payload"
+feature = "type.choice"
+spec = "allowed"
+note = "The .cbor controller is a type2, so a `/` choice must be parenthesized — `bytes .cbor (int / tstr)`; bare, the `/` would bind at the enclosing type level. RFC8610 §3.8.4, §2.2.2; ABNF type1 ctlop (type2 controller)."
+example = "b = bytes .cbor (int / tstr)"

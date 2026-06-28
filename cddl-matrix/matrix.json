@@ -1,0 +1,2510 @@
+{
+  "annotations": {
+    "cddl_codegen": [
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "assigng.extend",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "assignt.extend",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "genericarg.multiple",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "genericarg.type",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "genericarg.type1",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "genericparm.group",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "genericparm.multiple",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "genericparm.type",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "group.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "grpchoice.sequence",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "grpent.groupname",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "grpent.inline_group",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "grpent.member",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "memberkey.bareword",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "memberkey.cut",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "memberkey.type1",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "memberkey.value",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "occur.bounded",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "occur.one_or_more",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "occur.optional",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "occur.zero_or_more",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.any",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.b64legacy",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.b64url",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bigfloat",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bigint",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bignint",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.biguint",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bool",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bstr",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.bytes",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.cbor-any",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.decfrac",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.eb16",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.eb64legacy",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.eb64url",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.encoded-cbor",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.false",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.float",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.float16",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.float16-32",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.float32",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.float32-64",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.float64",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.int",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.integer",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.mime-message",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.nil",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.nint",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.null",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.number",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.regexp",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.tdate",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.text",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.time",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.true",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.tstr",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.uint",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "prelude.undefined",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.unsigned",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "prelude.uri",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "rangeop.exclusive",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "rangeop.inclusive",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type.choice",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type1.ctlop",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.any",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type2.array",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.choice_from_group",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.choice_from_inline_group",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.major",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.major7",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.map",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type2.parenthesized",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type2.tag",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok (out of profile: feature profile RFC9682 is newer than cddl-codegen target RFC8610)",
+        "id": "type2.tag_head_type",
+        "status": "out_of_profile"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "id": "type2.typename",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.unwrap",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "type2.value",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
+        "id": "value.bytes",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "value.number",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "value.text",
+        "status": "unsupported"
+      }
+    ]
+  },
+  "containment": [
+    {
+      "example": "a = [int / tstr]",
+      "feature": "type.choice",
+      "id": "contain.array-element.type.choice",
+      "note": "An array entry is a `type` (grpent member), and `type` is a `/` type-choice, so a choice may be an element directly. RFC8610 \u00a73.4, \u00a72.2.2; ABNF type2 array -> grpent -> type (type-choice).",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "h = [uint]\na = [~h]",
+      "feature": "type2.unwrap",
+      "id": "contain.array-element.type2.unwrap",
+      "note": "`~name` is a type2, valid wherever a type is; as an array element it inlines the unwrapped type's content. RFC8610 \u00a73.4, \u00a73.7; ABNF grpent -> type -> type2 unwrap.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [{x: int}]",
+      "feature": "type2.map",
+      "id": "contain.array-element.type2.map",
+      "note": "A map is a type2, valid as an array element (anonymous nested struct). RFC8610 \u00a73.4, \u00a73.5; ABNF grpent -> type -> type2 map.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [[int]]",
+      "feature": "type2.array",
+      "id": "contain.array-element.type2.array",
+      "note": "An array is a type2, valid as an array element (array of arrays). RFC8610 \u00a73.4; ABNF grpent -> type -> type2 array.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [(int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.array-element.grpent.inline_group",
+      "note": "A parenthesized inline group is itself a grpent, so a sub-group may appear directly among an array's entries (group-in-group). RFC8610 \u00a72.2; ABNF grpent / inline-group.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [pt]\npt = (uint, uint)",
+      "feature": "grpent.groupname",
+      "id": "contain.array-element.grpent.groupname",
+      "note": "A group entry may be a groupname reference, splicing that named group's entries into the array. RFC8610 \u00a72.2.1; ABNF grpent / groupname.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "b = bytes .cbor ({a: int})",
+      "feature": "type2.map",
+      "id": "contain.cbor-payload.type2.map",
+      "note": "A byte string constrained via .cbor to encode a map; the type2 controller is parenthesized: `bytes .cbor ({a: int})`. RFC8610 \u00a73.8.4, \u00a73.5; ABNF type1 / ctlop (type2 controller) -> map.",
+      "role": "role.cbor-payload",
+      "spec": "allowed"
+    },
+    {
+      "example": "b = bytes .cbor (#6.10(int))",
+      "feature": "type2.tag",
+      "id": "contain.cbor-payload.type2.tag",
+      "note": "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(int))`. RFC8610 \u00a73.8.4, \u00a73.6; ABNF ctlop controller type2 tagged-data.",
+      "role": "role.cbor-payload",
+      "spec": "allowed"
+    },
+    {
+      "example": "b = bytes .cbor (int / tstr)",
+      "feature": "type.choice",
+      "id": "contain.cbor-payload.type.choice",
+      "note": "The .cbor controller is a type2, so a `/` choice must be parenthesized \u2014 `bytes .cbor (int / tstr)`; bare, the `/` would bind at the enclosing type level. RFC8610 \u00a73.8.4, \u00a72.2.2; ABNF type1 ctlop (type2 controller).",
+      "role": "role.cbor-payload",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = {a: int} / {b: tstr}",
+      "feature": "type2.map",
+      "id": "contain.choice-member.type2.map",
+      "note": "Each `/` branch is a type1/type2, so a map may be a choice alternative (enum of structs): `{a: int} / {b: tstr}`. RFC8610 \u00a72.2.2, \u00a73.5; ABNF type-choice / type2 map.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [int] / [tstr]",
+      "feature": "type2.array",
+      "id": "contain.choice-member.type2.array",
+      "note": "An array as a type-choice alternative: `[int] / [tstr]`. RFC8610 \u00a72.2.2, \u00a73.4; ABNF type-choice / type2 array.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = #6.10(int) / #6.11(tstr)",
+      "feature": "type2.tag",
+      "id": "contain.choice-member.type2.tag",
+      "note": "Tagged types as choice alternatives (tag-discriminated union): `#6.10(int) / #6.11(tstr)`. RFC8610 \u00a72.2.2, \u00a73.6; ABNF type-choice / type2 tagged-data.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "foo<a> = [a]\nbar = foo<{x: int}>",
+      "feature": "type2.map",
+      "id": "contain.generic-arg.type2.map",
+      "note": "A generic argument is a type1; a map (type2) may be bound to a parameter: `foo<{x: int}>`. RFC8610 \u00a73.10; ABNF genericarg / type1 -> type2 map.",
+      "role": "role.generic-arg",
+      "spec": "allowed"
+    },
+    {
+      "example": "foo<a> = [a]\nbar = foo<int / tstr>",
+      "feature": "type.choice",
+      "id": "contain.generic-arg.type.choice",
+      "note": "Each generic argument is a `type1`, which excludes the `/` type-choice (a `type`); bare `foo<int / tstr>` is rejected by both oracles. Parenthesize \u2014 `foo<(int / tstr)>` \u2014 to pass a choice as one argument. RFC8610 \u00a73.10; ABNF genericarg / type1.",
+      "role": "role.generic-arg",
+      "spec": "disallowed"
+    },
+    {
+      "example": "m = { [int] => tstr }",
+      "feature": "type2.array",
+      "id": "contain.map-key.type2.array",
+      "note": "A `type1 =>` memberkey admits any type1; an array (type2) is a valid composite key: `{ [int] => tstr }`. RFC8610 \u00a73.5.2; ABNF memberkey / type1 \"=>\".",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { int / tstr => bool }",
+      "feature": "type.choice",
+      "id": "contain.map-key.type.choice",
+      "note": "A memberkey is a `type1`, which does NOT include the `/` type-choice (a `type`); the bare form `{ int / tstr => bool }` is rejected by both oracles. Parenthesizing \u2014 `(int / tstr)` \u2014 turns it into a type2 and is then a valid key. RFC8610 \u00a73.5.2; ABNF memberkey / type1 (type1 excludes type-choice).",
+      "role": "role.map-key",
+      "spec": "disallowed"
+    },
+    {
+      "example": "m = { k: int / tstr }",
+      "feature": "type.choice",
+      "id": "contain.map-value.type.choice",
+      "note": "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice: `{ k: int / tstr }`. RFC8610 \u00a73.5.1, \u00a72.2.2; ABNF grpent (memberkey type) -> type-choice.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: [int] }",
+      "feature": "type2.array",
+      "id": "contain.map-value.type2.array",
+      "note": "An array (type2) as a member value. RFC8610 \u00a73.5.1, \u00a73.4; ABNF grpent value -> type2 array.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: #6.10(int) }",
+      "feature": "type2.tag",
+      "id": "contain.map-value.type2.tag",
+      "note": "A tagged type (#6.n) as a member value. RFC8610 \u00a73.5.1, \u00a73.6; ABNF grpent value -> type2 tagged-data.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [int]\nm = { k: ~a }",
+      "feature": "type2.unwrap",
+      "id": "contain.map-value.type2.unwrap",
+      "note": "`~name` (unwrap) as a member value, inlining the unwrapped content into the value position. RFC8610 \u00a73.5.1, \u00a73.7; ABNF grpent value -> type2 unwrap.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [* {x: int}]",
+      "feature": "type2.map",
+      "id": "contain.occurrence-target.type2.map",
+      "note": "An occurrence indicator applies to a whole grpent, so it may repeat a map entry: `[* {x: int}]`. RFC8610 \u00a73.2, \u00a73.5; ABNF grpent [occur] ... type2 map.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [* [int]]",
+      "feature": "type2.array",
+      "id": "contain.occurrence-target.type2.array",
+      "note": "Occurrence over an array entry: `[* [int]]` (a variable-length list of arrays). RFC8610 \u00a73.2, \u00a73.4; ABNF grpent [occur] ... type2 array.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [* (int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group",
+      "note": "One occurrence applies to a whole parenthesized sub-group, repeating the entire entry tuple: `[* (int, tstr)]`. RFC8610 \u00a73.2, \u00a72.2; ABNF grpent / [occur] inline-group.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = #6.10({a: int})",
+      "feature": "type2.map",
+      "id": "contain.tag-content.type2.map",
+      "note": "The content of #6.n(...) is any `type`, so a map may be tagged: `#6.10({a: int})`. RFC8610 \u00a73.6, \u00a73.5; ABNF tagged-data -> type -> type2 map.",
+      "role": "role.tag-content",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = #6.10(int / tstr)",
+      "feature": "type.choice",
+      "id": "contain.tag-content.type.choice",
+      "note": "Tag content is a full `type`, so a `/` type-choice may be tagged directly: `#6.10(int / tstr)`. RFC8610 \u00a73.6, \u00a72.2.2; ABNF tagged-data -> type (type-choice).",
+      "role": "role.tag-content",
+      "spec": "allowed"
+    },
+    {
+      "example": "h = [uint]\ng = ~h",
+      "feature": "type2.unwrap",
+      "id": "contain.top-level.type2.unwrap",
+      "note": "`~name` is a type2, so it may be a whole rule body, not only nested inside a composite: `g = ~h`. RFC8610 \u00a73.7; ABNF rule -> type -> type2 unwrap.",
+      "role": "role.top-level",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.tag",
+      "id": "contain.tag-content.type2.tag",
+      "note": "The content of #6.n(...) is any `type`, which includes another tag -> #6.x(#6.y(T)) is legal CDDL.",
+      "role": "role.tag-content",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.array",
+      "id": "contain.tag-content.type2.array",
+      "note": "Tagging an array, e.g. rational = #6.30([uint, uint]).",
+      "role": "role.tag-content",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.tag",
+      "id": "contain.array-element.type2.tag",
+      "note": "A tagged item as an array element.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.map",
+      "id": "contain.map-value.type2.map",
+      "note": "A map as a member value (nested map / table-as-value).",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.tag",
+      "id": "contain.map-key.type2.tag",
+      "note": "A tagged type as a map key (memberkey can be a type).",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "feature": "type2.array",
+      "id": "contain.cbor-payload.type2.array",
+      "note": "bytes .cbor [..] \u2014 a byte string constrained to encode an array.",
+      "role": "role.cbor-payload",
+      "spec": "allowed"
+    }
+  ],
+  "control_operators": [
+    {
+      "id": "ctl.size",
+      "name": ".size",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.bits",
+      "name": ".bits",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.regexp",
+      "name": ".regexp",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.cbor",
+      "name": ".cbor",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.cborseq",
+      "name": ".cborseq",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.within",
+      "name": ".within",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.and",
+      "name": ".and",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.lt",
+      "name": ".lt",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.le",
+      "name": ".le",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.gt",
+      "name": ".gt",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.ge",
+      "name": ".ge",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.eq",
+      "name": ".eq",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.ne",
+      "name": ".ne",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.default",
+      "name": ".default",
+      "profile": "RFC8610",
+      "rfc": "RFC8610"
+    },
+    {
+      "id": "ctl.sdnv",
+      "name": ".sdnv",
+      "profile": "RFC9090",
+      "rfc": "RFC9090"
+    },
+    {
+      "id": "ctl.sdnvseq",
+      "name": ".sdnvseq",
+      "profile": "RFC9090",
+      "rfc": "RFC9090"
+    },
+    {
+      "id": "ctl.oid",
+      "name": ".oid",
+      "profile": "RFC9090",
+      "rfc": "RFC9090"
+    },
+    {
+      "id": "ctl.plus",
+      "name": ".plus",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.cat",
+      "name": ".cat",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.det",
+      "name": ".det",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.abnf",
+      "name": ".abnf",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.abnfb",
+      "name": ".abnfb",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.feature",
+      "name": ".feature",
+      "profile": "RFC9165",
+      "rfc": "RFC9165"
+    },
+    {
+      "id": "ctl.b64u",
+      "name": ".b64u",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.b64u-sloppy",
+      "name": ".b64u-sloppy",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.b64c",
+      "name": ".b64c",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.b64c-sloppy",
+      "name": ".b64c-sloppy",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.b45",
+      "name": ".b45",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.b32",
+      "name": ".b32",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.h32",
+      "name": ".h32",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.hex",
+      "name": ".hex",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.hexlc",
+      "name": ".hexlc",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.hexuc",
+      "name": ".hexuc",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.base10",
+      "name": ".base10",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.printf",
+      "name": ".printf",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.json",
+      "name": ".json",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    },
+    {
+      "id": "ctl.join",
+      "name": ".join",
+      "profile": "RFC9741",
+      "rfc": "RFC9741"
+    }
+  ],
+  "encodings": [
+    {
+      "forms": [
+        "ai 0-23 immediate",
+        "ai 24 (1B)",
+        "ai 25 (2B)",
+        "ai 26 (4B)",
+        "ai 27 (8B)"
+      ],
+      "id": "enc.major0",
+      "major_type": 0,
+      "note": "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed). Cells: enc.major0.imm/.ai24/.ai25/.ai26/.ai27.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate",
+        "ai 24 (1B)",
+        "ai 25 (2B)",
+        "ai 26 (4B)",
+        "ai 27 (8B)"
+      ],
+      "id": "enc.major1",
+      "major_type": 1,
+      "note": "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed). Cells: enc.major1.imm/.ai24/.ai25/.ai26/.ai27.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate length",
+        "ai 24/25/26/27 length",
+        "ai 31 indefinite (0x5f..0xff)"
+      ],
+      "id": "enc.major2",
+      "major_type": 2,
+      "note": "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved. Cells: enc.major2.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate length",
+        "ai 24/25/26/27 length",
+        "ai 31 indefinite (0x7f..0xff)"
+      ],
+      "id": "enc.major3",
+      "major_type": 3,
+      "note": "Text string (UTF-8); argument = byte length. ai 28-30 reserved. Cells: enc.major3.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate count",
+        "ai 24/25/26/27 count",
+        "ai 31 indefinite (0x9f..0xff)"
+      ],
+      "id": "enc.major4",
+      "major_type": 4,
+      "note": "Array; argument = element count. ai 28-30 reserved. Cells: enc.major4.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate count",
+        "ai 24/25/26/27 count",
+        "ai 31 indefinite (0xbf..0xff)"
+      ],
+      "id": "enc.major5",
+      "major_type": 5,
+      "note": "Map; argument = number of key/value pairs. ai 28-30 reserved. Cells: enc.major5.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate tag#",
+        "ai 24 (1B)",
+        "ai 25 (2B)",
+        "ai 26 (4B)",
+        "ai 27 (8B)"
+      ],
+      "id": "enc.major6",
+      "major_type": 6,
+      "note": "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved. Cells: enc.major6.imm/.ai24/.ai25/.ai26/.ai27.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.4"
+    },
+    {
+      "forms": [
+        "simple 0-23 immediate",
+        "simple 24 (1B)",
+        "float16 (ai25)",
+        "float32 (ai26)",
+        "float64 (ai27)",
+        "break (ai31, 0xff)"
+      ],
+      "id": "enc.major7",
+      "major_type": 7,
+      "note": "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved. Cells: enc.major7.simple_imm/.ai24/.float16/.float32/.float64/.break.",
+      "rfc": "RFC8949 \u00a73.1, \u00a73.3"
+    },
+    {
+      "forms": [
+        "float16 (0xf9)",
+        "float32 (0xfa)",
+        "float64 (0xfb)"
+      ],
+      "id": "enc.major7.float",
+      "major_type": 7,
+      "note": "Float subset of major 7 (the half/single/double IEEE 754 widths). Cells: enc.major7.float16/.float32/.float64.",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate (head 0x00..0x17)"
+      ],
+      "id": "enc.major0.imm",
+      "major_type": 0,
+      "note": "Value carried in the ai, no following bytes. appendix_a: 00=0, 01=1, 0a=10, 17=23.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte uint8 argument (head 0x18)"
+      ],
+      "id": "enc.major0.ai24",
+      "major_type": 0,
+      "note": "appendix_a: 1818=24, 1819=25, 1864=100.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte uint16 argument (head 0x19)"
+      ],
+      "id": "enc.major0.ai25",
+      "major_type": 0,
+      "note": "appendix_a: 1903e8=1000.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte uint32 argument (head 0x1a)"
+      ],
+      "id": "enc.major0.ai26",
+      "major_type": 0,
+      "note": "appendix_a: 1a000f4240=1000000.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte uint64 argument (head 0x1b)"
+      ],
+      "id": "enc.major0.ai27",
+      "major_type": 0,
+      "note": "appendix_a: 1b000000e8d4a51000=1000000000000, 1bffffffffffffffff=18446744073709551615 (2^64-1, max uint).",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate (head 0x20..0x37)"
+      ],
+      "id": "enc.major1.imm",
+      "major_type": 1,
+      "note": "Value = -1 - ai. appendix_a: 20=-1, 29=-10.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte uint8 argument (head 0x38)"
+      ],
+      "id": "enc.major1.ai24",
+      "major_type": 1,
+      "note": "appendix_a: 3863=-100.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte uint16 argument (head 0x39)"
+      ],
+      "id": "enc.major1.ai25",
+      "major_type": 1,
+      "note": "appendix_a: 3903e7=-1000.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte uint32 argument (head 0x3a)"
+      ],
+      "id": "enc.major1.ai26",
+      "major_type": 1,
+      "note": "No appendix_a vector; head 0x3a (value = -1 - uint32).",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte uint64 argument (head 0x3b)"
+      ],
+      "id": "enc.major1.ai27",
+      "major_type": 1,
+      "note": "appendix_a: 3bffffffffffffffff=-18446744073709551616 (-2^64, min nint).",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate length (head 0x40..0x57)"
+      ],
+      "id": "enc.major2.imm",
+      "major_type": 2,
+      "note": "Length carried in ai. appendix_a: 40=h'' (len 0), 4401020304=h'01020304' (len 4).",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte length (head 0x58)"
+      ],
+      "id": "enc.major2.ai24",
+      "major_type": 2,
+      "note": "No appendix_a vector; head 0x58 + 1 length byte.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte length (head 0x59)"
+      ],
+      "id": "enc.major2.ai25",
+      "major_type": 2,
+      "note": "No appendix_a vector; head 0x59 + 2 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte length (head 0x5a)"
+      ],
+      "id": "enc.major2.ai26",
+      "major_type": 2,
+      "note": "No appendix_a vector; head 0x5a + 4 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte length (head 0x5b)"
+      ],
+      "id": "enc.major2.ai27",
+      "major_type": 2,
+      "note": "No appendix_a vector; head 0x5b + 8 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 31 indefinite length (head 0x5f, chunks, 0xff break)"
+      ],
+      "id": "enc.major2.indef",
+      "major_type": 2,
+      "note": "Stream of definite-length bstr chunks ended by break. appendix_a: 5f42010243030405ff = (_ h'0102', h'030405').",
+      "rfc": "RFC8949 \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate length (head 0x60..0x77)"
+      ],
+      "id": "enc.major3.imm",
+      "major_type": 3,
+      "note": "Length carried in ai. appendix_a: 60=\"\" (len 0), 6161=\"a\", 6449455446=\"IETF\", 62c3bc=\"\u00fc\", 63e6b0b4=\"\u6c34\".",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte length (head 0x78)"
+      ],
+      "id": "enc.major3.ai24",
+      "major_type": 3,
+      "note": "No appendix_a vector; head 0x78 + 1 length byte.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte length (head 0x79)"
+      ],
+      "id": "enc.major3.ai25",
+      "major_type": 3,
+      "note": "No appendix_a vector; head 0x79 + 2 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte length (head 0x7a)"
+      ],
+      "id": "enc.major3.ai26",
+      "major_type": 3,
+      "note": "No appendix_a vector; head 0x7a + 4 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte length (head 0x7b)"
+      ],
+      "id": "enc.major3.ai27",
+      "major_type": 3,
+      "note": "No appendix_a vector; head 0x7b + 8 length bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 31 indefinite length (head 0x7f, chunks, 0xff break)"
+      ],
+      "id": "enc.major3.indef",
+      "major_type": 3,
+      "note": "Stream of definite-length tstr chunks ended by break. appendix_a: 7f657374726561646d696e67ff = \"streaming\".",
+      "rfc": "RFC8949 \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate element count (head 0x80..0x97)"
+      ],
+      "id": "enc.major4.imm",
+      "major_type": 4,
+      "note": "Count carried in ai. appendix_a: 80=[] (0 elems), 83010203=[1,2,3], 8301820203820405=[1,[2,3],[4,5]].",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte count (head 0x98)"
+      ],
+      "id": "enc.major4.ai24",
+      "major_type": 4,
+      "note": "appendix_a: 98190102...1819 = 25-element array [1..25].",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte count (head 0x99)"
+      ],
+      "id": "enc.major4.ai25",
+      "major_type": 4,
+      "note": "No appendix_a vector; head 0x99 + 2 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte count (head 0x9a)"
+      ],
+      "id": "enc.major4.ai26",
+      "major_type": 4,
+      "note": "No appendix_a vector; head 0x9a + 4 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte count (head 0x9b)"
+      ],
+      "id": "enc.major4.ai27",
+      "major_type": 4,
+      "note": "No appendix_a vector; head 0x9b + 8 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 31 indefinite (head 0x9f, items, 0xff break)"
+      ],
+      "id": "enc.major4.indef",
+      "major_type": 4,
+      "note": "Items until break. appendix_a: 9fff=[], 9f018202039f0405ffff=[1,[2,3],[4,5]] (nested indefinite).",
+      "rfc": "RFC8949 \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate pair count (head 0xa0..0xb7)"
+      ],
+      "id": "enc.major5.imm",
+      "major_type": 5,
+      "note": "Pair count carried in ai. appendix_a: a0={} (0 pairs), a201020304={1:2,3:4}, a26161016162820203={\"a\":1,\"b\":[2,3]}.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte pair count (head 0xb8)"
+      ],
+      "id": "enc.major5.ai24",
+      "major_type": 5,
+      "note": "No appendix_a vector; head 0xb8 + 1 count byte.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte pair count (head 0xb9)"
+      ],
+      "id": "enc.major5.ai25",
+      "major_type": 5,
+      "note": "No appendix_a vector; head 0xb9 + 2 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte pair count (head 0xba)"
+      ],
+      "id": "enc.major5.ai26",
+      "major_type": 5,
+      "note": "No appendix_a vector; head 0xba + 4 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte pair count (head 0xbb)"
+      ],
+      "id": "enc.major5.ai27",
+      "major_type": 5,
+      "note": "No appendix_a vector; head 0xbb + 8 count bytes.",
+      "rfc": "RFC8949 \u00a73.1"
+    },
+    {
+      "forms": [
+        "ai 31 indefinite (head 0xbf, pairs, 0xff break)"
+      ],
+      "id": "enc.major5.indef",
+      "major_type": 5,
+      "note": "Key/value pairs until break. appendix_a: bf61610161629f0203ffff={\"a\":1,\"b\":[2,3]}, bf6346756ef563416d7421ff={\"Fun\":true,\"Amt\":-2}.",
+      "rfc": "RFC8949 \u00a73.2"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate tag number (head 0xc0..0xd7)"
+      ],
+      "id": "enc.major6.imm",
+      "major_type": 6,
+      "note": "Tag number in ai, then one enclosed item. appendix_a: c0(tstr)=tag 0 (date/time), c1=tag 1, c2=tag 2 (biguint), c3=tag 3 (bignint), d7=tag 23.",
+      "rfc": "RFC8949 \u00a73.4"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte tag number (head 0xd8)"
+      ],
+      "id": "enc.major6.ai24",
+      "major_type": 6,
+      "note": "appendix_a: d818(bstr)=tag 24 (encoded-cbor), d820(tstr)=tag 32 (uri).",
+      "rfc": "RFC8949 \u00a73.4"
+    },
+    {
+      "forms": [
+        "ai 25, 2-byte tag number (head 0xd9)"
+      ],
+      "id": "enc.major6.ai25",
+      "major_type": 6,
+      "note": "No appendix_a vector; head 0xd9 + 2 tag bytes (e.g. prelude cbor-any #6.55799 = d9d9f7).",
+      "rfc": "RFC8949 \u00a73.4"
+    },
+    {
+      "forms": [
+        "ai 26, 4-byte tag number (head 0xda)"
+      ],
+      "id": "enc.major6.ai26",
+      "major_type": 6,
+      "note": "No appendix_a vector; head 0xda + 4 tag bytes.",
+      "rfc": "RFC8949 \u00a73.4"
+    },
+    {
+      "forms": [
+        "ai 27, 8-byte tag number (head 0xdb)"
+      ],
+      "id": "enc.major6.ai27",
+      "major_type": 6,
+      "note": "No appendix_a vector; head 0xdb + 8 tag bytes.",
+      "rfc": "RFC8949 \u00a73.4"
+    },
+    {
+      "forms": [
+        "ai 0-23 immediate simple value (head 0xe0..0xf7)"
+      ],
+      "id": "enc.major7.simple_imm",
+      "major_type": 7,
+      "note": "Simple value in ai (incl. 20=false, 21=true, 22=null, 23=undefined). appendix_a: f4=false, f5=true, f6=null, f7=undefined, f0=simple(16).",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 24, 1-byte simple value 32-255 (head 0xf8)"
+      ],
+      "id": "enc.major7.ai24",
+      "major_type": 7,
+      "note": "Simple values 32..255. appendix_a: f818=simple(24), f8ff=simple(255). (0..31 in this form are not well-formed.)",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 25, IEEE 754 half-precision (head 0xf9)"
+      ],
+      "id": "enc.major7.float16",
+      "major_type": 7,
+      "note": "appendix_a: f90000=0.0, f98000=-0.0, f93c00=1.0, f93e00=1.5, f97bff=65504.0, f97c00=Infinity, f97e00=NaN, f9fc00=-Infinity.",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 26, IEEE 754 single-precision (head 0xfa)"
+      ],
+      "id": "enc.major7.float32",
+      "major_type": 7,
+      "note": "appendix_a: fa47c35000=100000.0, fa7f7fffff=3.4028234663852886e+38, fa7f800000=Infinity, faff800000=-Infinity, fa7fc00000=NaN.",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 27, IEEE 754 double-precision (head 0xfb)"
+      ],
+      "id": "enc.major7.float64",
+      "major_type": 7,
+      "note": "appendix_a: fb3ff199999999999a=1.1, fbc010666666666666=-4.1, fb7e37e43c8800759c=1.0e+300, fb7ff0000000000000=Infinity, fb7ff8000000000000=NaN.",
+      "rfc": "RFC8949 \u00a73.3"
+    },
+    {
+      "forms": [
+        "ai 31 break stop code (single byte 0xff)"
+      ],
+      "id": "enc.major7.break",
+      "major_type": 7,
+      "note": "Terminates an indefinite-length bstr/tstr/array/map. appendix_a: trailing ff in 5f...ff, 7f...ff, 9f...ff, bf...ff.",
+      "rfc": "RFC8949 \u00a73.2, \u00a73.3"
+    }
+  ],
+  "features": [
+    {
+      "alt": "grpchoice *(S \"//\" S grpchoice)",
+      "desc": "Alternation between whole groups: the group matches one of several grpchoice branches.",
+      "example": "g = { a: uint // b: tstr }",
+      "id": "group.choice",
+      "production": "group",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2; ABNF group / group-choice (//)",
+      "roles": [
+        "role.choice-member"
+      ],
+      "title": "Group choice (//)"
+    },
+    {
+      "alt": "*(grpent optcom)",
+      "desc": "A grpchoice is a sequence of group entries separated by optional commas (optcom = S [\",\" S]).",
+      "example": "point = { x: int, y: int }",
+      "id": "grpchoice.sequence",
+      "production": "grpchoice",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.1; ABNF grpchoice / grpent optcom",
+      "title": "Group-entry sequence"
+    },
+    {
+      "alt": "[occur S] [memberkey S] type",
+      "desc": "A group entry that is a type, optionally preceded by a memberkey (named member) and/or an occurrence indicator; with the memberkey ABSENT it is a positional, type-only element. This example isolates the absent-memberkey path (the memberkey-present path is covered by memberkey.*).",
+      "example": "g = [int]",
+      "id": "grpent.member",
+      "production": "grpent",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.1, \u00a73.5.1; ABNF grpent / member",
+      "roles": [
+        "role.occurrence-target",
+        "role.map-value",
+        "role.array-element"
+      ],
+      "title": "Member entry (optional occur + optional memberkey + type)"
+    },
+    {
+      "alt": "[occur S] groupname [genericarg]",
+      "desc": "A group entry that references a named group by name, inlining that group's entries; may carry generic args and an occurrence.",
+      "example": "g = [coords]\ncoords = (uint, uint)",
+      "id": "grpent.groupname",
+      "production": "grpent",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.1; ABNF grpent / groupname",
+      "roles": [
+        "role.generic-arg",
+        "role.occurrence-target"
+      ],
+      "title": "Group-name reference entry"
+    },
+    {
+      "alt": "[occur S] \"(\" S group S \")\"",
+      "desc": "A group entry that is itself a parenthesized group; the isolated form is just `(...)` as one entry (an occurrence can then apply to the whole sub-group \u2014 see occurrence-target containment).",
+      "example": "g = [(uint, tstr)]",
+      "id": "grpent.inline_group",
+      "production": "grpent",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.1; ABNF grpent / inline-group",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Inline (parenthesized) group entry"
+    },
+    {
+      "alt": "type1 S [\"^\" S] \"=>\"",
+      "desc": "A memberkey given as a full type expression followed by =>; the key matches any data item of that type (table / general form).",
+      "example": "m = { tstr => int }",
+      "id": "memberkey.type1",
+      "production": "memberkey",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.5.2; ABNF memberkey / type1 \"=>\"",
+      "roles": [
+        "role.map-key"
+      ],
+      "title": "Type memberkey (t =>)"
+    },
+    {
+      "alt": "bareword S \":\"",
+      "desc": "A memberkey given as a bareword (id) followed by ':'; shorthand for the text-string key \"k\" => and carries an implicit cut.",
+      "example": "m = { name: tstr }",
+      "id": "memberkey.bareword",
+      "production": "memberkey",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.5.1; ABNF memberkey / bareword \":\"",
+      "roles": [
+        "role.map-key"
+      ],
+      "title": "Bareword memberkey (k:)"
+    },
+    {
+      "alt": "value S \":\"",
+      "desc": "A memberkey given as a literal value (number/text/bytes) followed by ':'; equivalent to value => and carries an implicit cut.",
+      "example": "m = { 1: tstr }",
+      "id": "memberkey.value",
+      "production": "memberkey",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.5.1; ABNF memberkey / value \":\"",
+      "roles": [
+        "role.map-key"
+      ],
+      "title": "Value memberkey (1:)"
+    },
+    {
+      "alt": "type1 S \"^\" S \"=>\"",
+      "desc": "The optional '^' marks a => memberkey as a cut, so a matched key is not also offered to later (e.g. wildcard) entries; the ':' shortcut forms (bareword/value) carry this cut implicitly.",
+      "example": "m = { \"a\" ^ => int }",
+      "id": "memberkey.cut",
+      "production": "memberkey",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.5.4; ABNF memberkey / cut (^)",
+      "roles": [
+        "role.map-key"
+      ],
+      "title": "Cut in a => memberkey (^)"
+    },
+    {
+      "alt": "\"?\"",
+      "desc": "The entry occurs zero or one time.",
+      "example": "g = { ? name: tstr }",
+      "id": "occur.optional",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.2; ABNF occur / optional",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Optional occurrence (?)"
+    },
+    {
+      "alt": "[uint] \"*\" [uint]",
+      "desc": "Bare '*' with both bounds omitted: the entry occurs any number of times, including zero.",
+      "example": "g = [* uint]",
+      "id": "occur.zero_or_more",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.2; ABNF occur / [uint] \"*\" [uint]",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Zero-or-more occurrence (*)"
+    },
+    {
+      "alt": "\"+\"",
+      "desc": "The entry occurs one or more times (equivalent to 1*).",
+      "example": "g = [+ uint]",
+      "id": "occur.one_or_more",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.2; ABNF occur / one-or-more",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "One-or-more occurrence (+)"
+    },
+    {
+      "alt": "[uint] \"*\" [uint]",
+      "desc": "Same '*' production as zero-or-more but with explicit lower and/or upper bound (n*, *m, or n*m): the entry occurs between n and m times.",
+      "example": "g = [2*5 uint]",
+      "id": "occur.bounded",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.2; ABNF occur / [uint] \"*\" [uint]",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Bounded occurrence (n*m)"
+    },
+    {
+      "alt": "typename [genericparm]",
+      "desc": "A type rule parametrized over one or more identifiers; each param is usable as a type in the body.",
+      "example": "foo<a> = [a]",
+      "id": "genericparm.type",
+      "production": "rule",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF rule / typename [genericparm]",
+      "title": "Generic type definition"
+    },
+    {
+      "alt": "id *(\",\" id)",
+      "desc": "A definition taking two or more comma-separated parameter identifiers.",
+      "example": "pair<k, v> = [k, v]",
+      "id": "genericparm.multiple",
+      "production": "genericparm",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF genericparm",
+      "title": "Multiple generic parameters"
+    },
+    {
+      "alt": "groupname [genericparm]",
+      "desc": "A group rule parametrized over identifiers; the params stand in for entry types when the group is spliced.",
+      "example": "set<a> = (* a)",
+      "id": "genericparm.group",
+      "production": "rule",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF rule / groupname [genericparm]",
+      "title": "Generic group definition"
+    },
+    {
+      "alt": "typename [genericarg]",
+      "desc": "Referencing a parametrized type and binding each parameter to a concrete argument type.",
+      "example": "foo<a> = [a]\nbar = foo<uint>",
+      "id": "genericarg.type",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF type2 / typename [genericarg]",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Generic type instantiation"
+    },
+    {
+      "alt": "type1 *(\",\" type1)",
+      "desc": "Binding two or more comma-separated argument types, positionally matched to the parameters.",
+      "example": "pair<k, v> = [k, v]\nx = pair<uint, tstr>",
+      "id": "genericarg.multiple",
+      "production": "genericarg",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF genericarg",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Multiple generic arguments"
+    },
+    {
+      "alt": "type1",
+      "desc": "A generic argument may be any type1 expression (e.g. a range or controlled type), not just a named type.",
+      "example": "foo<a> = [a]\nr = foo<1..10>",
+      "id": "genericarg.type1",
+      "production": "genericarg",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.10; ABNF genericarg / type1",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Type-expression argument"
+    },
+    {
+      "alt": "#",
+      "desc": "Matches any single CBOR data item (no constraint).",
+      "example": "x = any",
+      "id": "prelude.any",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / any",
+      "title": "any"
+    },
+    {
+      "alt": "#0",
+      "desc": "Unsigned integer (CBOR major type 0).",
+      "encodings": [
+        "enc.major0"
+      ],
+      "example": "x = uint",
+      "id": "prelude.uint",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / uint",
+      "title": "uint"
+    },
+    {
+      "alt": "#1",
+      "desc": "Negative integer (CBOR major type 1).",
+      "encodings": [
+        "enc.major1"
+      ],
+      "example": "x = nint",
+      "id": "prelude.nint",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / nint",
+      "title": "nint"
+    },
+    {
+      "alt": "uint / nint",
+      "desc": "Signed integer: a uint or an nint.",
+      "encodings": [
+        "enc.major0",
+        "enc.major1"
+      ],
+      "example": "x = int",
+      "id": "prelude.int",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / int",
+      "title": "int"
+    },
+    {
+      "alt": "#2",
+      "desc": "Byte string (CBOR major type 2).",
+      "encodings": [
+        "enc.major2"
+      ],
+      "example": "x = bstr",
+      "id": "prelude.bstr",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bstr",
+      "title": "bstr"
+    },
+    {
+      "alt": "bstr",
+      "desc": "Alias of bstr (byte string).",
+      "encodings": [
+        "enc.major2"
+      ],
+      "example": "x = bytes",
+      "id": "prelude.bytes",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bytes",
+      "title": "bytes"
+    },
+    {
+      "alt": "#3",
+      "desc": "Text string, UTF-8 (CBOR major type 3).",
+      "encodings": [
+        "enc.major3"
+      ],
+      "example": "x = tstr",
+      "id": "prelude.tstr",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / tstr",
+      "title": "tstr"
+    },
+    {
+      "alt": "tstr",
+      "desc": "Alias of tstr (text string).",
+      "encodings": [
+        "enc.major3"
+      ],
+      "example": "x = text",
+      "id": "prelude.text",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / text",
+      "title": "text"
+    },
+    {
+      "alt": "#6.0(tstr)",
+      "desc": "Standard date/time string: CBOR tag 0 wrapping a tstr.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = tdate",
+      "id": "prelude.tdate",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / tdate",
+      "title": "tdate"
+    },
+    {
+      "alt": "#6.1(number)",
+      "desc": "Epoch-based date/time: CBOR tag 1 wrapping a number.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = time",
+      "id": "prelude.time",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / time",
+      "title": "time"
+    },
+    {
+      "alt": "int / float",
+      "desc": "Any number: an int or a float.",
+      "encodings": [
+        "enc.major0",
+        "enc.major1",
+        "enc.major7.float"
+      ],
+      "example": "x = number",
+      "id": "prelude.number",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / number",
+      "title": "number"
+    },
+    {
+      "alt": "#6.2(bstr)",
+      "desc": "Unsigned bignum: CBOR tag 2 wrapping a bstr.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = biguint",
+      "id": "prelude.biguint",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / biguint",
+      "title": "biguint"
+    },
+    {
+      "alt": "#6.3(bstr)",
+      "desc": "Negative bignum: CBOR tag 3 wrapping a bstr.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = bignint",
+      "id": "prelude.bignint",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bignint",
+      "title": "bignint"
+    },
+    {
+      "alt": "biguint / bignint",
+      "desc": "Arbitrary-precision integer: a biguint or a bignint.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = bigint",
+      "id": "prelude.bigint",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bigint",
+      "title": "bigint"
+    },
+    {
+      "alt": "int / bigint",
+      "desc": "Any integer: an int or a bigint.",
+      "encodings": [
+        "enc.major0",
+        "enc.major1",
+        "enc.major6"
+      ],
+      "example": "x = integer",
+      "id": "prelude.integer",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / integer",
+      "title": "integer"
+    },
+    {
+      "alt": "uint / biguint",
+      "desc": "Any unsigned integer: a uint or a biguint.",
+      "encodings": [
+        "enc.major0",
+        "enc.major6"
+      ],
+      "example": "x = unsigned",
+      "id": "prelude.unsigned",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / unsigned",
+      "title": "unsigned"
+    },
+    {
+      "alt": "#6.4([e10: int, m: integer])",
+      "desc": "Decimal fraction: CBOR tag 4, an array [exponent (base 10), mantissa].",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = decfrac",
+      "id": "prelude.decfrac",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / decfrac",
+      "title": "decfrac"
+    },
+    {
+      "alt": "#6.5([e2: int, m: integer])",
+      "desc": "Bigfloat: CBOR tag 5, an array [exponent (base 2), mantissa].",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = bigfloat",
+      "id": "prelude.bigfloat",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bigfloat",
+      "title": "bigfloat"
+    },
+    {
+      "alt": "#6.21(any)",
+      "desc": "Expected base64url conversion hint: CBOR tag 21.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = eb64url",
+      "id": "prelude.eb64url",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / eb64url",
+      "title": "eb64url"
+    },
+    {
+      "alt": "#6.22(any)",
+      "desc": "Expected base64 conversion hint: CBOR tag 22.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = eb64legacy",
+      "id": "prelude.eb64legacy",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / eb64legacy",
+      "title": "eb64legacy"
+    },
+    {
+      "alt": "#6.23(any)",
+      "desc": "Expected base16 conversion hint: CBOR tag 23.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = eb16",
+      "id": "prelude.eb16",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / eb16",
+      "title": "eb16"
+    },
+    {
+      "alt": "#6.24(bstr)",
+      "desc": "CBOR data item embedded in a byte string: CBOR tag 24.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = encoded-cbor",
+      "id": "prelude.encoded-cbor",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / encoded-cbor",
+      "title": "encoded-cbor"
+    },
+    {
+      "alt": "#6.32(tstr)",
+      "desc": "URI text string: CBOR tag 32.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = uri",
+      "id": "prelude.uri",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / uri",
+      "title": "uri"
+    },
+    {
+      "alt": "#6.33(tstr)",
+      "desc": "Base64url-encoded text: CBOR tag 33.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = b64url",
+      "id": "prelude.b64url",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / b64url",
+      "title": "b64url"
+    },
+    {
+      "alt": "#6.34(tstr)",
+      "desc": "Base64-encoded text: CBOR tag 34.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = b64legacy",
+      "id": "prelude.b64legacy",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / b64legacy",
+      "title": "b64legacy"
+    },
+    {
+      "alt": "#6.35(tstr)",
+      "desc": "Regular-expression text (PCRE/ECMA): CBOR tag 35.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = regexp",
+      "id": "prelude.regexp",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / regexp",
+      "title": "regexp"
+    },
+    {
+      "alt": "#6.36(tstr)",
+      "desc": "MIME message text (RFC 2045 et al.): CBOR tag 36.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = mime-message",
+      "id": "prelude.mime-message",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / mime-message",
+      "title": "mime-message"
+    },
+    {
+      "alt": "#6.55799(any)",
+      "desc": "Self-described CBOR: CBOR tag 55799 wrapping any data item.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "x = cbor-any",
+      "id": "prelude.cbor-any",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / cbor-any",
+      "title": "cbor-any"
+    },
+    {
+      "alt": "#7.25",
+      "desc": "IEEE 754 half-precision float (major 7, ai 25).",
+      "encodings": [
+        "enc.major7.float16"
+      ],
+      "example": "x = float16",
+      "id": "prelude.float16",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float16",
+      "title": "float16"
+    },
+    {
+      "alt": "#7.26",
+      "desc": "IEEE 754 single-precision float (major 7, ai 26).",
+      "encodings": [
+        "enc.major7.float32"
+      ],
+      "example": "x = float32",
+      "id": "prelude.float32",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float32",
+      "title": "float32"
+    },
+    {
+      "alt": "#7.27",
+      "desc": "IEEE 754 double-precision float (major 7, ai 27).",
+      "encodings": [
+        "enc.major7.float64"
+      ],
+      "example": "x = float64",
+      "id": "prelude.float64",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float64",
+      "title": "float64"
+    },
+    {
+      "alt": "float16 / float32",
+      "desc": "Half- or single-precision float.",
+      "encodings": [
+        "enc.major7.float16",
+        "enc.major7.float32"
+      ],
+      "example": "x = float16-32",
+      "id": "prelude.float16-32",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float16-32",
+      "title": "float16-32"
+    },
+    {
+      "alt": "float32 / float64",
+      "desc": "Single- or double-precision float.",
+      "encodings": [
+        "enc.major7.float32",
+        "enc.major7.float64"
+      ],
+      "example": "x = float32-64",
+      "id": "prelude.float32-64",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float32-64",
+      "title": "float32-64"
+    },
+    {
+      "alt": "float16-32 / float64",
+      "desc": "Any float: half-, single-, or double-precision.",
+      "encodings": [
+        "enc.major7.float"
+      ],
+      "example": "x = float",
+      "id": "prelude.float",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / float",
+      "title": "float"
+    },
+    {
+      "alt": "#7.20",
+      "desc": "Boolean false (major 7, simple value 20).",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = false",
+      "id": "prelude.false",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / false",
+      "title": "false"
+    },
+    {
+      "alt": "#7.21",
+      "desc": "Boolean true (major 7, simple value 21).",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = true",
+      "id": "prelude.true",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / true",
+      "title": "true"
+    },
+    {
+      "alt": "false / true",
+      "desc": "Boolean: false or true.",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = bool",
+      "id": "prelude.bool",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / bool",
+      "title": "bool"
+    },
+    {
+      "alt": "#7.22",
+      "desc": "Null value (major 7, simple value 22).",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = nil",
+      "id": "prelude.nil",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / nil",
+      "title": "nil"
+    },
+    {
+      "alt": "nil",
+      "desc": "Alias of nil (null value).",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = null",
+      "id": "prelude.null",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / null",
+      "title": "null"
+    },
+    {
+      "alt": "#7.23",
+      "desc": "Undefined value (major 7, simple value 23).",
+      "encodings": [
+        "enc.major7.simple_imm"
+      ],
+      "example": "x = undefined",
+      "id": "prelude.undefined",
+      "production": "prelude",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 App. D; prelude / undefined",
+      "title": "undefined"
+    },
+    {
+      "alt": "value",
+      "desc": "A literal (number / text / byte string) used directly as a type.",
+      "example": "answer = 42",
+      "id": "type2.value",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1; ABNF type2 / value",
+      "title": "Literal value as a type"
+    },
+    {
+      "alt": "number",
+      "desc": "An int or float literal used as a (fixed) value.",
+      "encodings": [
+        "enc.major0",
+        "enc.major1",
+        "enc.major7.float"
+      ],
+      "example": "version = 5",
+      "id": "value.number",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1; ABNF value / number",
+      "title": "Numeric literal value"
+    },
+    {
+      "alt": "text",
+      "desc": "A text-string literal used as a (fixed) value.",
+      "encodings": [
+        "enc.major3"
+      ],
+      "example": "marker = \"v1\"",
+      "id": "value.text",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1; ABNF value / text",
+      "title": "Text literal value"
+    },
+    {
+      "alt": "bytes",
+      "desc": "A byte-string literal (hex/base64/raw) used as a value.",
+      "encodings": [
+        "enc.major2"
+      ],
+      "example": "magic = h'cafe'",
+      "id": "value.bytes",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1; ABNF value / bytes (h'..' / b64'..' / '..')",
+      "title": "Byte-string literal value"
+    },
+    {
+      "alt": "typename [genericarg]",
+      "desc": "A reference to a named type, optionally instantiating generic parameters (the [genericarg] attach site; instantiation covered by genericarg.type).",
+      "example": "foo = bar\nbar = uint",
+      "id": "type2.typename",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1, \u00a73.10; ABNF type2 / typename",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Type reference (with optional generic args)"
+    },
+    {
+      "alt": "\"(\" type \")\"",
+      "desc": "A type grouped in parentheses (also how inline groups appear at type position).",
+      "example": "foo = (uint)",
+      "id": "type2.parenthesized",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.1; ABNF type2 / parenthesized",
+      "title": "Parenthesized type"
+    },
+    {
+      "alt": "\"{\" group \"}\"",
+      "desc": "A CBOR map; struct-style (named members) or table-style ({ * K => V }).",
+      "encodings": [
+        "enc.major5"
+      ],
+      "example": "foo = { a: uint, * tstr => int }",
+      "id": "type2.map",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.5; ABNF type2 / map",
+      "roles": [
+        "role.map-key",
+        "role.map-value"
+      ],
+      "title": "Map"
+    },
+    {
+      "alt": "\"[\" group \"]\"",
+      "desc": "A CBOR array; fixed (heterogeneous) or variable (homogeneous via occurrence).",
+      "encodings": [
+        "enc.major4"
+      ],
+      "example": "foo = [uint, tstr, * bytes]",
+      "id": "type2.array",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.4; ABNF type2 / array",
+      "roles": [
+        "role.array-element"
+      ],
+      "title": "Array"
+    },
+    {
+      "alt": "\"~\" typename [genericarg]",
+      "desc": "Strips the enclosing array/map/tag of a named type so its content can be inlined; the unwrapped typename may itself carry generic args (the [genericarg] attach site).",
+      "example": "bar = [uint]\nfoo = ~bar",
+      "id": "type2.unwrap",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.7; ABNF type2 / unwrap",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Unwrap (~)"
+    },
+    {
+      "alt": "\"&\" \"(\" group \")\"",
+      "desc": "Turns an inline group into a type choice over its entries.",
+      "example": "color = &(red: 0, green: 1, blue: 2)",
+      "id": "type2.choice_from_inline_group",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2.2; ABNF type2 / choice-from-inline-group",
+      "title": "Choice from inline group (&)"
+    },
+    {
+      "alt": "\"&\" groupname [genericarg]",
+      "desc": "Turns a named group into a type choice over its entries; the groupname may carry generic args (the [genericarg] attach site).",
+      "example": "color = &colors\ncolors = (red: 0, green: 1)",
+      "id": "type2.choice_from_group",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2.2; ABNF type2 / choice-from-group",
+      "roles": [
+        "role.generic-arg"
+      ],
+      "title": "Choice from named group (&)"
+    },
+    {
+      "alt": "\"#\" \"6\" [\".\" head-number] \"(\" type \")\"",
+      "desc": "A CBOR tag wrapping a type; the tag number (head-number) is a literal uint here. RFC 9682 also allows head-number to be a type expression \u2014 see type2.tag_head_type.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "rational = #6.30([uint, uint])",
+      "id": "type2.tag",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC9682 ABNF type2 / tagged-data; head-number = uint / (\"<\" type \">\"); RFC8610 \u00a73.6 semantics",
+      "roles": [
+        "role.tag-content"
+      ],
+      "title": "Tagged data item (#6.n)"
+    },
+    {
+      "alt": "\"#\" \"6\" [\".\" head-number] \"(\" type \")\"  ; head-number = \"<\" type \">\"",
+      "desc": "RFC 9682 variation of the #6 tag: the tag number (head-number) may be a TYPE expression (`<type>`), not only a literal uint.",
+      "encodings": [
+        "enc.major6"
+      ],
+      "example": "t = #6.<n>(int)\nn = uint",
+      "id": "type2.tag_head_type",
+      "production": "type2",
+      "profile": "RFC9682",
+      "rfc": "RFC9682 ABNF type2 / tagged-data; head-number = uint / (\"<\" type \">\")",
+      "roles": [
+        "role.tag-content"
+      ],
+      "title": "Tagged data item, type-valued tag number (#6.<T>)"
+    },
+    {
+      "alt": "\"#\" \"7\" [\".\" head-number]",
+      "desc": "Major type 7 (simple values and floats), e.g. #7.20 = false. The CAPABILITY exists in RFC 8610 (#7.n is reachable via the generic #DIGIT alternative); RFC 9682 only SPLIT it into a dedicated grammar production \u2014 a presentational refactor, not a new capability \u2014 so profile is RFC8610. Kept as its own row for per-alternative coverage of the RFC 9682 grammar.",
+      "encodings": [
+        "enc.major7"
+      ],
+      "example": "foo = #7.20",
+      "id": "type2.major7",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC9682 ABNF type2 / data-major-type-7 (dedicated alternative); RFC8610 \u00a72.2.3 (major 7 already expressible via the generic #DIGIT alternative)",
+      "title": "Major-type 7 / simple sigil (#7, #7.n)"
+    },
+    {
+      "alt": "\"#\" DIGIT [\".\" uint]",
+      "desc": "Constrain to the CBOR major type selected by the digit N (0-7), with optional additional info n (#N.n); the digit ranges over all eight majors. Major 7 has its own dedicated alternative \u2014 see type2.major7.",
+      "encodings": [
+        "enc.major0",
+        "enc.major1",
+        "enc.major2",
+        "enc.major3",
+        "enc.major4",
+        "enc.major5",
+        "enc.major6",
+        "enc.major7"
+      ],
+      "example": "foo = #1.2",
+      "id": "type2.major",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.3; ABNF type2 / data-major-type",
+      "title": "Major-type sigil (#N, #N.n)"
+    },
+    {
+      "alt": "\"#\"",
+      "desc": "Matches any single CBOR data item.",
+      "example": "foo = #",
+      "id": "type2.any",
+      "production": "type2",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.3; ABNF type2 / any",
+      "title": "Any (#)"
+    },
+    {
+      "alt": "type1 *(\"/\" type1)",
+      "desc": "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch.",
+      "example": "t = int / tstr / bool",
+      "id": "type.choice",
+      "production": "type",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2; ABNF type / type-choice",
+      "roles": [
+        "role.choice-member"
+      ],
+      "title": "Type choice (/)"
+    },
+    {
+      "alt": "\"..\"",
+      "desc": "Applied inside type1 as `type2 .. type2`; constrains to the closed interval including both endpoints.",
+      "example": "t = 0..10",
+      "id": "rangeop.inclusive",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2.1; ABNF rangeop / \"..\"",
+      "title": "Inclusive range (a..b)"
+    },
+    {
+      "alt": "\"...\"",
+      "desc": "Applied inside type1 as `type2 ... type2`; constrains to the half-open interval that excludes the upper endpoint.",
+      "example": "t = 0...10",
+      "id": "rangeop.exclusive",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a72.2.2.1; ABNF rangeop / \"...\"",
+      "title": "Exclusive range (a...b)"
+    },
+    {
+      "alt": "type2 ctlop type2",
+      "desc": "Binds a target type2 to a controller type2 via a `.name` control operator (`type1 .op type2`). The operator vocabulary is the IANA-derived control-op axis \u2014 see reference ids `ctl.*` (e.g. ctl.size, ctl.cbor, ctl.lt); this row is the application construct only, not the operator list.",
+      "example": "t = tstr .size 4",
+      "id": "type1.ctlop",
+      "production": "type1",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.8; ABNF type1 / ctlop (ctlop = \".\" id)",
+      "title": "Control-operator application (.op)"
+    },
+    {
+      "alt": "\"/=\"",
+      "desc": "`name /= type` adds a `/` alternative to an existing (or new) type rule of that name, building a type choice incrementally across multiple rule statements.",
+      "example": "a = int\na /= tstr",
+      "id": "assignt.extend",
+      "production": "assignt",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.9; ABNF assignt = \"=\" / \"/=\"",
+      "roles": [
+        "role.choice-member"
+      ],
+      "title": "Incremental type-choice extension (/=)"
+    },
+    {
+      "alt": "\"//=\"",
+      "desc": "`name //= grpent` adds a `//` group-choice branch to an existing (or new) group rule of that name, building a group choice incrementally across multiple rule statements.",
+      "example": "tcpopts = (1: int)\ntcpopts //= (2: tstr)",
+      "id": "assigng.extend",
+      "production": "assigng",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 \u00a73.9; ABNF assigng = \"=\" / \"//=\"",
+      "roles": [
+        "role.choice-member"
+      ],
+      "title": "Incremental group-choice extension (//=)"
+    }
+  ],
+  "roles": [
+    {
+      "desc": "A type used as the right-hand side of a rule (`name = <type>`).",
+      "grammar": "RFC8610 ABNF: rule / assignt / type",
+      "id": "role.top-level",
+      "title": "Top-level rule body"
+    },
+    {
+      "desc": "A type/group entry appearing inside `[ ... ]`.",
+      "grammar": "RFC8610 ABNF: type2 array -> group -> grpent",
+      "id": "role.array-element",
+      "title": "Array element"
+    },
+    {
+      "desc": "The value type of a struct-style member or a table `* K => V` entry.",
+      "grammar": "RFC8610 ABNF: type2 map -> group -> grpent (memberkey type)",
+      "id": "role.map-value",
+      "title": "Map member value"
+    },
+    {
+      "desc": "The key of a map member (`memberkey`: bareword, type, or value).",
+      "grammar": "RFC8610 ABNF: memberkey",
+      "id": "role.map-key",
+      "title": "Map member key"
+    },
+    {
+      "desc": "The type inside `#6.n( ... )`.",
+      "grammar": "RFC8610 ABNF: type2 tagged-data -> type",
+      "id": "role.tag-content",
+      "title": "Tag content"
+    },
+    {
+      "desc": "A member of a type choice (`/`) or group choice (`//`).",
+      "grammar": "RFC8610 ABNF: type (type1 *(\"/\" type1)) ; grpchoice",
+      "id": "role.choice-member",
+      "title": "Choice alternative"
+    },
+    {
+      "desc": "The entry an occurrence indicator (`?`, `*`, `+`, `n*m`) applies to.",
+      "grammar": "RFC8610 ABNF: grpent = [occur S] ...",
+      "id": "role.occurrence-target",
+      "title": "Occurrence target"
+    },
+    {
+      "desc": "The type a byte string is constrained to encode via `.cbor` / `.cborseq`.",
+      "grammar": "RFC8610 \u00a73.8.4",
+      "id": "role.cbor-payload",
+      "title": ".cbor / .cborseq payload"
+    },
+    {
+      "desc": "A type passed as a generic parameter (`foo<T>`).",
+      "grammar": "RFC8610 \u00a73.10; ABNF genericarg",
+      "id": "role.generic-arg",
+      "title": "Generic argument"
+    }
+  ]
+}

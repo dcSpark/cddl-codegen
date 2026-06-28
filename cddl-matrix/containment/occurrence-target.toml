@@ -1,0 +1,29 @@
+# Containment — role.occurrence-target × feature. The entry an occurrence indicator (?, *, +, n*m)
+# applies to. Schema = containment/type2.toml (id, role, feature, spec, note) PLUS an `example`
+# parsed by the oracles to corroborate `spec`. An occurrence applies to a whole grpent, so it can
+# repeat a composite entry (occurrence-of-composite). Grammar anchor: grpent = [occur S] [memberkey S] type
+# / [occur S] "(" S group S ")".
+
+[[contain]]
+id = "contain.occurrence-target.type2.map"
+role = "role.occurrence-target"
+feature = "type2.map"
+spec = "allowed"
+note = "An occurrence indicator applies to a whole grpent, so it may repeat a map entry: `[* {x: int}]`. RFC8610 §3.2, §3.5; ABNF grpent [occur] ... type2 map."
+example = "a = [* {x: int}]"
+
+[[contain]]
+id = "contain.occurrence-target.type2.array"
+role = "role.occurrence-target"
+feature = "type2.array"
+spec = "allowed"
+note = "Occurrence over an array entry: `[* [int]]` (a variable-length list of arrays). RFC8610 §3.2, §3.4; ABNF grpent [occur] ... type2 array."
+example = "a = [* [int]]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "One occurrence applies to a whole parenthesized sub-group, repeating the entire entry tuple: `[* (int, tstr)]`. RFC8610 §3.2, §2.2; ABNF grpent / [occur] inline-group."
+example = "a = [* (int, tstr)]"

@@ -1,0 +1,55 @@
+# Containment — role.array-element × feature. Nestings inside `[ ... ]` (an array's group entry).
+# Schema per [[contain]] matches containment/type2.toml (id, role, feature, spec, note) PLUS an
+# `example`: a minimal CDDL snippet isolating the nesting, parsed by the spec-validity oracles to
+# corroborate `spec`. spec = "allowed" | "disallowed" per the ABNF (RFC 9682 grammar / RFC 8610).
+# id = "contain.<role-id-tail>.<feature-id>". Trivial primitive-as-element cells are omitted as a
+# redundant code path; only the structurally interesting (composite / choice / unwrap / group) cells
+# are recorded. Grammar anchor: type2 array -> "[" group "]" -> grpchoice -> grpent.
+
+[[contain]]
+id = "contain.array-element.type.choice"
+role = "role.array-element"
+feature = "type.choice"
+spec = "allowed"
+note = "An array entry is a `type` (grpent member), and `type` is a `/` type-choice, so a choice may be an element directly. RFC8610 §3.4, §2.2.2; ABNF type2 array -> grpent -> type (type-choice)."
+example = "a = [int / tstr]"
+
+[[contain]]
+id = "contain.array-element.type2.unwrap"
+role = "role.array-element"
+feature = "type2.unwrap"
+spec = "allowed"
+note = "`~name` is a type2, valid wherever a type is; as an array element it inlines the unwrapped type's content. RFC8610 §3.4, §3.7; ABNF grpent -> type -> type2 unwrap."
+example = "h = [uint]\na = [~h]"
+
+[[contain]]
+id = "contain.array-element.type2.map"
+role = "role.array-element"
+feature = "type2.map"
+spec = "allowed"
+note = "A map is a type2, valid as an array element (anonymous nested struct). RFC8610 §3.4, §3.5; ABNF grpent -> type -> type2 map."
+example = "a = [{x: int}]"
+
+[[contain]]
+id = "contain.array-element.type2.array"
+role = "role.array-element"
+feature = "type2.array"
+spec = "allowed"
+note = "An array is a type2, valid as an array element (array of arrays). RFC8610 §3.4; ABNF grpent -> type -> type2 array."
+example = "a = [[int]]"
+
+[[contain]]
+id = "contain.array-element.grpent.inline_group"
+role = "role.array-element"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A parenthesized inline group is itself a grpent, so a sub-group may appear directly among an array's entries (group-in-group). RFC8610 §2.2; ABNF grpent / inline-group."
+example = "a = [(int, tstr)]"
+
+[[contain]]
+id = "contain.array-element.grpent.groupname"
+role = "role.array-element"
+feature = "grpent.groupname"
+spec = "allowed"
+note = "A group entry may be a groupname reference, splicing that named group's entries into the array. RFC8610 §2.2.1; ABNF grpent / groupname."
+example = "a = [pt]\npt = (uint, uint)"

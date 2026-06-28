@@ -1,0 +1,463 @@
+# CDDL standard prelude — one row per prelude typename (RFC 8610 App. D / sources/cddl.prelude).
+# These are not ABNF grammar alternatives; they are the 40 named types CDDL implicitly prepends to
+# every spec. Each is a fixed definition built out of the grammar (data-major-type sigils, tagged
+# data, and type choices). `production = "prelude"`; `alt` is the verbatim right-hand side from
+# sources/cddl.prelude. ids are `prelude.<name>` (referenced by containment.toml + annotations/*).
+#
+# Schema per [[feature]] (matches features/type2.toml exactly):
+#   id          stable slug (prelude.<name>)
+#   production  "prelude"
+#   alt         the verbatim RHS of the prelude definition
+#   rfc         spec anchor: RFC 8610 App. D + the prelude rule (NO line numbers)
+#   profile     CDDL language profile (RFC) that introduces the type; "RFC8610" for the whole prelude
+#   title       short human label
+#   desc        one-line description
+#   example     minimal CDDL snippet that references the typename (parsed & probed)
+#   encodings   (optional) CBOR encodings the type can take (links into encodings.toml)
+#
+# Support status is NOT here — see annotations/cddl_codegen.toml (master stays pure spec).
+
+# --- root types (data-major-type sigils) ---
+[[feature]]
+id = "prelude.any"
+production = "prelude"
+alt = "#"
+rfc = "RFC8610 App. D; prelude / any"
+profile = "RFC8610"
+title = "any"
+desc = "Matches any single CBOR data item (no constraint)."
+example = "x = any"
+
+[[feature]]
+id = "prelude.uint"
+production = "prelude"
+alt = "#0"
+rfc = "RFC8610 App. D; prelude / uint"
+profile = "RFC8610"
+title = "uint"
+desc = "Unsigned integer (CBOR major type 0)."
+example = "x = uint"
+encodings = ["enc.major0"]
+
+[[feature]]
+id = "prelude.nint"
+production = "prelude"
+alt = "#1"
+rfc = "RFC8610 App. D; prelude / nint"
+profile = "RFC8610"
+title = "nint"
+desc = "Negative integer (CBOR major type 1)."
+example = "x = nint"
+encodings = ["enc.major1"]
+
+[[feature]]
+id = "prelude.int"
+production = "prelude"
+alt = "uint / nint"
+rfc = "RFC8610 App. D; prelude / int"
+profile = "RFC8610"
+title = "int"
+desc = "Signed integer: a uint or an nint."
+example = "x = int"
+encodings = ["enc.major0", "enc.major1"]
+
+[[feature]]
+id = "prelude.bstr"
+production = "prelude"
+alt = "#2"
+rfc = "RFC8610 App. D; prelude / bstr"
+profile = "RFC8610"
+title = "bstr"
+desc = "Byte string (CBOR major type 2)."
+example = "x = bstr"
+encodings = ["enc.major2"]
+
+[[feature]]
+id = "prelude.bytes"
+production = "prelude"
+alt = "bstr"
+rfc = "RFC8610 App. D; prelude / bytes"
+profile = "RFC8610"
+title = "bytes"
+desc = "Alias of bstr (byte string)."
+example = "x = bytes"
+encodings = ["enc.major2"]
+
+[[feature]]
+id = "prelude.tstr"
+production = "prelude"
+alt = "#3"
+rfc = "RFC8610 App. D; prelude / tstr"
+profile = "RFC8610"
+title = "tstr"
+desc = "Text string, UTF-8 (CBOR major type 3)."
+example = "x = tstr"
+encodings = ["enc.major3"]
+
+[[feature]]
+id = "prelude.text"
+production = "prelude"
+alt = "tstr"
+rfc = "RFC8610 App. D; prelude / text"
+profile = "RFC8610"
+title = "text"
+desc = "Alias of tstr (text string)."
+example = "x = text"
+encodings = ["enc.major3"]
+
+# --- tag-based date/time types ---
+[[feature]]
+id = "prelude.tdate"
+production = "prelude"
+alt = "#6.0(tstr)"
+rfc = "RFC8610 App. D; prelude / tdate"
+profile = "RFC8610"
+title = "tdate"
+desc = "Standard date/time string: CBOR tag 0 wrapping a tstr."
+example = "x = tdate"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.time"
+production = "prelude"
+alt = "#6.1(number)"
+rfc = "RFC8610 App. D; prelude / time"
+profile = "RFC8610"
+title = "time"
+desc = "Epoch-based date/time: CBOR tag 1 wrapping a number."
+example = "x = time"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.number"
+production = "prelude"
+alt = "int / float"
+rfc = "RFC8610 App. D; prelude / number"
+profile = "RFC8610"
+title = "number"
+desc = "Any number: an int or a float."
+example = "x = number"
+encodings = ["enc.major0", "enc.major1", "enc.major7.float"]
+
+# --- bignum / arbitrary-precision integer types ---
+[[feature]]
+id = "prelude.biguint"
+production = "prelude"
+alt = "#6.2(bstr)"
+rfc = "RFC8610 App. D; prelude / biguint"
+profile = "RFC8610"
+title = "biguint"
+desc = "Unsigned bignum: CBOR tag 2 wrapping a bstr."
+example = "x = biguint"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.bignint"
+production = "prelude"
+alt = "#6.3(bstr)"
+rfc = "RFC8610 App. D; prelude / bignint"
+profile = "RFC8610"
+title = "bignint"
+desc = "Negative bignum: CBOR tag 3 wrapping a bstr."
+example = "x = bignint"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.bigint"
+production = "prelude"
+alt = "biguint / bignint"
+rfc = "RFC8610 App. D; prelude / bigint"
+profile = "RFC8610"
+title = "bigint"
+desc = "Arbitrary-precision integer: a biguint or a bignint."
+example = "x = bigint"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.integer"
+production = "prelude"
+alt = "int / bigint"
+rfc = "RFC8610 App. D; prelude / integer"
+profile = "RFC8610"
+title = "integer"
+desc = "Any integer: an int or a bigint."
+example = "x = integer"
+encodings = ["enc.major0", "enc.major1", "enc.major6"]
+
+[[feature]]
+id = "prelude.unsigned"
+production = "prelude"
+alt = "uint / biguint"
+rfc = "RFC8610 App. D; prelude / unsigned"
+profile = "RFC8610"
+title = "unsigned"
+desc = "Any unsigned integer: a uint or a biguint."
+example = "x = unsigned"
+encodings = ["enc.major0", "enc.major6"]
+
+[[feature]]
+id = "prelude.decfrac"
+production = "prelude"
+alt = "#6.4([e10: int, m: integer])"
+rfc = "RFC8610 App. D; prelude / decfrac"
+profile = "RFC8610"
+title = "decfrac"
+desc = "Decimal fraction: CBOR tag 4, an array [exponent (base 10), mantissa]."
+example = "x = decfrac"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.bigfloat"
+production = "prelude"
+alt = "#6.5([e2: int, m: integer])"
+rfc = "RFC8610 App. D; prelude / bigfloat"
+profile = "RFC8610"
+title = "bigfloat"
+desc = "Bigfloat: CBOR tag 5, an array [exponent (base 2), mantissa]."
+example = "x = bigfloat"
+encodings = ["enc.major6"]
+
+# --- conversion-hint / encoding tag types ---
+[[feature]]
+id = "prelude.eb64url"
+production = "prelude"
+alt = "#6.21(any)"
+rfc = "RFC8610 App. D; prelude / eb64url"
+profile = "RFC8610"
+title = "eb64url"
+desc = "Expected base64url conversion hint: CBOR tag 21."
+example = "x = eb64url"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.eb64legacy"
+production = "prelude"
+alt = "#6.22(any)"
+rfc = "RFC8610 App. D; prelude / eb64legacy"
+profile = "RFC8610"
+title = "eb64legacy"
+desc = "Expected base64 conversion hint: CBOR tag 22."
+example = "x = eb64legacy"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.eb16"
+production = "prelude"
+alt = "#6.23(any)"
+rfc = "RFC8610 App. D; prelude / eb16"
+profile = "RFC8610"
+title = "eb16"
+desc = "Expected base16 conversion hint: CBOR tag 23."
+example = "x = eb16"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.encoded-cbor"
+production = "prelude"
+alt = "#6.24(bstr)"
+rfc = "RFC8610 App. D; prelude / encoded-cbor"
+profile = "RFC8610"
+title = "encoded-cbor"
+desc = "CBOR data item embedded in a byte string: CBOR tag 24."
+example = "x = encoded-cbor"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.uri"
+production = "prelude"
+alt = "#6.32(tstr)"
+rfc = "RFC8610 App. D; prelude / uri"
+profile = "RFC8610"
+title = "uri"
+desc = "URI text string: CBOR tag 32."
+example = "x = uri"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.b64url"
+production = "prelude"
+alt = "#6.33(tstr)"
+rfc = "RFC8610 App. D; prelude / b64url"
+profile = "RFC8610"
+title = "b64url"
+desc = "Base64url-encoded text: CBOR tag 33."
+example = "x = b64url"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.b64legacy"
+production = "prelude"
+alt = "#6.34(tstr)"
+rfc = "RFC8610 App. D; prelude / b64legacy"
+profile = "RFC8610"
+title = "b64legacy"
+desc = "Base64-encoded text: CBOR tag 34."
+example = "x = b64legacy"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.regexp"
+production = "prelude"
+alt = "#6.35(tstr)"
+rfc = "RFC8610 App. D; prelude / regexp"
+profile = "RFC8610"
+title = "regexp"
+desc = "Regular-expression text (PCRE/ECMA): CBOR tag 35."
+example = "x = regexp"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.mime-message"
+production = "prelude"
+alt = "#6.36(tstr)"
+rfc = "RFC8610 App. D; prelude / mime-message"
+profile = "RFC8610"
+title = "mime-message"
+desc = "MIME message text (RFC 2045 et al.): CBOR tag 36."
+example = "x = mime-message"
+encodings = ["enc.major6"]
+
+[[feature]]
+id = "prelude.cbor-any"
+production = "prelude"
+alt = "#6.55799(any)"
+rfc = "RFC8610 App. D; prelude / cbor-any"
+profile = "RFC8610"
+title = "cbor-any"
+desc = "Self-described CBOR: CBOR tag 55799 wrapping any data item."
+example = "x = cbor-any"
+encodings = ["enc.major6"]
+
+# --- float types ---
+[[feature]]
+id = "prelude.float16"
+production = "prelude"
+alt = "#7.25"
+rfc = "RFC8610 App. D; prelude / float16"
+profile = "RFC8610"
+title = "float16"
+desc = "IEEE 754 half-precision float (major 7, ai 25)."
+example = "x = float16"
+encodings = ["enc.major7.float16"]
+
+[[feature]]
+id = "prelude.float32"
+production = "prelude"
+alt = "#7.26"
+rfc = "RFC8610 App. D; prelude / float32"
+profile = "RFC8610"
+title = "float32"
+desc = "IEEE 754 single-precision float (major 7, ai 26)."
+example = "x = float32"
+encodings = ["enc.major7.float32"]
+
+[[feature]]
+id = "prelude.float64"
+production = "prelude"
+alt = "#7.27"
+rfc = "RFC8610 App. D; prelude / float64"
+profile = "RFC8610"
+title = "float64"
+desc = "IEEE 754 double-precision float (major 7, ai 27)."
+example = "x = float64"
+encodings = ["enc.major7.float64"]
+
+[[feature]]
+id = "prelude.float16-32"
+production = "prelude"
+alt = "float16 / float32"
+rfc = "RFC8610 App. D; prelude / float16-32"
+profile = "RFC8610"
+title = "float16-32"
+desc = "Half- or single-precision float."
+example = "x = float16-32"
+encodings = ["enc.major7.float16", "enc.major7.float32"]
+
+[[feature]]
+id = "prelude.float32-64"
+production = "prelude"
+alt = "float32 / float64"
+rfc = "RFC8610 App. D; prelude / float32-64"
+profile = "RFC8610"
+title = "float32-64"
+desc = "Single- or double-precision float."
+example = "x = float32-64"
+encodings = ["enc.major7.float32", "enc.major7.float64"]
+
+[[feature]]
+id = "prelude.float"
+production = "prelude"
+alt = "float16-32 / float64"
+rfc = "RFC8610 App. D; prelude / float"
+profile = "RFC8610"
+title = "float"
+desc = "Any float: half-, single-, or double-precision."
+example = "x = float"
+encodings = ["enc.major7.float"]
+
+# --- simple-value types (major 7) ---
+[[feature]]
+id = "prelude.false"
+production = "prelude"
+alt = "#7.20"
+rfc = "RFC8610 App. D; prelude / false"
+profile = "RFC8610"
+title = "false"
+desc = "Boolean false (major 7, simple value 20)."
+example = "x = false"
+encodings = ["enc.major7.simple_imm"]
+
+[[feature]]
+id = "prelude.true"
+production = "prelude"
+alt = "#7.21"
+rfc = "RFC8610 App. D; prelude / true"
+profile = "RFC8610"
+title = "true"
+desc = "Boolean true (major 7, simple value 21)."
+example = "x = true"
+encodings = ["enc.major7.simple_imm"]
+
+[[feature]]
+id = "prelude.bool"
+production = "prelude"
+alt = "false / true"
+rfc = "RFC8610 App. D; prelude / bool"
+profile = "RFC8610"
+title = "bool"
+desc = "Boolean: false or true."
+example = "x = bool"
+encodings = ["enc.major7.simple_imm"]
+
+[[feature]]
+id = "prelude.nil"
+production = "prelude"
+alt = "#7.22"
+rfc = "RFC8610 App. D; prelude / nil"
+profile = "RFC8610"
+title = "nil"
+desc = "Null value (major 7, simple value 22)."
+example = "x = nil"
+encodings = ["enc.major7.simple_imm"]
+
+[[feature]]
+id = "prelude.null"
+production = "prelude"
+alt = "nil"
+rfc = "RFC8610 App. D; prelude / null"
+profile = "RFC8610"
+title = "null"
+desc = "Alias of nil (null value)."
+example = "x = null"
+encodings = ["enc.major7.simple_imm"]
+
+[[feature]]
+id = "prelude.undefined"
+production = "prelude"
+alt = "#7.23"
+rfc = "RFC8610 App. D; prelude / undefined"
+profile = "RFC8610"
+title = "undefined"
+desc = "Undefined value (major 7, simple value 23)."
+example = "x = undefined"
+encodings = ["enc.major7.simple_imm"]

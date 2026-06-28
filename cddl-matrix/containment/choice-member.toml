@@ -1,0 +1,29 @@
+# Containment — role.choice-member × feature. An alternative of a `/` type choice. Schema =
+# containment/type2.toml (id, role, feature, spec, note) PLUS an `example` parsed by the oracles to
+# corroborate `spec`. Each branch is a type1/type2, so composites are legal alternatives; the three
+# composite shapes below exercise distinct consumer code paths (struct-enum, list-enum,
+# tag-discriminated-enum). Grammar anchor: type = type1 *(S "/" S type1).
+
+[[contain]]
+id = "contain.choice-member.type2.map"
+role = "role.choice-member"
+feature = "type2.map"
+spec = "allowed"
+note = "Each `/` branch is a type1/type2, so a map may be a choice alternative (enum of structs): `{a: int} / {b: tstr}`. RFC8610 §2.2.2, §3.5; ABNF type-choice / type2 map."
+example = "t = {a: int} / {b: tstr}"
+
+[[contain]]
+id = "contain.choice-member.type2.array"
+role = "role.choice-member"
+feature = "type2.array"
+spec = "allowed"
+note = "An array as a type-choice alternative: `[int] / [tstr]`. RFC8610 §2.2.2, §3.4; ABNF type-choice / type2 array."
+example = "t = [int] / [tstr]"
+
+[[contain]]
+id = "contain.choice-member.type2.tag"
+role = "role.choice-member"
+feature = "type2.tag"
+spec = "allowed"
+note = "Tagged types as choice alternatives (tag-discriminated union): `#6.10(int) / #6.11(tstr)`. RFC8610 §2.2.2, §3.6; ABNF type-choice / type2 tagged-data."
+example = "t = #6.10(int) / #6.11(tstr)"

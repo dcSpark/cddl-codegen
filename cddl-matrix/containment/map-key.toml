@@ -1,0 +1,21 @@
+# Containment — role.map-key × feature. Nestings in a map member's KEY position (`memberkey`).
+# Schema = containment/type2.toml (id, role, feature, spec, note) PLUS an `example` parsed by the
+# oracles to corroborate `spec`. The tagged-type-as-key cell is already in containment/type2.toml.
+# Key subtlety: a `type1 =>` memberkey admits any type1 (composite keys are legal) but NOT the
+# `/` type-choice, which is a `type`. Grammar anchor: memberkey = type1 ["^"] "=>" / bareword ":" / value ":".
+
+[[contain]]
+id = "contain.map-key.type2.array"
+role = "role.map-key"
+feature = "type2.array"
+spec = "allowed"
+note = "A `type1 =>` memberkey admits any type1; an array (type2) is a valid composite key: `{ [int] => tstr }`. RFC8610 §3.5.2; ABNF memberkey / type1 \"=>\"."
+example = "m = { [int] => tstr }"
+
+[[contain]]
+id = "contain.map-key.type.choice"
+role = "role.map-key"
+feature = "type.choice"
+spec = "disallowed"
+note = "A memberkey is a `type1`, which does NOT include the `/` type-choice (a `type`); the bare form `{ int / tstr => bool }` is rejected by both oracles. Parenthesizing — `(int / tstr)` — turns it into a type2 and is then a valid key. RFC8610 §3.5.2; ABNF memberkey / type1 (type1 excludes type-choice)."
+example = "m = { int / tstr => bool }"

@@ -1,0 +1,440 @@
+# CBOR encoding axis (RFC 8949 §3). The "representation" dimension: a single CDDL feature can be
+# serialized multiple ways (argument width, definite vs indefinite length). golden_hex/COVERAGE.md is
+# the projection onto this axis; features.toml links to these ids via `encodings = [...]`.
+#
+# This file is the FULL major-type (0..7) x length/ai-form grid. Two layers of rows:
+#   1. PARENT rows  `enc.major<N>` (+ `enc.major7.float`) — one per CBOR major type. These are the ids
+#      features.toml references; kept stable. `forms` summarizes the cells beneath them.
+#   2. CELL rows    `enc.major<N>.<form>` — one per distinct additional-information (ai) form, i.e. one
+#      grid cell. A cell is a *distinct encoding alternative*, so it gets its own row (same rule the
+#      feature axis uses). Concrete vectors are cited from sources/appendix_a.json where available.
+#
+# CBOR head byte = (major_type << 5) | additional_info (RFC8949 §3.1, Table 1). The ai field (0..31):
+#   0..23  argument is the ai itself        (immediate / no following bytes)
+#   24     1 following byte   (uint8 arg)
+#   25     2 following bytes  (uint16 arg)
+#   26     4 following bytes  (uint32 arg)
+#   27     8 following bytes  (uint64 arg)
+#   28..30 reserved — NOT well-formed (RFC8949 §3.3)
+#   31     indefinite length (major 2..5) / "break" stop code (major 7) / reserved (major 0,1,6)
+#
+# Schema per [[encoding]] (unchanged):
+#   id           "enc.major<N>[.sub]"
+#   major_type   CBOR major type 0..7
+#   rfc          RFC8949 section
+#   forms        the length / additional-info variant(s) this row covers
+#   note         prose + concrete appendix_a.json vectors where available
+
+# =====================================================================================
+# PARENT rows — one per major type (the ids features.toml links to). Kept stable.
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major0"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
+note = "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed). Cells: enc.major0.imm/.ai24/.ai25/.ai26/.ai27."
+
+[[encoding]]
+id = "enc.major1"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
+note = "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed). Cells: enc.major1.imm/.ai24/.ai25/.ai26/.ai27."
+
+[[encoding]]
+id = "enc.major2"
+major_type = 2
+rfc = "RFC8949 §3.1, §3.2"
+forms = ["ai 0-23 immediate length", "ai 24/25/26/27 length", "ai 31 indefinite (0x5f..0xff)"]
+note = "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved. Cells: enc.major2.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+
+[[encoding]]
+id = "enc.major3"
+major_type = 3
+rfc = "RFC8949 §3.1, §3.2"
+forms = ["ai 0-23 immediate length", "ai 24/25/26/27 length", "ai 31 indefinite (0x7f..0xff)"]
+note = "Text string (UTF-8); argument = byte length. ai 28-30 reserved. Cells: enc.major3.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+
+[[encoding]]
+id = "enc.major4"
+major_type = 4
+rfc = "RFC8949 §3.1, §3.2"
+forms = ["ai 0-23 immediate count", "ai 24/25/26/27 count", "ai 31 indefinite (0x9f..0xff)"]
+note = "Array; argument = element count. ai 28-30 reserved. Cells: enc.major4.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+
+[[encoding]]
+id = "enc.major5"
+major_type = 5
+rfc = "RFC8949 §3.1, §3.2"
+forms = ["ai 0-23 immediate count", "ai 24/25/26/27 count", "ai 31 indefinite (0xbf..0xff)"]
+note = "Map; argument = number of key/value pairs. ai 28-30 reserved. Cells: enc.major5.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+
+[[encoding]]
+id = "enc.major6"
+major_type = 6
+rfc = "RFC8949 §3.1, §3.4"
+forms = ["ai 0-23 immediate tag#", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
+note = "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved. Cells: enc.major6.imm/.ai24/.ai25/.ai26/.ai27."
+
+[[encoding]]
+id = "enc.major7"
+major_type = 7
+rfc = "RFC8949 §3.1, §3.3"
+forms = ["simple 0-23 immediate", "simple 24 (1B)", "float16 (ai25)", "float32 (ai26)", "float64 (ai27)", "break (ai31, 0xff)"]
+note = "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved. Cells: enc.major7.simple_imm/.ai24/.float16/.float32/.float64/.break."
+
+[[encoding]]
+id = "enc.major7.float"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["float16 (0xf9)", "float32 (0xfa)", "float64 (0xfb)"]
+note = "Float subset of major 7 (the half/single/double IEEE 754 widths). Cells: enc.major7.float16/.float32/.float64."
+
+# =====================================================================================
+# GRID CELLS — major type 0 : unsigned integer (RFC8949 §3.1)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major0.imm"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate (head 0x00..0x17)"]
+note = "Value carried in the ai, no following bytes. appendix_a: 00=0, 01=1, 0a=10, 17=23."
+
+[[encoding]]
+id = "enc.major0.ai24"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte uint8 argument (head 0x18)"]
+note = "appendix_a: 1818=24, 1819=25, 1864=100."
+
+[[encoding]]
+id = "enc.major0.ai25"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte uint16 argument (head 0x19)"]
+note = "appendix_a: 1903e8=1000."
+
+[[encoding]]
+id = "enc.major0.ai26"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte uint32 argument (head 0x1a)"]
+note = "appendix_a: 1a000f4240=1000000."
+
+[[encoding]]
+id = "enc.major0.ai27"
+major_type = 0
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte uint64 argument (head 0x1b)"]
+note = "appendix_a: 1b000000e8d4a51000=1000000000000, 1bffffffffffffffff=18446744073709551615 (2^64-1, max uint)."
+
+# =====================================================================================
+# GRID CELLS — major type 1 : negative integer (RFC8949 §3.1)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major1.imm"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate (head 0x20..0x37)"]
+note = "Value = -1 - ai. appendix_a: 20=-1, 29=-10."
+
+[[encoding]]
+id = "enc.major1.ai24"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte uint8 argument (head 0x38)"]
+note = "appendix_a: 3863=-100."
+
+[[encoding]]
+id = "enc.major1.ai25"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte uint16 argument (head 0x39)"]
+note = "appendix_a: 3903e7=-1000."
+
+[[encoding]]
+id = "enc.major1.ai26"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte uint32 argument (head 0x3a)"]
+note = "No appendix_a vector; head 0x3a (value = -1 - uint32)."
+
+[[encoding]]
+id = "enc.major1.ai27"
+major_type = 1
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte uint64 argument (head 0x3b)"]
+note = "appendix_a: 3bffffffffffffffff=-18446744073709551616 (-2^64, min nint)."
+
+# =====================================================================================
+# GRID CELLS — major type 2 : byte string (RFC8949 §3.1, §3.2)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major2.imm"
+major_type = 2
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate length (head 0x40..0x57)"]
+note = "Length carried in ai. appendix_a: 40=h'' (len 0), 4401020304=h'01020304' (len 4)."
+
+[[encoding]]
+id = "enc.major2.ai24"
+major_type = 2
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte length (head 0x58)"]
+note = "No appendix_a vector; head 0x58 + 1 length byte."
+
+[[encoding]]
+id = "enc.major2.ai25"
+major_type = 2
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte length (head 0x59)"]
+note = "No appendix_a vector; head 0x59 + 2 length bytes."
+
+[[encoding]]
+id = "enc.major2.ai26"
+major_type = 2
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte length (head 0x5a)"]
+note = "No appendix_a vector; head 0x5a + 4 length bytes."
+
+[[encoding]]
+id = "enc.major2.ai27"
+major_type = 2
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte length (head 0x5b)"]
+note = "No appendix_a vector; head 0x5b + 8 length bytes."
+
+[[encoding]]
+id = "enc.major2.indef"
+major_type = 2
+rfc = "RFC8949 §3.2"
+forms = ["ai 31 indefinite length (head 0x5f, chunks, 0xff break)"]
+note = "Stream of definite-length bstr chunks ended by break. appendix_a: 5f42010243030405ff = (_ h'0102', h'030405')."
+
+# =====================================================================================
+# GRID CELLS — major type 3 : text string (RFC8949 §3.1, §3.2)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major3.imm"
+major_type = 3
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate length (head 0x60..0x77)"]
+note = "Length carried in ai. appendix_a: 60=\"\" (len 0), 6161=\"a\", 6449455446=\"IETF\", 62c3bc=\"ü\", 63e6b0b4=\"水\"."
+
+[[encoding]]
+id = "enc.major3.ai24"
+major_type = 3
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte length (head 0x78)"]
+note = "No appendix_a vector; head 0x78 + 1 length byte."
+
+[[encoding]]
+id = "enc.major3.ai25"
+major_type = 3
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte length (head 0x79)"]
+note = "No appendix_a vector; head 0x79 + 2 length bytes."
+
+[[encoding]]
+id = "enc.major3.ai26"
+major_type = 3
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte length (head 0x7a)"]
+note = "No appendix_a vector; head 0x7a + 4 length bytes."
+
+[[encoding]]
+id = "enc.major3.ai27"
+major_type = 3
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte length (head 0x7b)"]
+note = "No appendix_a vector; head 0x7b + 8 length bytes."
+
+[[encoding]]
+id = "enc.major3.indef"
+major_type = 3
+rfc = "RFC8949 §3.2"
+forms = ["ai 31 indefinite length (head 0x7f, chunks, 0xff break)"]
+note = "Stream of definite-length tstr chunks ended by break. appendix_a: 7f657374726561646d696e67ff = \"streaming\"."
+
+# =====================================================================================
+# GRID CELLS — major type 4 : array (RFC8949 §3.1, §3.2)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major4.imm"
+major_type = 4
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate element count (head 0x80..0x97)"]
+note = "Count carried in ai. appendix_a: 80=[] (0 elems), 83010203=[1,2,3], 8301820203820405=[1,[2,3],[4,5]]."
+
+[[encoding]]
+id = "enc.major4.ai24"
+major_type = 4
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte count (head 0x98)"]
+note = "appendix_a: 98190102...1819 = 25-element array [1..25]."
+
+[[encoding]]
+id = "enc.major4.ai25"
+major_type = 4
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte count (head 0x99)"]
+note = "No appendix_a vector; head 0x99 + 2 count bytes."
+
+[[encoding]]
+id = "enc.major4.ai26"
+major_type = 4
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte count (head 0x9a)"]
+note = "No appendix_a vector; head 0x9a + 4 count bytes."
+
+[[encoding]]
+id = "enc.major4.ai27"
+major_type = 4
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte count (head 0x9b)"]
+note = "No appendix_a vector; head 0x9b + 8 count bytes."
+
+[[encoding]]
+id = "enc.major4.indef"
+major_type = 4
+rfc = "RFC8949 §3.2"
+forms = ["ai 31 indefinite (head 0x9f, items, 0xff break)"]
+note = "Items until break. appendix_a: 9fff=[], 9f018202039f0405ffff=[1,[2,3],[4,5]] (nested indefinite)."
+
+# =====================================================================================
+# GRID CELLS — major type 5 : map (RFC8949 §3.1, §3.2)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major5.imm"
+major_type = 5
+rfc = "RFC8949 §3.1"
+forms = ["ai 0-23 immediate pair count (head 0xa0..0xb7)"]
+note = "Pair count carried in ai. appendix_a: a0={} (0 pairs), a201020304={1:2,3:4}, a26161016162820203={\"a\":1,\"b\":[2,3]}."
+
+[[encoding]]
+id = "enc.major5.ai24"
+major_type = 5
+rfc = "RFC8949 §3.1"
+forms = ["ai 24, 1-byte pair count (head 0xb8)"]
+note = "No appendix_a vector; head 0xb8 + 1 count byte."
+
+[[encoding]]
+id = "enc.major5.ai25"
+major_type = 5
+rfc = "RFC8949 §3.1"
+forms = ["ai 25, 2-byte pair count (head 0xb9)"]
+note = "No appendix_a vector; head 0xb9 + 2 count bytes."
+
+[[encoding]]
+id = "enc.major5.ai26"
+major_type = 5
+rfc = "RFC8949 §3.1"
+forms = ["ai 26, 4-byte pair count (head 0xba)"]
+note = "No appendix_a vector; head 0xba + 4 count bytes."
+
+[[encoding]]
+id = "enc.major5.ai27"
+major_type = 5
+rfc = "RFC8949 §3.1"
+forms = ["ai 27, 8-byte pair count (head 0xbb)"]
+note = "No appendix_a vector; head 0xbb + 8 count bytes."
+
+[[encoding]]
+id = "enc.major5.indef"
+major_type = 5
+rfc = "RFC8949 §3.2"
+forms = ["ai 31 indefinite (head 0xbf, pairs, 0xff break)"]
+note = "Key/value pairs until break. appendix_a: bf61610161629f0203ffff={\"a\":1,\"b\":[2,3]}, bf6346756ef563416d7421ff={\"Fun\":true,\"Amt\":-2}."
+
+# =====================================================================================
+# GRID CELLS — major type 6 : tagged data item (RFC8949 §3.1, §3.4)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major6.imm"
+major_type = 6
+rfc = "RFC8949 §3.4"
+forms = ["ai 0-23 immediate tag number (head 0xc0..0xd7)"]
+note = "Tag number in ai, then one enclosed item. appendix_a: c0(tstr)=tag 0 (date/time), c1=tag 1, c2=tag 2 (biguint), c3=tag 3 (bignint), d7=tag 23."
+
+[[encoding]]
+id = "enc.major6.ai24"
+major_type = 6
+rfc = "RFC8949 §3.4"
+forms = ["ai 24, 1-byte tag number (head 0xd8)"]
+note = "appendix_a: d818(bstr)=tag 24 (encoded-cbor), d820(tstr)=tag 32 (uri)."
+
+[[encoding]]
+id = "enc.major6.ai25"
+major_type = 6
+rfc = "RFC8949 §3.4"
+forms = ["ai 25, 2-byte tag number (head 0xd9)"]
+note = "No appendix_a vector; head 0xd9 + 2 tag bytes (e.g. prelude cbor-any #6.55799 = d9d9f7)."
+
+[[encoding]]
+id = "enc.major6.ai26"
+major_type = 6
+rfc = "RFC8949 §3.4"
+forms = ["ai 26, 4-byte tag number (head 0xda)"]
+note = "No appendix_a vector; head 0xda + 4 tag bytes."
+
+[[encoding]]
+id = "enc.major6.ai27"
+major_type = 6
+rfc = "RFC8949 §3.4"
+forms = ["ai 27, 8-byte tag number (head 0xdb)"]
+note = "No appendix_a vector; head 0xdb + 8 tag bytes."
+
+# =====================================================================================
+# GRID CELLS — major type 7 : simple values, floats, break (RFC8949 §3.1, §3.3)
+# =====================================================================================
+
+[[encoding]]
+id = "enc.major7.simple_imm"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["ai 0-23 immediate simple value (head 0xe0..0xf7)"]
+note = "Simple value in ai (incl. 20=false, 21=true, 22=null, 23=undefined). appendix_a: f4=false, f5=true, f6=null, f7=undefined, f0=simple(16)."
+
+[[encoding]]
+id = "enc.major7.ai24"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["ai 24, 1-byte simple value 32-255 (head 0xf8)"]
+note = "Simple values 32..255. appendix_a: f818=simple(24), f8ff=simple(255). (0..31 in this form are not well-formed.)"
+
+[[encoding]]
+id = "enc.major7.float16"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["ai 25, IEEE 754 half-precision (head 0xf9)"]
+note = "appendix_a: f90000=0.0, f98000=-0.0, f93c00=1.0, f93e00=1.5, f97bff=65504.0, f97c00=Infinity, f97e00=NaN, f9fc00=-Infinity."
+
+[[encoding]]
+id = "enc.major7.float32"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["ai 26, IEEE 754 single-precision (head 0xfa)"]
+note = "appendix_a: fa47c35000=100000.0, fa7f7fffff=3.4028234663852886e+38, fa7f800000=Infinity, faff800000=-Infinity, fa7fc00000=NaN."
+
+[[encoding]]
+id = "enc.major7.float64"
+major_type = 7
+rfc = "RFC8949 §3.3"
+forms = ["ai 27, IEEE 754 double-precision (head 0xfb)"]
+note = "appendix_a: fb3ff199999999999a=1.1, fbc010666666666666=-4.1, fb7e37e43c8800759c=1.0e+300, fb7ff0000000000000=Infinity, fb7ff8000000000000=NaN."
+
+[[encoding]]
+id = "enc.major7.break"
+major_type = 7
+rfc = "RFC8949 §3.2, §3.3"
+forms = ["ai 31 break stop code (single byte 0xff)"]
+note = "Terminates an indefinite-length bstr/tstr/array/map. appendix_a: trailing ff in 5f...ff, 7f...ff, 9f...ff, bf...ff."
