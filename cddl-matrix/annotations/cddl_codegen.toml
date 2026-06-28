@@ -34,6 +34,56 @@ status = "supported"
 evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
+id = "dsl.custom_deserialize"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.custom_json"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.custom_serialize"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.doc"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.name"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.newtype"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.no_alias"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "dsl.used_as_key"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "ext.extern"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
+id = "ext.raw_bytes"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+
+[[support]]
 id = "genericarg.multiple"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
@@ -90,8 +140,8 @@ evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
 id = "memberkey.bareword"
-status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
 id = "memberkey.cut"
@@ -120,8 +170,8 @@ evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
 id = "occur.optional"
-status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
 id = "occur.zero_or_more"
@@ -380,8 +430,8 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.map"
-status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; ruby=ok rust=ok"
 
 [[support]]
 id = "type2.parenthesized"
@@ -427,3 +477,145 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 id = "value.text"
 status = "unsupported"
 evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+
+# --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---
+
+[[support]]
+id = "contain.array-element.grpent.groupname"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.grpent.inline_group"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.type.choice"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.type2.array"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.type2.map"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.type2.unwrap"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.type2.value"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.value.number"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.array-element.value.text"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.cbor-payload.type.choice"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.cbor-payload.type2.map"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.cbor-payload.type2.tag"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.choice-member.prelude.null"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.choice-member.type2.array"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.choice-member.type2.map"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.choice-member.type2.tag"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.generic-arg.type2.map"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.map-key.type2.array"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.map-value.type.choice"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.map-value.type2.array"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.map-value.type2.tag"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.map-value.type2.unwrap"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.occurrence-target.grpent.inline_group"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.occurrence-target.type2.array"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.occurrence-target.type2.map"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.tag-content.type.choice"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.tag-content.type2.map"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok"
+
+[[support]]
+id = "contain.top-level.type2.unwrap"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"

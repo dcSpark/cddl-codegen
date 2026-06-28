@@ -12,8 +12,8 @@ id = "contain.cbor-payload.type2.map"
 role = "role.cbor-payload"
 feature = "type2.map"
 spec = "allowed"
-note = "A byte string constrained via .cbor to encode a map; the type2 controller is parenthesized: `bytes .cbor ({a: int})`. RFC8610 §3.8.4, §3.5; ABNF type1 / ctlop (type2 controller) -> map."
-example = "b = bytes .cbor ({a: int})"
+note = "A byte string constrained via .cbor to encode an INLINE map (controller parenthesized). Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.8.4, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)"
+example = "b = bytes .cbor ({a: int, c: uint})"
 
 [[contain]]
 id = "contain.cbor-payload.type2.tag"

@@ -9,8 +9,8 @@ id = "contain.generic-arg.type2.map"
 role = "role.generic-arg"
 feature = "type2.map"
 spec = "allowed"
-note = "A generic argument is a type1; a map (type2) may be bound to a parameter: `foo<{x: int}>`. RFC8610 §3.10; ABNF genericarg / type1 -> type2 map."
-example = "foo<a> = [a]\nbar = foo<{x: int}>"
+note = "An INLINE map bound to a generic parameter. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works by binding a named-type argument. RFC8610 §3.10. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)"
+example = "foo<a> = [a]\nbar = foo<{x: int, y: uint}>"
 
 [[contain]]
 id = "contain.generic-arg.type.choice"

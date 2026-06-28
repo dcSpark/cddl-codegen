@@ -96,7 +96,7 @@ rfc = "RFC8610 §3.5; ABNF type2 / map"
 profile = "RFC8610"
 title = "Map"
 desc = "A CBOR map; struct-style (named members) or table-style ({ * K => V })."
-example = "foo = { a: uint, * tstr => int }"
+example = "foo = { * tstr => int }"
 roles = ["role.map-key", "role.map-value"]
 encodings = ["enc.major5"]
 

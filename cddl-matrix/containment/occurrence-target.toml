@@ -9,8 +9,8 @@ id = "contain.occurrence-target.type2.map"
 role = "role.occurrence-target"
 feature = "type2.map"
 spec = "allowed"
-note = "An occurrence indicator applies to a whole grpent, so it may repeat a map entry: `[* {x: int}]`. RFC8610 §3.2, §3.5; ABNF grpent [occur] ... type2 map."
-example = "a = [* {x: int}]"
+note = "An occurrence repeating an INLINE map entry. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.2, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)"
+example = "a = [* {x: int, y: uint}]"
 
 [[contain]]
 id = "contain.occurrence-target.type2.array"

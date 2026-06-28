@@ -9,8 +9,8 @@ id = "contain.tag-content.type2.map"
 role = "role.tag-content"
 feature = "type2.map"
 spec = "allowed"
-note = "The content of #6.n(...) is any `type`, so a map may be tagged: `#6.10({a: int})`. RFC8610 §3.6, §3.5; ABNF tagged-data -> type -> type2 map."
-example = "t = #6.10({a: int})"
+note = "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field map: a single-field struct hits an orthogonal panic.)"
+example = "t = #6.10({a: int, c: uint})"
 
 [[contain]]
 id = "contain.tag-content.type.choice"

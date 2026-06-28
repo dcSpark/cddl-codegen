@@ -9,8 +9,8 @@ id = "contain.choice-member.type2.map"
 role = "role.choice-member"
 feature = "type2.map"
 spec = "allowed"
-note = "Each `/` branch is a type1/type2, so a map may be a choice alternative (enum of structs): `{a: int} / {b: tstr}`. RFC8610 §2.2.2, §3.5; ABNF type-choice / type2 map."
-example = "t = {a: int} / {b: tstr}"
+note = "An INLINE map as a `/` choice alternative. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via named-type references (enum of named structs). RFC8610 §2.2.2, §3.5. (2-field maps, so the panic is the anonymous-group limit, not the single-field-map bug.)"
+example = "t = {a: int, c: uint} / {b: tstr, d: uint}"
 
 [[contain]]
 id = "contain.choice-member.type2.array"
@@ -27,3 +27,14 @@ feature = "type2.tag"
 spec = "allowed"
 note = "Tagged types as choice alternatives (tag-discriminated union): `#6.10(int) / #6.11(tstr)`. RFC8610 §2.2.2, §3.6; ABNF type-choice / type2 tagged-data."
 example = "t = #6.10(int) / #6.11(tstr)"
+
+# `null` as a choice alternative — the nullable pattern. This is where prelude.null is actually
+# SUPPORTED (cddl-codegen special-cases `T / null` -> Option<T>), unlike a top-level `x = null` type
+# (unsupported). The (feature × role) cell is the matrix's whole point: support differs by context.
+[[contain]]
+id = "contain.choice-member.prelude.null"
+role = "role.choice-member"
+feature = "prelude.null"
+spec = "allowed"
+note = "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). Contrast contain.top-level via the per-feature bit: a standalone `x = null` type panics. RFC8610 §2.2.2, App. D."
+example = "a = tstr / null"

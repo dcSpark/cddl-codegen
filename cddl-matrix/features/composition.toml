@@ -89,7 +89,7 @@ rfc = "RFC8610 §3.5.1; ABNF memberkey / bareword \":\""
 profile = "RFC8610"
 title = "Bareword memberkey (k:)"
 desc = "A memberkey given as a bareword (id) followed by ':'; shorthand for the text-string key \"k\" => and carries an implicit cut."
-example = "m = { name: tstr }"
+example = "m = [name: tstr]"
 roles = ["role.map-key"]
 
 # --- memberkey = value S ":" ---
@@ -125,7 +125,7 @@ rfc = "RFC8610 §3.2; ABNF occur / optional"
 profile = "RFC8610"
 title = "Optional occurrence (?)"
 desc = "The entry occurs zero or one time."
-example = "g = { ? name: tstr }"
+example = "g = [? name: tstr]"
 roles = ["role.occurrence-target"]
 
 # --- occur = [uint] "*" [uint]  (bare *) ---
