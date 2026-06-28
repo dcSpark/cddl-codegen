@@ -118,6 +118,19 @@ mod tests {
         ].concat();
         let table_arr_members_dup_err = TableArrMembers::from_cbor_bytes(&table_arr_members_dup).unwrap_err();
         assert!(table_arr_members_dup_err.to_string().contains("Duplicate key"), "{table_arr_members_dup_err}");
+
+        // A required key absent from an indefinite struct-map trips MandatoryFieldMissing. A definite
+        // map would fail its declared length first (DefiniteLenMismatch), so the omission is reached
+        // only via an indefinite map. The all-keys map above is the is_ok() baseline, so only dropping
+        // "arr2" can reject this one.
+        let table_arr_members_missing = [
+            vec![MAP_INDEF],
+                cbor_string("tab"), map_def(0),
+                cbor_string("arr"), arr_def(0),
+            vec![BREAK],
+        ].concat();
+        let table_arr_members_missing_err = TableArrMembers::from_cbor_bytes(&table_arr_members_missing).unwrap_err();
+        assert!(table_arr_members_missing_err.to_string().contains("Mandatory field"), "{table_arr_members_missing_err}");
     }
 
     #[test]
