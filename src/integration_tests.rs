@@ -515,7 +515,8 @@ fn json() {
         &[extern_rust_path],
         &[],
         false,
-        &[],
+        // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
+        &["jsonschema = { version = \"0.46\", default-features = false }"],
     );
 }
 
@@ -625,6 +626,67 @@ fn js_schema_to_ts() {
     assert!(dts.contains("[k: string]: number"), "{dts}");
 }
 
+/// Covers the shipped `static/json-ts-types.js` (TESTING_ROADMAP.md item 7), which `--package-json`
+/// runs after `run-json2ts.js` to (a) type each wasm class's `to_json_value()` with its emitted JSON
+/// interface and (b) append those interfaces to the wasm-pack `.d.ts`. It's pure string-munging over
+/// two files, so it's exercised in isolation here (no wasm-pack/json2ts needed) with hand-written
+/// fixtures. The script hardcodes the default `cddl_lib_wasm` lib name, so that's what we lay out.
+#[test]
+fn js_d_ts_merge() {
+    use std::str::FromStr;
+    let static_dir = std::path::PathBuf::from_str("static").unwrap();
+    if !tool_exists("node") {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "node is required to run js_d_ts_merge in CI"
+        );
+        eprintln!("skipping js_d_ts_merge: node not found");
+        return;
+    }
+    // gitignored (tests/*/export*/); regenerated each run, distinct from js_schema_to_ts's dir so
+    // the two can run concurrently.
+    let work = std::path::PathBuf::from_str("tests/json2ts/export_dts").unwrap();
+    let _ = std::fs::remove_dir_all(&work);
+    let pkg = work.join("rust/wasm/pkg");
+    let out = work.join("rust/wasm/json-gen/output");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::copy(
+        static_dir.join("json-ts-types.js"),
+        work.join("json-ts-types.js"),
+    )
+    .unwrap();
+    // The wasm-pack-shaped .d.ts the script reads: a class whose to_json_value() returns `any`.
+    std::fs::write(
+        pkg.join("cddl_lib_wasm.d.ts"),
+        "export class Foo {\n  free(): void;\n  to_json(): string;\n  to_json_value(): any;\n}\n",
+    )
+    .unwrap();
+    // The json-types.d.ts run-json2ts.js would have emitted.
+    std::fs::write(
+        out.join("json-types.d.ts"),
+        "export interface FooJSON {\n  x: number;\n}\n",
+    )
+    .unwrap();
+
+    let node = std::process::Command::new("node")
+        .arg("json-ts-types.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !node.status.success() {
+        eprintln!("node stderr:\n{}", String::from_utf8_lossy(&node.stderr));
+    }
+    assert!(node.status.success());
+
+    let merged = std::fs::read_to_string(pkg.join("cddl_lib_wasm.d.ts")).unwrap();
+    println!("merged d.ts:\n{merged}");
+    // to_json_value()'s `any` return was specialized to the class's JSON interface...
+    assert!(merged.contains("to_json_value(): FooJSON;"), "{merged}");
+    // ...and the JSON type defs were appended.
+    assert!(merged.contains("export interface FooJSON"), "{merged}");
+}
+
 #[test]
 fn json_preserve() {
     use std::str::FromStr;
@@ -642,7 +704,8 @@ fn json_preserve() {
         &[extern_rust_path],
         &[],
         false,
-        &[],
+        // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
+        &["jsonschema = { version = \"0.46\", default-features = false }"],
     );
 }
 

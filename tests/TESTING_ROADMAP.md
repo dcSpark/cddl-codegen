@@ -53,23 +53,28 @@ what's already covered.
    type shapes or `preserve`/`canonical` profiles is *not* tracked here: the emitted `to_json_value`
    line is flag-independent, so do it only if a divergence actually surfaces.
 
-7. **Output-validate `--json-schema-export` (today it's only compile-checked).** *(small–medium)* Two
-   concrete additions, both able to reuse the `wasm_json_roundtrip` node harness:
-   - run the json-gen crate and assert each type's `to_json()` output **validates against its own
-     emitted schema** — a real correctness oracle for the feature, not just a "does it build" gate;
-   - the second shipped script, `json-ts-types.js` (merges the `.d.ts` into the wasm-pack `pkg`
-     output), still has zero coverage — it needs a real `pkg/<lib>.d.ts`, so it'd extend the
-     `wasm_json_roundtrip` harness (which already runs wasm-pack) rather than the fixture harness
-     below. Note it hardcodes the `cddl_lib_wasm` lib name, so cover the default-name case first.
+7. **Output-validate `--json-schema-export` (today it's only compile-checked).** *(small–medium)*
+   - ✅ *Done.* `integration_tests::json` / `json_preserve` now run
+     `tests::schemas_validate_serialization`: every exported type's serde output is validated against
+     `schema_for!(T)` (the exact schema json-gen ships) via the `jsonschema` crate. Done in-process
+     in Rust rather than the suggested node harness — the emitted schema is literally
+     `to_string_pretty(schema_for!(T))` and `to_json()` is `serde_json`, so the Rust check tests the
+     same contract (schemars impl vs serde impl agree) without wasm-pack/node/ajv.
+   - ✅ *Done.* `json-ts-types.js` (merges the `.d.ts` into the wasm-pack `pkg` output) is covered by
+     `integration_tests::js_d_ts_merge` — fixture-based, default `cddl_lib_wasm` lib name, no
+     wasm-pack needed (it's pure string-munging). This surfaced and fixed a **live bug**: the script
+     keyed off `to_js_value`, but generated output renamed that method to `to_json_value` long ago, so
+     the return-type substitution had silently been a no-op.
+   - **Still open:** the full end-to-end `--package-json` run (json-gen `cargo run` → both scripts →
+     wasm-pack), and running the json-gen crate's own `export_schemas()` (the in-Rust check above
+     bypasses it). `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
 
-   `run-json2ts.js` (schema → `.d.ts`) is already covered by `integration_tests::js_schema_to_ts`
-   (shipped script over `tests/json2ts/` fixtures, pinned `json-schema-to-typescript`), and those
-   fixtures cover its live branches — so the only remaining gaps are `json-ts-types.js` and the full
-   end-to-end `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack).
-
-   Why it's worth doing: the suite currently proves the json-gen crate *builds*
-   (`integration_tests::json`, `feature_corpus_compiles`) but never runs it or inspects what it emits,
-   so a schema can be valid Rust yet wrong JSON Schema and nothing notices
+8. ✅ **Negative-path / rejection testing.** *Done* (the structural slice). `tests::structural_rejects`
+   in `tests/core/tests.rs` pins that malformed CBOR is **rejected**: empty input, too-short array,
+   wrong element type, wrong/missing tag — each with an `is_ok()` baseline so a reject can't pass for
+   the wrong reason. (Numeric/size-bound rejection was already covered by the `bounds` test.) Room to
+   grow if wanted: missing required map key, wrong major type per primitive, indefinite-vs-definite
+   mismatches — but the high-value structural shapes are now pinned.
 
 ## Explicitly not worth it (decided, not overlooked)
 

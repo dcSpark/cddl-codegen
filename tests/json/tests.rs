@@ -108,4 +108,40 @@ mod tests {
             assert_eq!(serde_json::to_string(&from_json).unwrap(), json);
         }
     }
+
+    // Item 7a (TESTING_ROADMAP.md): each type emits a hand-written `impl JsonSchema` alongside its
+    // serde impl, and json-gen ships those schemas. The two are generated independently, so they can
+    // silently disagree — a gap the round-trip tests above can't see (they only check that serde is
+    // self-consistent). Validate a concrete value of every exported type against `schema_for!(T)`
+    // (the exact schema json-gen writes out) so a schema that contradicts the serialization fails CI.
+    #[test]
+    fn schemas_validate_serialization() {
+        fn check(schema: schemars::Schema, value: serde_json::Value, label: &str) {
+            let schema = serde_json::to_value(schema).unwrap();
+            let validator = jsonschema::validator_for(&schema)
+                .unwrap_or_else(|e| panic!("{label}: emitted schema is not a valid JSON Schema: {e}"));
+            let errors: Vec<String> = validator.iter_errors(&value).map(|e| e.to_string()).collect();
+            assert!(
+                errors.is_empty(),
+                "{label}: {value} does not validate against its own emitted schema: {errors:?}"
+            );
+        }
+        macro_rules! check {
+            ($ty:ty, $val:expr) => {
+                check(schemars::schema_for!($ty), serde_json::to_value(&$val).unwrap(), stringify!($ty))
+            };
+        }
+        check!(BytesWrapper, BytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]));
+        check!(StrWrapper, StrWrapper::new("hello, world".to_owned()));
+        check!(U8Wrapper, U8Wrapper::new(u8::MAX).unwrap());
+        check!(U64Wrapper, U64Wrapper::new(u64::MAX));
+        check!(I16Wrapper, I16Wrapper::new(i16::MIN).unwrap());
+        check!(I64Wrapper, I64Wrapper::new(i64::MIN).unwrap());
+        check!(IntWrapper, IntWrapper::new(Int::new_nint(499)));
+        check!(NintWrapper, NintWrapper::new(u64::MAX));
+        check!(StructWrapper, StructWrapper::new(U64Wrapper::new(u64::MAX)));
+        check!(CustomWrapper, CustomWrapper::new(1234));
+        check!(Int, Int::new_uint(u64::MAX));
+        check!(Int, Int::new_nint(499));
+    }
 }
