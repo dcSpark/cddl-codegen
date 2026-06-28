@@ -47,6 +47,10 @@ mod tests {
         let foo_ok = [arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat();
         assert!(Foo::from_cbor_bytes(&foo_ok).is_ok());
         assert!(Foo::from_cbor_bytes(&[]).is_err()); // empty input
+        // trailing bytes after a complete value are rejected, not silently ignored (from_cbor_bytes
+        // checks the cursor reached the end of the buffer)
+        let foo_trailing_err = Foo::from_cbor_bytes(&[foo_ok.clone(), vec![0xff]].concat()).unwrap_err();
+        assert!(foo_trailing_err.to_string().contains("trailing data"), "{foo_trailing_err}");
         // array too short: the bytes field is missing
         assert!(Foo::from_cbor_bytes(&[arr_def(2), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a")].concat()).is_err());
         // wrong outer container: a map where the array is required

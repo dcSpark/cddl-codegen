@@ -59,9 +59,9 @@ All test-only; no generator/runtime/static or snapshot files changed. Commit sub
   `tests/raw-bytes`. Snapshot-only corpus coverage would need a `feature_corpus_compiles` skip-list —
   a test-strategy call → **deferred to maintainer**.
 - The remaining items in the **Deferred** section below still require maintainer judgment:
-  trailing-bytes acceptance (behaviour-contract), generator/spec changes, value-choice assertion
-  upgrades, the snapshot-only-corpus skip-list policy, and the preserve-encodings golden set.
-  (The u64 > 2^53 JSON contract is now **resolved** — see the Deferred section.)
+  generator/spec changes, value-choice assertion upgrades, the snapshot-only-corpus skip-list policy,
+  and the preserve-encodings golden set. (Both behaviour-contract calls are now **resolved**: the
+  u64 > 2^53 JSON contract and the trailing-bytes contract — see the Deferred section.)
 
 ---
 
@@ -150,9 +150,12 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
 ## Deferred (human judgment / generator change / data sourcing / medium+)
 
 ### Behaviour-contract decisions (pin only after a human blesses the intended behaviour)
-- **Trailing bytes after a complete value are silently accepted** (`from_cbor_bytes` never checks
-  cursor==len). Reject vs accept is a runtime change affecting every generated crate → maintainer
-  call. (Asserting `is_err()` today would fail.)
+- **Trailing bytes after a complete value** — ✅ *Resolved (reject).* `from_cbor_bytes` now checks
+  `cursor == len` and returns `cbor_event::Error::TrailingData` instead of silently ignoring leftover
+  bytes (`static/serialization.rs`). Vetted against `cardano-multiplatform-lib` (no reliance on the
+  old leniency; aligns with its exact-parsing philosophy). Locked by `tests::structural_rejects`,
+  documented in `docs/docs/output_format.mdx`. Only the top-level entry point enforces this; nested
+  `bytes .cbor T` decoding is unchanged.
 - **u64 > 2^53 JSON divergence** — ✅ *Resolved.* Blessed the current contract: `to_json()` lossless,
   `to_json_value()` fails loud (throws), `JSON.parse` lossy by JS definition. Pinned above 2^53 in
   `roundtrip.mjs` (alongside cw17's ≤2^53-1 lock) and documented in `docs/docs/wasm_differences.mdx`.
