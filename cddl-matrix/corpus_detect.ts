@@ -56,6 +56,8 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "type2.tag", hit: c => /#6(\.\d+)?\s*\(/.test(c) },
   { id: "type2.parenthesized", hit: c => /\([^)]*:/.test(c) },           // a (group) with a key, not a ctl-arg paren
   { id: "type.choice", hit: c => /(?<!\/)\/(?!\/)/.test(c) },             // single `/`, not `//`
+  // all-fixed-value choice (c-style enum): `= v / v [/ v]…` where every alternative is a literal value
+  { id: "type.enum", hit: c => /=\s*(-?\d+|"[^"]*")(\s*\/\s*(-?\d+|"[^"]*"))+/.test(c) },
   { id: "group.choice", hit: c => c.includes("//") },
   { id: "memberkey.bareword", hit: c => /\b[A-Za-z_]\w*\s*:/.test(c) },
   { id: "memberkey.value", hit: c => /(^|[\s,{])(-?\d+|"[^"]*")\s*:/.test(c) },

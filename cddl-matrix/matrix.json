@@ -2,77 +2,77 @@
   "annotations": {
     "cddl_codegen": [
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "assigng.extend",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "assignt.extend",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_deserialize",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_json",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided serialize fn; integration-tested in tests/custom_serialization); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_serialize",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.doc",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.name",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.newtype",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.no_alias",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.used_as_key",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (requires a user-provided extern type; integration-tested in tests/extern-deps); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "ext.extern",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "ext.raw_bytes",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "genericarg.multiple",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "genericarg.type",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "genericarg.type1",
         "status": "supported"
       },
@@ -82,42 +82,42 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "genericparm.multiple",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "genericparm.type",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "group.choice",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "grpchoice.sequence",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "grpent.groupname",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "grpent.inline_group",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "grpent.member",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "memberkey.bareword",
         "status": "supported"
       },
@@ -127,82 +127,82 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "memberkey.type1",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "memberkey.value",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "occur.bounded",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "occur.one_or_more",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "occur.optional",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "occur.zero_or_more",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen generates but does not compile (cargo check exit 101); ruby=ok rust=ok",
         "id": "prelude.any",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.b64legacy",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.b64url",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bigfloat",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bigint",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bignint",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.biguint",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bool",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bstr",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.bytes",
         "status": "supported"
       },
@@ -212,7 +212,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.decfrac",
         "status": "supported"
       },
@@ -232,7 +232,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.encoded-cbor",
         "status": "supported"
       },
@@ -242,7 +242,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.float",
         "status": "supported"
       },
@@ -257,7 +257,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.float32",
         "status": "supported"
       },
@@ -267,22 +267,22 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.float64",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.int",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.integer",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.mime-message",
         "status": "supported"
       },
@@ -292,7 +292,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.nint",
         "status": "supported"
       },
@@ -302,27 +302,27 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.number",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.regexp",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.tdate",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.text",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.time",
         "status": "supported"
       },
@@ -332,12 +332,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.tstr",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.uint",
         "status": "supported"
       },
@@ -347,32 +347,37 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.unsigned",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "prelude.uri",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "rangeop.exclusive",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "rangeop.inclusive",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type.choice",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "type.enum",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type1.ctlop",
         "status": "supported"
       },
@@ -382,7 +387,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type2.array",
         "status": "supported"
       },
@@ -407,17 +412,17 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type2.map",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type2.parenthesized",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type2.tag",
         "status": "supported"
       },
@@ -427,7 +432,7 @@
         "status": "out_of_profile"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok",
         "id": "type2.typename",
         "status": "supported"
       },
@@ -457,17 +462,17 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.grpent.groupname",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.grpent.inline_group",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.type.choice",
         "status": "supported"
       },
@@ -487,22 +492,22 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.type2.value",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.value.number",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.array-element.value.text",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.cbor-payload.type.choice",
         "status": "supported"
       },
@@ -512,12 +517,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.cbor-payload.type2.tag",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.choice-member.prelude.null",
         "status": "supported"
       },
@@ -532,7 +537,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.choice-member.type2.tag",
         "status": "supported"
       },
@@ -542,12 +547,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=fail",
         "id": "contain.map-key.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.map-value.type.choice",
         "status": "supported"
       },
@@ -557,7 +562,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.map-value.type2.tag",
         "status": "supported"
       },
@@ -567,7 +572,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group",
         "status": "supported"
       },
@@ -582,18 +587,203 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.tag-content.type.choice",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.tag-content.type2.map",
         "status": "supported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
         "id": "contain.top-level.type2.unwrap",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "id": "ctl.abnf",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "id": "ctl.abnfb",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "id": "ctl.and",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b32",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b45",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b64c",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b64c-sloppy",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b64u",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.b64u-sloppy",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.base10",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.bits",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.cat",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.cbor",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=fail",
+        "id": "ctl.cborseq",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.default",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.det",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.eq",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.feature",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.ge",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.gt",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.h32",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.hex",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.hexlc",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.hexuc",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok",
+        "id": "ctl.join",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "ctl.json",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.le",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.lt",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.ne",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=fail",
+        "id": "ctl.oid",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.plus",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok",
+        "id": "ctl.printf",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.regexp",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=fail",
+        "id": "ctl.sdnv",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=fail",
+        "id": "ctl.sdnvseq",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok",
+        "id": "ctl.size",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "id": "ctl.within",
         "status": "unsupported"
       }
     ]
@@ -680,10 +870,10 @@
       "spec": "allowed"
     },
     {
-      "example": "b = bytes .cbor (#6.10(int))",
+      "example": "b = bytes .cbor (#6.10(uint))",
       "feature": "type2.tag",
       "id": "contain.cbor-payload.type2.tag",
-      "note": "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(int))`. RFC8610 §3.8.4, §3.6; ABNF ctlop controller type2 tagged-data.",
+      "note": "A byte string constrained to encode a tagged item: `bytes .cbor (#6.10(uint))`. RFC8610 §3.8.4, §3.6; ABNF ctlop controller type2 tagged-data. (uint payload, not int: a bare `int` inside emits the un-emitted Int wrapper and fails the compile-gate — orthogonal to tag-in-cbor.)",
       "role": "role.cbor-payload",
       "spec": "allowed"
     },
@@ -884,222 +1074,259 @@
   ],
   "control_operators": [
     {
+      "example": "x = bytes .size 4",
       "id": "ctl.size",
       "name": ".size",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .bits b\nb = &(a: 0, c: 1)",
       "id": "ctl.bits",
       "name": ".bits",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = tstr .regexp \"[0-9]+\"",
       "id": "ctl.regexp",
       "name": ".regexp",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = bytes .cbor uint",
       "id": "ctl.cbor",
       "name": ".cbor",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = bytes .cborseq uint",
       "id": "ctl.cborseq",
       "name": ".cborseq",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .within int",
       "id": "ctl.within",
       "name": ".within",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .and (0..9)",
       "id": "ctl.and",
       "name": ".and",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .lt 10",
       "id": "ctl.lt",
       "name": ".lt",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .le 10",
       "id": "ctl.le",
       "name": ".le",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .gt 0",
       "id": "ctl.gt",
       "name": ".gt",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .ge 0",
       "id": "ctl.ge",
       "name": ".ge",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .eq 5",
       "id": "ctl.eq",
       "name": ".eq",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .ne 5",
       "id": "ctl.ne",
       "name": ".ne",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "m = { a: uint, ? b: uint .default 0 }",
       "id": "ctl.default",
       "name": ".default",
       "profile": "RFC8610",
       "rfc": "RFC8610"
     },
     {
+      "example": "x = uint .sdnv",
       "id": "ctl.sdnv",
       "name": ".sdnv",
       "profile": "RFC9090",
       "rfc": "RFC9090"
     },
     {
+      "example": "x = bytes .sdnvseq uint",
       "id": "ctl.sdnvseq",
       "name": ".sdnvseq",
       "profile": "RFC9090",
       "rfc": "RFC9090"
     },
     {
+      "example": "x = bytes .oid",
       "id": "ctl.oid",
       "name": ".oid",
       "profile": "RFC9090",
       "rfc": "RFC9090"
     },
     {
+      "example": "x = uint .plus 1",
       "id": "ctl.plus",
       "name": ".plus",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = tstr .cat \"y\"",
       "id": "ctl.cat",
       "name": ".cat",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = tstr .det \"y\"",
       "id": "ctl.det",
       "name": ".det",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = tstr .abnf \"1*DIGIT\"",
       "id": "ctl.abnf",
       "name": ".abnf",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = bytes .abnfb \"1*DIGIT\"",
       "id": "ctl.abnfb",
       "name": ".abnfb",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = tstr .feature \"f\"",
       "id": "ctl.feature",
       "name": ".feature",
       "profile": "RFC9165",
       "rfc": "RFC9165"
     },
     {
+      "example": "x = tstr .b64u bytes",
       "id": "ctl.b64u",
       "name": ".b64u",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .b64u-sloppy bytes",
       "id": "ctl.b64u-sloppy",
       "name": ".b64u-sloppy",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .b64c bytes",
       "id": "ctl.b64c",
       "name": ".b64c",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .b64c-sloppy bytes",
       "id": "ctl.b64c-sloppy",
       "name": ".b64c-sloppy",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .b45 bytes",
       "id": "ctl.b45",
       "name": ".b45",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .b32 bytes",
       "id": "ctl.b32",
       "name": ".b32",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .h32 bytes",
       "id": "ctl.h32",
       "name": ".h32",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .hex bytes",
       "id": "ctl.hex",
       "name": ".hex",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .hexlc bytes",
       "id": "ctl.hexlc",
       "name": ".hexlc",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .hexuc bytes",
       "id": "ctl.hexuc",
       "name": ".hexuc",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .base10 int",
       "id": "ctl.base10",
       "name": ".base10",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .printf \"abc\"",
       "id": "ctl.printf",
       "name": ".printf",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .json int",
       "id": "ctl.json",
       "name": ".json",
       "profile": "RFC9741",
       "rfc": "RFC9741"
     },
     {
+      "example": "x = tstr .join [tstr, tstr]",
       "id": "ctl.join",
       "name": ".join",
       "profile": "RFC9741",
@@ -1950,7 +2177,7 @@
     {
       "alt": "type1",
       "desc": "A generic argument may be any type1 expression (e.g. a range or controlled type), not just a named type.",
-      "example": "foo<a> = [a]\nr = foo<1..10>",
+      "example": "foo<a> = [a]\ninst = foo<1..10>",
       "id": "genericarg.type1",
       "production": "genericarg",
       "profile": "RFC8610",
@@ -2003,7 +2230,7 @@
         "enc.major0",
         "enc.major1"
       ],
-      "example": "x = int",
+      "example": "holder = [x: int]",
       "id": "prelude.int",
       "production": "prelude",
       "profile": "RFC8610",
@@ -2706,7 +2933,7 @@
     {
       "alt": "type1 *(\"/\" type1)",
       "desc": "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch.",
-      "example": "t = int / tstr / bool",
+      "example": "t = uint / tstr / bytes",
       "id": "type.choice",
       "production": "type",
       "profile": "RFC8610",
@@ -2715,6 +2942,16 @@
         "role.choice-member"
       ],
       "title": "Type choice (/)"
+    },
+    {
+      "alt": "type1 *(\"/\" type1)",
+      "desc": "A type choice whose alternatives are all literal values (e.g. `0 / 1 / 2`); cddl-codegen emits a discriminated c-style enum rather than a general type-choice enum.",
+      "example": "e = 0 / 1 / 2",
+      "id": "type.enum",
+      "production": "type",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2; ABNF type / type-choice (all-fixed-value specialization)",
+      "title": "All-fixed-value type choice (c-style enum)"
     },
     {
       "alt": "\"..\"",

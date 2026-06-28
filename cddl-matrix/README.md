@@ -16,11 +16,13 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 
 > **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: 91 features across all axes
-> (incl. the `CDDL_CODEGEN` vendor profile), execution-grounded support **per-feature *and* per-cell
-> (role × feature)**, two projections wired (`golden_hex`, and the corpus feature-axis projection —
-> `corpus_detect.ts` / `project_corpus.ts` / `annotations/corpus/`). Any "seed / only `type2` worked"
-> framing below this line is historical.
+> consumer-query contract). The matrix is **fully scaled and gate-green**: 92 features across all axes
+> (incl. the `CDDL_CODEGEN` vendor profile), **compile-gated** execution-grounded support **per-feature,
+> per-cell (role × feature), AND per-control-op** (all 37 IANA ops probed). **Both flagship projections are
+> fully wired and now *generate* their hand docs:** `golden_hex` (encoding axis) and the corpus feature-axis
+> projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md` (the original north-star target,
+> now subsumed; `corpus_detect.ts` + `annotations/corpus/`). Any "seed / only `type2` worked" or "renderer
+> is the remaining piece" framing below this line is historical.
 
 ## What is a feature?
 
@@ -78,11 +80,13 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 | `roles.toml` | nesting container-contexts (array-element, map-key, tag-content, …) | nesting (C) |
 | `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live**; each cell carries an `example` that `verify.ts` also probes for **per-cell tool support** | nesting (C) |
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
-| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). | — |
+| `control_examples.toml` | minimal probe `example` per IANA control op (the CSV is byte-pinned, so examples live here); joined onto the control-op axis by `lib.ts` and probed by `verify.ts` for **per-control-op support** | control-op |
+| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict; keyed by a **`ctl.<name>`** id it is the **per-control-op** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). **Support is compile-gated**: `verify.ts` requires the generated crate to *compile* (`cargo check`), not just that cddl-codegen exits 0 — catching false positives like `x = any` that generate non-compiling Rust. | — |
 
 **3. Generated view — `matrix.json`** (produced by `build_matrix.ts`) joins the overlay with the native
 sources into one universal artifact for downstream/cross-language consumption. Imported axes are
-*derived*, not authored: control operators come straight from the IANA CSV with ids `ctl.<name>`. It is
+*derived*, not authored: control operators come straight from the IANA CSV with ids `ctl.<name>` (with
+their probe `example` joined from `control_examples.toml`). It is
 regenerated, never hand-edited. `build_matrix.ts` also runs the **drift-check** (every annotation id must
 resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` holds the shared loaders
 + the byte-exact JSON serializer.

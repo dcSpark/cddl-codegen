@@ -1,0 +1,162 @@
+# Minimal CDDL examples for per-control-op SUPPORT probing (ROADMAP item 7), keyed by control-op id.
+#
+# The IANA registry (sources/cddl-control-operators.csv) is byte-pinned and carries no examples, so they
+# live here. verify.ts probes each through cddl-codegen (compile-gated) -> a [[support]] row keyed by
+# `ctl.<name>`, exactly like features. Control ops are IANA-registry-authoritative, so ruby/rust are
+# CORROBORATION ONLY here (an op a given ruby/rust version doesn't implement is not "invalid CDDL").
+#
+# Each example ISOLATES the operator in `target .op controller` form. The 9 cddl-codegen implements
+# (.size .cbor .default .eq .ne .le .lt .ge .gt) must COMPILE; the rest reach the op dispatch and
+# panic/parse-reject (-> unsupported), which is the correct verdict. Forms verified against the oracles.
+
+# --- RFC 8610 (the 9 supported + the 5 it parses-but-rejects) ---
+[[example]]
+id = "ctl.size"
+example = "x = bytes .size 4"
+
+[[example]]
+id = "ctl.cbor"
+example = "x = bytes .cbor uint"   # uint payload, not bare int (a bare Int wrapper isn't emitted -> won't compile)
+
+[[example]]
+id = "ctl.default"
+example = "m = { a: uint, ? b: uint .default 0 }"   # .default is a map-member default; 2 fields dodge the single-field-map bug
+
+[[example]]
+id = "ctl.le"
+example = "x = uint .le 10"
+
+[[example]]
+id = "ctl.lt"
+example = "x = uint .lt 10"
+
+[[example]]
+id = "ctl.ge"
+example = "x = uint .ge 0"
+
+[[example]]
+id = "ctl.gt"
+example = "x = uint .gt 0"
+
+[[example]]
+id = "ctl.eq"
+example = "x = uint .eq 5"
+
+[[example]]
+id = "ctl.ne"
+example = "x = uint .ne 5"
+
+[[example]]
+id = "ctl.bits"
+example = "x = uint .bits b\nb = &(a: 0, c: 1)"
+
+[[example]]
+id = "ctl.regexp"
+example = 'x = tstr .regexp "[0-9]+"'
+
+[[example]]
+id = "ctl.cborseq"
+example = "x = bytes .cborseq uint"
+
+[[example]]
+id = "ctl.within"
+example = "x = uint .within int"
+
+[[example]]
+id = "ctl.and"
+example = "x = uint .and (0..9)"
+
+# --- RFC 9090 ---
+[[example]]
+id = "ctl.oid"
+example = "x = bytes .oid"
+
+[[example]]
+id = "ctl.sdnv"
+example = "x = uint .sdnv"
+
+[[example]]
+id = "ctl.sdnvseq"
+example = "x = bytes .sdnvseq uint"
+
+# --- RFC 9165 ---
+[[example]]
+id = "ctl.plus"
+example = "x = uint .plus 1"
+
+[[example]]
+id = "ctl.cat"
+example = 'x = tstr .cat "y"'
+
+[[example]]
+id = "ctl.det"
+example = 'x = tstr .det "y"'
+
+[[example]]
+id = "ctl.abnf"
+example = 'x = tstr .abnf "1*DIGIT"'
+
+[[example]]
+id = "ctl.abnfb"
+example = 'x = bytes .abnfb "1*DIGIT"'
+
+[[example]]
+id = "ctl.feature"
+example = 'x = tstr .feature "f"'
+
+# --- RFC 9741 (text/binary conversions) ---
+[[example]]
+id = "ctl.b32"
+example = "x = tstr .b32 bytes"
+
+[[example]]
+id = "ctl.h32"
+example = "x = tstr .h32 bytes"
+
+[[example]]
+id = "ctl.b45"
+example = "x = tstr .b45 bytes"
+
+[[example]]
+id = "ctl.b64u"
+example = "x = tstr .b64u bytes"
+
+[[example]]
+id = "ctl.b64u-sloppy"
+example = "x = tstr .b64u-sloppy bytes"
+
+[[example]]
+id = "ctl.b64c"
+example = "x = tstr .b64c bytes"
+
+[[example]]
+id = "ctl.b64c-sloppy"
+example = "x = tstr .b64c-sloppy bytes"
+
+[[example]]
+id = "ctl.hex"
+example = "x = tstr .hex bytes"
+
+[[example]]
+id = "ctl.hexlc"
+example = "x = tstr .hexlc bytes"
+
+[[example]]
+id = "ctl.hexuc"
+example = "x = tstr .hexuc bytes"
+
+[[example]]
+id = "ctl.base10"
+example = "x = tstr .base10 int"
+
+[[example]]
+id = "ctl.json"
+example = "x = tstr .json int"
+
+[[example]]
+id = "ctl.printf"
+example = 'x = tstr .printf "abc"'
+
+[[example]]
+id = "ctl.join"
+example = "x = tstr .join [tstr, tstr]"

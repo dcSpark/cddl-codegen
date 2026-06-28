@@ -32,18 +32,30 @@ const profileNewerThanTarget = (p: string | undefined) =>
 // Genuine reference-vs-ABNF conflicts kept as `uncertain` rather than hard-failing. Empty today.
 const CONFLICT_ALLOWLIST: Record<string, string> = {};
 
+// Features whose generated code REFERENCES user-supplied items (an extern type, a raw-bytes impl, a
+// custom ser/deser fn), so the crate cannot compile STANDALONE — by design. The compile-gate would
+// false-negative them; they ARE supported (integration-tested where the user code is provided). Exempt =
+// compile result ignored, support from generation exit only. Reason cites the integration test that DOES
+// cover them, so the exemption isn't blind.
+const COMPILE_GATE_EXEMPT: Record<string, string> = {
+  "ext.extern": "requires a user-provided extern type; integration-tested in tests/extern-deps",
+  "ext.raw_bytes": "requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes",
+  "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
+  "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
+};
+
 interface Derived {
   valid_a: boolean; valid_b: boolean; spec_valid: boolean; parser_limitation: boolean;
   support: string; support_detail: string; out_of_profile: boolean; status: string;
 }
 interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
-  ruby: number; rust: number; codegen: number;
+  ruby: number; rust: number; codegen: number; compile: number;
 }
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
   parser_limitation: boolean; contradiction: boolean; example: string;
-  codegen: number; support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
+  codegen: number; compile: number; support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
 }
 interface AltCoverage {
   abnf_alternatives: string[]; feature_rows: string[]; covered: string[]; uncovered: string[]; modeled: boolean;
@@ -220,24 +232,44 @@ const type2_uncovered: string[] = alt_coverage["type2"].uncovered;
 const probeDir = mkdtempSync(join(tmpdir(), "cddl_verify_"));
 const probeFile = join(probeDir, "probe.cddl");
 const ccOut = join(probeDir, "cc_out");
+// Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
+// every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.
+const COMPILE_TARGET = mkdtempSync(join(tmpdir(), "cddl_verify_target_"));
+const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-probe timeout
 
-function runExit(cmd: string[], cwd?: string): number {
-  const r = Bun.spawnSync(cmd, { cwd, stdout: "ignore", stderr: "ignore", timeout: PROBE_TIMEOUT * 1000 });
+function runExit(cmd: string[], cwd?: string, env?: Record<string, string>, timeoutS = PROBE_TIMEOUT): number {
+  const r = Bun.spawnSync(cmd, {
+    cwd, env: env ? { ...process.env, ...env } : undefined,
+    stdout: "ignore", stderr: "ignore", timeout: timeoutS * 1000,
+  });
   if (r.exitedDueToTimeout) return -1;              // timeout -> -1
   if (r.exitCode !== null) return r.exitCode;       // normal exit (incl. 101 panic)
   const sig = r.signalCode ? (constants.signals as Record<string, number>)[r.signalCode] : undefined;
   return sig != null ? -sig : -1;                   // signal kill -> -signum (returncode convention)
 }
 
-function oracles(example: string): [number, number, number] {
+// COMPILE-GATE: `cargo check` the generated crate. The generator exiting 0 is NOT enough — it can emit
+// non-compiling Rust (e.g. `x = any` -> `pub type X = Any;`, a type defined nowhere), which the exit-code
+// probe over-credits as "supported". Mirrors integration_tests::feature_corpus_compiles (rust-only,
+// shared CARGO_TARGET_DIR). Caller invokes only when generation (`cargo run`) succeeded.
+function runCompile(timeoutS = PROBE_TIMEOUT): number {
+  return runExit(
+    ["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
+    CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
+  );
+}
+
+// [ruby, rust, codegen-generate, codegen-compile]. compile is -2 when generation didn't succeed (n/a).
+function oracles(example: string): [number, number, number, number] {
   writeFileSync(probeFile, example + "\n");
   const a = RUBY_CDDL ? runExit([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runExit([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   const c = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR);
-  return [a, b, c];
+  const comp = c === 0 ? runCompile() : -2;
+  return [a, b, c, comp];
 }
 
-function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, codegenExit: number): Derived {
+function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, codegenExit: number, compileExit: number): Derived {
   const valid_a = rubyExit === 0;
   const valid_b = rustExit === 0;
   // CDDL_CODEGEN is a vendor profile: cddl-codegen IS the spec authority, so the ruby/rust reference
@@ -246,8 +278,16 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
   const isVendor = profile === "CDDL_CODEGEN";
   const spec_valid = isVendor ? true : valid_a;
   const parser_limitation = !isVendor && valid_a && !valid_b;
+  // COMPILE-GATED support: "supported" requires generation AND a compiling crate. Generation-only
+  // (exit 0 but cargo check fails) is a false positive — recorded distinctly so the gap is visible.
+  // EXEMPT features (user-supplied code) skip the compile bit — they can't compile standalone by design.
+  const compileExempt = Object.hasOwn(COMPILE_GATE_EXEMPT, featureId);
   let support: string, support_detail: string;
-  if (codegenExit === 0) { support = "supported"; support_detail = "exit 0"; }
+  if (codegenExit === 0 && (compileExempt || compileExit === 0)) {
+    support = "supported";
+    support_detail = compileExempt ? `exit 0; standalone-compile N/A (${COMPILE_GATE_EXEMPT[featureId]})` : "exit 0; compiles";
+  }
+  else if (codegenExit === 0) { support = "unsupported"; support_detail = `generates but does not compile (cargo check exit ${compileExit})`; }
   else if (codegenExit === 101) { support = "unsupported"; support_detail = "panic (exit 101)"; }
   else { support = "unsupported"; support_detail = `rejected at parse/lex (exit ${codegenExit})`; }
   const out_of_profile = spec_valid && support !== "supported" && profileNewerThanTarget(profile);
@@ -258,12 +298,19 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
   return { valid_a, valid_b, spec_valid, parser_limitation, support, support_detail, out_of_profile, status };
 }
 
+// Warm the shared compile target ONCE (deps build here; per-probe `cargo check` is then incremental and
+// fits PROBE_TIMEOUT). Without this the first probe's check would eat the whole dep build and risk a
+// spurious timeout -> false "does not compile". A trivial valid spec is enough to pull in the deps.
+writeFileSync(probeFile, "warm = [uint, tstr]\n");
+if (runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR) === 0)
+  runCompile(COMPILE_WARM_TIMEOUT);
+
 const probe_results: ProbeResult[] = [];
 for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-  const [a, b, c] = oracles(f.example);
+  const [a, b, c, comp] = oracles(f.example);
   const profile = f.profile ?? "RFC8610";
-  const d = derive(f.id, profile, a, b, c);
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: c, ...d });
+  const d = derive(f.id, profile, a, b, c, comp);
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: c, compile: comp, ...d });
 }
 
 // Containment corroboration + PER-CELL support. The role × feature axis: a feature's support can DIFFER
@@ -280,14 +327,33 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
   const cg = a === 0
     ? runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR)
     : -2;
-  const support = a === 0 ? (cg === 0 ? "supported" : "unsupported") : null;
+  const cgComp = cg === 0 ? runCompile() : -2;   // compile-gate the cell too (same false-positive class)
+  const support = a === 0 ? (cg === 0 && cgComp === 0 ? "supported" : "unsupported") : null;
   const observed = a === 0 ? "allowed" : "disallowed";
   const parser_limitation = (a === 0) !== (b === 0);
   const contradiction = observed !== c.spec;
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
-    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!, codegen: cg, support,
+    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!, codegen: cg, compile: cgComp, support,
   });
+}
+
+// CONTROL-OP support (item 7). Probe each IANA op's minimal `example` through cddl-codegen (compile-gated)
+// -> a [[support]] row keyed by ctl.<name>, the same pattern as features. The op set is IANA-registry-
+// authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
+// "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
+// the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; example: string }
+const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
+const controlop_support: ControlOpSupport[] = [];
+for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  const [a, b, c, comp] = oracles(co.example!);
+  const supported = c === 0 && comp === 0;
+  const detail = supported ? "exit 0; compiles"
+    : c === 0 ? `generates but does not compile (cargo check exit ${comp})`
+    : c === 101 ? "panic (exit 101)"
+    : `rejected at parse/lex (exit ${c})`;
+  controlop_support.push({ id: co.id, name: co.name, support: supported ? "supported" : "unsupported", detail, ruby: a, rust: b, codegen: c, compile: comp, example: co.example! });
 }
 
 // ==================================================================================================
@@ -303,7 +369,9 @@ const annoLines: string[] = [
   "# to regenerate. Each row is the result of running the feature's minimal `example` through:",
   "#   ruby  cddl ... generate 1            (spec-validity A, authoritative / reference)",
   "#   rust  cddl compile-cddl              (spec-validity B, corroborating only)",
-  "#   cddl-codegen --input=... --wasm=false (support: exit 0=supported, 101=panic/unsupported, else error)",
+  "#   cddl-codegen --input=... --wasm=false (generate the crate) THEN `cargo check` it (the COMPILE-GATE).",
+  "#     support = generates AND compiles. exit 0 alone is NOT enough: `x = any` generates `pub type X =",
+  "#     Any;` (a type defined nowhere) which fails to compile -> unsupported, not a false 'supported'.",
   "# status: supported | unsupported | out_of_profile | uncertain.",
   "#   out_of_profile = the feature's grammar profile is NEWER than cddl-codegen's TARGET profile AND",
   "#         cddl-codegen rejects it (it is outside what the tool targets, NOT a gap within it).",
@@ -340,10 +408,23 @@ for (const pr of probe_results) {
 annoLines.push("# --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---");
 annoLines.push("");
 for (const c of containment_corroboration.filter(c => c.support !== null)) {
-  const ev = `probe (cell): cddl-codegen exit ${c.codegen}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
+  const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}` : "";
+  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(c.id)}`);
   annoLines.push(`status = ${tomlStr(c.support!)}`);
+  annoLines.push(`evidence = ${tomlStr(ev)}`);
+  annoLines.push("");
+}
+// PER-CONTROL-OP support (item 7), keyed by ctl.<name>. cddl-codegen is the support authority; ruby/rust
+// corroborate (informational) — control ops are IANA-authoritative, so a ruby/rust reject is not invalidity.
+annoLines.push("# --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---");
+annoLines.push("");
+for (const co of controlop_support) {
+  const ev = `probe (control-op): cddl-codegen ${co.detail}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
+  annoLines.push("[[support]]");
+  annoLines.push(`id = ${tomlStr(co.id)}`);
+  annoLines.push(`status = ${tomlStr(co.support)}`);
   annoLines.push(`evidence = ${tomlStr(ev)}`);
   annoLines.push("");
 }
@@ -370,6 +451,8 @@ const report = {
   out_of_profile,
   parser_limitations: [...parser_limitations].sort(),
   probe_results,
+  controlop_support,
+  controlop_missing_example,
   containment_corroboration,
   containment_contradictions: containment_contradictions.map(c => c.id),
   containment_parser_limitations: [...containment_parser_limitations].sort(),
@@ -380,6 +463,9 @@ const report = {
     containment: contain.length,
     encodings: encodings.length,
     control_ops: control_ops.length,
+    controlop_supported: controlop_support.filter(c => c.support === "supported").length,
+    controlop_unsupported: controlop_support.filter(c => c.support === "unsupported").length,
+    controlop_missing_example: controlop_missing_example.length,
     abnf_productions: abnf_productions.size,
     prelude_names: prelude_names.length,
     supported: probe_results.filter(pr => pr.status === "supported").length,
@@ -410,6 +496,7 @@ console.log(`features probed     : ${s.features}`);
 console.log(`target profile      : ${CDDL_CODEGEN_TARGET_PROFILE} (out-of-profile features excluded from gaps)`);
 console.log(`ABNF productions    : ${s.abnf_productions}  prelude names: ${s.prelude_names}`);
 console.log(`support (codegen)   : supported=${s.supported} unsupported=${s.unsupported} out_of_profile=${s.out_of_profile} uncertain=${s.uncertain}`);
+console.log(`control-op support  : supported=${s.controlop_supported} unsupported=${s.controlop_unsupported} (of ${s.control_ops}; missing example=${s.controlop_missing_example})`);
 console.log(`reconcile (BIDIRECTIONAL grammar lint):`);
 console.log(`  forward  (source->feature): type2 alternatives covered ${s.type2_covered}/${s.type2_alternatives} (uncovered=${s.type2_uncovered})`);
 console.log(`  backward (feature->source): fabricated=${s.fabricated} (feature.production resolving to no ABNF/prelude/control-op source)`);
@@ -458,10 +545,15 @@ for (const u of out_of_profile) {
 console.log("\nUNCERTAIN (" + uncertain.length + "):");
 for (const u of uncertain) console.log(`  - ${u}`);
 
+if (controlop_missing_example.length) {
+  console.log("\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):");
+  for (const id of controlop_missing_example) console.log(`  - ${id}`);
+}
+
 console.log("\nwrote annotations/cddl_codegen.toml and verify_report.json");
 
 const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || type2_uncovered.length ||
-  spec_invalid.length || containment_contradictions.length;
+  spec_invalid.length || containment_contradictions.length || controlop_missing_example.length;
 if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above)"); process.exit(1); }
 console.log("\nRESULT: PASS");
 process.exit(0);

@@ -1,11 +1,12 @@
 # CDDL master matrix — roadmap (what's remaining)
 
-Read `README.md` first. This is the forward-looking list. Status today: **gate-green** — 91 features
-(80 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), all axes reconciled, deterministic, with
-**execution-grounded support both per-feature AND per-cell (role × feature** — the "supported here, not
-there" axis). Projections wired: **golden_hex** (Q3, done) and the **corpus feature-axis** projection
-(`corpus_detect.ts` "appears" floor + `annotations/corpus/` overlay + `project_corpus.ts` — the validator
-stage is done and green; the **renderer** is the remaining piece). What follows is everything *not* yet
+Read `README.md` first. This is the forward-looking list. Status today: **gate-green** — 92 features
+(81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), all axes reconciled, deterministic, with
+**compile-gated execution-grounded support per-feature, per-cell (role × feature), AND per-control-op**
+(all 37 IANA ops probed). **Both flagship projections now GENERATE their hand docs:** **golden_hex** (Q3)
+and the **corpus feature-axis** projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md`
+(`corpus_detect.ts` floor + `annotations/corpus/` overlay). The north-star target (subsuming COVERAGE.md)
+is **DONE** — judged a clear win by two independent cold reviews. What follows is everything *not* yet
 done, roughly in priority order.
 
 > **North star.** cddl-matrix exists to do the hard per-construct coverage work **once** and *project* it
@@ -22,13 +23,21 @@ done, roughly in priority order.
 > the problem + specs, no codebase — full write-up in git history). **This is the canonical status
 > ledger.** Already **done**: F7 (the query contract), F1 (profile axis), F2 (semantic-individuation +
 > grammar-as-lint), F4 (tags modeled parametrically — not pinned/enumerated), F5 (encoding axis is
-> major-type-dependent, no over-count), F6 (synthesis snapshot guard). **Deferred**: F3. **Out of
-> scope**: F8–F11. Only the still-open findings appear below.
+> major-type-dependent, no over-count), F6 (synthesis snapshot guard). **Partially landed**: F3 — support
+> is now **compile-gated** (accept *and* the generated crate compiles, not just an exit-code accept bit;
+> this caught the `x = any` false positive), but the full 5-way directional split {accept, encode, decode,
+> round-trip, enforce} is still deferred. **Out of scope**: F8–F11. Only the still-open findings appear below.
 
 ## 1. Wire the projections — replace the hand-built coverage docs (the north star)
 
 The master exists to be *projected from*; the corpus replacement is the proof of that thesis (if it can't
 subsume a doc we sweated over, the premise is unproven).
+
+**DONE — the thesis is proven.** Both flagship projections now generate their hand docs: `golden_hex`
+(encoding axis) and the corpus feature-axis projection (`project_corpus.ts` → `tests/corpus/COVERAGE.md`,
+subsumed; judged a clear win by two independent cold reviews). The build-order/findings below are retained
+as the historical record of *how* corpus was subsumed; the remaining open items are role-aware coverage
+(build-order item 6) and the secondary projection targets + queries.
 
 **Done — the golden_hex (encoding-axis / Q3) projection.** `project_golden_hex.ts` generates
 `tests/golden_hex/COVERAGE.md` from `matrix.json` + `sources/appendix_a.json` + `tests.rs`, joining the
@@ -108,8 +117,13 @@ machinery.
    README amended (vendor-profile invariant). **Step 2 complete.**
 3. ~~reconcile the support seam~~ **done** (see Findings — it split two ways; do NOT just edit examples to
    green the probe).
-4. finish `project_corpus.ts` into the **renderer** (mechanical, golden_hex shape) and diff it against the
-   existing hand doc **before** deleting any hand parts. (Role-aware coverage in the render needs item 6.)
+4. ~~finish `project_corpus.ts` into the **renderer** (mechanical, golden_hex shape) and diff it against the
+   existing hand doc **before** deleting any hand parts~~ **done — the north-star target is subsumed.**
+   `project_corpus.ts` now generates `tests/corpus/COVERAGE.md` (profile → production → id; `markFeature`
+   joins cover/note/support). Shipped via: render to a `*.generated.md` draft → diff vs the hand doc → two
+   independent cold reviews (1st: "not yet a win", which drove the compile-gate + items 6/7 scoping; 2nd:
+   "clear win" after the fixes) → flip `OUT` to the live `COVERAGE.md`. Role-aware coverage in the render
+   still awaits item 6 (disclosed in the doc, not faked).
 5. ~~per-cell support (role × feature)~~ **done** — `verify.ts` now probes each containment cell's example
    through cddl-codegen → an execution-grounded support bit **per (feature, role)**, keyed by the
    containment id in the same `[[support]]` table (28 cells). This is the matrix's core "supported HERE,
@@ -128,13 +142,14 @@ machinery.
    and read each construct's enclosing role directly. Caveat (parse-coverage) is soft — the crate parses
    *CDDL* not CBOR, and since cddl-codegen uses it, anything in our corpus parses by construction;
    role-detection only needs the crate to PARSE (see nesting), not for cddl-codegen to support it.
-7. **Control-op support (remaining).** Probe each of the 37 IANA control operators through cddl-codegen →
-   a per-op support annotation keyed by `ctl.<name>`, the **same probe pattern as features and containment
-   cells** (now well-established in `verify.ts`). This fills the 14-op support hole + the RFC 9165 ops
-   (described in the corpus-plan "Genuinely new work" #2 above) — it's what the corpus render's §3.8
-   control-operator table needs, and what `project_corpus.ts` currently has to skip (no per-op support data
-   → the `noteSkipped` disclosure, and control-op nuance notes deferred). Needs a minimal `example` per op
-   (the master imports ops from the IANA CSV with **no** `example` today, unlike features/cells).
+7. ~~**Control-op support.** Probe each of the 37 IANA control operators through cddl-codegen → a per-op
+   support annotation keyed by `ctl.<name>`~~ **done.** `control_examples.toml` carries a minimal `example`
+   per op (the byte-pinned CSV can't), joined by `lib.ts`; `verify.ts` probes all 37 (compile-gated;
+   ruby/rust corroboration-only since the IANA registry is authoritative — no `spec_invalid` for ops a
+   given ruby/rust version lacks; a hard-fail guards any op missing an example). Result: **9 supported**
+   (`.size .cbor .default .eq .ne .le .lt .ge .gt`) / **28 unsupported** (panic or parse-reject) — matches
+   the hand doc's §3.8 exactly. `project_corpus.ts` renders the table from this data (the `noteSkipped`/❓
+   "deferred" framing is gone).
 - **Support seam — TWO root causes, not one.** The drift-check found 7 constructs marked `unsupported`
   yet touched by a working fixture (probe runs the minimal `example`; cddl-codegen only emits for *named
   composite types*). The honest reckoning (a first pass wrongly "fixed" all 7 by editing examples — which
@@ -168,6 +183,27 @@ machinery.
 - **Bugs/gaps recorded as findings (candidate cddl-codegen fixes):** top-level fixed-value/null types
   (above); single-field **struct** maps panic (`{ a: uint }` → `unsupported table map key`); mixed
   struct+table maps unsupported (`{ a: uint, * k => v }`); inline anonymous nested composites need a name.
+- **Compile-gate (F3 partial) — the support probe now requires the generated crate to COMPILE, not just
+  cddl-codegen exit 0.** This caught a real false positive the exit-code probe had laundered: `x = any`
+  exits 0 but emits `pub type X = Any;` (undefined type → won't compile), so `prelude.any` is now correctly
+  ➖ (root cause: `any` absent from `is_identifier_reserved`). Triage of the 9 flips it produced split into:
+  1 real gap (`any`); 4 degenerate examples fixed to compiling feature-isolating forms (`prelude.int`→
+  member-form, `type.choice`→drop `bool`, `genericarg.type1`→rename the `r` rule, the cbor-payload tag
+  cell→`uint` payload); and 4 **user-code** features kept `supported` via a documented `COMPILE_GATE_EXEMPT`
+  allowlist (they reference user-supplied code, so can't compile standalone — `ext.extern`, `ext.raw_bytes`,
+  `dsl.custom_serialize`, `dsl.custom_deserialize`; integration-tested). **New cddl-codegen bugs surfaced
+  and recorded as findings** (candidate fixes; each disclosed, none laundered): `bool` in a type choice →
+  `E0282`; a single-letter rule `r` collides with the deserializer's reader generic `R` → `E0574`; bare
+  `x = int` / `int` `.cbor` payload emit an undefined `Int` wrapper; `float16`/float-choice aliases
+  unsupported (no native f16) while `float32/64` work; floats fail under `--preserve-encodings`; generics
+  on plain groups rejected. **Lesson reinforced (both directions):** a compile failure on minimal *valid*
+  CDDL is a finding to surface — and the inverse, don't *invent* a gap from a degenerate example (each
+  example fix was verified to leave the construct genuinely working in normal use before relabelling).
+- **Oracles are now installable/installed** (so `verify.ts` runs outside CI): ruby `cddl` via
+  `gem install --user-install cddl` (verify.ts auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl`
+  via `cargo install cddl` (point `RUST_CDDL` at `~/.cargo/bin/cddl`), and cddl-codegen builds from this
+  repo. The compile-gate reuses `integration_tests::feature_corpus_compiles`' pattern (shared
+  `CARGO_TARGET_DIR`, one-time dep warm-up).
 
 ### Other projection targets (after corpus)
 
@@ -194,11 +230,13 @@ derives from the repo root).
 
 **Full verification suite (run all to confirm consistency — none are wired into CI yet):**
 - `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay.
-- `bun run verify.ts` — reconcile (bidirectional grammar/prelude/vendor lints) + probe **per-feature AND
-  per-cell** support; rewrites `annotations/cddl_codegen.toml`. Needs the three oracles present (ruby
-  `cddl`, rust `cddl` CLI, `cddl-codegen`); slow (probes ~120 examples via `cargo run`).
-- `bun run project_corpus.ts` — corpus overlay validator (canonical-fixture drift + note↔support agreement
-  + `code_anchor` exists in `src/` + floor completeness).
+- `bun run verify.ts` — reconcile (bidirectional grammar/prelude/vendor lints) + probe **per-feature,
+  per-cell, AND per-control-op** support, **compile-gated** (generate + `cargo check`); rewrites
+  `annotations/cddl_codegen.toml`. Needs the three oracles present (ruby `cddl`, rust `cddl` CLI,
+  `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl` (set `RUST_CDDL`),
+  cddl-codegen builds from this repo. Slow (probes ~156 examples × generate+compile via `cargo`).
+- `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
+  (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness).
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
 - `bun run corpus_detect.ts` — runs the `featuresIn` detector's self-check (and prints the floor diagnostic).
 
@@ -211,13 +249,13 @@ Remaining:
   gate. (Needs an ambient `declare module "*.toml"` for the `project_golden_hex.ts` import.) This is the
   one place a (dev) dependency is worth it; the runtime stays dependency-free.
 
-## 3. F3 — directional / enforcement support (deferred, needs execution)
+## 3. F3 — directional / enforcement support (partially landed; full split still deferred)
 
-Today "support" is essentially one bit (accept vs reject/panic, from the exit-code probe). `QUERIES.md`
-Q4 wants the 5-way split **{accept, encode, decode, round-trip, enforce-constraint}**. That needs
-per-feature *execution* of generated code (compile + round-trip + constraint checks), not just the
-parse/accept probe — real machinery we deferred. Do it when execution/corpus wiring exists; Q4 is
-blocked until then.
+**Update:** support is no longer one bit. The probe is now **compile-gated** — it generates the crate AND
+`cargo check`s it, so "supported" means *accept + compiles* (this caught `x = any`). That's the first two
+rungs of the ladder. `QUERIES.md` Q4 still wants the full 5-way split **{accept, encode, decode,
+round-trip, enforce-constraint}**, which needs per-feature *execution* of the compiled code (round-trip +
+constraint checks), not just compilation — real machinery still deferred. Q4 is blocked until that lands.
 
 **Not a corpus blocker.** The corpus projection (item 1) consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
