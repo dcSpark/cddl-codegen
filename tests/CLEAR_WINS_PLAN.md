@@ -16,16 +16,52 @@ auto-bless via `INSTA_UPDATE=always cargo test snapshot_tests`; the orphan gate 
 
 ## Session status
 
+**Last update: 2026-06-28 — handoff after the cw6–cw17 unattended session.**
+
+### Gate status (observed at HEAD `7643c3b`, all four GREEN)
+- `cargo fmt --check` → PASS (exit 0).
+- `cargo clippy --all-targets` → PASS (exit 0, no warnings).
+- `cargo test snapshot_tests` → PASS (5 passed, 0 failed).
+- `cargo insta test --unreferenced=reject` → PASS (38 passed, 0 failed; "no unreferenced snapshots
+  found"). The robustness fixtures print expected "parser errors" to stderr — those are by design;
+  the result line is `test result: ok`.
+
+Working tree clean. The session-start untracked `tests/corpus/extern_type.cddl` /
+`tests/corpus/snapshots/extern_type/` artifacts are no longer present (resolved during the run).
+
+### Committed this session (cw6–cw17, all auto-queue items done)
+All test-only; no generator/runtime/static or snapshot files changed. Commit subjects
+(`git log --oneline 93ad323..HEAD`):
+- cw6 `0aeb10f` — remove duplicated `#[test]` attribute on string1632 (preserve-encodings)
+- cw7 `6242694` — activate dead custom_serialization test (core)
+- cw8 `d0518ee` — assert is_err instead of bare should_panic (raw-bytes-preserve)
+- cw9 `d45fa1b` — complete no-op enums round-trips (enums preserve + core)
+- cw10 `6fe8baa` — broaden wrong-major-type rejection in structural_rejects (core)
+- cw11 `08b3af1` — assert duplicate map keys rejected in structural_rejects (core)
+- cw12 `a5710ba` — assert missing required map key rejected in structural_rejects (core)
+- cw13 `342920c` — cover indefinite/definite length-framing rejects (core)
+- cw14 `888f39a` — assert DeserializeError/Key Display formatting (core)
+- cw15 `1bd04d8` — RawBytesEncoding to_raw_hex/from_raw_hex round-trip + reject (raw-bytes)
+- cw16 `4de1091` — run json-gen export_schemas() instead of only building it (integration_tests)
+- cw17 `5d86053` — pin u64 round-trip at JS safe-integer max 2^53-1 (wasm_json/roundtrip.mjs)
+- (follow-up) `7643c3b` — assert json-gen schemas/ dir is non-empty after export run
+  (integration_tests); the surfaced extension of cw16.
+
+### Earlier session (cw1–cw3 + baseline)
 - **Done (committed):** cw1 `sized_int`, cw2 `bool`, cw3 `fixed_value` corpus files (plus the
-  earlier roadmap-7/8 baseline + this mindmap). HEAD verified clean: fmt, clippy, `snapshot_tests`,
-  orphan gate, and `feature_corpus_compiles` all green.
-- **Rejected (NOT clean wins):** cw4 `extern_type` and cw5 `raw_bytes` corpus files. Both emit an
+  earlier roadmap-7/8 baseline + this mindmap).
+
+### Still deferred (unchanged — need a human call; see the Deferred section below)
+- **cw4 `extern_type` / cw5 `raw_bytes`** corpus files remain **rejected as clean wins**: both emit an
   undefined *user-supplied* type (`ExternFoo` / the raw-bytes type), and `feature_corpus_compiles`
   `cargo check`s **every** corpus file with no skip mechanism — so they break that gate. The extern
   and raw-bytes emit paths are already compile+round-trip tested in `tests/extern-deps` and
-  `tests/raw-bytes`. Snapshot-only corpus coverage of them would need a `feature_corpus_compiles`
-  skip-list — a test-strategy call → **deferred to maintainer** (see Deferred).
-- **Remaining auto queue:** cw6–cw17.
+  `tests/raw-bytes`. Snapshot-only corpus coverage would need a `feature_corpus_compiles` skip-list —
+  a test-strategy call → **deferred to maintainer**.
+- All remaining items in the **Deferred** section below (behaviour-contract decisions such as
+  trailing-bytes acceptance and the u64 > 2^53 JSON divergence, generator/spec changes, value-choice
+  assertion upgrades, the snapshot-only-corpus skip-list policy, and the preserve-encodings golden
+  set) are untouched and still require maintainer judgment.
 
 ---
 
