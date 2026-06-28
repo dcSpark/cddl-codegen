@@ -131,6 +131,49 @@ mod tests {
         ].concat();
         let table_arr_members_missing_err = TableArrMembers::from_cbor_bytes(&table_arr_members_missing).unwrap_err();
         assert!(table_arr_members_missing_err.to_string().contains("Mandatory field"), "{table_arr_members_missing_err}");
+
+        // Length-framing errors. Foo = [uint, text, bytes] is read with read_elems(3) + finish().
+        // A definite array whose header counts MORE than the 3 fields passes read_elems but trips
+        // DefiniteLenMismatch at finish() (the "array too short" case above covers the under-count,
+        // which fails earlier in read_elems). foo_ok (arr_def(3)) above is the is_ok() baseline.
+        let foo_too_long = [
+            arr_def(4),
+            cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
+            cbor_int(9, cbor_event::Sz::Inline),
+        ].concat();
+        let foo_too_long_err = Foo::from_cbor_bytes(&foo_too_long).unwrap_err();
+        assert!(foo_too_long_err.to_string().contains("Definite length mismatch"), "{foo_too_long_err}");
+
+        // An indefinite array must be terminated by a CBOR Break; any other special in the tail slot
+        // trips EndingBreakMissing. The Break-terminated form is the is_ok() baseline.
+        let foo_indef_ok = [
+            vec![ARR_INDEF],
+            cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
+            vec![BREAK],
+        ].concat();
+        assert!(Foo::from_cbor_bytes(&foo_indef_ok).is_ok());
+        let foo_indef_no_break = [
+            vec![ARR_INDEF],
+            cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
+            vec![NULL],
+        ].concat();
+        let foo_indef_no_break_err = Foo::from_cbor_bytes(&foo_indef_no_break).unwrap_err();
+        assert!(foo_indef_no_break_err.to_string().contains("Missing ending CBOR Break"), "{foo_indef_no_break_err}");
+
+        // A CBOR Break encountered while iterating a *definite*-length struct-map trips
+        // BreakInDefiniteLen. The header must still count the 3 struct fields (or finish() rejects
+        // the length first), so the definite map declares 3 and a Break is fed in element position.
+        // A complete definite map of the 3 required keys is the is_ok() baseline.
+        let table_arr_members_def_ok = [
+            map_def(3),
+                cbor_string("tab"), map_def(0),
+                cbor_string("arr"), arr_def(0),
+                cbor_string("arr2"), arr_def(0),
+        ].concat();
+        assert!(TableArrMembers::from_cbor_bytes(&table_arr_members_def_ok).is_ok());
+        let table_arr_members_break = [map_def(3), vec![BREAK]].concat();
+        let table_arr_members_break_err = TableArrMembers::from_cbor_bytes(&table_arr_members_break).unwrap_err();
+        assert!(table_arr_members_break_err.to_string().contains("Break while reading definite length sequence"), "{table_arr_members_break_err}");
     }
 
     #[test]
