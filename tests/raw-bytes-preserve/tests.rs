@@ -23,24 +23,22 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn foo_too_big() {
         let irregular_bytes = vec![
             arr_sz(2, Sz::One),
                 cbor_int(0, Sz::Inline),
                     cbor_bytes_sz(vec![0x00; 33], StringLenSz::Len(Sz::One),)
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let irregular = Foo::from_cbor_bytes(&irregular_bytes).unwrap();
+        assert!(Foo::from_cbor_bytes(&irregular_bytes).is_err());
     }
 
     #[test]
-    #[should_panic]
     fn foo_too_small() {
         let irregular_bytes = vec![
             arr_sz(2, Sz::One),
                 cbor_int(0, Sz::Inline),
                     cbor_bytes_sz(vec![0x00; 31], StringLenSz::Len(Sz::One),)
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        let irregular = Foo::from_cbor_bytes(&irregular_bytes).unwrap();
+        assert!(Foo::from_cbor_bytes(&irregular_bytes).is_err());
     }
 }
