@@ -12,6 +12,13 @@ what's already covered.
 > safe half); json-gen now actually *runs* `export_schemas()` (item 7 residual); `error.rs` Display
 > and `RawBytesEncoding` hex coverage; plus several dead/weak tests fixed. What's left below is the
 > bigger-ticket work plus a few maintainer decisions (new "Pending decisions" section).
+>
+> **Runtime change (decided):** `from_cbor_bytes` now **rejects trailing bytes** after a complete
+> value (was silently ignored) — a `cursor == len` check in `static/serialization.rs` returning
+> `cbor_event::Error::TrailingData`. Vetted against the main downstream consumer
+> (`cardano-multiplatform-lib`): no in-tree reliance on the old leniency, and it aligns with CML's
+> exact-parsing philosophy. Locked by `tests::structural_rejects`; documented in
+> `docs/docs/output_format.mdx`.
 
 ## Recommended next steps, in priority order
 
@@ -94,9 +101,6 @@ Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call. 
 rest of the deferred menu (incl. medium next-tasks like a preserve-encodings golden known-answer set
 and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`.
 
-- **Trailing-bytes contract.** `from_cbor_bytes` accepts extra bytes after a complete value. Reject
-  (stricter; matches most CBOR expectations) or keep? Affects every generated crate — asserting
-  `is_err()` today would fail. Decide, then pin the test.
 - **Snapshot-only corpus policy.** A ~5-line `feature_corpus_compiles` skip-list would unblock
   *snapshot* coverage of the extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes
   (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`) emit paths — they emit undefined user-supplied types so they

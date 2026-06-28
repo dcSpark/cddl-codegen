@@ -9,6 +9,8 @@ sidebar_position: 4
 - The default format for `rust/` is to have a `lib.rs` containing the structs and `serialization.rs` containing their (de)serialization implementations/corresponding types.
 - The `wasm/` directory is full of wasm_bindgen-annotated wrappers all in `lib.rs` for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh).
 
+**`from_cbor_bytes` rejects trailing bytes.** The generated/`static` `Deserialize::from_cbor_bytes` (and the wasm `from_cbor_bytes`) decode one complete value and then require the cursor to have consumed the **entire** input; leftover bytes after a complete value return an error (`cbor_event::Error::TrailingData`) rather than being silently ignored, so a truncated/corrupt or accidentally-concatenated buffer is caught. (Nested/embedded decoding — e.g. `bytes .cbor T` — is unaffected; only the top-level entry point enforces this.)
+
 **Not every type gets its own (de)serialization in `serialization.rs`.** Some constructs carry their CBOR framing at the point of *use* rather than as a standalone impl on the type:
 
 - **Type aliases** — homogeneous arrays (`-> Vec`), tables (`-> BTreeMap`), plain aliases (`foo = bar`), and tag-wrapped primitives (`tagged = #6.42(text) -> String`) are (de)serialized through the aliased type.

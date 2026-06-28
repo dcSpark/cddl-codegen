@@ -6,7 +6,13 @@ expression: prelude
 pub trait Deserialize {
     fn from_cbor_bytes(data: &[u8]) -> Result<Self, DeserializeError> where Self: Sized {
         let mut raw = Deserializer::from(std::io::Cursor::new(data));
-        Self::deserialize(&mut raw)
+        let value = Self::deserialize(&mut raw)?;
+        // Reject leftover bytes after a complete value instead of silently ignoring them: otherwise a
+        // truncated/corrupt or accidentally-concatenated buffer would deserialize as Ok.
+        if raw.as_ref().position() != data.len() as u64 {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+        }
+        Ok(value)
     }
 
     fn deserialize<R: BufRead + Seek>(
