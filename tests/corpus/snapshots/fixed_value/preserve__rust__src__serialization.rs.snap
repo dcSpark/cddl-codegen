@@ -1,0 +1,119 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for FixedFields {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(3),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.a,
+            fit_sz(
+                self.a,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.a_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            "marker",
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.b_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz("marker".len() as u64),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            5u64,
+            fit_sz(
+                5u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.c_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for FixedFields {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(3)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (a, a_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let b_encoding = (|| -> Result<_, DeserializeError> {
+                let (b_value, b_encoding) = raw.text_sz()?;
+                if b_value != "marker" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(b_value),
+                        expected: Key::Str(String::from("marker")),
+                    }
+                    .into());
+                }
+                Ok(StringEncoding::from(b_encoding))
+            })()
+            .map_err(|e| e.annotate("b"))?;
+            let c_encoding = (|| -> Result<_, DeserializeError> {
+                let (c_value, c_encoding) = raw.unsigned_integer_sz()?;
+                if c_value != 5 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(c_value),
+                        expected: Key::Uint(5),
+                    }
+                    .into());
+                }
+                Ok(Some(c_encoding))
+            })()
+            .map_err(|e| e.annotate("c"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(FixedFields {
+                a,
+                encodings: Some(FixedFieldsEncoding {
+                    len_encoding,
+                    a_encoding,
+                    b_encoding,
+                    c_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("FixedFields"))
+    }
+}
