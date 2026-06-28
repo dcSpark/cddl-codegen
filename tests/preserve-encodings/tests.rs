@@ -294,7 +294,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn string1632() {
         let str_24_encodings = vec![
             StringLenSz::Len(Sz::One),
