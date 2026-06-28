@@ -26,7 +26,7 @@ real feature space is the union of the first-party sources:
 
 > **grammar ∪ prelude ∪ control-op registry.**
 
-`verify.py` reconciles the authored features against that union in **both directions** (see "provably
+`verify.ts` reconciles the authored features against that union in **both directions** (see "provably
 comprehensive" below): forward (every grammar alternative is covered by some feature) and backward
 (every feature resolves to some real source). Neither direction alone is sufficient — forward-only
 admits invented features; backward-only admits coverage holes.
@@ -69,12 +69,12 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
 | `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master) | — |
 
-**3. Generated view — `matrix.json`** (produced by `build_matrix.py`) joins the overlay with the native
+**3. Generated view — `matrix.json`** (produced by `build_matrix.ts`) joins the overlay with the native
 sources into one universal artifact for downstream/cross-language consumption. Imported axes are
 *derived*, not authored: control operators come straight from the IANA CSV with ids `ctl.<name>`. It is
-regenerated, never hand-edited. `build_matrix.py` also runs the **drift-check** (every annotation id must
-resolve to a real master id). The script is a PROTOTYPE; the production form is a Rust test wired into the
-suite (serde `toml` + `serde_json`, no Python dependency).
+regenerated, never hand-edited. `build_matrix.ts` also runs the **drift-check** (every annotation id must
+resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` holds the shared loaders
++ the byte-exact JSON serializer.
 
 Why this shape: the (construct × variation × nesting × encoding) cross-product is intractable and mostly
 meaningless. Normalizing keeps each fact in one place — e.g. "tags are supported but **nested** tags are
@@ -86,12 +86,12 @@ not" is not a bespoke row; it's `containment(tag-content, type2.tag)` with a cdd
 Comprehensiveness is established by a **bidirectional lint** against the first-party sources (the ABNF
 is a lint, not the closed-world spine — see "What is a feature?"):
 - **forward** (source → feature): every **`type2` ABNF alternative** has ≥1 covering feature row —
-  completeness checkable against the ABNF in `sources/`, hard-gated in `verify.py` (this is the check
+  completeness checkable against the ABNF in `sources/`, hard-gated in `verify.ts` (this is the check
   that caught the missing `#7` alternative; per-alternative coverage for the other productions is
   computed and logged best-effort);
 - **backward** (feature → source): every feature's `production` resolves to a real ABNF production, the
   `prelude` pseudo-production, or the IANA control-op registry — so no feature is invented with no
-  source (hard-gated in `verify.py`);
+  source (hard-gated in `verify.ts`);
 - cross-checked against a parser's AST variants (the `cddl` crate's `Type2`/`Type1`/`MemberKey`/… enums
   mirror the productions — a second, weaker corroboration, since the AST is one reading of the same grammar);
 - **control operators** are derived from the **IANA registry** (authoritative & cross-RFC), so that axis is
@@ -105,9 +105,9 @@ numbers** — same robustness rule as the COVERAGE.md docs.
 ## Conventions (decided)
 - **Home:** top-level `cddl-matrix/` (reusable beyond this repo's tests, hence not under `tests/`).
 - **Format:** TOML authored overlay + generated `matrix.json`; native sources pinned & committed under `sources/`.
-- **Verification:** `build_matrix.py --check` snapshots the synthesis (fails if `matrix.json` is stale
-  vs the authored overlay — the editorial join under test, not just the inputs' checksums); `verify.py`
-  is the reproducible gate (reconcile + triangulated probes). Both to be reimplemented as Rust CI tests.
+- **Verification:** `build_matrix.ts --check` snapshots the synthesis (fails if `matrix.json` is stale
+  vs the authored overlay — the editorial join under test, not just the inputs' checksums); `verify.ts`
+  is the reproducible gate (reconcile + triangulated probes). Both are Bun/TypeScript (`bun run …`).
 
 ## Scope (v1)
 RFC 8610 backbone in its authoritative current form: 9682 grammar + 8610 prelude + the IANA control-op

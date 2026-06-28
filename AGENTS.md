@@ -9,6 +9,9 @@ Anything with its own self-updating home — the CLI flags, the exact CI gate, w
 `cddl-codegen` is a CLI + library that generates a Rust crate (plus optional WASM bindings and JSON
 helpers) implementing CBOR serialize/deserialize from a CDDL specification.
 
+**Languages.** Rust for the project itself (`src/`/`static/`/`tests/`); TypeScript-on-Bun
+(`bun run <script>.ts`) for scripting, currently the `cddl-matrix/` tooling.
+
 ## Architecture (the mental model)
 
 Pipeline — `CDDL text → AST → IR → emitted source`:

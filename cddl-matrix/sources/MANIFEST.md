@@ -1,7 +1,7 @@
 # Source artifacts — provenance
 
 These are the **authoritative upstream specs** the master matrix is derived from, pinned here verbatim so
-the data is reproducible: anyone can regenerate `../matrix.json` from `../build_matrix.py` + this folder,
+the data is reproducible: anyone can regenerate `../matrix.json` from `../build_matrix.ts` + this folder,
 re-fetch the latest with `./fetch.sh`, and detect upstream drift by comparing checksums.
 
 Retrieved: **2026-06-28**. Upstream branches move; the committed files are the pinned snapshot, and the

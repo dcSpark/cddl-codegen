@@ -13,23 +13,36 @@ works today"). What follows is everything *not* yet done, roughly in priority or
 
 ## 1. Wire the projections — turn the reference into the source of truth (highest value)
 
-The master exists to be *projected from*, but the projections are not wired yet:
-- `tests/corpus/COVERAGE.md` and `tests/golden_hex/COVERAGE.md` are still **hand-maintained
-  separately** — they can drift from `matrix.json`. Generate them (or at least cross-check them) **from**
-  the master + annotations, so the master is genuinely the single source of truth.
-- Implement the **Q1–Q6 query scripts** from `QUERIES.md` (e.g. "constructs unsupported by tool X but
-  in-profile"; "supported but untested"). These are the matrix's actual point; until they exist, the
-  master is a well-formed reference that nothing consumes.
+The master exists to be *projected from*.
 
-Until this lands, the master and the coverage docs are independent artifacts that *describe* the same
-thing rather than one deriving from the other.
+**Done — the golden_hex (encoding-axis / Q3) projection.** `project_golden_hex.ts` generates
+`tests/golden_hex/COVERAGE.md` from `matrix.json` + `sources/appendix_a.json` + `tests.rs`, joining the
+human rationale in `annotations/golden_hex/cddl_codegen.toml`. The join is a **drift check**: it fails on
+a note that contradicts the derived coverage, a stale note, or any uncovered-and-unexplained vector. This
+realizes Q3 at the encoding-cell level (per-construct attribution is the F5 expansion, item 4).
 
-## 2. Reimplement the gate as a Rust CI test
+**Remaining:**
+- **Corpus (feature-axis) projection.** `tests/corpus/COVERAGE.md` is still hand-maintained and can
+  drift from `matrix.json`. Generate/cross-check it from the master + annotations, mirroring the
+  `project_golden_hex.ts` pattern (derive the mechanical half, join an authored-notes overlay, drift-check).
+- **Q1/Q2/Q4/Q5/Q6 query scripts** from `QUERIES.md`. **➡ Start here: Q1** — "constructs tool X doesn't
+  support but are in its target profile" (the everyday "what to implement next" gap). It's the
+  highest-value and unblocked *today*: all its inputs (per-tool support + the profile axis) already live
+  in `matrix.json` + `annotations/cddl_codegen.toml`. (Q4 is blocked on item 3.)
 
-`build_matrix.py` (synthesis + snapshot `--check`) and `verify.py` (reconcile + triangulated probes) are
-**Python prototypes**, run manually. Port them to a Rust test wired into the suite (serde `toml` +
-`serde_json`, no Python dependency) so the drift-check, snapshot guard, and reconciliation run in CI.
-The oracle commands (ruby `cddl`, rust `cddl` CLI, `cddl-codegen` probe) are documented in `verify.py`.
+## 2. Wire the gate into CI
+
+`build_matrix.ts` (synthesis + snapshot `--check`) and `verify.ts` (reconcile + triangulated probes) are
+**Bun/TypeScript, run manually** (`bun run build_matrix.ts --check`, `bun run verify.ts`); `lib.ts` holds
+the shared loaders + the stable-JSON serializer. Oracle paths are env-overridable (`RUST_CDDL`,
+`RUBY_CDDL`; `CODEGEN_DIR` derives from the repo root). Remaining:
+- **Wire both into CI** so the drift-check, snapshot guard, and reconciliation run automatically.
+  `verify.ts` needs the three oracle tools present (ruby `cddl`, rust `cddl` CLI, `cddl-codegen`); have
+  the CI lane provide them or skip that probe gracefully when absent.
+- **Typecheck enforcement.** The scripts are strict-typed but nothing runs `tsc` yet — the types are only
+  validated ad hoc. Add a `tsconfig.json` + `@types/bun` (dev-only) and a `tsc --noEmit` step beside the
+  gate. (Needs an ambient `declare module "*.toml"` for the `project_golden_hex.ts` import.) This is the
+  one place a (dev) dependency is worth it; the runtime stays dependency-free.
 
 ## 3. F3 — directional / enforcement support (deferred, needs execution)
 
@@ -42,8 +55,10 @@ blocked until then.
 ## 4. F4 / F5 follow-ons (only when their consumer exists)
 
 - **F5 (encoding precision):** the encoding axis is already major-type-dependent (no impossible cells).
-  The remaining work — per-construct *legal-cell* enumeration so Q3 can list "legal encodings minus
-  covered" — is a query-time expansion to build *when the golden-vector projection is wired* (step 1).
+  The golden-vector projection (item 1) is now wired and lists uncovered legal cells *globally*; the
+  remaining F5 work — per-*construct* legal-cell enumeration so Q3 can say "for construct C, these legal
+  encodings are untested" — is now unblocked. Link `features[].encodings` to the leaf cells each construct
+  can emit and intersect with golden coverage.
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit
   only if a *tag-semantic* consumer of the master appears.
 
