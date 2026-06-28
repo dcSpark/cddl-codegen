@@ -14,6 +14,21 @@ auto-bless via `INSTA_UPDATE=always cargo test snapshot_tests`; the orphan gate 
 
 ---
 
+## Session status
+
+- **Done (committed):** cw1 `sized_int`, cw2 `bool`, cw3 `fixed_value` corpus files (plus the
+  earlier roadmap-7/8 baseline + this mindmap). HEAD verified clean: fmt, clippy, `snapshot_tests`,
+  orphan gate, and `feature_corpus_compiles` all green.
+- **Rejected (NOT clean wins):** cw4 `extern_type` and cw5 `raw_bytes` corpus files. Both emit an
+  undefined *user-supplied* type (`ExternFoo` / the raw-bytes type), and `feature_corpus_compiles`
+  `cargo check`s **every** corpus file with no skip mechanism — so they break that gate. The extern
+  and raw-bytes emit paths are already compile+round-trip tested in `tests/extern-deps` and
+  `tests/raw-bytes`. Snapshot-only corpus coverage of them would need a `feature_corpus_compiles`
+  skip-list — a test-strategy call → **deferred to maintainer** (see Deferred).
+- **Remaining auto queue:** cw6–cw17.
+
+---
+
 ## Auto queue (best-first: cheapest + highest-confidence first)
 
 ### Theme: corpus coverage (new single-construct snapshots — fastest verify, pure-additive)
@@ -131,6 +146,14 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
   tagged/map) is a product call.
 - **Stubbed `no_key_group` comment-dsl test**: needs identifying which CDDL construct routes through
   the no-key-group emit path before an assertion can be written.
+
+### Test-infra strategy (maintainer call)
+- **Snapshot-only corpus entries via a `feature_corpus_compiles` skip-list** (would unblock the
+  rejected cw4 `extern_type` / cw5 `raw_bytes`). These emit undefined user-supplied types so they
+  can't `cargo check` standalone, but they're the *only* missing **snapshot** coverage of the
+  extern + raw-bytes-trait emit paths (the dedicated `tests/extern-deps` / `tests/raw-bytes` dirs
+  give compile+round-trip, not snapshots). Adding a small skip-list is ~5 test-only lines, but it
+  introduces a "snapshot-only corpus" policy the current docs don't have — bless it first.
 
 ### New harness / vectors (medium)
 - **Preserve-encodings golden known-answer set**: a new `golden_hex_preserve` mirror with
