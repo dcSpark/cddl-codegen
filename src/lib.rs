@@ -2,6 +2,7 @@ pub mod api;
 pub mod cli;
 pub mod comment_ast;
 pub mod dep_graph;
+pub mod emit_tests;
 pub mod generation;
 pub mod intermediate;
 pub mod parsing;

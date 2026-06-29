@@ -2,6 +2,7 @@ pub(crate) mod api;
 pub(crate) mod cli;
 pub(crate) mod comment_ast;
 pub(crate) mod dep_graph;
+pub(crate) mod emit_tests;
 pub(crate) mod generation;
 pub(crate) mod intermediate;
 pub(crate) mod parsing;

@@ -176,3 +176,17 @@ The macro must take the rust type as the first parameter and the wasm wrapper ty
 cddl-codegen --input=example --output=export --wasm-conversion-macro=cml_core_wasm::impl_wasm_conversions
 ```
 :::
+
+<br/><br/>
+
+:::info `--emit-tests`
+Emits a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate: for every type with a bounded (`RangeCheck`) field, a `#[test]` that asserts the boundary values are accepted (round-trip) and out-of-bounds values are rejected on deserialization. Covers structs (mutate a `pub` field out of bounds, serialize, and confirm `from_cbor_bytes` rejects it) plus type/group choices and bounded `@newtype` wrappers (constructor rejects out-of-bounds input).
+
+Requires `--to-from-bytes-methods`. Default-profile oriented; bounded `nint` fields and types whose bound coincides with the backing rust type's range are skipped (logged). This is the deterministic "reject" half — it does not generate `proptest`/`Arbitrary` round-trip tests.
+
+**Possible values:** true, false<br></br>
+**Default:** false
+```bash
+cddl-codegen --input=example --output=export --emit-tests true
+```
+:::

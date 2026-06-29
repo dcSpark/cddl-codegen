@@ -63,6 +63,12 @@ impl DeserializeError {
         }
     }
 
+    /// The underlying failure reason. Lets callers (e.g. generated reject tests) assert the
+    /// exact `DeserializeFailure` variant rather than just that deserialization errored.
+    pub fn failure(&self) -> &DeserializeFailure {
+        &self.failure
+    }
+
     pub fn annotate<T: Into<String>>(self, location: T) -> Self {
         match self.location {
             Some(loc) => Self::new(format!("{}.{}", location.into(), loc), self.failure),
