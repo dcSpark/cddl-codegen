@@ -1,0 +1,44 @@
+---
+source: src/robustness_tests.rs
+expression: catalog
+---
+# generator outcome per matrix `unsupported` (panic-class) construct — a SCORECARD, not a contract.
+# PANIC = tracked-known gap (the matrix's `panic (exit 101)` verdict). Flipping it to `error (graceful)`
+# is a FIX (re-bless); a new panic, or a panic decaying to a silently-wrong `ok`, is a regression.
+# Generate-only: captures panic-class gaps only, not compile-class. Source: cddl-matrix/project_robustness.ts.
+
+ctl.abnf                           PANIC
+ctl.abnfb                          PANIC
+ctl.and                            PANIC
+ctl.bits                           PANIC
+ctl.cat                            PANIC
+ctl.cborseq                        PANIC
+ctl.det                            PANIC
+ctl.feature                        PANIC
+ctl.plus                           PANIC
+ctl.regexp                         PANIC
+ctl.within                         PANIC
+genericparm.group                  PANIC
+memberkey.cut                      PANIC
+prelude.cbor-any                   PANIC
+prelude.eb16                       PANIC
+prelude.eb64legacy                 PANIC
+prelude.eb64url                    PANIC
+prelude.false                      PANIC
+prelude.float16-32                 PANIC
+prelude.float16                    PANIC
+prelude.float32-64                 PANIC
+prelude.nil                        PANIC
+prelude.null                       PANIC
+prelude.true                       PANIC
+prelude.undefined                  PANIC
+type2.any                          PANIC
+type2.choice_from_group            PANIC
+type2.choice_from_inline_group     PANIC
+type2.major                        PANIC
+type2.major7                       PANIC
+type2.unwrap                       PANIC
+type2.value                        PANIC
+value.bytes                        PANIC
+value.number                       PANIC
+value.text                         PANIC

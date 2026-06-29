@@ -1,0 +1,2 @@
+cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
+holder = [f: cb]

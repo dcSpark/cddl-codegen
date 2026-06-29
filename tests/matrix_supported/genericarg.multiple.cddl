@@ -1,0 +1,2 @@
+pair<k, v> = [k, v]
+x = pair<uint, tstr>
