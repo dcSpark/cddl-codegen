@@ -1072,6 +1072,13 @@ impl GenerationScope {
             // for these modules when they only exist to support modules nested deeper
             declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
+
+        // optional reject-test module (off by default; doesn't touch the snapshot suite)
+        if cli.emit_tests
+            && let Some(test_mod) = crate::emit_tests::emit_reject_tests(types, cli)
+        {
+            self.rust_lib().raw(&test_mod);
+        }
     }
 
     /// Exports all already-generated state to the provided directory.

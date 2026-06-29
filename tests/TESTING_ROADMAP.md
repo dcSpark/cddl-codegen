@@ -34,9 +34,11 @@ frontier these build toward is **c6**, parked under Tier 1 item 1.)
 > generator bugs surfaced; c2/c3: the matrix-projected `catch_unwind` pass — 75-construct no-panic guard +
 > 35-construct panic scorecard, `project_robustness.ts` → `tests/matrix_{supported,panic}/`). The open work,
 > roughly in order: **(a)** **wire the gates into CI** (§2) — the corpus snapshot/compile gates + the matrix
-> `*.ts` checks (incl. `project_robustness.ts --check`) all pass but run only manually; **(b)** the 3 surfaced
-> generator bugs are quick fixes (exclusive-range is one character) if/when the generator is in scope; **(c)**
-> the bigger-ticket Tier 1 round-trip harness (c6). The remaining ➕ 7 are NOT gaps (intentional excludes +
+> `*.ts` checks (incl. `project_robustness.ts --check`) all pass but run only manually; **(b)** the surfaced
+> generator bugs are candidate fixes (3 from c1 — exclusive-range is one character — plus the c6 nint-constructor
+> inversion) if/when the generator is in scope; **(c)** the Tier 1 round-trip harness — c6's **reject half is now
+> done** (`--emit-tests`; see Tier 1 item 1), leaving the round-trip/`Arbitrary` half + the `verify.ts`
+> `cargo check → cargo test` flip. The remaining ➕ 7 are NOT gaps (intentional excludes +
 > detector-floor under-reports — see c1 Status).
 
 - **c1 — corpus gap-fill (the `➕` supported-but-untested constructs). _✅ DONE — see Status below._** The
@@ -100,24 +102,39 @@ frontier these build toward is **c6**, parked under Tier 1 item 1.)
 ### Tier 1 — the strategic investment (a focused multi-day effort)
 
 1. **Emit a property round-trip harness into the generated crate.** *(~2–4 days; then free per
-   type)* `proptest` + `arbitrary`, behind a flag (e.g. `--emit-tests`). The generator is the only
-   thing that knows each type's exact fields/bounds/optionality, so it can emit a better
+   type)* `proptest` + `arbitrary`, behind the `--emit-tests` flag (the flag itself now exists — added
+   by the c6 reject half below; this item adds the `Arbitrary` + proptest dep on top). The generator is
+   the only thing that knows each type's exact fields/bounds/optionality, so it can emit a better
    `Arbitrary` + round-trip test than any hand-written one, for **every** type automatically. This
    is the single highest-leverage missing oracle — it turns "output didn't change" into "output is
    correct." Do this when you want to go deep on correctness.
    - Follow-on once this exists: **encode-fidelity properties** for `preserve`/`canonical`
      (`bytes → T → bytes` byte-identical over arbitrary valid encodings) — the only at-scale test
      of those high-stakes flags.
-   - **c6 — matrix-driven execution (the F3 frontier; _not_ a clear win — greenfield).** This harness,
-     once it exists, is what the matrix should *drive*: flip `cddl-matrix/verify.ts`'s per-schema
-     `cargo check` → `cargo test` to execute round-trip + reject across the whole feature corpus (~3–4×
-     the breadth of hand fixtures). The matrix is the **driver, not the oracle** — it mints no typed
+   - **c6 — matrix-driven execution (the F3 frontier).** The end goal: flip `cddl-matrix/verify.ts`'s
+     per-schema `cargo check` → `cargo test` to execute round-trip + reject across the whole feature corpus
+     (~3–4× the breadth of hand fixtures). The matrix is the **driver, not the oracle** — it mints no typed
      value, so the round-trip half needs a constraint-aware `Arbitrary` (must honor the generator's own
-     `RangeCheck` or it flakes) living in the *generated* crate, plus the `--emit-tests` flag and proptest
-     dep this item adds. **The one mechanical slice worth prototyping first:** the **reject half** alone —
-     emit one `#[test]` per type that bumps a bounded field past max and asserts
-     `DeserializeFailure::RangeCheck` (the constants already live in `intermediate.rs` bounds +
-     `generation.rs` bounds-check emit; no `Arbitrary` needed, just a valid baseline encoding to mutate).
+     `RangeCheck` or it flakes) living in the *generated* crate, plus the proptest dep.
+     - **Reject half — ✅ DONE (`--emit-tests`).** `src/emit_tests.rs` emits a `#[cfg(test)] mod
+       cddl_generated_tests` into each generated crate: per bounded type, a `#[test]` asserting both
+       boundaries are **accepted** (round-trip byte-identical) and both out-of-bounds directions are
+       **rejected** as `DeserializeFailure::RangeCheck`. Two shapes — pub-field-mutate **deser-reject**
+       (the wire path: serialize doesn't re-check bounds, deserialize does) for structs, **construct-reject**
+       for type/group choices + bounded `@newtype` wrappers — all minted from compile-time literals, no
+       `Arbitrary`. Companion: a one-line `DeserializeError::failure()` accessor in `static/error.rs` for
+       exact-variant assertions. Off by default; **not** wired into the suite or `verify.ts` (deferred —
+       verify manually by regenerating a bounded crate with `--emit-tests` and `cargo test`-ing it).
+       Scoped cuts, logged not laundered: bounded `nint` targets (surfaced a real **generator bug** — the
+       constructor bound is inverted; see the matrix findings ledger), types whose bound == the rust type's
+       domain (no representable OOB), nested/recursive baselines, indefinite-encoding fuzzing.
+       **Self-oracle caveat:** OOB values derive from the generator's own `min`/`max`, so this guards
+       enforcement + ser/deser consistency at scale, **not** bound-value-vs-spec (that's the round-trip half
+       + differential testing). A *qualified* win: a zero-maintenance regression guard, not a conformance
+       oracle.
+     - **Still open:** the round-trip/`Arbitrary` half + proptest dep; then the `verify.ts`
+       `cargo check → cargo test` flip; an integration test that runs the emitted module (today the emitter
+       has no CI coverage); optionally a `nint` reject case (which would also catch the bug above).
 
 ### Tier 2 — project-specific, highest signal (when data sourcing is feasible)
 

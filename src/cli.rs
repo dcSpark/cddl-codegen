@@ -56,6 +56,12 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub json_serde_derives: bool,
 
+    /// Emit a `#[cfg(test)]` module of reject tests into the generated rust crate: for every type
+    /// with a bounded (RangeCheck) field, a test that pushes that field out of bounds and asserts
+    /// deserialization rejects it. Off by default; the existing suite generates without it.
+    #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
+    pub emit_tests: bool,
+
     /// Tags types with sonSchema derives and generates a crate to export them
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub json_schema_export: bool,
