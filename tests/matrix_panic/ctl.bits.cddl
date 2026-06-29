@@ -1,0 +1,2 @@
+x = uint .bits b
+b = &(a: 0, c: 1)

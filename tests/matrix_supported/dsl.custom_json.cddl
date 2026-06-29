@@ -1,0 +1,1 @@
+cj = uint ; @newtype @custom_json

@@ -1,0 +1,2 @@
+foo = _CDDL_CODEGEN_EXTERN_TYPE_
+bar = [x: uint, y: foo]

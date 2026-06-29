@@ -1,0 +1,1 @@
+x = tstr .regexp "[0-9]+"

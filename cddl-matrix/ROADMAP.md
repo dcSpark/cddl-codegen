@@ -57,6 +57,9 @@ derives from the repo root).
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role
   floor), so it needs the cargo toolchain like `verify.ts`.
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
+- `bun run project_robustness.ts` — projects the support verdict into the robustness-catalog fixtures
+  (`tests/matrix_{supported,panic}/*.cddl`, testing-roadmap c2 + c3); `--check` is the drift gate. Pure
+  `matrix.json` read (no cargo/oracles), so it's a fast CI gate.
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 

@@ -1,0 +1,1 @@
+x = tstr .abnf "1*DIGIT"
