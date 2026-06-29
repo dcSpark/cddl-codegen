@@ -1,2 +1,7 @@
 container<T> = [value: T]
 uint_container = container<uint>
+; multiple generic params (def) + multiple generic args (instantiation)
+pair<k, v> = [k, v]
+pair_use = pair<uint, tstr>
+; a type1-expression generic arg (an inclusive range, not just a typename)
+ranged_container = container<1..10>

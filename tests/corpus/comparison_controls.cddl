@@ -1,0 +1,4 @@
+; Comparison control operators (.eq/.ne/.lt/.gt/.ge) as array members — the sized_int.cddl idiom
+; (the array wrapper gives each a real (de)serialize impl). cddl-codegen implements these 5; the
+; snapshot pins whether the constraint is honored in emitted code or silently dropped.
+comparison_controls = [a: uint .eq 5, b: uint .ne 5, c: uint .lt 10, d: uint .gt 0, e: uint .ge 0]

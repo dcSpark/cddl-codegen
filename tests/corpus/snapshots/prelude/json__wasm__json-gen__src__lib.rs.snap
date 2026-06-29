@@ -19,7 +19,11 @@ pub fn export_schemas() {
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
+    gen_json_schema!(cddl_lib::Int);
     gen_json_schema!(cddl_lib::Prelude);
+    gen_json_schema!(cddl_lib::PreludeBigfloat);
     gen_json_schema!(cddl_lib::PreludeBigint);
+    gen_json_schema!(cddl_lib::PreludeDecfrac);
+    gen_json_schema!(cddl_lib::PreludeInteger);
     gen_json_schema!(cddl_lib::PreludeUnsigned);
 }

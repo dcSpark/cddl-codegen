@@ -53,14 +53,14 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `genericarg.multiple` | ➕ | Multiple generic arguments | supported, no corpus fixture (cddl-codegen exit 0) |
-| `genericarg.type1` | ➕ | Type-expression argument | supported, no corpus fixture (cddl-codegen exit 0) |
+| `genericarg.multiple` | ✅ | Multiple generic arguments | `generics.cddl` |
+| `genericarg.type1` | ✅ | Type-expression argument | `generics.cddl` |
 
 ### `genericparm` (1)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `genericparm.multiple` | ➕ | Multiple generic parameters | supported, no corpus fixture (cddl-codegen exit 0) |
+| `genericparm.multiple` | ✅ | Multiple generic parameters | `generics.cddl` |
 
 ### `group` (1)
 
@@ -79,7 +79,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `grpent.groupname` | ➕ | Group-name reference entry | supported, no corpus fixture (cddl-codegen exit 0) |
-| `grpent.inline_group` | ➕ | Inline (parenthesized) group entry | supported, no corpus fixture (cddl-codegen exit 0) |
+| `grpent.inline_group` | ⚠️ | Inline (parenthesized) group entry | an inline parenthesized group spliced as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It parses + compiles (so the matrix probe marks it supported), but the output is wrong — silent data loss. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.  [`GroupEntry::InlineGroup { .. } => None`] |
 | `grpent.member` | ➕ | Member entry (optional occur + optional memberkey + type) | supported, no corpus fixture (cddl-codegen exit 0) |
 
 ### `memberkey` (4)
@@ -89,14 +89,14 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `memberkey.bareword` | ✅ | Bareword memberkey (k:) | `map_struct.cddl` |
 | `memberkey.cut` | ➖ | Cut in a => memberkey (^) | explicit cut `^` attaches to a `=>` (Type1) memberkey, which cddl-codegen doesn't support in this form — the example panics. (The IMPLICIT cut on `:`/bareword keys is a separate, supported-but-dropped story — see finding.)  [`Encountered Type1 member key in multi-field map`] |
 | `memberkey.type1` | ✅ | Type memberkey (t =>) | `table.cddl` |
-| `memberkey.value` | ➕ | Value memberkey (1:) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `memberkey.value` | ✅ | Value memberkey (1:) | `value_key.cddl` |
 
 ### `occur` (4)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `occur.bounded` | ➕ | Bounded occurrence (n*m) | supported, no corpus fixture (cddl-codegen exit 0) |
-| `occur.one_or_more` | ➕ | One-or-more occurrence (+) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `occur.bounded` | ✅ | Bounded occurrence (n*m) | `occurrence.cddl` |
+| `occur.one_or_more` | ✅ | One-or-more occurrence (+) | `occurrence.cddl` |
 | `occur.optional` | ✅ | Optional occurrence (?) | `optional.cddl` |
 | `occur.zero_or_more` | ✅ | Zero-or-more occurrence (*) | `homogeneous_array.cddl` |
 
@@ -105,21 +105,21 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `prelude.any` | ➖ | any | `x = any` generates `pub type X = Any;` referencing a type defined nowhere — does not compile (caught by the compile-gate; the exit-code-only probe formerly over-credited it). `any` is absent from is_identifier_reserved, so it's treated as an undefined user type.  [`is_identifier_reserved`] |
-| `prelude.b64legacy` | ➕ | b64legacy | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.b64url` | ➕ | b64url | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.bigfloat` | ➕ | bigfloat | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.b64legacy` | ✅ | b64legacy | `prelude.cddl` |
+| `prelude.b64url` | ✅ | b64url | `prelude.cddl` |
+| `prelude.bigfloat` | ✅ | bigfloat | `prelude.cddl` |
 | `prelude.bigint` | ✅ | bigint | `prelude.cddl` |
-| `prelude.bignint` | ➕ | bignint | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.bignint` | ✅ | bignint | `prelude.cddl` |
 | `prelude.biguint` | ✅ | biguint | `prelude.cddl` |
 | `prelude.bool` | ✅ | bool | `bool.cddl` |
-| `prelude.bstr` | ➕ | bstr | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.bstr` | ✅ | bstr | `prelude.cddl` |
 | `prelude.bytes` | ✅ | bytes | `primitives.cddl` |
 | `prelude.cbor-any` | ➖ | cbor-any | reduces to `any`; rejected  [`unsupported cddl prelude type`] |
-| `prelude.decfrac` | ➕ | decfrac | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.decfrac` | ✅ | decfrac | `prelude.cddl` |
 | `prelude.eb16` | ➖ | eb16 | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
 | `prelude.eb64legacy` | ➖ | eb64legacy | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
 | `prelude.eb64url` | ➖ | eb64url | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
-| `prelude.encoded-cbor` | ➕ | encoded-cbor | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone type panics — same Fixed-type gap as `true`/`null` (fails as a struct member too).  [`should not expose Fixed type in member`] |
 | `prelude.float` | ⚠️ | float | de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)  [`preserve_encodings is not implemented for float`] |
 | `prelude.float16` | ➖ | float16 | no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work).  [`should be handled by the alias system instead`] |
@@ -128,18 +128,18 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.float32-64` | ➖ | float32-64 | the float32/float64 choice alias isn't handled by the float alias system (the float-choice aliases are unsupported, though float32/float64 work on their own); panics even as a member.  [`should be handled by the alias system instead`] |
 | `prelude.float64` | ⚠️ | float64 | works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float64]` compiles default, fails preserve)  [`preserve_encodings is not implemented for float`] |
 | `prelude.int` | ✅ | int | `primitives.cddl` |
-| `prelude.integer` | ➕ | integer | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.mime-message` | ➕ | mime-message | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.integer` | ✅ | integer | `prelude.cddl` |
+| `prelude.mime-message` | ✅ | mime-message | `prelude.cddl` |
 | `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type.  [`should not expose Fixed type in member`] |
 | `prelude.nint` | ✅ | nint | `primitives.cddl` |
 | `prelude.null` | ➖ | null | top-level `x = null` type panics — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values). Its supported choice-member role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
 | `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.regexp` | ➕ | regexp | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.tdate` | ➕ | tdate | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.regexp` | ✅ | regexp | `prelude.cddl` |
+| `prelude.tdate` | ✅ | tdate | `prelude.cddl` |
 | `prelude.text` | ✅ | text | `primitives.cddl` |
 | `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone type panics; cddl-codegen exposes fixed values only for serialization, not as types (fails as a struct member too). Same Fixed-type gap as `null`.  [`should not expose Fixed type in member`] |
-| `prelude.tstr` | ➕ | tstr | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
 | `prelude.undefined` | ➖ | undefined | the `undefined` simple value is rejected  [`unsupported cddl prelude type`] |
 | `prelude.unsigned` | ✅ | unsigned | `prelude.cddl` |
@@ -149,7 +149,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `rangeop.exclusive` | ➕ | Exclusive range (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.exclusive` | ⚠️ | Exclusive range (a...b) | the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`).  [`range_end + 1`] |
 | `rangeop.inclusive` | ✅ | Inclusive range (a..b) | `sized_int.cddl` |
 
 ### `rule` (2)
@@ -253,10 +253,10 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `.cborseq` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.default` | ✅ | `default_value.cddl` |
 | `.det` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.eq` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.eq` | ✅ | `comparison_controls.cddl` |
 | `.feature` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.ge` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
-| `.gt` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.ge` | ✅ | `comparison_controls.cddl` |
+| `.gt` | ✅ | `comparison_controls.cddl` |
 | `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
@@ -264,8 +264,8 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.le` | ✅ | `sized_int.cddl` |
-| `.lt` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
-| `.ne` | ➕ | supported, no corpus fixture (probe (control-op): cddl-codegen exit 0) |
+| `.lt` | ✅ | `comparison_controls.cddl` |
+| `.ne` | ✅ | `comparison_controls.cddl` |
 | `.oid` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.plus` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
@@ -288,12 +288,15 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 9. Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix.
 10. Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
 11. Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work.
+12. Bug — the exclusive range `a...b` mis-computes its upper bound: it should EXCLUDE `b` (max valid = b-1), but cddl-codegen emits `max = b+1`, so `[v: 0...10]` accepts 10 and 11 (exclusive_range.cddl snapshot: `max: Some(11)`). `rangeop.exclusive` is marked ⚠️ for this. Candidate cddl-codegen fix: `range_end + 1` -> `range_end - 1` in parsing.rs. (Surfaced by the matrix, not hidden by editing the example.)
+13. Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix.
+14. Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.
 
 ## Summary
 
-- Features: **92** — ✅ 34 covered · ➕ 27 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
-- Control operators: **37** — ✅ 4 covered · ➕ 5 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 28
+- Features: **92** — ✅ 52 covered · ➕ 7 supported-untested · ⚠️ 7 partial · ➖ 26 not supported
+- Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
+- Corpus fixtures: 33
 
 **Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

@@ -1,0 +1,3 @@
+; An inline (parenthesized) group spliced as an array entry — distinct from a named group
+; reference (nested_group.cddl) and not exercised by any other fixture.
+inline_group = [(uint, tstr)]

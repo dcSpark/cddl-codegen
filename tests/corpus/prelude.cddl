@@ -2,8 +2,20 @@
 ; Each distinct generated shape is covered once; float-bearing prelude types
 ; (number/time) are omitted as floats don't support --preserve-encodings.
 prelude = [
-  big_u:    biguint,    ; #6.2(bstr)      — tagged-bytes alias
-  uri:      uri,        ; #6.32(tstr)     — tagged-text alias
-  big_i:    bigint,     ; biguint/bignint — type-choice over nested prelude types
-  unsigned: unsigned,   ; uint/biguint    — type-choice mixing a primitive with a prelude type
+  big_u:    biguint,      ; #6.2(bstr)      — tagged-bytes alias
+  uri:      uri,          ; #6.32(tstr)     — tagged-text alias
+  big_i:    bigint,       ; biguint/bignint — type-choice over nested prelude types
+  unsigned: unsigned,     ; uint/biguint    — type-choice mixing a primitive with a prelude type
+  t:        tstr,         ; #3              — text alias
+  b:        bstr,         ; #2              — bytes alias
+  intg:     integer,      ; int / bigint    — type-choice (primitive or bignum)
+  big_n:    bignint,      ; #6.3(bstr)      — negative-bignum tagged-bytes alias
+  date:     tdate,        ; #6.0(tstr)      — tagged-text alias
+  b64u:     b64url,       ; #6.33(tstr)     — tagged-text alias
+  b64l:     b64legacy,    ; #6.34(tstr)     — tagged-text alias
+  re:       regexp,       ; #6.35(tstr)     — tagged-text alias
+  mime:     mime-message, ; #6.36(tstr)     — tagged-text alias
+  ec:       encoded-cbor, ; #6.24(bstr)     — tagged-bytes alias
+  df:       decfrac,      ; #6.4([int, integer]) — tagged decimal-fraction array
+  bf:       bigfloat,     ; #6.5([int, integer]) — tagged bigfloat array
 ]

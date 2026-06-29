@@ -37,7 +37,7 @@ mod tests {
     }
 
     // Round-trip tests only ever feed well-formed CBOR; these pin that *malformed* input is
-    // rejected rather than silently accepted (TESTING_ROADMAP.md item 8). Structural cases the
+    // rejected rather than silently accepted. Structural cases the
     // bounds test doesn't reach: wrong shape, wrong element type, wrong/missing tag. Each case has
     // an is_ok() baseline so a reject can't pass for the wrong reason (e.g. garbage encoding).
     #[test]
@@ -180,7 +180,7 @@ mod tests {
         assert!(table_arr_members_break_err.to_string().contains("Break while reading definite length sequence"), "{table_arr_members_break_err}");
     }
 
-    // cw14: exercise the shipped Display formatting in error.rs (DeserializeError::fmt_indent and
+    // exercise the shipped Display formatting in error.rs (DeserializeError::fmt_indent and
     // Key::Display) that round-trip tests never reach. Each case pins stable substrings of
     // unwrap_err().to_string() rather than whole strings, so cosmetic wording tweaks don't break it
     // while the distinct formatting branches stay covered.

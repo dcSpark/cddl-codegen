@@ -9,6 +9,19 @@ use crate::serialization::{LenEncoding, StringEncoding};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
+pub struct PairUseEncoding {
+    pub len_encoding: LenEncoding,
+    pub k_encoding: Option<cbor_event::Sz>,
+    pub v_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RangedContainerEncoding {
+    pub len_encoding: LenEncoding,
+    pub value_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct UintContainerEncoding {
     pub len_encoding: LenEncoding,
     pub value_encoding: Option<cbor_event::Sz>,

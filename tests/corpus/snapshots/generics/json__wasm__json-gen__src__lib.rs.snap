@@ -19,5 +19,7 @@ pub fn export_schemas() {
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
+    gen_json_schema!(cddl_lib::PairUse);
+    gen_json_schema!(cddl_lib::RangedContainer);
     gen_json_schema!(cddl_lib::UintContainer);
 }

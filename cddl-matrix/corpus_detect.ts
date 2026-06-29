@@ -66,7 +66,7 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "memberkey.type1", hit: c => c.includes("=>") },
   { id: "memberkey.cut", hit: c => c.includes("^") },
   { id: "occur.optional", hit: c => c.includes("?") },
-  { id: "occur.one_or_more", hit: c => /(^|\s)\+\s/.test(c) },
+  { id: "occur.one_or_more", hit: c => /(^|[\s[(])\+\s/.test(c) },   // `+` occurrence, incl. the canonical `[+ x]` form (after a bracket)
   { id: "occur.bounded", hit: c => /\d+\*\d+/.test(c) },
   { id: "occur.zero_or_more", hit: c => /(^|[\s,{[])\*(?!\d)/.test(c) },  // `*` occurrence (excl. the n*m form)
   { id: "rangeop.exclusive", hit: c => c.includes("...") },
@@ -76,6 +76,10 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "value.number", hit: c => /(^|[\s,/[(])-?\d+\b/.test(c) },        // incl. range/ctl-arg numbers (over-credits — that's the point)
   { id: "genericparm.type", hit: c => /^[ \t]*[A-Za-z_]\w*<[^>]+>\s*=/m.test(c) },
   { id: "genericarg.type", hit: c => /\b[A-Za-z_]\w*<[^>=]+>(?!\s*=)/.test(c) },
+  { id: "genericparm.multiple", hit: c => /^[ \t]*[A-Za-z_]\w*<[^>]*,[^>]*>\s*=/m.test(c) },  // generic DEF with 2+ params (comma in `<…>`)
+  { id: "genericarg.multiple", hit: c => /\b[A-Za-z_]\w*<[^>=]*,[^>=]*>(?!\s*=)/.test(c) },    // instantiation with 2+ args
+  { id: "genericarg.type1", hit: c => /\b[A-Za-z_]\w*<[^>=]*\.\.[^>=]*>(?!\s*=)/.test(c) },     // instantiation whose arg is a type1 expr (a range)
+  { id: "grpent.inline_group", hit: c => /[[{]\s*\(/.test(c) },                                 // a parenthesized group inline as an entry: `[(…)]`
   { id: "type2.value", hit: c => /(^|[\s,/[(])(-?\d+\b|"[^"]*"|(h|b64)')/.test(c) }, // a literal at a type position
 ];
 
@@ -182,6 +186,12 @@ function selfCheck() {
   if (a.rfc.has("prelude.int")) throw new Error("selfCheck: \\bint\\b false-matched inside uint");
   const t = featuresIn("tagged = #6.42(text)");
   if (!t.rfc.has("type2.tag")) throw new Error("selfCheck: missing type2.tag");
+  if (!featuresIn("g = [+ uint]").rfc.has("occur.one_or_more")) throw new Error("selfCheck: missing occur.one_or_more in `[+ uint]`");
+  const g = featuresIn("pair<k, v> = [k, v]\nx = pair<uint, tstr>\ninst = foo<1..10>");
+  for (const id of ["genericparm.multiple", "genericarg.multiple", "genericarg.type1"])
+    if (!g.rfc.has(id)) throw new Error(`selfCheck: missing ${id}`);
+  if (featuresIn("u = foo<uint>").rfc.has("genericarg.type1")) throw new Error("selfCheck: genericarg.type1 false-matched a plain typename arg");
+  if (!featuresIn("g = [(uint, tstr)]").rfc.has("grpent.inline_group")) throw new Error("selfCheck: missing grpent.inline_group in `[(…)]`");
   const s = featuresIn("hash = bytes .size (0..32)");
   if (!s.ctl.has("ctl.size")) throw new Error("selfCheck: missing ctl.size");
   if (!s.rfc.has("rangeop.inclusive")) throw new Error("selfCheck: missing rangeop.inclusive");

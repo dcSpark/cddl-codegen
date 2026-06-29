@@ -1,0 +1,4 @@
+; Value memberkey (a literal int key `1:` rather than a bareword) in a struct-map. Two fields to
+; isolate memberkey.value cleanly — a single-field struct-map hits an orthogonal cddl-codegen bug
+; (`unsupported table map key`), which would confound the verdict.
+value_keys = { 1: tstr, 2: uint }

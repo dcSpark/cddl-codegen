@@ -1,0 +1,61 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ValueKeys(cddl_lib::ValueKeys);
+
+#[wasm_bindgen]
+impl ValueKeys {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ValueKeys, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> String {
+        self.0.key_1.clone()
+    }
+
+    pub fn key_2(&self) -> u64 {
+        self.0.key_2
+    }
+
+    pub fn new(key_1: String, key_2: u64) -> Self {
+        Self(cddl_lib::ValueKeys::new(key_1, key_2))
+    }
+}
+
+impl From<cddl_lib::ValueKeys> for ValueKeys {
+    fn from(native: cddl_lib::ValueKeys) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ValueKeys> for cddl_lib::ValueKeys {
+    fn from(wasm: ValueKeys) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ValueKeys> for ValueKeys {
+    fn as_ref(&self) -> &cddl_lib::ValueKeys {
+        &self.0
+    }
+}

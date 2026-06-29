@@ -15,6 +15,98 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct PairUse(cddl_lib::PairUse);
+
+#[wasm_bindgen]
+impl PairUse {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PairUse, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn k(&self) -> u64 {
+        self.0.k
+    }
+
+    pub fn v(&self) -> String {
+        self.0.v.clone()
+    }
+
+    pub fn new(k: u64, v: String) -> Self {
+        Self(cddl_lib::PairUse::new(k, v))
+    }
+}
+
+impl From<cddl_lib::PairUse> for PairUse {
+    fn from(native: cddl_lib::PairUse) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PairUse> for cddl_lib::PairUse {
+    fn from(wasm: PairUse) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PairUse> for PairUse {
+    fn as_ref(&self) -> &cddl_lib::PairUse {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RangedContainer(cddl_lib::RangedContainer);
+
+#[wasm_bindgen]
+impl RangedContainer {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RangedContainer, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> u64 {
+        self.0.value
+    }
+
+    pub fn new(value: u64) -> Result<RangedContainer, JsError> {
+        cddl_lib::RangedContainer::new(value)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::RangedContainer> for RangedContainer {
+    fn from(native: cddl_lib::RangedContainer) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RangedContainer> for cddl_lib::RangedContainer {
+    fn from(wasm: RangedContainer) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::RangedContainer> for RangedContainer {
+    fn as_ref(&self) -> &cddl_lib::RangedContainer {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct UintContainer(cddl_lib::UintContainer);
 
 #[wasm_bindgen]

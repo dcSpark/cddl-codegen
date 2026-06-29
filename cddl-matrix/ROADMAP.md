@@ -151,6 +151,16 @@ from a degenerate example.**
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail
   under `--preserve-encodings`; generics on plain groups rejected.
+- **Exclusive range upper bound is mis-computed** — `a...b` excludes `b` (max valid = b-1), but cddl-codegen
+  emits `max = b+1`: `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11. One-char fix:
+  `parsing.rs` `range_end + 1` → `range_end - 1`. (Surfaced by the c1 corpus gap-fill; `exclusive_range.cddl`
+  snapshot pins it; `rangeop.exclusive` is ⚠️.)
+- **Occurrence-count constraints aren't enforced** on homogeneous arrays — `[+ uint]` (≥1) and `[2*5 uint]`
+  (2..5) both emit a bare `Vec<u64>` with no length check (bare `*` is faithfully a `Vec`, so only `+`/`n*m`
+  drop a constraint). Surfaced by `occurrence.cddl`.
+- **Inline-group splice drops members** — `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }`
+  (`read_elems(1)`), silently losing `tstr` (inline-group entries aren't flattened into the record). Surfaced
+  by `inline_group.cddl`; `grpent.inline_group` is ⚠️.
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

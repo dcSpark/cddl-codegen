@@ -16,9 +16,49 @@ pub mod serialization;
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
-use cbor_encodings::UintContainerEncoding;
+use cbor_encodings::{PairUseEncoding, RangedContainerEncoding, UintContainerEncoding};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct PairUse {
+    pub k: u64,
+    pub v: String,
+    pub encodings: Option<PairUseEncoding>,
+}
+
+impl PairUse {
+    pub fn new(k: u64, v: String) -> Self {
+        Self {
+            k,
+            v,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RangedContainer {
+    pub value: u64,
+    pub encodings: Option<RangedContainerEncoding>,
+}
+
+impl RangedContainer {
+    pub fn new(value: u64) -> Result<Self, DeserializeError> {
+        if value < 1 || value > 10 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: value as isize,
+                min: Some(1),
+                max: Some(10),
+            }
+            .into());
+        }
+        Ok(Self {
+            value,
+            encodings: None,
+        })
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct UintContainer {

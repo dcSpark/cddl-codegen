@@ -1,0 +1,4 @@
+; Exclusive range (a...b) — upper bound excluded, vs the inclusive `a..b` in sized_int.cddl.
+; Member form so it emits a real (de)serialize impl; the snapshot reveals whether exclusivity
+; is honored in the generated bounds.
+exclusive_range = [v: 0...10]

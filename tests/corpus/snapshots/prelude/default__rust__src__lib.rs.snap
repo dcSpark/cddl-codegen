@@ -15,11 +15,76 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl std::fmt::Display for Int {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl std::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).abs()).map(Self::Nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(std::num::TryFromIntError),
+    Parsing(std::num::ParseIntError),
+}
+
+#[derive(Clone, Debug)]
 pub struct Prelude {
     pub big_u: PreludeBiguint,
     pub uri: PreludeUri,
     pub big_i: PreludeBigint,
     pub unsigned: PreludeUnsigned,
+    pub t: String,
+    pub b: Vec<u8>,
+    pub intg: PreludeInteger,
+    pub big_n: PreludeBignint,
+    pub date: PreludeTdate,
+    pub b64u: PreludeB64url,
+    pub b64l: PreludeB64legacy,
+    pub re: PreludeRegexp,
+    pub mime: PreludeMimeMessage,
+    pub ec: PreludeEncodedCbor,
+    pub df: PreludeDecfrac,
+    pub bf: PreludeBigfloat,
 }
 
 impl Prelude {
@@ -28,13 +93,53 @@ impl Prelude {
         uri: PreludeUri,
         big_i: PreludeBigint,
         unsigned: PreludeUnsigned,
+        t: String,
+        b: Vec<u8>,
+        intg: PreludeInteger,
+        big_n: PreludeBignint,
+        date: PreludeTdate,
+        b64u: PreludeB64url,
+        b64l: PreludeB64legacy,
+        re: PreludeRegexp,
+        mime: PreludeMimeMessage,
+        ec: PreludeEncodedCbor,
+        df: PreludeDecfrac,
+        bf: PreludeBigfloat,
     ) -> Self {
         Self {
             big_u,
             uri,
             big_i,
             unsigned,
+            t,
+            b,
+            intg,
+            big_n,
+            date,
+            b64u,
+            b64l,
+            re,
+            mime,
+            ec,
+            df,
+            bf,
         }
+    }
+}
+
+pub type PreludeB64legacy = String;
+
+pub type PreludeB64url = String;
+
+#[derive(Clone, Debug)]
+pub struct PreludeBigfloat {
+    pub e2: Int,
+    pub m: PreludeInteger,
+}
+
+impl PreludeBigfloat {
+    pub fn new(e2: Int, m: PreludeInteger) -> Self {
+        Self { e2, m }
     }
 }
 
@@ -57,6 +162,42 @@ impl PreludeBigint {
 pub type PreludeBignint = Vec<u8>;
 
 pub type PreludeBiguint = Vec<u8>;
+
+#[derive(Clone, Debug)]
+pub struct PreludeDecfrac {
+    pub e10: Int,
+    pub m: PreludeInteger,
+}
+
+impl PreludeDecfrac {
+    pub fn new(e10: Int, m: PreludeInteger) -> Self {
+        Self { e10, m }
+    }
+}
+
+pub type PreludeEncodedCbor = Vec<u8>;
+
+#[derive(Clone, Debug)]
+pub enum PreludeInteger {
+    Int(Int),
+    PreludeBigint(PreludeBigint),
+}
+
+impl PreludeInteger {
+    pub fn new_int(int: Int) -> Self {
+        Self::Int(int)
+    }
+
+    pub fn new_prelude_bigint(prelude_bigint: PreludeBigint) -> Self {
+        Self::PreludeBigint(prelude_bigint)
+    }
+}
+
+pub type PreludeMimeMessage = String;
+
+pub type PreludeRegexp = String;
+
+pub type PreludeTdate = String;
 
 #[derive(Clone, Debug)]
 pub enum PreludeUnsigned {
