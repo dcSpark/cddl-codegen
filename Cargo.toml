@@ -15,7 +15,7 @@ which-rustfmt = ["which"]
 [dependencies]
 cbor_event = "2.4.0"
 # we don't update due to https://github.com/anweiss/cddl/issues/222
-cddl = "=0.9.1"
+cddl = "=0.10.5"
 clap = { version = "4.5", features = ["derive"] }
 # dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
