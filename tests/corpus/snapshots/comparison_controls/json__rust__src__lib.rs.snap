@@ -1,0 +1,62 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ComparisonControls {
+    pub a: u64,
+    pub b: u64,
+    pub c: u64,
+    pub d: u64,
+    pub e: u64,
+}
+
+impl ComparisonControls {
+    pub fn new(a: u64, b: u64, c: u64, d: u64, e: u64) -> Result<Self, DeserializeError> {
+        if a < 5 || a > 5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: a as isize,
+                min: Some(5),
+                max: Some(5),
+            }
+            .into());
+        }
+        if b < 6 || b > 4 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: b as isize,
+                min: Some(6),
+                max: Some(4),
+            }
+            .into());
+        }
+        if c > 9 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: c as isize,
+                min: None,
+                max: Some(9),
+            }
+            .into());
+        }
+        if d < 1 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: d as isize,
+                min: Some(1),
+                max: None,
+            }
+            .into());
+        }
+        Ok(Self { a, b, c, d, e })
+    }
+}

@@ -9,10 +9,38 @@ use crate::serialization::{LenEncoding, StringEncoding};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
+pub struct PreludeBigfloatEncoding {
+    pub len_encoding: LenEncoding,
+    pub tag_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeDecfracEncoding {
+    pub len_encoding: LenEncoding,
+    pub tag_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PreludeEncoding {
     pub len_encoding: LenEncoding,
     pub big_u_tag_encoding: Option<cbor_event::Sz>,
     pub big_u_encoding: StringEncoding,
     pub uri_tag_encoding: Option<cbor_event::Sz>,
     pub uri_encoding: StringEncoding,
+    pub t_encoding: StringEncoding,
+    pub b_encoding: StringEncoding,
+    pub big_n_tag_encoding: Option<cbor_event::Sz>,
+    pub big_n_encoding: StringEncoding,
+    pub date_tag_encoding: Option<cbor_event::Sz>,
+    pub date_encoding: StringEncoding,
+    pub b64u_tag_encoding: Option<cbor_event::Sz>,
+    pub b64u_encoding: StringEncoding,
+    pub b64l_tag_encoding: Option<cbor_event::Sz>,
+    pub b64l_encoding: StringEncoding,
+    pub re_tag_encoding: Option<cbor_event::Sz>,
+    pub re_encoding: StringEncoding,
+    pub mime_tag_encoding: Option<cbor_event::Sz>,
+    pub mime_encoding: StringEncoding,
+    pub ec_tag_encoding: Option<cbor_event::Sz>,
+    pub ec_encoding: StringEncoding,
 }

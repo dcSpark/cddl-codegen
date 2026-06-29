@@ -1,0 +1,4 @@
+; Occurrence indicators the existing corpus doesn't isolate: one-or-more (+) and bounded (n*m).
+; (optional `?` and zero-or-more `*` are already covered by optional.cddl / table-style fixtures.)
+one_or_more = [+ uint]
+bounded = [2*5 uint]

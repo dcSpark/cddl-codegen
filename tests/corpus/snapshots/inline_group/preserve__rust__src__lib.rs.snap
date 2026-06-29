@@ -1,0 +1,36 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::error::*;
+use crate::ordered_hash_map::OrderedHashMap;
+use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::InlineGroupEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct InlineGroup {
+    pub index_0: u64,
+    pub encodings: Option<InlineGroupEncoding>,
+}
+
+impl InlineGroup {
+    pub fn new(index_0: u64) -> Self {
+        Self {
+            index_0,
+            encodings: None,
+        }
+    }
+}

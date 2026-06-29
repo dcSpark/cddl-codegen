@@ -66,6 +66,55 @@ fixture = "prelude.cddl"
 id = "prelude.unsigned"
 fixture = "prelude.cddl"
 
+# c1 gap-fill — the remaining non-float prelude aliases (tstr/bstr-reducible + tagged numeric arrays).
+[[cover]]
+id = "prelude.tstr"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.bstr"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.integer"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.bignint"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.tdate"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.b64url"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.b64legacy"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.regexp"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.mime-message"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.encoded-cbor"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.decfrac"
+fixture = "prelude.cddl"
+
+[[cover]]
+id = "prelude.bigfloat"
+fixture = "prelude.cddl"
+
 # ---- composition & structure ----
 [[cover]]
 id = "type2.array"
@@ -92,6 +141,10 @@ fixture = "map_struct.cddl"
 id = "memberkey.type1"
 fixture = "table.cddl"
 
+[[cover]]
+id = "memberkey.value"
+fixture = "value_key.cddl"
+
 # ---- occurrence ----
 [[cover]]
 id = "occur.optional"
@@ -100,6 +153,14 @@ fixture = "optional.cddl"
 [[cover]]
 id = "occur.zero_or_more"
 fixture = "homogeneous_array.cddl"
+
+[[cover]]
+id = "occur.one_or_more"
+fixture = "occurrence.cddl"
+
+[[cover]]
+id = "occur.bounded"
+fixture = "occurrence.cddl"
 
 # ---- choices ----
 [[cover]]
@@ -129,6 +190,10 @@ fixture = "tagged.cddl"
 id = "rangeop.inclusive"
 fixture = "sized_int.cddl"
 
+[[cover]]
+id = "rangeop.exclusive"
+fixture = "exclusive_range.cddl"
+
 # ---- control operators (§3.8) ----
 [[cover]]
 id = "type1.ctlop"
@@ -150,6 +215,26 @@ fixture = "default_value.cddl"
 id = "ctl.le"
 fixture = "sized_int.cddl"
 
+[[cover]]
+id = "ctl.eq"
+fixture = "comparison_controls.cddl"
+
+[[cover]]
+id = "ctl.ne"
+fixture = "comparison_controls.cddl"
+
+[[cover]]
+id = "ctl.lt"
+fixture = "comparison_controls.cddl"
+
+[[cover]]
+id = "ctl.gt"
+fixture = "comparison_controls.cddl"
+
+[[cover]]
+id = "ctl.ge"
+fixture = "comparison_controls.cddl"
+
 # ---- generics (§3.10) ----
 [[cover]]
 id = "genericparm.type"
@@ -158,6 +243,22 @@ fixture = "generics.cddl"
 [[cover]]
 id = "genericarg.type"
 fixture = "generics.cddl"
+
+[[cover]]
+id = "genericparm.multiple"
+fixture = "generics.cddl"
+
+[[cover]]
+id = "genericarg.multiple"
+fixture = "generics.cddl"
+
+[[cover]]
+id = "genericarg.type1"
+fixture = "generics.cddl"
+
+[[cover]]
+id = "grpent.inline_group"
+fixture = "inline_group.cddl"
 
 # ---- CDDL_CODEGEN profile (comment DSL) — each dsl_*.cddl isolates one directive ----
 # (The ext.* sentinels have no corpus fixture — they break feature_corpus_compiles, so they're ➕
@@ -243,6 +344,18 @@ note = "text literal member (`b: \"marker\"`)"
 # (no per-op support data yet to cross-check `status` against).
 
 # ---- ⚠️ partial — parsed but the semantics aren't honored ----
+[[note]]
+id = "grpent.inline_group"
+status = "partial"
+reason = "an inline parenthesized group spliced as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It parses + compiles (so the matrix probe marks it supported), but the output is wrong — silent data loss. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record."
+code_anchor = "GroupEntry::InlineGroup { .. } => None"
+
+[[note]]
+id = "rangeop.exclusive"
+status = "partial"
+reason = "the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`)."
+code_anchor = "range_end + 1"
+
 [[note]]
 id = "memberkey.cut"
 status = "unsupported"
@@ -460,3 +573,12 @@ text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = nu
 
 [[finding]]
 text = "Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work."
+
+[[finding]]
+text = "Bug — the exclusive range `a...b` mis-computes its upper bound: it should EXCLUDE `b` (max valid = b-1), but cddl-codegen emits `max = b+1`, so `[v: 0...10]` accepts 10 and 11 (exclusive_range.cddl snapshot: `max: Some(11)`). `rangeop.exclusive` is marked ⚠️ for this. Candidate cddl-codegen fix: `range_end + 1` -> `range_end - 1` in parsing.rs. (Surfaced by the matrix, not hidden by editing the example.)"
+
+[[finding]]
+text = "Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix."
+
+[[finding]]
+text = "Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record."
