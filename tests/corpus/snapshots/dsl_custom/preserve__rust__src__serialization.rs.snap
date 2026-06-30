@@ -52,13 +52,14 @@ impl cbor_event::se::Serialize for Customized {
                 .unwrap_or_default()
                 .to_len_sz(1),
         )?;
-        serializer.write_text_sz(
+        my_ser(
+            serializer,
             &self.field,
-            self.encodings
+            &self
+                .encodings
                 .as_ref()
                 .map(|encs| encs.field_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.field.len() as u64),
+                .unwrap_or_default(),
         )?;
         self.encodings
             .as_ref()
@@ -76,11 +77,8 @@ impl Deserialize for Customized {
         read_len.read_elems(1)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
-            let (field, field_encoding) = raw
-                .text_sz()
-                .map_err(Into::<DeserializeError>::into)
-                .map(|(s, enc)| (s, StringEncoding::from(enc)))
-                .map_err(|e: DeserializeError| e.annotate("field"))?;
+            let (field, field_encoding) =
+                my_deser(raw).map_err(|e: DeserializeError| e.annotate("field"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {

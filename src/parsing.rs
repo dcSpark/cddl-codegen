@@ -134,6 +134,16 @@ pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
     }
 }
 
+/// Extract the literal tag number cddl-codegen needs. The cddl AST models a tag as a `TagConstraint`
+/// (RFC 9682 allows type-valued `#6.<type>(...)` heads); cddl-codegen is tag-parametric and needs a
+/// concrete number. Returns None for an absent tag; panics on a non-literal head — unsupported.
+fn tag_literal(tag: &Option<token::TagConstraint<'_>>) -> Option<usize> {
+    tag.as_ref().map(|t| {
+        t.as_literal()
+            .expect("non-literal tag heads (#6.<type>(...)) are not supported") as usize
+    })
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -668,7 +678,8 @@ fn parse_type(
             if outer_tag.is_some() {
                 panic!("doubly nested tags are not supported");
             }
-            let tag_unwrap = tag.expect("not sure what empty tag here would mean - unsupported");
+            let tag_unwrap =
+                tag_literal(tag).expect("not sure what empty tag here would mean - unsupported");
             match t.type_choices.len() {
                 1 => {
                     let inner_type = &t.type_choices.first().unwrap();
@@ -688,7 +699,7 @@ fn parse_type(
                         parent_visitor,
                         type_name,
                         &t.type_choices,
-                        *tag,
+                        tag_literal(tag),
                         generic_params,
                         cli,
                     );
@@ -765,6 +776,31 @@ fn parse_type(
                 AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
             );
         }
+        Type2::ParenthesizedType { pt, .. } => {
+            // The cddl parser keeps a parenthesized single type as a ParenthesizedType. Unwrap it here
+            // so `foo = (uint)` behaves exactly like `foo = uint` (rust_type_from_type2 already unwraps
+            // the same way for non-rule positions).
+            match pt.type_choices.len() {
+                1 => parse_type(
+                    types,
+                    parent_visitor,
+                    type_name,
+                    pt.type_choices.first().unwrap(),
+                    outer_tag,
+                    generic_params,
+                    cli,
+                ),
+                _ => parse_type_choices(
+                    types,
+                    parent_visitor,
+                    type_name,
+                    &pt.type_choices,
+                    outer_tag,
+                    generic_params,
+                    cli,
+                ),
+            }
+        }
         x => {
             panic!("\nignored typename {} -> {:?}\n", type_name, x);
         }
@@ -783,7 +819,13 @@ pub fn create_variants_from_type_choices(
         .iter()
         .map(|choice| {
             let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
-            let rule_metadata = RuleMetadata::from(choice.type1.comments_after_type.as_ref());
+            // The cddl parser attaches a type-choice element's trailing comment to
+            // TypeChoice.comments_after_type, not Type1.comments_after_type, so merge both — otherwise
+            // @name/@doc on a variant is silently dropped. Mirrors parse_type's merge for single types.
+            let rule_metadata = merge_metadata(
+                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+                &RuleMetadata::from(choice.comments_after_type.as_ref()),
+            );
             let base_name = match &rule_metadata {
                 RuleMetadata {
                     name: Some(name), ..
@@ -817,6 +859,29 @@ enum GroupParsingType {
     WrappedBasicGroup(RustType),
 }
 
+/// Flatten single-choice `GroupEntry::InlineGroup`s into the parent entry list.
+///
+/// A parenthesized group in entry position — `[(a, b)]` — is pure grouping, semantically `[a, b]`
+/// the cddl parser represents it as a `GroupEntry::InlineGroup` (which the downstream codegen has no support for)
+/// so we splice single-choice inline groups in before the struct/array/map dispatch.
+///
+/// Multi-choice inline groups are left as-is (unsupported).
+/// A no-op for entries with no inline groups, so other output is unchanged.
+fn flatten_group_entries<'a>(
+    entries: &'a [(GroupEntry<'a>, OptionalComma<'a>)],
+) -> Vec<&'a (GroupEntry<'a>, OptionalComma<'a>)> {
+    let mut out = Vec::new();
+    for entry in entries {
+        match &entry.0 {
+            GroupEntry::InlineGroup { group, .. } if group.group_choices.len() == 1 => {
+                out.extend(flatten_group_entries(&group.group_choices[0].group_entries));
+            }
+            _ => out.push(entry),
+        }
+    }
+    out
+}
+
 /// Parses which type of group it is for various common special cases to handle
 fn parse_group_type<'a>(
     types: &mut IntermediateTypes,
@@ -825,10 +890,11 @@ fn parse_group_type<'a>(
     rep: Representation,
     cli: &Cli,
 ) -> GroupParsingType {
+    let entries = flatten_group_entries(&group_choice.group_entries);
     match rep {
         Representation::Array => {
-            if group_choice.group_entries.len() == 1 {
-                let (entry, _has_comma) = &group_choice.group_entries[0];
+            if entries.len() == 1 {
+                let (entry, _has_comma) = entries[0];
                 let (elem_type, occur) = match entry {
                     GroupEntry::ValueMemberKey { ge, .. } => (
                         rust_type(types, parent_visitor, &ge.entry_type, cli),
@@ -876,9 +942,9 @@ fn parse_group_type<'a>(
             // this assumes that all maps representing tables are homogenous
             // and contain no other fields. I am not sure if this is a guarantee in
             // cbor but I would hope that the cddl specs we are using follow this.
-            if group_choice.group_entries.len() == 1 {
-                match group_choice.group_entries.first() {
-                    Some((GroupEntry::ValueMemberKey { ge, .. }, _)) => {
+            if entries.len() == 1 {
+                match &entries[0].0 {
+                    GroupEntry::ValueMemberKey { ge, .. } => {
                         match &ge.member_key {
                             Some(MemberKey::Type1 { t1, .. }) => {
                                 // TODO: Do we need to handle cuts for what we're doing?
@@ -894,10 +960,7 @@ fn parse_group_type<'a>(
                             _ => panic!("unsupported table map key (1): {:?}", ge),
                         }
                     }
-                    _ => panic!(
-                        "unsupported table map key (2): {:?}",
-                        group_choice.group_entries.first().unwrap()
-                    ),
+                    other => panic!("unsupported table map key (2): {:?}", other),
                 }
             }
         }
@@ -1010,13 +1073,25 @@ fn group_entry_to_field_name(
                     }
                 }
                 MemberKey::Bareword { ident, .. } => ident.to_string(),
-                MemberKey::Type1 { t1, .. } => match t1.type2 {
-                    Type2::UintValue { value, .. } => format!("key_{value}"),
-                    _ => panic!(
-                        "Encountered Type1 member key in multi-field map - not supported: {:?}",
-                        entry
-                    ),
-                },
+                MemberKey::Type1 { t1, .. } => {
+                    // An integer arrow key `0 => x` is the Type1 spelling of the value key `0: x`, so
+                    // honor a @name directive the same way the Value arm above does (falling back to
+                    // key_{value}); otherwise the directive is silently dropped on arrow-keyed entries.
+                    let combined_comments =
+                        combine_comments(trailing_comments, &optional_comma.trailing_comments);
+                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
+                        RuleMetadata {
+                            name: Some(name), ..
+                        } => name,
+                        _ => match &t1.type2 {
+                            Type2::UintValue { value, .. } => format!("key_{value}"),
+                            _ => panic!(
+                                "Encountered Type1 member key in multi-field map - not supported: {:?}",
+                                entry
+                            ),
+                        },
+                    }
+                }
                 MemberKey::NonMemberKey { .. } => {
                     panic!("Please open a github issue with repro steps")
                 }
@@ -1282,7 +1357,7 @@ fn rust_type_from_type2(
         }
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData { tag, t, .. } => {
-            let tag_unwrap = tag.expect("tagged data without tag not supported");
+            let tag_unwrap = tag_literal(tag).expect("tagged data without tag not supported");
             rust_type(types, parent_visitor, t, cli).tag(tag_unwrap)
         }
         Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt, cli),
@@ -1425,9 +1500,8 @@ fn parse_record_from_group_choice(
     cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
-    let fields = group_choice
-        .group_entries
-        .iter()
+    let fields = flatten_group_entries(&group_choice.group_entries)
+        .into_iter()
         .enumerate()
         .map(|(index, (group_entry, optional_comma))| {
             let field_name = group_entry_to_field_name(
@@ -1799,12 +1873,18 @@ fn get_comment_after<'a>(
         CDDLType::Type(_) => None,
         CDDLType::TypeChoice(t) => t.comments_after_type.clone(),
         CDDLType::Type1(t) => {
+            // Find the trailing comment that follows this Type1's type2. It can live in a few places:
             if let Some(CDDLType::Type2(_)) = child {
                 if let Some(op) = &t.operator {
+                    // a control/range operator sits between the type2 and the comment
                     return op.comments_before_operator.clone();
-                } else {
+                }
+                if t.comments_after_type.is_some() {
                     return t.comments_after_type.clone();
                 }
+                // No operator and no comment of its own: the comment belongs to an enclosing node.
+                // For a type-choice element, cddl attaches it to the parent TypeChoice (which wraps a
+                // single Type1), so fall through and ascend to find it there.
             };
             if t.operator.is_none() {
                 get_comment_after(

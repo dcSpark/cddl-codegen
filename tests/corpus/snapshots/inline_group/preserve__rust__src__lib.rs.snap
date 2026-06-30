@@ -23,13 +23,15 @@ use std::convert::TryFrom;
 #[derive(Clone, Debug)]
 pub struct InlineGroup {
     pub index_0: u64,
+    pub index_1: String,
     pub encodings: Option<InlineGroupEncoding>,
 }
 
 impl InlineGroup {
-    pub fn new(index_0: u64) -> Self {
+    pub fn new(index_0: u64, index_1: String) -> Self {
         Self {
             index_0,
+            index_1,
             encodings: None,
         }
     }

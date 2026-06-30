@@ -15,6 +15,27 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ArrowValueKeys {
+    pub first: Option<String>,
+    pub second: Option<u64>,
+}
+
+impl ArrowValueKeys {
+    pub fn new() -> Self {
+        Self {
+            first: None,
+            second: None,
+        }
+    }
+}
+
+impl Default for ArrowValueKeys {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ValueKeys {
     pub key_1: String,
     pub key_2: u64,

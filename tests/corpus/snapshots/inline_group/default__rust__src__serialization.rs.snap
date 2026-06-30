@@ -16,8 +16,9 @@ impl cbor_event::se::Serialize for InlineGroup {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_array(cbor_event::Len::Len(2))?;
         serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
         Ok(serializer)
     }
 }
@@ -26,11 +27,13 @@ impl Deserialize for InlineGroup {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
         let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(1)?;
+        read_len.read_elems(2)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
             let index_0 = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 =
+                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -38,7 +41,7 @@ impl Deserialize for InlineGroup {
                     _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                 },
             }
-            Ok(InlineGroup { index_0 })
+            Ok(InlineGroup { index_0, index_1 })
         })()
         .map_err(|e| e.annotate("InlineGroup"))
     }

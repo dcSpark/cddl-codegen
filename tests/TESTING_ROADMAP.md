@@ -197,6 +197,14 @@ frontier these build toward is **c6**, parked under Tier 1 item 1.)
    after a complete value are currently *accepted* (`from_cbor_bytes` never checks cursor==len) — see
    "Pending decisions."
 
+9. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
+   surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
+   the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
+   role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
+   the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
+   divergence/crash into the snapshot corpus (review once, commit). Complements the real on-chain
+   differential (item 2): synthetic breadth vs real-world depth.
+
 ## Pending decisions (maintainer call — blocks the related test, not on effort)
 
 Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call. Full context + the
@@ -231,3 +239,4 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
 - Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
+ 

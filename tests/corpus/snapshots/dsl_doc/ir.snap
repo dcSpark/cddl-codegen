@@ -74,7 +74,9 @@ expression: ir
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,
-                            comment: None,
+                            comment: Some(
+                                "bar is a u64",
+                            ),
                         },
                     },
                 ],

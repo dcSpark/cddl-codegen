@@ -1,0 +1,4 @@
+; A keyless positional element that is `<reserved> / null` routes through the no-key ValueMemberKey
+; arm, so its field keeps the type-derived name (`uint`), NOT index_N — distinct from a bare `[uint]`
+; element (a TypeGroupname → index_N). Pins that field-naming distinction.
+positional_optional = [uint / null]

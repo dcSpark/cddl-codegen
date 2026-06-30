@@ -73,8 +73,12 @@ expression: ir
                             no_alias: false,
                             used_as_key: false,
                             custom_json: false,
-                            custom_serialize: None,
-                            custom_deserialize: None,
+                            custom_serialize: Some(
+                                "my_ser",
+                            ),
+                            custom_deserialize: Some(
+                                "my_deser",
+                            ),
                             comment: None,
                         },
                     },

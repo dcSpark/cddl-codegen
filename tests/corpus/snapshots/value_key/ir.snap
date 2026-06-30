@@ -4,6 +4,92 @@ expression: ir
 ---
 {
     RustIdent(
+        "ArrowValueKeys",
+    ): RustStruct {
+        ident: RustIdent(
+            "ArrowValueKeys",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [
+                    RustField {
+                        name: "first",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: true,
+                        key: Some(
+                            Uint(
+                                0,
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: Some(
+                                "first",
+                            ),
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "second",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: true,
+                        key: Some(
+                            Uint(
+                                1,
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: Some(
+                                "second",
+                            ),
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(
