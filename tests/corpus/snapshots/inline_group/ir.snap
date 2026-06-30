@@ -47,6 +47,32 @@ expression: ir
                             comment: None,
                         },
                     },
+                    RustField {
+                        name: "index_1",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
                 ],
             },
         ),

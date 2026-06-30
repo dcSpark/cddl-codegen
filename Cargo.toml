@@ -14,8 +14,11 @@ which-rustfmt = ["which"]
 
 [dependencies]
 cbor_event = "2.4.0"
-# we don't update due to https://github.com/anweiss/cddl/issues/222
-cddl = "=0.9.1"
+# dcSpark fork pinned to two fixes not yet in a crates.io release: upstream cddl's parser discards all
+# comments (breaking our @name/@newtype/@doc DSL) and mis-parses a colon member key `b:` as an arrow/
+# type key when a `=>` appears anywhere in the entry. Move back to a crates.io version once both land
+# in anweiss/cddl + release. See tests/TESTING_ROADMAP.md.
+cddl = { git = "https://github.com/dcSpark/cddl", rev = "d6cad9ee99f732e2ecb330a373c6a68f4e2860b7" }
 clap = { version = "4.5", features = ["derive"] }
 # dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }

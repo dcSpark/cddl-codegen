@@ -54,6 +54,7 @@ impl Documented {
     }
 
     /// * `foo` - this is a field-level comment
+    /// * `bar` - bar is a u64
     pub fn new(foo: String, bar: u64) -> Self {
         Self(cddl_lib::Documented::new(foo, bar))
     }

@@ -1,0 +1,11 @@
+; Parenthesized types.
+; - NESTED `(T)` unwraps to `T` (the common case): `nested`'s `(uint)` field is a plain u64.
+; - A TOP-LEVEL `foo = (single-type)` is a parenthesized TYPE -> a plain alias (`basic`,
+;   `newtype_dropped` -> `pub type ... = u64`). `(A / B)` is a type-choice -> enum.
+; - A @-directive on such a parenthesized wrapper is dropped, so `newtype_dropped` is an alias, not a
+;   newtype — same as the tagged wrapper `#6.x(...)`. (`holder` references the rules for coverage.)
+basic = (uint)
+choice = (uint / text)
+newtype_dropped = (uint) ; @newtype
+nested = [a: (uint), b: tstr]
+holder = [ref_basic: basic, ref_choice: choice, ref_newtype: newtype_dropped]

@@ -19,11 +19,13 @@ use std::convert::TryFrom;
 pub struct Documented {
     /// this is a field-level comment
     pub foo: String,
+    /// bar is a u64
     pub bar: u64,
 }
 
 impl Documented {
     /// * `foo` - this is a field-level comment
+    /// * `bar` - bar is a u64
     pub fn new(foo: String, bar: u64) -> Self {
         Self { foo, bar }
     }

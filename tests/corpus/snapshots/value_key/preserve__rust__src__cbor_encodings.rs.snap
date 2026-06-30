@@ -9,6 +9,16 @@ use crate::serialization::{LenEncoding, StringEncoding};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
+pub struct ArrowValueKeysEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub first_encoding: StringEncoding,
+    pub first_key_encoding: Option<cbor_event::Sz>,
+    pub second_encoding: Option<cbor_event::Sz>,
+    pub second_key_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct ValueKeysEncoding {
     pub len_encoding: LenEncoding,
     pub orig_deser_order: Vec<usize>,

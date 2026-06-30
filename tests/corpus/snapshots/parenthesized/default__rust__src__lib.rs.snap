@@ -1,0 +1,64 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type Basic = u64;
+
+#[derive(Clone, Debug)]
+pub enum Choice {
+    U64(u64),
+    Text(String),
+}
+
+impl Choice {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub ref_basic: Basic,
+    pub ref_choice: Choice,
+    pub ref_newtype: NewtypeDropped,
+}
+
+impl Holder {
+    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeDropped) -> Self {
+        Self {
+            ref_basic,
+            ref_choice,
+            ref_newtype,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Nested {
+    pub a: u64,
+    pub b: String,
+}
+
+impl Nested {
+    pub fn new(a: u64, b: String) -> Self {
+        Self { a, b }
+    }
+}
+
+pub type NewtypeDropped = u64;

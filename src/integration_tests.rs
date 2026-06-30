@@ -286,9 +286,17 @@ fn feature_corpus_compiles() {
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
+    // Fixtures whose generated crate references user-supplied code (e.g. @custom_serialize /
+    // @custom_deserialize functions like `my_ser`/`my_deser`) and so can't `cargo check` standalone —
+    // same reason extern / raw-bytes live outside the corpus. Still source-snapshotted by feature_corpus.
+    const COMPILE_SKIP: &[&str] = &["dsl_custom"];
+
     let mut failures = vec![];
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
+        if COMPILE_SKIP.contains(&stem) {
+            continue;
+        }
         for (profile, extra) in profiles {
             let label = format!("{stem}/{profile}");
             let out = root.join(format!("{stem}__{profile}"));

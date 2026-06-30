@@ -12,4 +12,5 @@ use std::collections::BTreeMap;
 pub struct InlineGroupEncoding {
     pub len_encoding: LenEncoding,
     pub index_0_encoding: Option<cbor_event::Sz>,
+    pub index_1_encoding: StringEncoding,
 }

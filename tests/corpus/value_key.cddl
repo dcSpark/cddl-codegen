@@ -2,3 +2,11 @@
 ; isolate memberkey.value cleanly — a single-field struct-map hits an orthogonal cddl-codegen bug
 ; (`unsupported table map key`), which would confound the verdict.
 value_keys = { 1: tstr, 2: uint }
+
+; The arrow spelling `n => x` of a value key is equivalent to the colon form `n: x` and must honor a
+; @name directive the same way — but the arrow form is a Type1 memberkey while the colon form is a
+; Value memberkey, and they take different naming paths.
+arrow_value_keys = {
+  ? 0 => tstr, ; @name first
+  ? 1 => uint  ; @name second
+}

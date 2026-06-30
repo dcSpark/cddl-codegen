@@ -12,7 +12,7 @@ ctl.abnfb                          PANIC
 ctl.and                            PANIC
 ctl.bits                           PANIC
 ctl.cat                            PANIC
-ctl.cborseq                        PANIC
+ctl.cborseq                        error (graceful)
 ctl.det                            PANIC
 ctl.feature                        PANIC
 ctl.plus                           PANIC
@@ -39,6 +39,6 @@ type2.major                        PANIC
 type2.major7                       PANIC
 type2.unwrap                       PANIC
 type2.value                        PANIC
-value.bytes                        PANIC
+value.bytes                        error (graceful)
 value.number                       PANIC
 value.text                         PANIC

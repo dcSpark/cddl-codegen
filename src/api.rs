@@ -102,8 +102,11 @@ pub fn with_types<R>(
     // and a raw bytes one too
     input_files_content.push_str(&format!("{} = [1]", parsing::RAW_BYTES_MARKER));
 
-    // Plain group / scope marking
-    let cddl = cddl::parser::cddl_from_str(&input_files_content, true)?;
+    // Plain group / scope marking.
+    // Note: we use the checked parse entry (validates that every referenced type/group name is defined)
+    //       so an undefined reference is a graceful error here rather than downstream panic during IR build
+    //       (i.e. we don't use the unchecked `cddl_from_str`)
+    let cddl = cddl::ast::CDDL::from_slice(input_files_content.as_bytes())?;
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
     // mark scope and filter scope markers

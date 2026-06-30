@@ -12,6 +12,196 @@ use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
+impl cbor_event::se::Serialize for ArrowValueKeys {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    match &self.first {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.second {
+                        Some(_) => 1,
+                        None => 0,
+                    },
+                ),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == match &self.first {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.second {
+                        Some(_) => 1,
+                        None => 0,
+                    }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..2).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    if let Some(field) = &self.first {
+                        serializer.write_unsigned_integer_sz(
+                            0u64,
+                            fit_sz(
+                                0u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.first_key_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                        serializer.write_text_sz(
+                            &field,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.first_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz(field.len() as u64),
+                        )?;
+                    }
+                }
+                1 => {
+                    if let Some(field) = &self.second {
+                        serializer.write_unsigned_integer_sz(
+                            1u64,
+                            fit_sz(
+                                1u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.second_key_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                        serializer.write_unsigned_integer_sz(
+                            *field,
+                            fit_sz(
+                                *field,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.second_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for ArrowValueKeys {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        (|| -> Result<_, DeserializeError> {
+            let mut orig_deser_order = Vec::new();
+            let mut first_encoding = StringEncoding::default();
+            let mut first_key_encoding = None;
+            let mut first = None;
+            let mut second_encoding = None;
+            let mut second_key_encoding = None;
+            let mut second = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()? {
+                        (0, key_enc) => {
+                            if first.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(0)).into());
+                            }
+                            let (tmp_first, tmp_first_encoding) =
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    raw.text_sz()
+                                        .map_err(Into::<DeserializeError>::into)
+                                        .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                                })()
+                                .map_err(|e| e.annotate("first"))?;
+                            first = Some(tmp_first);
+                            first_encoding = tmp_first_encoding;
+                            first_key_encoding = Some(key_enc);
+                            orig_deser_order.push(0);
+                        }
+                        (1, key_enc) => {
+                            if second.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            let (tmp_second, tmp_second_encoding) =
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    raw.unsigned_integer_sz()
+                                        .map_err(Into::<DeserializeError>::into)
+                                        .map(|(x, enc)| (x, Some(enc)))
+                                })()
+                                .map_err(|e| e.annotate("second"))?;
+                            second = Some(tmp_second);
+                            second_encoding = tmp_second_encoding;
+                            second_key_encoding = Some(key_enc);
+                            orig_deser_order.push(1);
+                        }
+                        (unknown_key, _enc) => {
+                            return Err(
+                                DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                            )
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self {
+                first,
+                second,
+                encodings: Some(ArrowValueKeysEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    first_key_encoding,
+                    first_encoding,
+                    second_key_encoding,
+                    second_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("ArrowValueKeys"))
+    }
+}
+
 impl cbor_event::se::Serialize for ValueKeys {
     fn serialize<'se, W: Write>(
         &self,
