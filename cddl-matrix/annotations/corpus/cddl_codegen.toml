@@ -66,7 +66,7 @@ fixture = "prelude.cddl"
 id = "prelude.unsigned"
 fixture = "prelude.cddl"
 
-# c1 gap-fill — the remaining non-float prelude aliases (tstr/bstr-reducible + tagged numeric arrays).
+# corpus gap-fill — the remaining non-float prelude aliases (tstr/bstr-reducible + tagged numeric arrays).
 [[cover]]
 id = "prelude.tstr"
 fixture = "prelude.cddl"

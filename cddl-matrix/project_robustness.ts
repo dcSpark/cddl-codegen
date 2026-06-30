@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Robustness-catalog projection (testing-roadmap c2 + c3) — matrix support verdict -> .cddl fixtures.
+ * Robustness-catalog projection — matrix support verdict -> .cddl fixtures.
  *
  * Projects the matrix's execution-grounded cddl-codegen support verdict into the fixtures that
  * src/robustness_tests.rs drives through a generate-only `catch_unwind` pass:
- *   - tests/matrix_supported/<id>.cddl  — every status="supported" feature/control-op   (c3, expect-ok)
+ *   - tests/matrix_supported/<id>.cddl  — every status="supported" feature/control-op   (expect-ok)
  *   - tests/matrix_panic/<id>.cddl      — every status="unsupported" feature/control-op whose evidence is
- *                                         a generation PANIC (`panic (exit 101)`)         (c2, expect-PANIC)
+ *                                         a generation PANIC (`panic (exit 101)`)         (expect-PANIC)
  *
  * Each fixture is the construct's minimal `example` verbatim (the same text verify.ts probed), so the
  * in-process Rust outcome must match the matrix verdict. The Rust harness uses --wasm=false, default
@@ -15,7 +15,7 @@
  * fine here and are out of scope (that's a negative compile-gate's job).
  *
  * contain.* (role x feature) cells are deliberately excluded — they carry no standalone probe example
- * and are a different axis (c1's role x feature corpus already covers them).
+ * and are a different axis (the role x feature corpus already covers them).
  *
  * Run from cddl-matrix/:
  *   bun run project_robustness.ts          -> (re)writes both fixture dirs from matrix.json
@@ -89,8 +89,8 @@ function reconcile(dir: string, rows: Ex[], label: string) {
     } else if (cur !== body) writeFileSync(path, body);
   }
 }
-reconcile(SUPPORTED_DIR, supported, "matrix_supported (c3)");
-reconcile(PANIC_DIR, panic, "matrix_panic (c2)");
+reconcile(SUPPORTED_DIR, supported, "matrix_supported (expect-ok)");
+reconcile(PANIC_DIR, panic, "matrix_panic (expect-PANIC)");
 
 console.log(
   `robustness projection: ${supported.length} supported (expect-ok), ${panic.length} panic-class (expect-PANIC)`,
