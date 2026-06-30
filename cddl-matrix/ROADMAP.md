@@ -58,7 +58,7 @@ derives from the repo root).
   floor), so it needs the cargo toolchain like `verify.ts`.
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
 - `bun run project_robustness.ts` — projects the support verdict into the robustness-catalog fixtures
-  (`tests/matrix_{supported,panic}/*.cddl`, testing-roadmap c2 + c3); `--check` is the drift gate. Pure
+  (`tests/matrix_{supported,panic}/*.cddl`); `--check` is the drift gate. Pure
   `matrix.json` read (no cargo/oracles), so it's a fast CI gate.
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
@@ -156,7 +156,7 @@ from a degenerate example.**
   under `--preserve-encodings`; generics on plain groups rejected.
 - **Exclusive range upper bound is mis-computed** — `a...b` excludes `b` (max valid = b-1), but cddl-codegen
   emits `max = b+1`: `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11. One-char fix:
-  `parsing.rs` `range_end + 1` → `range_end - 1`. (Surfaced by the c1 corpus gap-fill; `exclusive_range.cddl`
+  `parsing.rs` `range_end + 1` → `range_end - 1`. (Surfaced by the corpus gap-fill; `exclusive_range.cddl`
   snapshot pins it; `rangeop.exclusive` is ⚠️.)
 - **Occurrence-count constraints aren't enforced** on homogeneous arrays — `[+ uint]` (≥1) and `[2*5 uint]`
   (2..5) both emit a bare `Vec<u64>` with no length check (bare `*` is faithfully a `Vec`, so only `+`/`n*m`

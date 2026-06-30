@@ -9,6 +9,9 @@ on:
       - "rust-toolchain.toml"
       - "src/**"
       - "tests/**"
+      # Matrix-only edits don't touch tests/**, so without this the drift gate
+      # below would never trigger on the change that caused the drift.
+      - "cddl-matrix/**"
   pull_request:
     branches: [ master ]
     paths:
@@ -17,6 +20,9 @@ on:
       - "rust-toolchain.toml"
       - "src/**"
       - "tests/**"
+      # Matrix-only edits don't touch tests/**, so without this the drift gate
+      # below would never trigger on the change that caused the drift.
+      - "cddl-matrix/**"
 
 jobs:
   test:
@@ -59,3 +65,29 @@ jobs:
       # missing module's snapshots as unreferenced.
       - name: Snapshot orphan check
         run: cargo insta test --unreferenced=reject -- snapshot_tests robustness
+
+  # The cddl-matrix projection scripts keep the committed corpus/robustness fixtures and COVERAGE.md
+  # in sync with matrix.json. They're pure file-reading string-scanners (~0.2s total, no cargo), so
+  # this gates PRs cheaply. The heavy verify.ts (cargo-check-per-schema) is deliberately NOT run here
+  # — see tests/TESTING_ROADMAP.md.
+  matrix-drift:
+    name: cddl-matrix drift gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      # build_matrix --check: matrix.json matches its authored TOMLs/annotations.
+      # project_robustness --check: matrix_{supported,panic}/ fixtures match the support verdict.
+      # project_corpus: validates the corpus overlay (hard-fails on drift) and rewrites COVERAGE.md.
+      - name: Matrix snapshot + fixture drift
+        working-directory: cddl-matrix
+        run: |
+          bun run build_matrix.ts --check
+          bun run project_robustness.ts --check
+          bun run project_corpus.ts
+
+      # project_corpus's exit code doesn't catch stale *rendered* counts in COVERAGE.md (only overlay
+      # drift), so diff the file it just rewrote to catch a doc that wasn't regenerated after a change.
+      - name: COVERAGE.md is up to date
+        run: git diff --exit-code tests/corpus/COVERAGE.md

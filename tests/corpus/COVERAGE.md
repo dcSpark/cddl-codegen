@@ -296,7 +296,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 - Features: **92** — ✅ 52 covered · ➕ 7 supported-untested · ⚠️ 7 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 33
+- Corpus fixtures: 35
 
 **Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

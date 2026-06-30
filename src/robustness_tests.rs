@@ -27,7 +27,7 @@ static PANIC_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 ///
 /// Default profile, run under BOTH `--wasm=false` (the flags `verify.ts` probed with, so the outcome
 /// tracks the matrix verdict) AND `--wasm=true` (the wasm-binding emission path — the old prelude test
-/// ran this, and the corpus compile-gate doesn't cover the rust-only / user-code constructs c3 uniquely
+/// ran this, and the corpus compile-gate doesn't cover the rust-only / user-code constructs this guard uniquely
 /// holds, e.g. `ext.extern`/`ext.raw_bytes`/`number`/`time`). Default-profile means those four all
 /// *generate* fine here (they'd only fail under `--preserve-encodings` / `cargo check` respectively).
 #[test]
