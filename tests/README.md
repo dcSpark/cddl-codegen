@@ -119,7 +119,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   the two tests don't collide when `cargo test` runs them in parallel. The verdict is **compile** for
   now — note a cell can compile green while emitting *semantically* wrong bindings (e.g. an identity
   `.into()` where a transform was needed); catching those awaits upgrading the verdict to *round-trip*
-  once the property harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 2).
+  once the property round-trip harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 1; the
+  wasm-verdict upgrade is the item-2 follow-on that depends on it).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `SKIP` list, each with a comment + a ledger entry in
