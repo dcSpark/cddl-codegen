@@ -539,11 +539,28 @@ impl GenerationScope {
                             .ret(ty)
                             .line(val);
                     } else {
-                        self.wasm(types, ident).push_type_alias(
-                            TypeAlias::new(ident, alias_info.base_type.for_wasm_member(types))
-                                .vis("pub")
-                                .clone(),
-                        );
+                        // A passthrough alias to a named collection (`ptm = mp`) is a transparent
+                        // `pub type` in rust but a wrapper struct in wasm; point the wasm alias at that
+                        // wrapper rather than `for_wasm_member`'s inline-only `MapU64To…` name. Only when
+                        // the target is *not* directly-wasm-exposable, though: an exposable named array
+                        // (`[* uint]`) also has a `Nums` wrapper struct, but the boundary code treats it
+                        // transparently as `Vec<u64>`, so aliasing to the wrapper would desync (E0308).
+                        // Maps are never directly exposable, so this covers `passthrumap` while leaving
+                        // `passthru` (exposable arrays) on the transparent `for_wasm_member` path.
+                        let wasm_target = alias_info
+                            .wasm_alias_target
+                            .as_ref()
+                            .filter(|target| {
+                                types.has_wasm_wrapper(target)
+                                    && !alias_info
+                                        .base_type
+                                        .conceptual_type
+                                        .directly_wasm_exposable(types)
+                            })
+                            .map(|target| target.to_string())
+                            .unwrap_or_else(|| alias_info.base_type.for_wasm_member(types));
+                        self.wasm(types, ident)
+                            .push_type_alias(TypeAlias::new(ident, wasm_target).vis("pub").clone());
                     }
                 }
             }
