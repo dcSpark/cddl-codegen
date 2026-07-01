@@ -334,3 +334,20 @@ fn wasm_list_macro() {
         }
     });
 }
+
+/// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
+/// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
+/// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
+#[test]
+fn rustfmt_rejects_unparseable_source() {
+    // valid Rust formats successfully
+    assert!(crate::generation::rustfmt_generated_string("fn main() {}").is_ok());
+    // the turbofish shape (generic type-spelling before `::method`) is a parse error — must be Err
+    assert!(
+        crate::generation::rustfmt_generated_string(
+            "fn f() -> usize { BTreeMap<u64, String>::len() }"
+        )
+        .is_err(),
+        "rustfmt parse failure must propagate as Err, not be swallowed"
+    );
+}
