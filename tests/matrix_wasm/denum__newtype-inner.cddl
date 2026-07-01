@@ -1,0 +1,3 @@
+; cell: denum x newtype-inner
+denum = uint / text
+holder = denum ; @newtype

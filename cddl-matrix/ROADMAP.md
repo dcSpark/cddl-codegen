@@ -219,23 +219,24 @@ from a degenerate example.**
   - *Related known bug (unrelated to this fix):* `{ ? f: nums }` (a map-rep struct with a bareword member key)
     panics the generator at `parsing.rs:960` — pre-existing (see `draft/cddl-bareword-member-key-bug.md`);
     the fixture uses the array-rep `[ x: uint, ? f: nums ]` to sidestep it.
-- **STILL OPEN (wasm, pre-existing — surfaced by the edge-case hunt, not regressions):** two more
-  named-alias-at-wasm-boundary gaps that fail identically at HEAD (byte-identical generated wasm before/after
-  the map-value fix): (a) a passthrough alias to a **map** typedef used as a wasm map value/element —
-  `m2 = amap; amap = { * uint => text }` — emits a dangling `MapU64To…` type reference (`E0425`); (b) a
-  named collection **wrapper** used as a map **KEY** — `{ nums => text }` — yields a `Borrow` mismatch
-  (`Vec<u64>: Borrow<&Vec<u64>>`, `E0277`). Both need the wasm map key/value typedef-resolution path, distinct
-  from the `directly_wasm_exposable` predicate. Good future clear-win candidates now that the wasm gate exists.
+- **STILL OPEN (wasm, pre-existing — surfaced by the edge-case hunt, not regressions):** a passthrough
+  alias to a **map** typedef used as a wasm map value/element — `m2 = amap; amap = { * uint => text }` —
+  emits a dangling `MapU64To…` type reference (`E0425`). Needs the wasm map value/element
+  typedef-resolution path. See the wasm-ABI matrix section below (this is `passthrumap`, now
+  gate-tracked). *(The sibling gap — a named collection **wrapper** as a map **KEY**, `E0277` — was fixed
+  in commit `0e99b78`; see `coll__map-key` below.)*
 
 ## wasm-ABI matrix (systematic wasm-boundary coverage — `project_wasm_matrix.ts`)
 
 The systematic answer to "we find wasm bugs by luck": `cddl-matrix/project_wasm_matrix.ts` enumerates
 {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` (one minimal fixture per cell),
 and `integration_tests::wasm_matrix_compiles` generates each `--wasm=true` + `cargo check`s the wasm crate.
-Coverage is now by-construction: a new wasm-ABI boundary bug surfaces as a specific red cell, not a
-production surprise. Standing up the enumeration (69 cells at first cut, 61 green after fixing known-red
-#2) reconfirmed the two open reds above **and found two new ones** the ad-hoc hunt had missed. Current
-skip-list: 8 red cells (known-red #1 ×5 roles, the two new cenum reds, extern):
+Coverage is by-construction **over the enumerated grid** — a bug in a covered cell surfaces specifically,
+not by luck. The type-shape axis is hand-curated and extensible: a wasm representation not in `SHAPES`
+isn't covered, so the axis is a living list (a holistic audit added the `nullable` shape after generating
+`opt = uint / null` at a map value and finding a live `E0277` the grid had missed — see below).
+Standing up the enumeration and reconfirming/finding reds: **80 cells, 70 green, 10 skip-listed.** Current
+skip-list: known-red #1 (`passthrumap` ×5 roles), the two `cenum` reds, the two `nullable` reds, `extern`.
 
 - **Red cells (compile-fail), skip-listed in the gate — TDD targets, take off `SKIP` as each is fixed:**
   - **known-red #1 — passthrough alias → map typedef (`E0425`). Still open (deferred, not shallowly
@@ -263,19 +264,33 @@ skip-list: 8 red cells (known-red #1 ×5 roles, the two new cenum reds, extern):
     unwrapped the wrapper alias into its inline array and hit the `&{expr}` fallthrough (`&key`), then the
     map-key `get` appended `.as_ref()` → `&key.as_ref()`. Fixed by treating a non-`directly_wasm_exposable`
     named alias like `Rust(ident)` (return `expr`), so the emitter yields `key.as_ref()`. Off the SKIP list.
-  - **NEW red — c-style enum as a map KEY (`E0119`).** `cenum__map-key` (`fe = 0/1/2` at `{ * fe => uint }`)
-    emits conflicting `Ord`/`Eq`/`PartialEq`/`PartialOrd` impls on the RUST crate: the enum is already
-    `#[derive(..Eq, Ord..)]` and the map-key path derives them again. Compiles fine as array-element /
-    map-value — the cell individuates the map-key trigger exactly.
-  - **NEW red — `@newtype` over a c-style enum (`E0308`).** `cenum__newtype-inner` (`holder = fe ; @newtype`):
-    mismatched types in the generated wrapper body. Newtype over primitive / collection / struct / cbor /
-    generic all compile — the enum inner is the trigger.
+  - **NEW red — nullable at a nested position (`E0277`).** `nullable` (`opt = uint / null` → `Option<u64>`)
+    at `map-value` (`{ * uint => opt }`) and at `struct-field-opt` (`[pre: uint, ? field0: opt]`) emits an
+    `Option<T>` the wasm-bindgen ABI rejects (`OptionIntoWasmAbi` not satisfied for a bare
+    `Option<primitive>` in that return position). Genuinely a **wasm-boundary** gap: the rust crate
+    compiles; `array-element` / `struct-field` / `newtype-inner` are green — nesting is the trigger. Found
+    by the holistic audit, which is why `nullable` is now a shape (the grid was blind to it). `map-key` is
+    pruned in the projection: a null/Option key hits a deliberate "special-typed map key" assert in
+    generation (a generation limitation for the robustness matrix, not a wasm-ABI concern).
+  - **NEW red — c-style enum as a map KEY (`E0119`). *(rust-crate bug, surfaced by the sweep.)***
+    `cenum__map-key` (`fe = 0/1/2` at `{ * fe => uint }`) emits conflicting `Ord`/`Eq`/`PartialEq`/`PartialOrd`
+    impls on the RUST crate (the enum is already `#[derive(..Eq, Ord..)]` and the map-key path derives them
+    again). Not a wasm-boundary bug — the *rust* crate fails standalone; it surfaces here only because the
+    wasm check path-deps rust, and this is the first systematic role×shape sweep. Fixing it also wants a
+    rust-corpus fixture (`tests/corpus` has no cenum-as-map-key today). array-element / map-value are green.
+  - **NEW red — `@newtype` over a c-style enum (`E0308`). *(rust-crate bug, surfaced by the sweep.)***
+    `cenum__newtype-inner` (`holder = fe ; @newtype`): mismatched types in the generated wrapper body,
+    again a rust-crate failure. Newtype over primitive / collection / struct / cbor / generic all compile —
+    the enum inner is the trigger.
 - **The wrapper-vs-transparent distinction the serialization matrix collapses is a first-class axis here:**
   `coll` (Array wrapper) vs `collmap` (Table wrapper) vs `passthru`/`passthrumap` (transparent `pub type`)
-  vs `struct` (Record) vs `cborwrap` (transparent-to-wrapper) vs `cenum` (Copy re-export) vs `generic`
-  (monomorphized wrapper) — each a distinct `is_copy × directly_wasm_exposable × has-a-RustStruct` cell.
-  Depth/redundant shapes (`chain` 2-hop passthru, `cborwrap2` chained, `extern`) are kept as one
-  representative role each (their accessors differ from the 1-hop shape only by type name).
+  vs `struct` (Record) vs `cborwrap` (transparent-to-wrapper) vs `cenum` (Copy re-export) vs `denum`
+  (data-carrying type-choice enum, all-green) vs `nullable` (`Option<T>`) vs `generic` (monomorphized
+  wrapper) — each a distinct `is_copy × directly_wasm_exposable × has-a-RustStruct` cell. Depth/redundant
+  shapes (`chain` 2-hop passthru, `cborwrap2` chained, `extern`) are kept as one representative role each
+  (their accessors differ from the 1-hop shape only by type name). Known green-today-but-distinct shapes
+  still *unmodelled* (candidates when a consumer or a regression appears): tagged `#6.n(...)` types and
+  map-representation structs (the struct roles use array-rep to dodge a bareword-member-key panic).
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

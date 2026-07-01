@@ -76,14 +76,20 @@ A **coverage-by-construction** gate for the generated wasm-bindgen bindings. The
 the wasm ABI only *incidentally* — whatever the hand-picked fixtures happen to use — so a whole class of
 boundary bugs (wrong accessor return type, bad `.into()`/`.clone()`/by-ref slips, dangling map typedefs)
 was invisible: the *rust* side compiled fine and nothing systematically compiled the wasm crate. This
-enumerates the cross-product and gates **every** cell, so a new wasm-ABI bug surfaces as a specific red
-cell instead of being found by luck.
+enumerates a **grid** of `{wasm-ABI type-shape} × {boundary role}` and gates every cell of it, so a bug
+in a covered cell surfaces specifically instead of by luck.
+
+The grid is only as complete as its **type-shape axis**, which is hand-curated and *extensible*: a wasm
+representation not in `SHAPES` isn't covered. When a new distinct representation appears, add a shape (see
+"Adding / changing cells"). This is not hypothetical — the `nullable` shape was added after a holistic
+audit generated `opt = uint / null` at a map value and found a live `E0277` (`OptionIntoWasmAbi`) red the
+grid was silently missing. Treat the axis as a living list, not a finished one.
 
 Pipeline (projection → fixtures → gate), the same shape as the robustness projection:
 
 ```
 cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cddl  ─►  integration_tests::wasm_matrix_compiles
-     enumerate {shape × role}            one minimal fixture per cell (69)          generate --wasm=true, cargo check the wasm crate
+     enumerate {shape × role}            one minimal fixture per cell             generate --wasm=true, cargo check the wasm crate
 ```
 
 - **The projection** (`cddl-matrix/project_wasm_matrix.ts`, `bun run`) emits one minimal `.cddl` per
@@ -93,18 +99,27 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
 - **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
     (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`,
-    `cborwrap`, `cenum`, `generic`, `chain`, `extern`. This is the
+    `cborwrap`/`cborwrap2`, `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
+    `nullable` (`Option<T>`), `generic`, `chain`, `extern`. This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
     deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
     — see the docstrings in `src/intermediate.rs`).
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
-    `keys`, by-value vs by-ref).
+    `keys`, by-value vs by-ref). Structs use the **array representation** (`[field0: T]`,
+    `[pre: uint, ? field0: T]`) to dodge a pre-existing map-rep bareword-member-key generation panic, so
+    map-representation structs and optional-fields-inside-maps are not gated here. A shape may also skip a
+    role that panics generation on it (`nullable` skips `map-key` — a null key hits a "special-typed map
+    key" assert).
 - **The gate** (`integration_tests::wasm_matrix_compiles`) globs the fixtures, generates each
   `--wasm=true`, and `cargo check`s the wasm crate (which path-depends on the rust crate, so rust-side
-  errors surface too), reusing `feature_corpus_compiles`' shared `CARGO_TARGET_DIR`. The verdict is
-  **compile** for now; upgrading it to *round-trip* awaits the property harness (see
-  [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 2).
+  errors surface too — a couple of skip-listed reds are in fact rust-crate generation bugs the sweep
+  caught, not wasm-boundary ones). It follows `feature_corpus_compiles`' shared-target-dir *pattern* but
+  uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), deliberately separate so
+  the two tests don't collide when `cargo test` runs them in parallel. The verdict is **compile** for
+  now — note a cell can compile green while emitting *semantically* wrong bindings (e.g. an identity
+  `.into()` where a transform was needed); catching those awaits upgrading the verdict to *round-trip*
+  once the property harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 2).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `SKIP` list, each with a comment + a ledger entry in

@@ -392,6 +392,12 @@ fn wasm_matrix_compiles() {
         "cenum__map-key",
         // new red — `@newtype` over a c-style enum: mismatched types in the generated wrapper (E0308).
         "cenum__newtype-inner",
+        // new red — a nullable type (`opt = uint / null` -> `Option<u64>`) in a NESTED position emits an
+        // `Option<T>` that fails `OptionIntoWasmAbi` (E0277): wasm-bindgen can't return a bare
+        // `Option<primitive>` from a getter here. Rust compiles fine — this is a genuine wasm-boundary
+        // gap (the class the matrix exists to surface). array-element / struct-field are green.
+        "nullable__map-value",
+        "nullable__struct-field-opt",
     ];
 
     let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();

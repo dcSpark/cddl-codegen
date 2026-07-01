@@ -1,0 +1,3 @@
+; cell: nullable x newtype-inner
+opt = uint / null
+holder = opt ; @newtype
