@@ -1,6 +1,6 @@
-# Generating/updating cardano-serialization-lib using this library
+# Generating/updating cardano-multiplatform-lib using this library
 
-We generated the bulk of the base CBOR struct code for our [cardano-serialization-lib](https://github.com/Emurgo/cardano-serialization-lib/). However, there are things that are not supported that IOHK have used, and some things are supported but might need editing post-generation. This document is useful mostly for people maintaining `cardano-serialization-lib`, but parts can be useful for anyone who wants to use this codegen tool on more complex CDDL types.
+We generated the bulk of the base CBOR struct code for our [cardano-multiplatform-lib](https://github.com/dcSpark/cardano-multiplatform-lib/) (CML). However, there are things that are not supported that IOHK have used, and some things are supported but might need editing post-generation. This document is useful mostly for people maintaining `cardano-multiplatform-lib`, but parts can be useful for anyone who wants to use this codegen tool on more complex CDDL types.
 
 
 
