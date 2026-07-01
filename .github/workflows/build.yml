@@ -8,6 +8,11 @@ on:
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
+      # static/ is the hand-written runtime shipped into every generated crate, and examples/
+      # (ast_roles) is built by the test job and executed by the drift job — an edit to either
+      # can break the suite, so neither may bypass CI.
+      - "static/**"
+      - "examples/**"
       - "tests/**"
       # Matrix-only edits don't touch tests/**, so without this the drift gate
       # below would never trigger on the change that caused the drift.
@@ -19,6 +24,11 @@ on:
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
+      # static/ is the hand-written runtime shipped into every generated crate, and examples/
+      # (ast_roles) is built by the test job and executed by the drift job — an edit to either
+      # can break the suite, so neither may bypass CI.
+      - "static/**"
+      - "examples/**"
       - "tests/**"
       # Matrix-only edits don't touch tests/**, so without this the drift gate
       # below would never trigger on the change that caused the drift.
