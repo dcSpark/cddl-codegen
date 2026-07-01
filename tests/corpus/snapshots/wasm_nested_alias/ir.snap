@@ -93,6 +93,153 @@ expression: ir
         },
     },
     RustIdent(
+        "OptHolder",
+    ): RustStruct {
+        ident: RustIdent(
+            "OptHolder",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "x",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "f",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "Nums",
+                                    ),
+                                ),
+                                Array(
+                                    RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: true,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "PassthruMap",
+    ): RustStruct {
+        ident: RustIdent(
+            "PassthruMap",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Table {
+            domain: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            range: RustType {
+                conceptual_type: Alias(
+                    Rust(
+                        RustIdent(
+                            "Passthru",
+                        ),
+                    ),
+                    Array(
+                        RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
+    },
+    RustIdent(
         "TaggedList",
     ): RustStruct {
         ident: RustIdent(
@@ -177,6 +324,62 @@ expression: ir
             range: RustType {
                 conceptual_type: Primitive(
                     Str,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
+    },
+    RustIdent(
+        "ValueMap",
+    ): RustStruct {
+        ident: RustIdent(
+            "ValueMap",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Table {
+            domain: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            range: RustType {
+                conceptual_type: Alias(
+                    Rust(
+                        RustIdent(
+                            "Nums",
+                        ),
+                    ),
+                    Array(
+                        RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {

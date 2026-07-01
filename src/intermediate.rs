@@ -1579,7 +1579,27 @@ impl ConceptualRustType {
             }
             Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(types),
             Self::Map(_, _) => false,
-            Self::Alias(_ident, ty) => ty.directly_wasm_exposable(types),
+            Self::Alias(ident, ty) => match ident {
+                // reserved aliases (uint→u64, …) generate no wrapper — they ARE the raw type, unwrap
+                AliasIdent::Reserved(_) => ty.directly_wasm_exposable(types),
+                // Whether a named alias is directly exposable turns on whether `ident` is emitted as a
+                // `#[wasm_bindgen]` WRAPPER struct (a generated `RustStruct`, e.g. `nums = [* uint]`)
+                // or a transparent `pub type` alias (no generated struct — a passthrough `arr2 = arr`,
+                // or a `foo_bytes = bytes .cbor foo` transparent to the wrapper `Foo`). A wrapper is
+                // NOT directly exposable. The bug was recursing into the inlined inner unconditionally:
+                // for `nums` the inner `Vec<u64>` is exposable, so the *wrapper* `Nums` was wrongly
+                // called exposable and boundary conversions were dropped. For a transparent alias (or a
+                // re-exported c-style enum) we DO follow what it aliases — so `arr2 = arr` (→ exposable
+                // `Vec<u64>`) and `foo_bytes` (→ the wrapper `Foo`, not exposable) each resolve right.
+                AliasIdent::Rust(rust_ident) => {
+                    match types.rust_struct(rust_ident).map(|rs| rs.variant()) {
+                        Some(RustStructType::CStyleEnum { .. }) | None => {
+                            ty.directly_wasm_exposable(types)
+                        }
+                        Some(_) => false,
+                    }
+                }
+            },
         }
     }
 
