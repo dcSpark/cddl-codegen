@@ -376,9 +376,12 @@ fn wasm_matrix_compiles() {
         // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
         // is integration-tested in tests/extern-deps. Permanent skip (never compiles here).
         "extern__array-element",
-        // known-red #1 — a transparent alias to a MAP typedef emits a dangling `MapU64To…` wasm type
-        // reference (E0425). Fails in every role but newtype-inner. One root cause (map/table typedef
-        // not emitted/named on the passthrough path); fixing it greens all five together.
+        // known-red #1 — a transparent alias to a named MAP typedef emits a dangling `MapU64To…` wasm
+        // type reference (E0425). Deferred, not shallowly fixable: a named map has a dual representation
+        // (a `pub type Mp = BTreeMap` typedef AND a wasm wrapper struct), so the passthrough alias can't
+        // just reference the wrapper — inlining the map is what makes rust/newtype/struct-field
+        // serialization work, but it loses the wrapper name on the wasm side. See cddl-matrix/ROADMAP.md;
+        // the real fix is the wrapper-logic unification the handoff flags as out-of-scope.
         "passthrumap__array-element",
         "passthrumap__map-key",
         "passthrumap__map-value",
