@@ -2,3 +2,7 @@ nums = [* uint]
 tags = { * uint => text }
 nested_arr = [* nums]
 tagged_list = [* tags]
+value_map = { * uint => nums }
+opt_holder = [ x: uint, ? f: nums ]
+passthru = nums
+passthru_map = { * uint => passthru }

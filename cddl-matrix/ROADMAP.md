@@ -196,13 +196,36 @@ from a degenerate example.**
   `from_wasm_boundary_clone` respect `AliasIdent::Rust` (convert into the wrapper) while still unwrapping
   `AliasIdent::Reserved`; used `is_copy` (not `is_enum`, which panics on pure type-aliases). Gated by
   `tests/corpus/wasm_nested_alias.cddl` + the new `--wasm=true` `cargo check` in `feature_corpus_compiles`.
-- **STILL OPEN (map-value + optional/ref positions) — same class, wider fix.** The map-wrapper *value*
-  position — `m = { * uint => nums }` — still doesn't compile: `get`/`insert` *return* `Option<Nums>` but the
-  body yields `Option<Vec<u64>>`. The map return path additionally routes through `directly_wasm_exposable`
-  (which unwraps `AliasIdent::Rust` to an exposable inner, inconsistent with the naming) and the map
-  get/insert return emission — a broader change with wide blast radius, deferred. The `_optional` / `_ref`
-  boundary variants (optional named-alias-collection fields/params) likely share the class and are unverified
-  (no fixture yet). Add a `{ * uint => named_alias }` corpus fixture to gate the map fix.
+- **✅ FIXED (map-value + optional-field positions) — the deeper half of the same class.** The map-wrapper
+  *value* position (`m = { * uint => nums }`) and an optional named-alias-collection field (`? f: nums`) also
+  failed: `get`/`insert` returned `Option<Nums>` from an `Option<Vec<u64>>` body (E0308), and the optional
+  getter hit `E0277`. Root cause was one level deeper than the array case: the map/optional emission decides
+  its `.into()` from `directly_wasm_exposable`, whose `Alias` arm *unwrapped* `AliasIdent::Rust` — asking "is
+  the inlined inner exposable" (a bare `Vec<u64>` is) instead of "is the *named* alias a wrapper" (it is).
+  **Fixed at the predicate** (single source of truth): the wrapper-vs-transparent fact is NOT derivable from
+  the conceptual-type shape — a direct named collection (`nums = [* uint]`, a wasm wrapper struct) and a
+  *passthrough* alias (`arr2 = arr`, a transparent `pub type Arr2 = Vec<u64>`) both have inner `Array(..)`.
+  The source of truth is the generated struct table: `directly_wasm_exposable`'s `Alias` arm now returns
+  `false` when `ident` has a `RustStruct` wrapper variant (Array/Table/Record/Wrapper), and otherwise (a
+  transparent `pub type`, or a re-exported c-style enum) *recurses into what it aliases* — so `arr2 = arr`
+  (→ exposable `Vec<u64>`) is transparent, while `foo_bytes = bytes .cbor foo` (→ the wrapper `Foo`) stays a
+  wrapper, unchanged. One edit fixes map get/insert/keys, the optional getter, and flips named-array-alias
+  params to by-ref (an ABI-consistency win). An earlier shape-match version (`Primitive|enum → true, _ →
+  false`) was **caught in audit** to regress the passthrough case (`arr2 = arr` at a map value → by-ref
+  `&Vec<u64>`, which wasm-bindgen rejects — `RefFromWasmAbi`); the recurse-on-no-wrapper form fixes that with
+  zero collateral (only `wasm_nested_alias` snapshots move). Chosen over `is_copy` (misclassifies `text`/`bytes`
+  aliases). Gated by `tests/corpus/wasm_nested_alias.cddl` (array-element, map-value, optional-field, AND the
+  passthrough alias) under the corpus `--wasm=true` `cargo check`.
+  - *Related known bug (unrelated to this fix):* `{ ? f: nums }` (a map-rep struct with a bareword member key)
+    panics the generator at `parsing.rs:960` — pre-existing (see `draft/cddl-bareword-member-key-bug.md`);
+    the fixture uses the array-rep `[ x: uint, ? f: nums ]` to sidestep it.
+- **STILL OPEN (wasm, pre-existing — surfaced by the edge-case hunt, not regressions):** two more
+  named-alias-at-wasm-boundary gaps that fail identically at HEAD (byte-identical generated wasm before/after
+  the map-value fix): (a) a passthrough alias to a **map** typedef used as a wasm map value/element —
+  `m2 = amap; amap = { * uint => text }` — emits a dangling `MapU64To…` type reference (`E0425`); (b) a
+  named collection **wrapper** used as a map **KEY** — `{ nums => text }` — yields a `Borrow` mismatch
+  (`Vec<u64>: Borrow<&Vec<u64>>`, `E0277`). Both need the wasm map key/value typedef-resolution path, distinct
+  from the `directly_wasm_exposable` predicate. Good future clear-win candidates now that the wasm gate exists.
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

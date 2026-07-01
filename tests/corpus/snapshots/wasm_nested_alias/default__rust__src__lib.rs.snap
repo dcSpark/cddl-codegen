@@ -18,6 +18,24 @@ pub type NestedArr = Vec<Nums>;
 
 pub type Nums = Vec<u64>;
 
+#[derive(Clone, Debug)]
+pub struct OptHolder {
+    pub x: u64,
+    pub f: Option<Nums>,
+}
+
+impl OptHolder {
+    pub fn new(x: u64) -> Self {
+        Self { x, f: None }
+    }
+}
+
+pub type Passthru = Vec<u64>;
+
+pub type PassthruMap = BTreeMap<u64, Passthru>;
+
 pub type TaggedList = Vec<Tags>;
 
 pub type Tags = BTreeMap<u64, String>;
+
+pub type ValueMap = BTreeMap<u64, Nums>;
