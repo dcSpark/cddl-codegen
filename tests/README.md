@@ -70,6 +70,63 @@ raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't r
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
+## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
+
+A **coverage-by-construction** gate for the generated wasm-bindgen bindings. The suites above exercise
+the wasm ABI only *incidentally* — whatever the hand-picked fixtures happen to use — so a whole class of
+boundary bugs (wrong accessor return type, bad `.into()`/`.clone()`/by-ref slips, dangling map typedefs)
+was invisible: the *rust* side compiled fine and nothing systematically compiled the wasm crate. This
+enumerates the cross-product and gates **every** cell, so a new wasm-ABI bug surfaces as a specific red
+cell instead of being found by luck.
+
+Pipeline (projection → fixtures → gate), the same shape as the robustness projection:
+
+```
+cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cddl  ─►  integration_tests::wasm_matrix_compiles
+     enumerate {shape × role}            one minimal fixture per cell (69)          generate --wasm=true, cargo check the wasm crate
+```
+
+- **The projection** (`cddl-matrix/project_wasm_matrix.ts`, `bun run`) emits one minimal `.cddl` per
+  `(type-shape × boundary role)` cell. Output is deterministic — **never hand-edit `tests/matrix_wasm/`**;
+  edit the projection and re-run. `--check` is the drift gate (fails on a stale/missing/orphaned fixture)
+  and runs in CI's `matrix-drift` job.
+- **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
+  - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
+    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`,
+    `cborwrap`, `cenum`, `generic`, `chain`, `extern`. This is the
+    `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
+    deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
+    — see the docstrings in `src/intermediate.rs`).
+  - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
+    `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
+    `keys`, by-value vs by-ref).
+- **The gate** (`integration_tests::wasm_matrix_compiles`) globs the fixtures, generates each
+  `--wasm=true`, and `cargo check`s the wasm crate (which path-depends on the rust crate, so rust-side
+  errors surface too), reusing `feature_corpus_compiles`' shared `CARGO_TARGET_DIR`. The verdict is
+  **compile** for now; upgrading it to *round-trip* awaits the property harness (see
+  [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 2).
+
+**Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
+gate's `SKIP` list, each with a comment + a ledger entry in
+[`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
+To close one:
+
+1. Remove its `<shape>__<role>` entry from `SKIP`.
+2. Fix the emitter; `cargo test wasm_matrix_compiles` until green.
+3. A `SKIP` cell that starts compiling *fails* the gate (the "resurfaced" guard) — so you can't forget
+   step 1 and the list can't rot.
+
+A *new* red cell (red but not in `SKIP`) also fails the gate: fix it, or skip-list it **deliberately**
+with a ROADMAP entry — never silently.
+
+**Adding / changing cells.** Edit `SHAPES`/`ROLES` in the projection, `bun run project_wasm_matrix.ts`,
+review the new fixtures, run the gate. Prune cells whose emission duplicates an existing one — the
+projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) to one representative role.
+
+> Sibling system: `tests/matrix_{supported,panic}/` (projected by `cddl-matrix/project_robustness.ts`,
+> driven by `src/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
+> "does a construct *generate*?" rather than "does its wasm *compile*?".
+
 ## Coverage
 
 The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure
