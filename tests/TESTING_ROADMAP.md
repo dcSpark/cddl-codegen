@@ -63,63 +63,33 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
        This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm gate — land
        the two together.
 
-2. **Compile the generated *wasm* crate in the systematic gates.** *(✅ built end-to-end — the wasm-ABI
-   matrix is landed and CI-gated; the remaining frontiers are behavioural (round-trip) coverage and the
-   red-cell backlog below)* Historically every automated compile-gate generated with `--wasm=false` and
-   only `cargo check`ed the `rust/` crate, so generated wasm had **coverage by accident, not by
-   construction** — a whole class of defects (wasm wrappers that don't type-check: wrong accessor return
-   type, bad boundary `.into()`/`.clone()`/`.copied()` slips, by-value-vs-by-ref ABI mismatches) was
-   invisible because the *rust* side compiled fine. The wasm bindings are a wasm-ABI concern (`is_copy` ×
-   `directly_wasm_exposable` × the boundary-op tables in `intermediate.rs`), which the CBOR-serialization
-   feature axis doesn't individuate — so even a "fully covered" feature matrix had this hole by construction.
-   - **✅ Done (the oracle):** `feature_corpus_compiles` generates `--wasm=true` and `cargo check`s BOTH
-     the `rust` and (when emitted) `wasm` crates on the host target — no `wasm32`/`wasm-pack` needed
-     (`wasm-bindgen` is a normal dep; the shared `CARGO_TARGET_DIR` amortizes it). It caught + fixed the
-     named-alias-collection class at the array-element, map-value, optional-field, and passthrough-alias
-     positions. Gated by `tests/corpus/wasm_nested_alias.cddl`.
-   - **✅ Done (the system — enumeration by construction): the wasm-ABI matrix.**
-     `cddl-matrix/project_wasm_matrix.ts` enumerates {wasm-ABI type-shape × boundary role} into
-     `tests/matrix_wasm/*.cddl` (one minimal fixture per cell), and `integration_tests::wasm_matrix_compiles`
-     generates each `--wasm=true` and `cargo check`s the wasm crate; `--check` drift runs in CI's
-     `matrix-drift` job. Coverage is now by-construction — a bug in a covered cell surfaces as a specific red
-     cell instead of by luck. **80 cells, 71 green, 9 skip-listed.** Holistic system doc:
-     `tests/README.md` § "wasm-ABI matrix"; findings ledger: `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix".
-     - **Type-shape axis** (`is_copy` × `directly_wasm_exposable` × has-a-wrapper-`RustStruct` — NOT a CBOR
-       distinction): prim, palias, talias, coll/collmap (array/map wrapper structs), passthru/passthrumap
-       (transparent `pub type`s), struct, cborwrap/cborwrap2, cenum, denum (data-carrying enum), nullable
-       (`Option<T>`), generic, extern. **Hand-curated and extensible** — a representation not in `SHAPES`
-       isn't covered, so treat it as a living list (the `nullable` shape was added after a holistic audit
-       generated `opt = uint / null` at a map value and found a live E0277 the grid was missing).
-     - **Role axis:** array-element, map-value, map-key, struct-field (mandatory + optional), newtype-inner.
-   - **Open red cells = the TDD backlog** (skip-listed in `wasm_matrix_compiles`, each ledgered in
-     `cddl-matrix/ROADMAP.md`). Close one by removing it from `SKIP` → fixing the emitter → green (the gate's
-     "resurfaced" guard fails if a `SKIP` cell starts compiling, so the list can't rot). Priority order:
-     1. **✅ `cenum__map-key` — FIXED** (`E0119` duplicate derives + `E0308` by-value `BTreeMap::get`);
-        guarded by the new `tests/corpus/c_style_enum_map_key.cddl` under all three profiles. **Still open:
-        `cenum__newtype-inner`** (`E0308`, `@newtype` over a c-style enum) — a RUST-CRATE deser bug, deferred:
-        a c-style enum's inline deserialize (early `return`s, ignores `before_after`) doesn't compose inside
-        the wrapper's `deserialize`; the fix touches the deser generator's enum branch (both profiles, all
-        cenum positions) so it wants its own effort. **Also still wanted:** a `tests/corpus` newtype-over-cenum
-        fixture to guard it in the fast snapshot loop once fixed (the map-key one already landed).
-     2. **`nullable` ×2 — genuine wasm-boundary gap (next up).** `Option<T>` at a nested position
-        (`nullable__map-value`, `nullable__struct-field-opt`) → `E0277` (`OptionIntoWasmAbi`); rust compiles,
-        wasm doesn't.
-     3. **`passthrumap` ×5 — deferred (`E0425`).** A passthrough alias to a named map typedef emits a dangling
-        `MapU64To…` wasm type. Not shallowly fixable (a named map has a dual representation — a transparent
-        `pub type` **and** a wrapper struct). The durable fix is the **`has_wasm_wrapper(ident)` predicate
-        unification** — one source of truth that naming + boundary + exposability all derive from — which
-        would also retire the recurring wrapper-vs-transparent bug class (three predicate iterations this
-        cycle produced reds at array-element / map-value / optional-field / map-key). Track that unification
-        as its own root-cause item; it's leverage, not busywork.
-     (`coll__map-key`, the former "known-red #2", is **fixed** — commit `0e99b78`, off the SKIP list.)
-   - **Next frontier — behavioural (compile → round-trip).** The verdict is **compile** only, so a cell can
-     compile green while emitting a *semantically* wrong same-type conversion (an identity `.into()` where a
-     transform was needed). Upgrade the matrix verdict from compile to round-trip once item 1's harness lands
-     (dependent on item 1).
-   - **CI cost to watch.** Two heavy gates now shell nested cargo per cell (`feature_corpus_compiles` and
-     `wasm_matrix_compiles`, the latter 80× and growing with the deliberately-extensible shape axis). The
-     shared `CARGO_TARGET_DIR` amortizes deps; if wall-time bites, batch cells into fewer crates, adopt
-     `cargo-nextest`, or gate only changed cells.
+2. **Compile the generated *wasm* crate in the systematic gates.** *(compile foundation built + CI-wired;
+   the remaining frontiers are behavioural (round-trip) coverage and the red-cell backlog below.)* The wasm
+   bindings are a wasm-ABI concern (`is_copy` × `directly_wasm_exposable` × the boundary-op tables in
+   `intermediate.rs`) that the CBOR-serialization feature axis doesn't individuate, so wasm needs its own
+   systematic gate: the rust crate can type-check while the generated wasm crate does not (wrong accessor
+   return type, bad boundary `.into()`/`.clone()`/by-ref slips, dangling map typedefs).
+   - **Foundation (context for the frontiers below).** `feature_corpus_compiles` and the wasm-ABI matrix
+     (`wasm_matrix_compiles`, an enumerated `{type-shape × role}` grid) both generate `--wasm=true` and
+     `cargo check` the wasm crate on the host target (no `wasm32`/`wasm-pack`; a shared `CARGO_TARGET_DIR`
+     amortizes deps). Coverage is by-construction over the enumerated grid; system doc: `tests/README.md`
+     § "wasm-ABI matrix". The frontier is now the open cells + behaviour.
+   - **Open red cells = the TDD backlog** (skip-listed in `wasm_matrix_compiles`, root-caused in
+     `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work"; each with its ruled-out dead-ends). Close
+     one by taking it off `SKIP` → fixing the emitter → green. In priority order: **(1)** `nullable` at a
+     nested position (`E0277`, `OptionIntoWasmAbi`) — a genuine wasm-boundary gap, next up; **(2)**
+     `cenum__newtype-inner` (`E0308`) — a rust-crate deser-generator composition bug; **(3)** `passthrumap`
+     (`E0425`) — wants the durable **`has_wasm_wrapper(ident)` predicate unification**: one source of truth
+     for the wrapper-vs-transparent fact, which naming / boundary / exposability currently each decide
+     separately (their disagreement is the recurring wasm-boundary bug class).
+   - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
+     it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
+   - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
+     while emitting a semantically wrong same-type conversion (an identity `.into()` where a transform was
+     needed). Upgrade the verdict compile → round-trip once item 1's harness lands (depends on item 1).
+   - **CI cost to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
+     `wasm_matrix_compiles`, growing with the extensible axis). The shared `CARGO_TARGET_DIR` amortizes deps;
+     if wall-time bites, batch cells into fewer crates, adopt `cargo-nextest`, or gate only changed cells.
    - **Scope note:** the host `cargo check` catches type/signature errors cheaply; `#[wasm_bindgen]`
      macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
      `run_test` fixtures + item 7's `--package-json` run.

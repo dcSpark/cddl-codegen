@@ -168,147 +168,64 @@ from a degenerate example.**
 - **Inline-group splice drops members** — `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }`
   (`read_elems(1)`), silently losing `tstr` (inline-group entries aren't flattened into the record). Surfaced
   by `inline_group.cddl`; `grpent.inline_group` is ⚠️.
-- **✅ FIXED — One-sided `nint` bound was inverted in the *constructor*** (the deserializer was correct, so
-  the two disagreed). For `nint .ge -5`, deserialize checks the raw signed value (`if x < -5`) — right — but
-  `new()` checked the stored u64 magnitude after `nint_bounds_to_u64` mapped `(min,max) → (|min+1|,|max+1|)`
-  and fed it into the *same* `e < min || e > max` template (`bounds_check_if_block`). The magnitude
-  representation `m = -v-1` reverses ordering, so a lower bound on the value must become an *upper* bound on
-  the magnitude — the transform kept it as a lower bound. Empirically confirmed: `Bounds::new` **rejected
-  in-spec** value `-1` (magnitude 0) and **accepted out-of-spec** value `-6` (magnitude 5), exactly backwards.
-  **Fixed** by swapping the endpoints in `nint_bounds_to_u64` (`(min,max) → (|max+1|,|min+1|)`); regression is
-  a construct-reject in `tests/core/tests.rs::bounds()` (executes in `core_no_wasm`). Originally surfaced by
-  the **c6 `--emit-tests`** work, which skipped `nint` reject targets for this reason.
-- **✅ FIXED — Standalone bounded-`nint` newtype did not compile** (sibling of the above, a *different* code
-  path). `a = nint .ge -5 ; @newtype` generated `A(u64)` whose `new()`/deserialize both emitted `if inner < -5`
-  with `inner: u64` → `error[E0600]: cannot apply unary operator - to type u64`; the crate didn't compile. The
-  Wrapper (`@newtype`) bounds path is hand-rolled (not `bounds_check_if_block`) and applied the raw signed
-  bound to the u64 magnitude without the nint transform. **Fixed** by applying `nint_bounds_to_u64` to the
-  wrapper's `min_max` when the wrapped type is `N64` (`generate_wrapper_struct`); `new()` and deserialize share
-  one check block so they stay in agreement. Regression: bounded-nint newtypes in `tests/core` with
-  construct-reject + round-trip assertions (`bounds()`, runs in `core_no_wasm`).
 - **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
   bounds don't reach the field bounds check as `(Some,Some)`.
 - **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
   with no range check at all (bounds lost).
-- **✅ FIXED (array position) — wasm boundary dropped the wrapper conversion for a named-alias collection.**
-  A named exposable collection alias used as an array element — `nested = [* nums]` where `nums = [* uint]` —
-  generated `NestedNum::get(&self) -> Nums { self.0[index].clone() }`: the return type is the wasm wrapper
-  `Nums` (naming keeps `AliasIdent::Rust`) but the body yielded the inlined `Vec<u64>` (the boundary fns
-  transparently *unwrapped* the alias) → `error[E0308]`; the wasm crate didn't compile (rust did — nothing
-  systematically compiled wasm, now fixed by the corpus wasm gate). Fixed by making `to_wasm_boundary` /
-  `from_wasm_boundary_clone` respect `AliasIdent::Rust` (convert into the wrapper) while still unwrapping
-  `AliasIdent::Reserved`; used `is_copy` (not `is_enum`, which panics on pure type-aliases). Gated by
-  `tests/corpus/wasm_nested_alias.cddl` + the new `--wasm=true` `cargo check` in `feature_corpus_compiles`.
-- **✅ FIXED (map-value + optional-field positions) — the deeper half of the same class.** The map-wrapper
-  *value* position (`m = { * uint => nums }`) and an optional named-alias-collection field (`? f: nums`) also
-  failed: `get`/`insert` returned `Option<Nums>` from an `Option<Vec<u64>>` body (E0308), and the optional
-  getter hit `E0277`. Root cause was one level deeper than the array case: the map/optional emission decides
-  its `.into()` from `directly_wasm_exposable`, whose `Alias` arm *unwrapped* `AliasIdent::Rust` — asking "is
-  the inlined inner exposable" (a bare `Vec<u64>` is) instead of "is the *named* alias a wrapper" (it is).
-  **Fixed at the predicate** (single source of truth): the wrapper-vs-transparent fact is NOT derivable from
-  the conceptual-type shape — a direct named collection (`nums = [* uint]`, a wasm wrapper struct) and a
-  *passthrough* alias (`arr2 = arr`, a transparent `pub type Arr2 = Vec<u64>`) both have inner `Array(..)`.
-  The source of truth is the generated struct table: `directly_wasm_exposable`'s `Alias` arm now returns
-  `false` when `ident` has a `RustStruct` wrapper variant (Array/Table/Record/Wrapper), and otherwise (a
-  transparent `pub type`, or a re-exported c-style enum) *recurses into what it aliases* — so `arr2 = arr`
-  (→ exposable `Vec<u64>`) is transparent, while `foo_bytes = bytes .cbor foo` (→ the wrapper `Foo`) stays a
-  wrapper, unchanged. One edit fixes map get/insert/keys, the optional getter, and flips named-array-alias
-  params to by-ref (an ABI-consistency win). An earlier shape-match version (`Primitive|enum → true, _ →
-  false`) was **caught in audit** to regress the passthrough case (`arr2 = arr` at a map value → by-ref
-  `&Vec<u64>`, which wasm-bindgen rejects — `RefFromWasmAbi`); the recurse-on-no-wrapper form fixes that with
-  zero collateral (only `wasm_nested_alias` snapshots move). Chosen over `is_copy` (misclassifies `text`/`bytes`
-  aliases). Gated by `tests/corpus/wasm_nested_alias.cddl` (array-element, map-value, optional-field, AND the
-  passthrough alias) under the corpus `--wasm=true` `cargo check`.
-  - *Related known bug (unrelated to this fix):* `{ ? f: nums }` (a map-rep struct with a bareword member key)
-    panics the generator at `parsing.rs:960` — pre-existing (see `draft/cddl-bareword-member-key-bug.md`);
-    the fixture uses the array-rep `[ x: uint, ? f: nums ]` to sidestep it.
-- **STILL OPEN (wasm, pre-existing — surfaced by the edge-case hunt, not regressions):** a passthrough
-  alias to a **map** typedef used as a wasm map value/element — `m2 = amap; amap = { * uint => text }` —
-  emits a dangling `MapU64To…` type reference (`E0425`). Needs the wasm map value/element
-  typedef-resolution path. See the wasm-ABI matrix section below (this is `passthrumap`, now
-  gate-tracked). *(The sibling gap — a named collection **wrapper** as a map **KEY**, `E0277` — was fixed
-  in commit `0e99b78`; see `coll__map-key` below.)*
 
-## wasm-ABI matrix (systematic wasm-boundary coverage — `project_wasm_matrix.ts`)
+## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
-The systematic answer to "we find wasm bugs by luck": `cddl-matrix/project_wasm_matrix.ts` enumerates
-{wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` (one minimal fixture per cell),
-and `integration_tests::wasm_matrix_compiles` generates each `--wasm=true` + `cargo check`s the wasm crate.
-Coverage is by-construction **over the enumerated grid** — a bug in a covered cell surfaces specifically,
-not by luck. The type-shape axis is hand-curated and extensible: a wasm representation not in `SHAPES`
-isn't covered, so the axis is a living list (a holistic audit added the `nullable` shape after generating
-`opt = uint / null` at a map value and finding a live `E0277` the grid had missed — see below).
-Standing up the enumeration and reconfirming/finding reds, then fixing several: **80 cells, 71 green,
-9 skip-listed.** Current skip-list: known-red #1 (`passthrumap` ×5 roles), `cenum__newtype-inner`, the two
-`nullable` reds, `extern`. Fixed so far: `coll__map-key` (E0277) and `cenum__map-key` (E0119 + E0308).
+The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
+"wasm-ABI matrix". This section is the remaining backlog: the open red cells skip-listed in
+`integration_tests::wasm_matrix_compiles`, and the durable fix that would clear the largest group. Each
+open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In priority order:
 
-- **Red cells (compile-fail), skip-listed in the gate — TDD targets, take off `SKIP` as each is fixed:**
-  - **known-red #1 — passthrough alias → map typedef (`E0425`). Still open (deferred, not shallowly
-    fixable).** `passthrumap` (`mp = { * uint => text }; ptm = mp`) fails as `array-element`, `map-value`,
-    `map-key`, `struct-field`, AND `struct-field-opt` (only `newtype-inner` compiles). Root cause: on the
-    wasm side the alias emits `pub type Ptm = MapU64ToText`, but no such wrapper struct exists — the named
-    map's wasm wrapper is `Mp` (from the Table rule ident), while `MapU64ToText` (`name_for_wasm_map`) is
-    only generated for *inline* anonymous maps, which the alias path never triggers.
-    - **Attempted + reverted (dead-end to not repeat):** making the alias base_type keep a reference to
-      the named map (`parsing.rs` `None` branch: `Alias(Rust(Mp), Map)` → `Rust(Mp)`) DOES green
-      `array-element` + `map-value`, but a named map has a **dual representation** — a transparent
-      `pub type Mp = BTreeMap` typedef AND a wasm wrapper struct — and `Rust(Mp)` is not interchangeable
-      with an inlined `Map` in the other emitters: it regressed `collmap__newtype-inner` (newtype wraps
-      `Mp` → `BTreeMap::serialize` doesn't exist, `E0599`), broke `struct-field`/`map-key` (record/key
-      serialization expects the inline `Map`), and turned two red cells into generation panics. Inlining
-      the map is load-bearing for rust/newtype/struct serialization; the wasm side is the only place that
-      needs the wrapper name. A single shared base_type can't serve both (arrays work only because they're
-      transparent on *both* sides).
-    - **The real fix** is the wrapper-logic unification the handoff flags as out-of-scope (one
-      `has_wasm_wrapper(ident)` predicate that naming + boundary + exposability all derive from), or a
-      wasm-only alias-emission path that resolves a `Map` base_type to its named Table wrapper. Left
-      skip-listed as the next TDD target.
-  - **known-red #2 — collection wrapper as a map KEY (`E0277`). ✅ FIXED.** `coll__map-key`
-    (`nums = [* uint]` at `{ * nums => uint }`): `Vec<u64>: Borrow<&Vec<u64>>`. `from_wasm_boundary_ref`
-    unwrapped the wrapper alias into its inline array and hit the `&{expr}` fallthrough (`&key`), then the
-    map-key `get` appended `.as_ref()` → `&key.as_ref()`. Fixed by treating a non-`directly_wasm_exposable`
-    named alias like `Rust(ident)` (return `expr`), so the emitter yields `key.as_ref()`. Off the SKIP list.
-  - **NEW red — nullable at a nested position (`E0277`).** `nullable` (`opt = uint / null` → `Option<u64>`)
-    at `map-value` (`{ * uint => opt }`) and at `struct-field-opt` (`[pre: uint, ? field0: opt]`) emits an
-    `Option<T>` the wasm-bindgen ABI rejects (`OptionIntoWasmAbi` not satisfied for a bare
-    `Option<primitive>` in that return position). Genuinely a **wasm-boundary** gap: the rust crate
-    compiles; `array-element` / `struct-field` / `newtype-inner` are green — nesting is the trigger. Found
-    by the holistic audit, which is why `nullable` is now a shape (the grid was blind to it). `map-key` is
-    pruned in the projection: a null/Option key hits a deliberate "special-typed map key" assert in
-    generation (a generation limitation for the robustness matrix, not a wasm-ABI concern).
-  - **c-style enum as a map KEY (`E0119` + `E0308`). ✅ FIXED.** `cenum__map-key` (`fe = 0/1/2` at
-    `{ * fe => uint }`) had TWO root causes: (1) **rust crate, E0119** — the c-style enum unconditionally
-    derived `Copy, Eq, PartialEq, Ord, PartialOrd`, and `add_struct_derives` re-added the ordering four when
-    the enum is a `BTreeMap` key → duplicate impls. Fixed by deriving the ordering four in the base *only*
-    when NOT `used_as_key`; `add_struct_derives` supplies them (with the `derivative` path under
-    `--preserve-encodings`) for the key case. (2) **wasm crate, E0308** — the `get(key: Fe)` emitted
-    `self.0.get(key)` by value, but `BTreeMap::get` needs `&Q`. Fixed in `from_wasm_boundary_ref`: a
-    *directly-exposable* `Rust` ident (a Copy c-style enum, by value, reaching the no-`.as_ref()` get
-    branch) now returns `&expr`; a wrapper struct (not exposable, `.as_ref()`-path) still returns `expr`.
-    Off the SKIP list; guarded by the new corpus fixture `tests/corpus/c_style_enum_map_key.cddl` under all
-    three profiles.
-  - **`@newtype` over a c-style enum (`E0308`). Still open — deferred (deser-generator composition).**
-    `cenum__newtype-inner` (`holder = fe ; @newtype`) fails in the RUST crate under BOTH profiles (non-preserve
-    leaks the enum's early `return`s out of the wrapper's `deserialize`; preserve fails to assign `inner`).
-    Root cause: a c-style enum has no `Deserialize` impl — its decoding is inlined by `generate_deserialize`
-    (`generation.rs` ~2621) as a block of early `return Ok(Enum::Variant)` statements + a trailing
-    `Err(NoVariantMatched)`, and — unlike every other type branch — it ignores the `before_after` wrapping.
-    That composes only as a standalone enum-deserialize fn body; nesting it in the wrapper (`Ok(Self(<deser>))`
-    or `let inner = <deser>;`) leaks the returns / never assigns. The green struct-field cenum case works only
-    because *that* path wraps the deser in a value-returning closure. The fix needs the enum branch to honor
-    `before_after` (produce a closure-wrapped value expression) OR the wrapper to replicate the struct-field
-    closure-wrapping — a change to the deser generator's most intricate branch, affecting both profiles and
-    all cenum positions, so it wants its own focused effort. Kept skip-listed.
-- **The wrapper-vs-transparent distinction the serialization matrix collapses is a first-class axis here:**
-  `coll` (Array wrapper) vs `collmap` (Table wrapper) vs `passthru`/`passthrumap` (transparent `pub type`)
-  vs `struct` (Record) vs `cborwrap` (transparent-to-wrapper) vs `cenum` (Copy re-export) vs `denum`
-  (data-carrying type-choice enum, all-green) vs `nullable` (`Option<T>`) vs `generic` (monomorphized
-  wrapper) — each a distinct `is_copy × directly_wasm_exposable × has-a-RustStruct` cell. Depth/redundant
-  shapes (`chain` 2-hop passthru, `cborwrap2` chained, `extern`) are kept as one representative role each
-  (their accessors differ from the 1-hop shape only by type name). Known green-today-but-distinct shapes
-  still *unmodelled* (candidates when a consumer or a regression appears): tagged `#6.n(...)` types and
-  map-representation structs (the struct roles use array-rep to dodge a bareword-member-key panic).
+- **`nullable` at a nested position (`E0277`) — next up.** `opt = uint / null` (→ `Option<u64>`) at
+  `map-value` (`{ * uint => opt }`) and `struct-field-opt` (`[pre: uint, ? field0: opt]`) emits an
+  `Option<T>` the wasm-bindgen ABI rejects (`OptionIntoWasmAbi` not satisfied for a bare
+  `Option<primitive>` in that return position). A genuine wasm-boundary gap: rust compiles, and
+  `array-element` / `struct-field` / `newtype-inner` are green — *nesting* is the trigger.
+
+- **`@newtype` over a c-style enum (`E0308`) — deser-generator composition.** `cenum__newtype-inner`
+  (`holder = fe ; @newtype`) fails the RUST crate in both profiles. A c-style enum has no `Deserialize`
+  impl — `generate_deserialize` (`generation.rs` ~2621) inlines its decode as early `return
+  Ok(Enum::Variant)` statements + a trailing `Err(NoVariantMatched)`, and — alone among the type branches
+  — ignores the `before_after` wrapping, so it composes only as a standalone enum-deserialize fn body.
+  Nested in the wrapper (`Ok(Self(<deser>))` / `let inner = <deser>;`) the early returns leak out / `inner`
+  is never assigned. The green struct-field cenum case works only because that path wraps the deser in a
+  value-returning closure. Fix: make the enum branch honor `before_after` (emit a closure-wrapped value
+  expression), or have the wrapper replicate the struct-field closure-wrapping — a change to the deser
+  generator's most intricate branch, so verify all cenum positions and both profiles. When fixed, add a
+  `tests/corpus` newtype-over-cenum fixture to guard it in the fast snapshot loop.
+
+- **`passthrumap` — passthrough alias to a map typedef (`E0425`) — wants the predicate unification.**
+  `mp = { * uint => text }; ptm = mp` fails as `array-element`, `map-value`, `map-key`, `struct-field`,
+  `struct-field-opt` (only `newtype-inner` compiles): the wasm alias emits `pub type Ptm = MapU64ToText`,
+  but the named map's wasm wrapper is `Mp` (from the Table rule ident) — `MapU64ToText`
+  (`name_for_wasm_map`) is only generated for *inline* anonymous maps, which the alias path never hits.
+  Ruled-out dead-end: making the alias base_type a `Rust(Mp)` reference (`parsing.rs` `None` branch) greens
+  array-element/map-value but breaks the rest — a named map has a *dual representation* (a transparent
+  `pub type Mp = BTreeMap` **and** a wrapper struct), and `Rust(Mp)` isn't interchangeable with an inlined
+  `Map` in the newtype/struct/key serializers (regresses `collmap__newtype-inner` → `E0599`). A single
+  shared base_type can't serve both crates (arrays only work because they're transparent on *both*).
+  - **Durable fix — the `has_wasm_wrapper(ident)` predicate unification.** The wrapper-vs-transparent fact
+    is a *struct-table* property, not a `ConceptualRustType` shape (a named collection `nums = [* uint]` is
+    a wrapper; a passthrough `arr2 = arr` is a transparent `pub type` — same IR shape). Today naming,
+    boundary conversion, and exposability each decide it separately, and their disagreements have been the
+    recurring source of wasm boundary bugs. Route them all through one `has_wasm_wrapper(ident)` source of
+    truth; that clears `passthrumap` and forecloses the class. (Narrower alternative: a wasm-only
+    alias-emission path resolving a `Map` base_type to its named Table wrapper.)
+
+**Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
+in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
+enumerating?" and add a shape. Un-modelled but distinct (add when a consumer or regression appears): tagged
+`#6.n(...)` types; map-representation structs — the latter blocked on the bareword-member-key generation
+panic that forces the struct roles to use array-rep, so fixing that panic is a prerequisite.
+
+**Behavioural upgrade.** The gate's verdict is *compile*, so a cell can be green while emitting a
+semantically wrong same-type conversion. Upgrade the verdict compile → round-trip once the property
+harness lands (`tests/TESTING_ROADMAP.md` item 1).
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
