@@ -193,18 +193,6 @@ open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In pri
   option-wrapping position becomes a wrapper (outer holds `Option<Wrapper>`), or have the map/optional
   emitter flatten. A design change, not a localized patch.
 
-- **`@newtype` over a c-style enum (`E0308`) — deser-generator composition.** `cenum__newtype-inner`
-  (`holder = fe ; @newtype`) fails the RUST crate in both profiles. A c-style enum has no `Deserialize`
-  impl — `generate_deserialize` (`generation.rs` ~2621) inlines its decode as early `return
-  Ok(Enum::Variant)` statements + a trailing `Err(NoVariantMatched)`, and — alone among the type branches
-  — ignores the `before_after` wrapping, so it composes only as a standalone enum-deserialize fn body.
-  Nested in the wrapper (`Ok(Self(<deser>))` / `let inner = <deser>;`) the early returns leak out / `inner`
-  is never assigned. The green struct-field cenum case works only because that path wraps the deser in a
-  value-returning closure. Fix: make the enum branch honor `before_after` (emit a closure-wrapped value
-  expression), or have the wrapper replicate the struct-field closure-wrapping — a change to the deser
-  generator's most intricate branch, so verify all cenum positions and both profiles. When fixed, add a
-  `tests/corpus` newtype-over-cenum fixture to guard it in the fast snapshot loop.
-
 - **`passthrumap` — passthrough alias to a map typedef (`E0425`) — wants the predicate unification.**
   `mp = { * uint => text }; ptm = mp` fails as `array-element`, `map-value`, `map-key`, `struct-field`,
   `struct-field-opt` (only `newtype-inner` compiles): the wasm alias emits `pub type Ptm = MapU64ToText`,

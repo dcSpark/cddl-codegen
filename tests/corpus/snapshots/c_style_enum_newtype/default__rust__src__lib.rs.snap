@@ -1,0 +1,44 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub enum FixedEnum {
+    I0,
+    I1,
+    I2,
+}
+
+impl From<WrappedEnum> for FixedEnum {
+    fn from(wrapper: WrappedEnum) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct WrappedEnum(FixedEnum);
+
+impl WrappedEnum {
+    pub fn new(inner: FixedEnum) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<FixedEnum> for WrappedEnum {
+    fn from(inner: FixedEnum) -> Self {
+        WrappedEnum::new(inner.into())
+    }
+}
