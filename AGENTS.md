@@ -75,6 +75,10 @@ A lot of components of this library have markdown files following two different 
 1. `README.md` which stores the *current* state of the project. It shouldn't contain historical notes, unless important for backwards-compatibility
 2. `ROADMAP.md` which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
 
+Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to audit for correctness (important for our test-driven development)
+
+Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so auditing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped.
+
 Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.)
 
 ## Testing & further docs
