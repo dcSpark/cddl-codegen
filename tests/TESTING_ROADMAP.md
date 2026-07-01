@@ -59,67 +59,36 @@ green. The Tier-1 items below are the missing pieces of that oracle:
        This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm gate — land
        the two together.
 
-2. **Compile the generated *wasm* crate in the systematic gates — today nothing does.** *(structural;
-   ~½–1 day for the corpus gate, more for the matrix axis)* Every automated compile-gate generates with
-   `--wasm=false` and only `cargo check`s the `rust/` crate: `integration_tests::feature_corpus_compiles`,
-   `cddl-matrix/verify.ts` (the per-feature gate — `verify.ts:267/305/328`, documented at `:372`), and
-   `project_robustness.ts`. The **only** thing that ever compiles wasm is the handful of hand-picked
-   `run_test` integration fixtures (core/preserve/json/canonical/multifile/rust-wasm-split/wasm_json), so
-   generated wasm has **coverage by accident, not by construction**. Consequence: an entire class of
-   defects — *generated wasm wrappers that don't type-check* (wrong accessor return type, bad boundary
-   `.into()`/`.clone()`/`.copied()`, by-value-vs-by-ref ABI slips, generic-arg leaks) — is invisible to
-   every systematic gate, because the *rust* side compiles fine and rust is all we check. This is a whole
-   output mode with no systematic compile net.
-   - **Concrete proof it bites (pre-existing bug).** `nums = [* uint]` (a named, wasm-*exposable* array)
-     used as a list element — `nested_num = [* nums]` — emits, with the flag **off**, a wasm wrapper whose
-     `get(&self) -> Nums { self.0[index].clone() }` returns `Vec<u64>` typed as the wrapper struct `Nums` →
-     two `error[E0308]`s; the wasm crate does not compile. The rust crate compiles clean. Surfaced only
-     incidentally by the `--wasm-list-macro` audit (unrelated to that flag); nothing in the corpus/matrix
-     would ever have caught it.
-   - **Why the feature matrix misses it too.** cddl-matrix *does* model "array of arrays"
-     (`contain.array-element.type2.array`), but (a) its verdict is a rust-only `cargo check`, and (b) it
-     individuates features by **serialization semantics** ("a distinct wire-encoding / constraint"),
-     whereas this is a **wasm-binding distinction** — "exposable inner (inlined as `Vec<u64>`) vs named
-     wrapper struct" is a wasm ABI decision (`is_copy` × `directly_wasm_exposable` × the boundary-op tables
-     in `intermediate.rs`: `to_wasm_boundary` / `from_wasm_boundary_clone` / `for_wasm_param` /
-     `for_wasm_return`), not a CBOR one. The serialization-oriented axis doesn't enumerate the wasm ABI
-     branches, so even a "fully covered" matrix has this hole by construction.
-   - **The fix, in leverage order:**
-     1. **Add a wasm compile-gate to `feature_corpus_compiles`** *(cheapest, highest leverage)*: also
-        generate the corpus with `--wasm=true` and `cargo check` the `wasm/` crate. `cargo check` on the
-        **host** target catches type/signature errors like the E0308 above **without** the `wasm32` target
-        or `wasm-pack` — `wasm-bindgen` is just a normal dependency, and the shared `CARGO_TARGET_DIR`
-        already amortizes its build. Lights up wasm type-checking across the *entire* corpus at once and
-        catches the whole class going forward. It will go **red** the moment a fixture exercises the bad
-        shape — which is the point (same "the test surfaces the bug" dynamic as the c6 reject half and the
-        inverted `nint` bound, item 1). Reuse the existing `COMPILE_SKIP` list for fixtures whose wasm can't
-        stand alone (extern / raw-bytes user-supplied types — same reason they're rust-skipped; ties into
-        the "snapshot-only corpus policy" pending decision below).
-     2. **Give `cddl-matrix/verify.ts` a wasm verdict axis** *(the systematic, at-scale version)*: a second
-        per-feature support value (`wasm-compiles`) alongside the rust `cargo check`, so the matrix reports
-        wasm codegen support per feature and per role — not just rust. (1) is the fast down-payment across
-        the corpus; this is the full net across the feature space. Shares the `verify.ts` /
+2. **Compile the generated *wasm* crate in the systematic gates.** *(corpus gate landed + first bug fixed;
+   matrix axis + wider coverage still open)* Historically every automated compile-gate generated with
+   `--wasm=false` and only `cargo check`ed the `rust/` crate, so generated wasm had **coverage by accident,
+   not by construction** — a whole class of defects (wasm wrappers that don't type-check: wrong accessor
+   return type, bad boundary `.into()`/`.clone()`/`.copied()` slips, by-value-vs-by-ref ABI mismatches) was
+   invisible because the *rust* side compiled fine. The wasm bindings are a wasm-ABI concern (`is_copy` ×
+   `directly_wasm_exposable` × the boundary-op tables in `intermediate.rs`), which the CBOR-serialization
+   feature axis doesn't individuate — so even a "fully covered" matrix had this hole by construction.
+   - **✅ Done:** `feature_corpus_compiles` now generates `--wasm=true` and `cargo check`s BOTH the `rust`
+     and (when emitted) `wasm` crates on the host target — no `wasm32`/`wasm-pack` needed (`wasm-bindgen` is
+     a normal dep; the shared `CARGO_TARGET_DIR` amortizes it). It immediately caught the `[* nums]`
+     named-exposable-array bug (`get(&self) -> Nums` returned the inlined `Vec<u64>` → `E0308`), now **fixed**
+     in the emitter (`to_wasm_boundary`/`from_wasm_boundary_clone` respect `AliasIdent::Rust`; see ledger).
+     Gated by `tests/corpus/wasm_nested_alias.cddl`.
+   - **Still open:**
+     1. **Give `cddl-matrix/verify.ts` a wasm verdict axis** — a per-feature `wasm-compiles` value alongside
+        the rust `cargo check`, so the matrix reports wasm support per feature/role. Shares the `verify.ts` /
         `feature_corpus_compiles` surface with item 1's `cargo check → cargo test` round-trip flip —
         coordinate the two edits.
-     3. **Add fixtures for the wasm-binding distinctions the serialization axis doesn't individuate**: the
-        wasm analogue of the feature corpus — one case per branch of the boundary-op decision tables.
-        Minimum set: exposable vs non-exposable **array** element; exposable vs non-exposable **map**
-        value; nested exposable arrays (`[* [* uint]]` and the *named* `nums = [* uint]; [* nums]` that
-        triggers the bug); `Copy` vs non-`Copy` element in `get`/`add`/`insert`/`keys` positions; c-style
-        enum element (the `push(elem)` vs `push(elem.into())` re-export edge documented on
-        `ConceptualRustType::wasm_list_macro_needs_into`). `tests/wasm-list-macro/input.cddl` already
-        covers several list-element branches — generalize that idea to maps and to the non-macro path.
-   - **Cross-cut with the underlying generator bug.** (1)+(3) *expose* the `[* named_exposable_array]`
-     defect; the **fix** lives in the emitter — `generate_array_type`'s wasm `get`/`add` for an
-     exposable-array element picks the wrapper type (`Nums`) as the return but the inlined `Vec<_>` as the
-     body. Log it as a generator bug in its own right; the test work above is what makes it (and its
-     siblings across the ABI table) *stay* fixed rather than regress silently.
-   - **Why it's `--wasm=false` today (the tradeoff being accepted, not overlooked).** The rust-only gate is
-     faster (no `wasm-bindgen` dep tree) and needs no wasm toolchain — a reasonable default for a
-     *serialization* tool, but it silently declared wasm codegen out of scope for systematic testing.
-     `cargo check` (not `build`, not `wasm-pack`) on the host recovers most of the signal for little cost;
-     the remaining wasm-only concerns (`#[wasm_bindgen]` macro-expansion errors, `.d.ts`/JS surface) still
-     need `wasm-pack`, and stay the job of the few `run_test` fixtures + item 7's `--package-json` run.
+     2. **More wasm-binding fixtures** — one per boundary-op branch the serialization axis doesn't
+        individuate: exposable vs non-exposable **map** value; `Copy` vs non-`Copy` in
+        `get`/`add`/`insert`/`keys`; the c-style-enum re-export edge (`wasm_list_macro_needs_into`).
+        `tests/wasm-list-macro/input.cddl` covers several list-element branches — generalize to maps and the
+        non-macro path.
+     3. **The map-value + optional/ref sibling** of the fixed array bug still doesn't compile — the map
+        wrapper's return path also routes through `directly_wasm_exposable` (which unwraps `AliasIdent::Rust`,
+        inconsistent with the naming), a wider change. See ledger.
+   - **Scope note:** the host `cargo check` catches type/signature errors cheaply; `#[wasm_bindgen]`
+     macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
+     `run_test` fixtures + item 7's `--package-json` run.
 
 ### Tier 2 — project-specific, highest signal (when data sourcing is feasible)
 

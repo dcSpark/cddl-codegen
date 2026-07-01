@@ -258,8 +258,10 @@ fn run_test(
 /// construct that emits non-compiling Rust would be snapshotted as "correct"; this is the compile
 /// gate for it. Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted
 /// under, since non-compiling output can be flag-specific (a bare construct compiled but its
-/// preserve/json variant did not). Rust-only (`--wasm=false`) and one shared `CARGO_TARGET_DIR` so
-/// the deps build once. `int` needs no extern defs here — the generator emits its own `Int` type.
+/// preserve/json variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust`
+/// and (when emitted) `wasm` crates — the wasm bindings are a whole output mode nothing else
+/// systematically compile-gates. One shared `CARGO_TARGET_DIR` so the deps build once. `int` needs
+/// no extern defs here — the generator emits its own `Int` type.
 #[test]
 fn feature_corpus_compiles() {
     use std::str::FromStr;
@@ -300,12 +302,12 @@ fn feature_corpus_compiles() {
         for (profile, extra) in profiles {
             let label = format!("{stem}/{profile}");
             let out = root.join(format!("{stem}__{profile}"));
-            // generate (rust only)
+            // generate rust + wasm so both crates are compile-gated
             let gen_out = std::process::Command::new("cargo")
                 .args(["run", "--"])
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
-                .arg("--wasm=false")
+                .arg("--wasm=true")
                 .args(*extra)
                 .output()
                 .unwrap();
@@ -316,18 +318,28 @@ fn feature_corpus_compiles() {
                 ));
                 continue;
             }
-            // cargo check the generated rust crate
-            let check = std::process::Command::new("cargo")
-                .arg("check")
-                .current_dir(out.join("rust"))
-                .env("CARGO_TARGET_DIR", &target_dir)
-                .output()
-                .unwrap();
-            if !check.status.success() {
-                failures.push(format!(
-                    "{label}: cargo check failed\n{}",
-                    String::from_utf8_lossy(&check.stderr)
-                ));
+            // cargo check the generated rust crate, then the wasm crate (if the fixture emits one).
+            // The wasm crate is a whole output mode nothing else systematically compile-gates; a host
+            // `cargo check` catches type/signature errors in the generated bindings (wrong accessor
+            // return type, boundary `.into()`/`.clone()` slips) without needing the wasm32 target —
+            // `wasm-bindgen` is just a normal dependency and the shared target dir amortizes its build.
+            for crate_sub in ["rust", "wasm"] {
+                let crate_dir = out.join(crate_sub);
+                if !crate_dir.exists() {
+                    continue; // e.g. a fixture whose types produce no wasm wrappers
+                }
+                let check = std::process::Command::new("cargo")
+                    .arg("check")
+                    .current_dir(&crate_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                if !check.status.success() {
+                    failures.push(format!(
+                        "{label} ({crate_sub}): cargo check failed\n{}",
+                        String::from_utf8_lossy(&check.stderr)
+                    ));
+                }
             }
         }
     }

@@ -85,11 +85,11 @@ impl Prelude {
     }
 
     pub fn big_u(&self) -> PreludeBiguint {
-        self.0.big_u.clone()
+        self.0.big_u.clone().into()
     }
 
     pub fn uri(&self) -> PreludeUri {
-        self.0.uri.clone()
+        self.0.uri.clone().into()
     }
 
     pub fn big_i(&self) -> PreludeBigint {
@@ -113,31 +113,31 @@ impl Prelude {
     }
 
     pub fn big_n(&self) -> PreludeBignint {
-        self.0.big_n.clone()
+        self.0.big_n.clone().into()
     }
 
     pub fn date(&self) -> PreludeTdate {
-        self.0.date.clone()
+        self.0.date.clone().into()
     }
 
     pub fn b64u(&self) -> PreludeB64url {
-        self.0.b64u.clone()
+        self.0.b64u.clone().into()
     }
 
     pub fn b64l(&self) -> PreludeB64legacy {
-        self.0.b64l.clone()
+        self.0.b64l.clone().into()
     }
 
     pub fn re(&self) -> PreludeRegexp {
-        self.0.re.clone()
+        self.0.re.clone().into()
     }
 
     pub fn mime(&self) -> PreludeMimeMessage {
-        self.0.mime.clone()
+        self.0.mime.clone().into()
     }
 
     pub fn ec(&self) -> PreludeEncodedCbor {
-        self.0.ec.clone()
+        self.0.ec.clone().into()
     }
 
     pub fn df(&self) -> PreludeDecfrac {
@@ -167,20 +167,20 @@ impl Prelude {
         bf: &PreludeBigfloat,
     ) -> Self {
         Self(cddl_lib::Prelude::new(
-            big_u,
-            uri,
+            big_u.clone().into(),
+            uri.clone().into(),
             big_i.clone().into(),
             unsigned.clone().into(),
             t,
             b,
             intg.clone().into(),
-            big_n,
-            date,
-            b64u,
-            b64l,
-            re,
-            mime,
-            ec,
+            big_n.clone().into(),
+            date.clone().into(),
+            b64u.clone().into(),
+            b64l.clone().into(),
+            re.clone().into(),
+            mime.clone().into(),
+            ec.clone().into(),
             df.clone().into(),
             bf.clone().into(),
         ))
@@ -277,13 +277,13 @@ impl PreludeBigint {
 
     pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
         Self(cddl_lib::PreludeBigint::new_prelude_biguint(
-            prelude_biguint,
+            prelude_biguint.clone().into(),
         ))
     }
 
     pub fn new_prelude_bignint(prelude_bignint: PreludeBignint) -> Self {
         Self(cddl_lib::PreludeBigint::new_prelude_bignint(
-            prelude_bignint,
+            prelude_bignint.clone().into(),
         ))
     }
 
@@ -297,7 +297,7 @@ impl PreludeBigint {
     pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
         match &self.0 {
             cddl_lib::PreludeBigint::PreludeBiguint(prelude_biguint) => {
-                Some(prelude_biguint.clone())
+                Some(prelude_biguint.clone().into())
             }
             _ => None,
         }
@@ -306,7 +306,7 @@ impl PreludeBigint {
     pub fn as_prelude_bignint(&self) -> Option<PreludeBignint> {
         match &self.0 {
             cddl_lib::PreludeBigint::PreludeBignint(prelude_bignint) => {
-                Some(prelude_bignint.clone())
+                Some(prelude_bignint.clone().into())
             }
             _ => None,
         }
@@ -495,7 +495,7 @@ impl PreludeUnsigned {
 
     pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
         Self(cddl_lib::PreludeUnsigned::new_prelude_biguint(
-            prelude_biguint,
+            prelude_biguint.clone().into(),
         ))
     }
 
@@ -516,7 +516,7 @@ impl PreludeUnsigned {
     pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
         match &self.0 {
             cddl_lib::PreludeUnsigned::PreludeBiguint(prelude_biguint) => {
-                Some(prelude_biguint.clone())
+                Some(prelude_biguint.clone().into())
             }
             _ => None,
         }

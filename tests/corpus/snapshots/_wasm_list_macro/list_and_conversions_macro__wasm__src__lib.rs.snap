@@ -66,10 +66,10 @@ impl Maybes {
     }
 
     pub fn get(&self, index: usize) -> Maybe {
-        self.0[index].clone()
+        self.0[index].clone().into()
     }
 
     pub fn add(&mut self, elem: Option<String>) {
-        self.0.push(elem);
+        self.0.push(elem.clone().into());
     }
 }
