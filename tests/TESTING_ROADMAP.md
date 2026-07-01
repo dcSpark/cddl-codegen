@@ -76,17 +76,32 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      § "wasm-ABI matrix". The frontier is now the open cells + behaviour.
    - **Open red cells = the TDD backlog** (skip-listed in `wasm_matrix_compiles`, root-caused in
      `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work"; each with its ruled-out dead-ends). Close
-     one by taking it off `SKIP` → fixing the emitter → green. In priority order: **(1)** `nullable` at a
-     nested position (`E0277`, `OptionIntoWasmAbi`) — a genuine wasm-boundary gap, next up; **(2)**
-     `cenum__newtype-inner` (`E0308`) — a rust-crate deser-generator composition bug; **(3)** `passthrumap`
-     (`E0425`) — wants the durable **`has_wasm_wrapper(ident)` predicate unification**: one source of truth
-     for the wrapper-vs-transparent fact, which naming / boundary / exposability currently each decide
-     separately (their disagreement is the recurring wasm-boundary bug class).
+     one by taking it off `SKIP` → fixing the emitter → green. Remaining: **`passthrumap`** (`E0425`) — wants
+     the durable **`has_wasm_wrapper(ident)` predicate unification**: one source of truth for the
+     wrapper-vs-transparent fact, which naming / boundary / exposability currently each decide separately
+     (their disagreement is the recurring wasm-boundary bug class).
    - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
      it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
    - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
      while emitting a semantically wrong same-type conversion (an identity `.into()` where a transform was
      needed). Upgrade the verdict compile → round-trip once item 1's harness lands (depends on item 1).
+     - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
+       remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
+       can't represent nested `Option<Option<T>>`, so a nullable value (`T / null` → `Option<T>`) at a
+       position that adds its own presence-`Option` is flattened to a single `Option<T>` — the wasm READ
+       conflates "absent" with "present-but-null". Native types keep all three states, so CBOR round-trips
+       are unaffected; this is purely a wasm read-side loss. The ideal is an unambiguous getter (a presence
+       accessor, or exposing the nullable as `Option<wrapper-struct>`, which wasm-bindgen supports on the
+       return side). Cases, worst first:
+       - **Optional-nullable struct field** (`? field0: (T / null)`) — UNRECOVERABLE (no presence accessor).
+         `wasm_optional_nullable_field_three_state_fidelity`.
+       - **Double-nested enum variant** — `add_wasm_enum_getters` silently *skips* the `as_variant()` getter
+         (build-time `println!` only), so the value is unreadable from wasm.
+         `wasm_enum_nullable_variant_three_state_fidelity`.
+       - **Recoverable-but-ambiguous** (getter alone is lossy; a second call disambiguates): map `get` (via
+         `keys()`), enum single-nested `as_variant()` (via `kind()`) — same flatten, lower priority.
+       All flatten via the convention `add_wasm_enum_getters` established ("a bit ambiguous but better than
+       nothing"); the round-trip verdict upgrade (this item) is what would catch them mechanically.
    - **CI cost to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
      `wasm_matrix_compiles`, growing with the extensible axis). The shared `CARGO_TARGET_DIR` amortizes deps;
      if wall-time bites, batch cells into fewer crates, adopt `cargo-nextest`, or gate only changed cells.
