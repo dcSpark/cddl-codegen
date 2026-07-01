@@ -198,6 +198,16 @@ open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In pri
     recurring source of wasm boundary bugs. Route them all through one `has_wasm_wrapper(ident)` source of
     truth; that clears `passthrumap` and forecloses the class. (Narrower alternative: a wasm-only
     alias-emission path resolving a `Map` base_type to its named Table wrapper.)
+  - **Where the name is lost (the exact site).** `ptm = mp` resolves `mp` via `new_type` to
+    `Alias(mp, Map)`, but `parsing.rs`'s plain-typename rule branch (the `None` control-op arm) then
+    *strips* the alias (`concrete_type.conceptual_type = *ty`) so `ptm`'s stored `base_type` is a bare
+    `Map` — the link to `mp` is gone before the emitters run. Rust is fine (`for_rust_member(Map)` →
+    `BTreeMap<..>`, transparent, correct); wasm is broken (`for_wasm_member(Map)` → the inline-only
+    `MapU64ToText`). Narrow-fix shape (additive, base_type untouched so serialization is unaffected):
+    at the strip site capture the target ident when `has_wasm_wrapper(target)`, store it on `AliasInfo`,
+    and have the wasm alias emission prefer it (`pub type Ptm = Mp`). Must verify **all** passthrumap
+    roles + both profiles — the `Rust(Mp)` dead-end greened only array-element/map-value, so per-role
+    checking is mandatory (the wasm *usage* of `ptm` in each role must still resolve).
 
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
