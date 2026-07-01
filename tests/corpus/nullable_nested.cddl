@@ -1,0 +1,10 @@
+; A nullable (`T / null` -> Option<T>) sitting at a wasm position that adds its OWN presence-Option:
+; a MAP VALUE (`get`/`insert` return Option<value>) and an OPTIONAL struct FIELD (getter returns
+; Option<field>). Both would yield Option<Option<T>>, which wasm-bindgen can't represent
+; (`Option<T>: OptionIntoWasmAbi` is not satisfied). The generated wasm accessors flatten to a single
+; Option<T> — absent and present-null both read as None — mirroring the c-style enum-getter convention.
+; Native storage keeps all three states (absent / present-null / present-value), so CBOR round-trips
+; are unaffected; only the wasm read conflates absent with present-null.
+maybe_uint = uint / null
+nullable_map_value = { * uint => maybe_uint }
+nullable_optional_field = [pre: uint, ? field0: maybe_uint]

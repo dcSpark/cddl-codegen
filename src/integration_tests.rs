@@ -387,12 +387,6 @@ fn wasm_matrix_compiles() {
         "passthrumap__map-value",
         "passthrumap__struct-field",
         "passthrumap__struct-field-opt",
-        // new red — a nullable type (`opt = uint / null` -> `Option<u64>`) in a NESTED position emits an
-        // `Option<T>` that fails `OptionIntoWasmAbi` (E0277): wasm-bindgen can't return a bare
-        // `Option<primitive>` from a getter here. Rust compiles fine — this is a genuine wasm-boundary
-        // gap (the class the matrix exists to surface). array-element / struct-field are green.
-        "nullable__map-value",
-        "nullable__struct-field-opt",
     ];
 
     let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
