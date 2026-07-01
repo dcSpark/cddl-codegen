@@ -1983,6 +1983,31 @@ impl ConceptualRustType {
         }
     }
 
+    /// For `--wasm-list-macro`: whether the element's wasm-boundary reduces to the
+    /// `(needs_into, is_copy)` form the list macro takes. Returns `Some(needs_into)` when it
+    /// does (mirroring the `.into()` decision in `to_wasm_boundary`), or `None` when the element
+    /// must stay inline because its boundary can't be expressed by those two bits.
+    ///
+    /// Note on enums: `get` takes no `.into()` (enums are `Copy`, returned by value) so
+    /// `needs_into = false` — but the inline `add` does emit `elem.into()`
+    /// (`from_wasm_boundary_clone`'s `Rust` arm). That stays correct under `needs_into = false`
+    /// (i.e. the macro's `push(elem)`) because c-style enums are re-exported into the wasm crate
+    /// (`pub use ...::Color`), so the emitted `rust_elem` and `wasm_elem` are the *same* type and
+    /// no conversion is needed either way. `Optional`/`Fixed` return `None`: an `Optional` element's
+    /// wasm return type is `Option<T>`, which the two-bit form can't express, so it falls back to
+    /// the inline wrapper (reachable, e.g. `m = text / null; [* m]`).
+    pub fn wasm_list_macro_needs_into(&self, types: &IntermediateTypes) -> Option<bool> {
+        match self {
+            Self::Primitive(_) => Some(false),
+            Self::Rust(ident) => Some(!types.is_enum(ident)),
+            Self::Array(_) => Some(!self.directly_wasm_exposable(types)),
+            Self::Map(_k, _v) => Some(true),
+            Self::Alias(_ident, ty) => ty.wasm_list_macro_needs_into(types),
+            // serialization-only / can't reduce to the two-bit form
+            Self::Optional(_) | Self::Fixed(_) => None,
+        }
+    }
+
     pub fn clone_if_not_copy(&self, types: &IntermediateTypes, expr: &str) -> String {
         if self.is_copy(types) {
             expr.to_owned()

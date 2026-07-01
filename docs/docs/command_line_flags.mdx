@@ -165,7 +165,7 @@ cddl-codegen --input=example --output=export --wasm-cbor-json-api-macro=cml_core
 
 <br/><br/>
 
-:::info `--wasm-conversion-macro`
+:::info `--wasm-conversions-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the rust/wasm conversion traits.
 
 The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
@@ -173,7 +173,32 @@ The external macro is assumed to exist at the specified path and will be importe
 The macro must take the rust type as the first parameter and the wasm wrapper type as the second one.
 
 ```bash
-cddl-codegen --input=example --output=export --wasm-conversion-macro=cml_core_wasm::impl_wasm_conversions
+cddl-codegen --input=example --output=export --wasm-conversions-macro=cml_core_wasm::impl_wasm_conversions
+```
+:::
+
+<br/><br/>
+
+:::info `--wasm-list-macro`
+If it is passed in, it will call the supplied externally defined macro on each generated WASM **list** wrapper (`Vec<T>`-backed), instead of emitting the inline struct + accessor block (`new`/`len`/`get`/`add`) + conversion traits. Map wrappers are unaffected.
+
+The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
+
+The macro must take five parameters:
+- the rust element type
+- the wasm element type
+- the wasm wrapper name
+- a `needs_into` bool (whether the element crosses the wasm boundary via `.into()`)
+- an `is_copy` bool. e.g. `impl_wasm_list!(cml_lib::Foo, Foo, FooList, true, false);`
+
+The first two parameters can be generic types (e.g. `Vec<u8>`, `BTreeMap<u64, String>`), so match them with `:ty` fragments (not `:path`/`:ident`); the third is an identifier (`:ident`).
+
+This supersedes `--wasm-conversions-macro` for list wrappers (the list macro is expected to emit the conversion traits itself); non-list types are unaffected. A list whose element type can't be reduced to those two bools (e.g. an optional element) falls back to the inline form.
+
+(The no-argument form of this flag is reserved for a future built-in default that would also emit the macro definition; for now the macro definition must be supplied by you, e.g. `cml_core_wasm::impl_wasm_list`.)
+
+```bash
+cddl-codegen --input=example --output=export --wasm-list-macro=cml_core_wasm::impl_wasm_list
 ```
 :::
 

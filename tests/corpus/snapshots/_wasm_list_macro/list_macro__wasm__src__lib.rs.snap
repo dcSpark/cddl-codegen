@@ -1,0 +1,107 @@
+---
+source: src/snapshot_tests.rs
+expression: lib
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+impl_wasm_list!(Color, Color, Colors, false, true);
+impl_wasm_list!(cddl_lib::Foo, Foo, Foos, true, false);
+impl_wasm_list!(cddl_lib::Texts, Texts, Nested, true, false);
+impl_wasm_list!(u64, u64, Nums, false, true);
+impl_wasm_list!(String, String, Texts, false, false);
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub use cddl_lib::Color;
+use my_crate::impl_wasm_list;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo(cddl_lib::Foo);
+
+#[wasm_bindgen]
+impl Foo {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::Foo::new(index_0))
+    }
+}
+
+impl From<cddl_lib::Foo> for Foo {
+    fn from(native: cddl_lib::Foo) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo> for cddl_lib::Foo {
+    fn from(wasm: Foo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo> for Foo {
+    fn as_ref(&self) -> &cddl_lib::Foo {
+        &self.0
+    }
+}
+
+pub type Maybe = Option<String>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Maybes(Vec<cddl_lib::Maybe>);
+
+#[wasm_bindgen]
+impl Maybes {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Maybe {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Option<String>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<cddl_lib::Maybe>> for Maybes {
+    fn from(native: Vec<cddl_lib::Maybe>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Maybes> for Vec<cddl_lib::Maybe> {
+    fn from(wasm: Maybes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Maybe>> for Maybes {
+    fn as_ref(&self) -> &Vec<cddl_lib::Maybe> {
+        &self.0
+    }
+}

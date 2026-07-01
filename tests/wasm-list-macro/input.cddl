@@ -1,0 +1,19 @@
+; Fixture for the --wasm-list-macro snapshot test (src/snapshot_tests.rs::wasm_list_macro).
+; Covers every reachable (needs_into, is_copy) combination for Vec<T>-backed list wrappers,
+; the c-style-enum edge, and the Optional fall-back-to-inline path:
+;   foos   -> list of struct         -> impl_wasm_list!(.., true,  false)
+;   nested -> list of list           -> impl_wasm_list!(.., true,  false)
+;   nums   -> list of copy primitive -> impl_wasm_list!(.., false, true)
+;   texts  -> list of string         -> impl_wasm_list!(.., false, false)
+;   colors -> list of c-style enum   -> impl_wasm_list!(.., false, true)  (rust==wasm re-exported type)
+;   maybes -> list of optional       -> stays INLINE (predicate returns None; the fall-back guard)
+; ((true, true) is unreachable: only primitives/enums are Copy, and neither needs .into().)
+foo = [uint]
+foos = [* foo]
+texts = [* text]
+nums = [* uint]
+nested = [* texts]
+color = 0 / 1 / 2
+colors = [* color]
+maybe = text / null
+maybes = [* maybe]

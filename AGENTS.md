@@ -62,6 +62,10 @@ changing the *runtime behaviour* of generated code usually means editing `static
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
 
+## Git workflow
+
+- New features should be built on master directly instead of branching
+
 ## Build & verify
 
 The toolchain is pinned, so plain `cargo` uses the right version. The authoritative "what must pass"

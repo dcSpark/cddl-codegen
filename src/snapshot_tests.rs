@@ -289,3 +289,48 @@ fn cargo_toml_matrix() {
         }
     });
 }
+
+/// The `--wasm-list-macro` flag: each `Vec<T>`-backed list wrapper collapses to a single
+/// `impl_wasm_list!(rust_elem, wasm_elem, WasmName, needs_into, is_copy)` invocation (plus the `use`
+/// import) in place of the inline struct + accessor + conversion block. The fixture covers every
+/// reachable `(needs_into, is_copy)` combination. The flag-*off* output is the inline form the rest
+/// of the suite already snapshots (and `whole_program`/`generation_is_deterministic` guard that the
+/// gated branch leaves it byte-identical), so this only needs the flag-on wasm `lib.rs`.
+#[test]
+fn wasm_list_macro() {
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/corpus/snapshots/_wasm_list_macro");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    let input = std::path::Path::new("tests/wasm-list-macro/input.cddl");
+    // Generic macro paths — the feature works with any user-supplied macro.
+    let cases: &[(&str, &[&str])] = &[
+        // list wrappers collapse to impl_wasm_list! invocations
+        (
+            "list_macro",
+            &["--wasm-list-macro=my_crate::impl_wasm_list"],
+        ),
+        // combined with --wasm-conversions-macro: list wrappers use impl_wasm_list! (which emits
+        // their own conversions), while non-list wrappers still use impl_wasm_conversions! — i.e.
+        // the list macro supersedes, rather than double-emits with, the conversions macro.
+        (
+            "list_and_conversions_macro",
+            &[
+                "--wasm-list-macro=my_crate::impl_wasm_list",
+                "--wasm-conversions-macro=my_crate::impl_wasm_conversions",
+            ],
+        ),
+    ];
+    settings.bind(|| {
+        for (label, extra) in cases {
+            let cli = cli_for(input, extra);
+            let files = crate::api::generated_strings(&cli).unwrap();
+            let lib = files
+                .get("wasm/src/lib.rs")
+                .expect("no wasm/src/lib.rs generated");
+            insta::assert_snapshot!(format!("{label}__wasm__src__lib.rs"), lib);
+        }
+    });
+}
