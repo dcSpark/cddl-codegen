@@ -1,0 +1,3 @@
+; cell: nullable x array-element
+opt = uint / null
+holder = [* opt]

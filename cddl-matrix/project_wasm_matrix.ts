@@ -34,6 +34,7 @@ interface Shape {
   defs: string[]; // named-type definitions, authored dependency order (CDDL itself is order-free)
   ty: string; // the type placed in the role
   roles?: string[]; // restrict to these roles (default: all). Used for redundant / non-compiling shapes.
+  skipRoles?: string[]; // emit all roles EXCEPT these (for a role that panics generation on this shape).
 }
 const SHAPES: Record<string, Shape> = {
   // transparent, copy scalar
@@ -55,6 +56,15 @@ const SHAPES: Record<string, Shape> = {
   cborwrap: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo"], ty: "fb" },
   // c-style enum — Copy, re-exported by value (`pub use`)
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
+  // data-carrying type-choice enum -> a `#[wasm_bindgen]` wrapper enum with per-variant ctors; a
+  // distinct wasm shape from the Copy c-style enum (`cenum`) and the Record `struct`.
+  denum: { defs: ["denum = uint / text"], ty: "denum" },
+  // nullable -> `Option<T>` at the boundary. A distinct wasm-ABI shape: `Option<T>` needs
+  // `OptionIntoWasmAbi`, which nested positions (map value, optional field) don't satisfy for a
+  // non-wrapper inner (known-red). map-key is pruned: a null/Option key hits a deliberate
+  // "special-typed map key" assert in generation (a generation limitation, not a wasm-ABI concern —
+  // the robustness matrix's territory), and a nullable map key is degenerate CDDL anyway.
+  nullable: { defs: ["opt = uint / null"], ty: "opt", skipRoles: ["map-key"] },
   // generic instance -> monomorphized wrapper struct
   generic: { defs: ["cont<T0> = [value: T0]", "uc = cont<uint>"], ty: "uc" },
   // --- Depth / representative smoke cells: same boundary logic as a 1-hop shape above, kept only to
@@ -89,9 +99,10 @@ const ROLES: Record<string, Role> = {
 
 const cells: { file: string; body: string }[] = [];
 for (const shape of Object.keys(SHAPES).sort()) {
-  const { defs, ty, roles } = SHAPES[shape];
+  const { defs, ty, roles, skipRoles } = SHAPES[shape];
   for (const role of Object.keys(ROLES).sort()) {
     if (roles && !roles.includes(role)) continue;
+    if (skipRoles?.includes(role)) continue;
     const lines = [`; cell: ${shape} x ${role}`, ...defs, ROLES[role].wrap(ty)];
     cells.push({ file: `${shape}__${role}.cddl`, body: lines.join("\n") + "\n" });
   }

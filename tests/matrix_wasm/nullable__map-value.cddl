@@ -1,0 +1,3 @@
+; cell: nullable x map-value
+opt = uint / null
+holder = { * uint => opt }

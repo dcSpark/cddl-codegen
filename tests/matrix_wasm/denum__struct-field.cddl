@@ -1,0 +1,3 @@
+; cell: denum x struct-field
+denum = uint / text
+holder = [field0: denum]

@@ -1,0 +1,3 @@
+; cell: nullable x struct-field
+opt = uint / null
+holder = [field0: opt]

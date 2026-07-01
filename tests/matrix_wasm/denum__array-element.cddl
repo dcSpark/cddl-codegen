@@ -1,0 +1,3 @@
+; cell: denum x array-element
+denum = uint / text
+holder = [* denum]

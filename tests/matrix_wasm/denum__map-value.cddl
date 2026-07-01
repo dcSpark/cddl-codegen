@@ -1,0 +1,3 @@
+; cell: denum x map-value
+denum = uint / text
+holder = { * uint => denum }
