@@ -49,11 +49,13 @@ green. The Tier-1 items below are the missing pieces of that oracle:
      `RangeCheck` or it flakes) living in the *generated* crate, plus the proptest dep. The **reject half
      already landed** (`--emit-tests`; `src/emit_tests.rs` — per-bounded-type accept/reject asserts minted
      from compile-time literals, off by default, not yet wired into the suite or `verify.ts`). It surfaced a
-     real **generator bug** — the bounded-`nint` constructor bound is inverted (findings ledger in
-     `cddl-matrix/ROADMAP.md`).
+     real **generator bug** — the bounded-`nint` constructor bound was inverted, now **fixed** (findings
+     ledger in `cddl-matrix/ROADMAP.md`).
      - **Still open:** the round-trip/`Arbitrary` half + proptest dep; then the `verify.ts`
        `cargo check → cargo test` flip; an integration test that runs the emitted module (today the emitter
-       has no CI coverage); optionally a `nint` reject case (which would also catch the inverted-bound bug).
+       has no CI coverage); optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug
+       it targeted is now fixed directly; a construct-reject would guard against regression + still fails on
+       the *standalone* bounded-`nint`-newtype bug the fix didn't cover — see the ledger).
        This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm gate — land
        the two together.
 

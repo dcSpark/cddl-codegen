@@ -164,17 +164,27 @@ from a degenerate example.**
 - **Inline-group splice drops members** — `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }`
   (`read_elems(1)`), silently losing `tstr` (inline-group entries aren't flattened into the record). Surfaced
   by `inline_group.cddl`; `grpent.inline_group` is ⚠️.
-- **One-sided `nint` bound is inverted in the *constructor*** (the deserializer is correct, so the two
-  disagree). For `nint .ge -5`, deserialize checks the raw signed value (`if x < -5`) — right — but `new()`
-  checks the stored u64 magnitude after `nint_bounds_to_u64` maps `(min,max) → (|min+1|,|max+1|)`
-  (`generation.rs:3698`) and feeds it into the *same* `e < min || e > max` template
-  (`bounds_check_if_block`, `:3705`; ctor sites `:5464`/`:7166`/`:7202`, setter `:5281`). The magnitude
-  representation reverses ordering, so a lower bound on the value should become an *upper* bound on the
-  magnitude — but the transform keeps it as a lower bound. Result, empirically confirmed: `Bounds::new`
-  **rejects in-spec** value `-1` (magnitude 0) and **accepts out-of-spec** value `-6` (magnitude 5), exactly
-  backwards. Likely fix: swap min↔max in `nint_bounds_to_u64` (or check the signed value as deserialize
-  does). Surfaced by the **c6 `--emit-tests`** work, which skips `nint` reject targets for precisely this
-  reason — so the emitted tests don't yet catch it (a `nint` *construct*-reject would).
+- **✅ FIXED — One-sided `nint` bound was inverted in the *constructor*** (the deserializer was correct, so
+  the two disagreed). For `nint .ge -5`, deserialize checks the raw signed value (`if x < -5`) — right — but
+  `new()` checked the stored u64 magnitude after `nint_bounds_to_u64` mapped `(min,max) → (|min+1|,|max+1|)`
+  and fed it into the *same* `e < min || e > max` template (`bounds_check_if_block`). The magnitude
+  representation `m = -v-1` reverses ordering, so a lower bound on the value must become an *upper* bound on
+  the magnitude — the transform kept it as a lower bound. Empirically confirmed: `Bounds::new` **rejected
+  in-spec** value `-1` (magnitude 0) and **accepted out-of-spec** value `-6` (magnitude 5), exactly backwards.
+  **Fixed** by swapping the endpoints in `nint_bounds_to_u64` (`(min,max) → (|max+1|,|min+1|)`); regression is
+  a construct-reject in `tests/core/tests.rs::bounds()` (executes in `core_no_wasm`). Originally surfaced by
+  the **c6 `--emit-tests`** work, which skipped `nint` reject targets for this reason.
+- **Standalone bounded-`nint` newtype does not compile** (sibling of the above, but a *different* code path —
+  does NOT go through `nint_bounds_to_u64`, so it remains broken). `a = nint .ge -5` generates `A(u64)` whose
+  `new()` and deserializer both emit `if inner < -5` with `inner: u64` → `error[E0600]: cannot apply unary
+  operator - to type u64`; the crate doesn't compile. The Wrapper (`@newtype`-style) bounds path applies the
+  raw signed bound to the u64 magnitude without the nint transform. Not caught by any fixture (json's
+  `nint_wrapper` is unbounded). Good clear-win candidate.
+- **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
+  error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
+  bounds don't reach the field bounds check as `(Some,Some)`.
+- **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
+  with no range check at all (bounds lost).
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

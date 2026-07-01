@@ -599,6 +599,12 @@ mod tests {
     #[test]
     fn bounds() {
         deser_test(&Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).unwrap());
+        // y is `nint .ge -5`, stored as the u64 magnitude m = |v + 1| (m = 4 ⇒ v = -5). new() enforces
+        // the bound in magnitude space; regression for the inverted-nint-constructor-bound bug where the
+        // check was `m < 4` (rejecting valid values, accepting invalid ones) instead of `m > 4`.
+        assert!(Bounds::new(10, 5, 0, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=0 ⇒ v=-1, in range
+        assert!(Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=4 ⇒ v=-5, boundary
+        assert!(Bounds::new(10, 5, 5, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_err()); // m=5 ⇒ v=-6, below min
         enum OOB {
             Below,
             Lower,

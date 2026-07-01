@@ -3722,11 +3722,15 @@ fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<String> {
     }
 }
 
-// we store nint as u64 but the bounds are still negative
+// we store nint as its u64 magnitude `m = |v + 1| = -v - 1`, which is *decreasing* in the signed
+// value `v`. So a value bound `vmin <= v <= vmax` maps to a magnitude bound with the endpoints
+// SWAPPED: the value-min becomes the magnitude-max and the value-max becomes the magnitude-min
+// (e.g. `nint .ge -5` → `v >= -5` → `m <= 4`). Not swapping inverts the check in the constructor
+// (the deserializer, which checks the signed value directly, stays correct — so the two disagree).
 fn nint_bounds_to_u64(bounds: &(Option<i128>, Option<i128>)) -> (Option<i128>, Option<i128>) {
     (
-        bounds.0.map(|x| (x + 1).abs()),
         bounds.1.map(|x| (x + 1).abs()),
+        bounds.0.map(|x| (x + 1).abs()),
     )
 }
 
