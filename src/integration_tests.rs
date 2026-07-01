@@ -6,6 +6,17 @@ use std::io::Write;
 
 /// If you have multiple tests that use the same directory, please use different export_suffix
 /// for each one or else the tests will be flaky as they are run concurrently.
+///
+/// Stable per-checkout discriminator for scratch dirs under `temp_dir()`: concurrent `cargo test`
+/// runs from different checkouts/worktrees (an endorsed workflow) would otherwise share a fixed
+/// path and `remove_dir_all` each other's fixtures/target mid-run.
+fn checkout_hash() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    std::env::current_dir().unwrap().hash(&mut h);
+    h.finish()
+}
+
 fn tool_exists(bin: &str) -> bool {
     std::process::Command::new(bin)
         .arg("--version")
@@ -123,7 +134,22 @@ fn run_test(
 
     // wasm
     let wasm_export_dir = test_path.join(format!("{export_path}/wasm"));
-    let wasm_test_dir = test_path.join("tests_wasm.rs");
+    let wasm_test_path = test_path.join("tests_wasm.rs");
+    // The harness knows from the flags which outputs generation promised; assert instead of gating
+    // stages on `.exists()`, so an emission regression fails loudly rather than silently turning
+    // the stage into a no-op.
+    let wasm_expected = !options.contains(&"--wasm=false");
+    if wasm_expected {
+        assert!(
+            wasm_export_dir.exists(),
+            "no wasm crate at {wasm_export_dir:?} (--wasm=false was not passed) — generation stopped emitting it"
+        );
+    }
+    // we must replace the lib name if it's not the default
+    let custom_lib_name = options.iter().find_map(|arg: &&str| {
+        arg.split_once("--lib-name=")
+            .map(|(_, lib_name)| lib_name.replace('-', "_"))
+    });
     // copy external wasm defs if they exist
     for external_wasm_file_path in external_wasm_file_paths {
         println!("trying to open: {external_wasm_file_path:?}");
@@ -133,12 +159,8 @@ fn run_test(
             .unwrap();
         let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
         wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
-        // we must replace the lib name if it's not the default
-        if let Some(custom_lib_name) = options.iter().find_map(|arg: &&str| {
-            arg.split_once("--lib-name=")
-                .map(|(_, lib_name)| lib_name.replace('-', "_"))
-        }) {
-            let replaced_extern_rs = extern_rs.replace("cddl_lib", &custom_lib_name);
+        if let Some(custom_lib_name) = &custom_lib_name {
+            let replaced_extern_rs = extern_rs.replace("cddl_lib", custom_lib_name);
             wasm_lib_rs
                 .write_all(replaced_extern_rs.as_bytes())
                 .unwrap();
@@ -146,7 +168,25 @@ fn run_test(
             wasm_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
         }
     }
-    if wasm_test_dir.exists() {
+    if wasm_expected && wasm_test_path.exists() {
+        // The hook is only real if the file's contents actually land in the crate: append into
+        // wasm/src/lib.rs exactly like tests.rs into rust/src/lib.rs. A generated wasm crate ships
+        // no #[test]s of its own, so without the append `cargo test` runs zero tests and passes
+        // vacuously (which is what this branch silently did before).
+        let mut wasm_lib_rs = std::fs::OpenOptions::new()
+            .append(true)
+            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
+            .unwrap();
+        let test_wasm_rs = std::fs::read_to_string(&wasm_test_path).unwrap();
+        wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
+        if let Some(custom_lib_name) = &custom_lib_name {
+            wasm_lib_rs
+                .write_all(test_wasm_rs.replace("cddl_lib", custom_lib_name).as_bytes())
+                .unwrap();
+        } else {
+            wasm_lib_rs.write_all(test_wasm_rs.as_bytes()).unwrap();
+        }
+        std::mem::drop(wasm_lib_rs);
         println!("   ------ testing (wasm) ------");
         let cargo_test_wasm = std::process::Command::new("cargo")
             .arg("test")
@@ -164,7 +204,7 @@ fn run_test(
             String::from_utf8(cargo_test_wasm.stdout).unwrap()
         );
         assert!(cargo_test_wasm.status.success());
-    } else if wasm_export_dir.exists() {
+    } else if wasm_expected {
         let cargo_build_wasm = std::process::Command::new("cargo")
             .arg("build")
             .current_dir(&wasm_export_dir)
@@ -224,7 +264,18 @@ fn run_test(
     // `cargo build` only typechecked that code; nothing ever ran it, so a runtime panic in the
     // generated schema-export body (e.g. a bad path or `schemars` call) was invisible to CI.
     let json_export_dir = test_path.join(format!("{export_path}/wasm/json-gen"));
+    if options.contains(&"--json-schema-export=true") {
+        assert!(
+            json_export_dir.exists(),
+            "no json-gen crate at {json_export_dir:?} (--json-schema-export=true was passed) — generation stopped emitting it"
+        );
+    }
     if json_export_dir.exists() {
+        // Stale schemas from a previous local run would satisfy the `schema_count > 0` assertion
+        // below even if the current export writes nothing; start from a clean dir (CI is a fresh
+        // checkout, so this only matters for the local signal).
+        let schemas_dir = json_export_dir.join("schemas");
+        let _ = std::fs::remove_dir_all(&schemas_dir);
         let cargo_run_json = std::process::Command::new("cargo")
             .arg("run")
             .current_dir(&json_export_dir)
@@ -240,7 +291,6 @@ fn run_test(
         // `export_schemas()` succeeding isn't enough: a no-op body would also exit 0. Assert it
         // actually wrote at least one `<Type>.json` into `schemas/`, so an empty/missing dir
         // (export silently producing nothing) fails loudly instead of passing.
-        let schemas_dir = json_export_dir.join("schemas");
         let schema_count = std::fs::read_dir(&schemas_dir)
             .unwrap_or_else(|e| panic!("json-gen wrote no schemas dir {schemas_dir:?}: {e}"))
             .filter_map(Result::ok)
@@ -284,7 +334,10 @@ fn feature_corpus_compiles() {
     assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
 
     // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3).
-    let root = std::env::temp_dir().join("cddl_codegen_corpus_compile");
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_corpus_compile_{:016x}",
+        checkout_hash()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
@@ -318,15 +371,31 @@ fn feature_corpus_compiles() {
                 ));
                 continue;
             }
-            // cargo check the generated rust crate, then the wasm crate (if the fixture emits one).
-            // The wasm crate is a whole output mode nothing else systematically compile-gates; a host
-            // `cargo check` catches type/signature errors in the generated bindings (wrong accessor
-            // return type, boundary `.into()`/`.clone()` slips) without needing the wasm32 target —
-            // `wasm-bindgen` is just a normal dependency and the shared target dir amortizes its build.
-            for crate_sub in ["rust", "wasm"] {
+            // cargo check the generated rust crate, then the wasm crate, and — under the json
+            // profile — the json-gen crate. The wasm crate is a whole output mode nothing else
+            // systematically compile-gates; a host `cargo check` catches type/signature errors in
+            // the generated bindings (wrong accessor return type, boundary `.into()`/`.clone()`
+            // slips) without needing the wasm32 target — `wasm-bindgen` is just a normal dependency
+            // and the shared target dir amortizes its build. json-gen is an INDEPENDENT nested
+            // crate (not a dependency of wasm/), so checking wasm/ never touches it, yet its
+            // per-fixture `export_schemas()` body is snapshot-pinned by feature_corpus — leaving it
+            // out re-opens the exact hole this gate exists to close.
+            let crate_subs: &[&str] = if *profile == "json" {
+                &["rust", "wasm", "wasm/json-gen"]
+            } else {
+                &["rust", "wasm"]
+            };
+            for crate_sub in crate_subs.iter().copied() {
                 let crate_dir = out.join(crate_sub);
                 if !crate_dir.exists() {
-                    continue; // e.g. a fixture whose types produce no wasm wrappers
+                    // A missing crate de-gates the fixture: that's a failure, not a skip (mirrors
+                    // wasm_matrix_compiles). Every fixture emits rust/, and with --wasm=true also
+                    // wasm/ (+ json-gen under the json profile) — if that ever becomes legitimately
+                    // untrue for a fixture, allowlist it explicitly like COMPILE_SKIP.
+                    failures.push(format!(
+                        "{label} ({crate_sub}): crate dir missing — the fixture is no longer being compile-gated"
+                    ));
+                    continue;
                 }
                 let check = std::process::Command::new("cargo")
                     .arg("check")
@@ -391,7 +460,8 @@ fn wasm_matrix_compiles() {
     );
 
     // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
-    let root = std::env::temp_dir().join("cddl_codegen_wasm_matrix");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_wasm_matrix_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
