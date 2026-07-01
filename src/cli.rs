@@ -91,6 +91,16 @@ pub struct Cli {
     /// calling qux!(rust::path::A, A); for every struct A with a CBOR/JSON API
     #[clap(long, value_parser)]
     pub wasm_conversions_macro: Option<String>,
+
+    /// An external macro to be called instead of manually emitting the struct +
+    /// accessor block (new/len/get/add) + conversion traits for each generated
+    /// WASM list wrapper. Lists only - map wrappers are unaffected.
+    /// If the macro is scoped it will be imported using the supplied path.
+    /// e.g. foo::bar::qux will result in importing foo::bar::qux and then calling
+    /// qux!(rust_elem, wasm_elem, WasmName, needs_into, is_copy); for every list wrapper.
+    /// (The no-argument form of this flag is reserved for a future built-in default.)
+    #[clap(long, value_parser)]
+    pub wasm_list_macro: Option<String>,
 }
 
 impl Cli {

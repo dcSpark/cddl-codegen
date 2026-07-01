@@ -1066,6 +1066,11 @@ impl GenerationScope {
                 {
                     content.push_import(path, m, None);
                 }
+                if let Some(list_macro) = &cli.wasm_list_macro
+                    && let Some((path, m)) = list_macro.rsplit_once("::")
+                {
+                    content.push_import(path, m, None);
+                }
             }
             // declare submodules
             // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
@@ -3480,6 +3485,29 @@ impl GenerationScope {
         cli: &Cli,
     ) {
         if self.already_generated.insert(array_type_ident.clone()) {
+            // --wasm-list-macro: emit a single macro invocation in place of the inline struct +
+            // accessor block + conversion impls. The macro also emits the conversions, so we skip
+            // building the WasmWrapper entirely (returning early) to avoid double-defining them.
+            // Element types whose wasm boundary doesn't reduce to (needs_into, is_copy) - e.g.
+            // Optional - fall through to the inline path below.
+            if let Some(list_macro) = &cli.wasm_list_macro
+                && let Some(needs_into) = element_type.wasm_list_macro_needs_into(types)
+            {
+                let macro_name = list_macro.split("::").last().unwrap();
+                let args = [
+                    element_type.for_rust_member(types, true, cli),
+                    element_type.for_wasm_return(types),
+                    array_type_ident.to_string(),
+                    needs_into.to_string(),
+                    element_type.is_copy(types).to_string(),
+                ];
+                self.wasm(types, array_type_ident).raw(format!(
+                    "{}!({});",
+                    macro_name,
+                    args.join(", ")
+                ));
+                return;
+            }
             let inner_type = element_type.name_as_rust_array(types, true, cli);
             let mut wrapper = create_base_wasm_struct(self, array_type_ident, false, cli);
             wrapper.s.tuple_field(None, &inner_type);

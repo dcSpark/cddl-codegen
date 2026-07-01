@@ -17,6 +17,8 @@ When generating a library that has as a dependency another cddl-codegen-generate
 
 In CML we have macros for implementing WASM conversions and JSON/bytes. We pass in `--wasm-cbor-json-api-macro=cml_core_wasm::impl_wasm_cbor_json_api` and `--wasm-conversions-macro=cml_core_wasm::impl_wasm_conversions` which are both located in `cml_core_wasm`. This drastically reduces WASM wrapper boilerplate.
 
+For list wrappers there is additionally `--wasm-list-macro=cml_core_wasm::impl_wasm_list`, which collapses each `Vec<T>`-backed list wrapper (the struct + `new`/`len`/`get`/`add` accessor block + conversion traits) into a single `impl_wasm_list!(rust_elem, wasm_elem, WasmName, needs_into, is_copy);` invocation. It supersedes `--wasm-conversions-macro` for list wrappers (the list macro emits the conversions itself). Maps are unaffected.
+
 ## Externally defined types
 
 ### `_CDDL_CODEGEN_EXTERN_TYPE_` vs `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
