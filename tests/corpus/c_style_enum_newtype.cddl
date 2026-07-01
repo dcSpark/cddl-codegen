@@ -1,0 +1,6 @@
+; A @newtype wrapper over a c-style enum. The enum has no Deserialize impl of its own
+; (its decode is inlined as try-each-variant `return Ok(Variant)` statements), so the wrapper
+; must run that decode inside a value-returning closure — `Ok(Self(<closure>()?))` — rather than
+; splicing the early returns into its own deserialize body (which returned the bare enum, E0308).
+fixed_enum = 0 / 1 / 2
+wrapped_enum = fixed_enum ; @newtype

@@ -1,0 +1,50 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub use cddl_lib::FixedEnum;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedEnum(cddl_lib::WrappedEnum);
+
+#[wasm_bindgen]
+impl WrappedEnum {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedEnum, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::WrappedEnum> for WrappedEnum {
+    fn from(native: cddl_lib::WrappedEnum) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedEnum> for cddl_lib::WrappedEnum {
+    fn from(wasm: WrappedEnum) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedEnum> for WrappedEnum {
+    fn as_ref(&self) -> &cddl_lib::WrappedEnum {
+        &self.0
+    }
+}

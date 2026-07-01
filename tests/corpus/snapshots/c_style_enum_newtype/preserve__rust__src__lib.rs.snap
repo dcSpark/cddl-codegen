@@ -1,0 +1,56 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::error::*;
+use crate::ordered_hash_map::OrderedHashMap;
+use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::WrappedEnumEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub enum FixedEnum {
+    I0,
+    I1,
+    I2,
+}
+
+impl From<WrappedEnum> for FixedEnum {
+    fn from(wrapper: WrappedEnum) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrappedEnum {
+    pub inner: FixedEnum,
+    pub encodings: Option<WrappedEnumEncoding>,
+}
+
+impl WrappedEnum {
+    pub fn new(inner: FixedEnum) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<FixedEnum> for WrappedEnum {
+    fn from(inner: FixedEnum) -> Self {
+        WrappedEnum::new(inner.into())
+    }
+}

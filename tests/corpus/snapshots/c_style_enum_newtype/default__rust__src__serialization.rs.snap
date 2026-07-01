@@ -1,0 +1,91 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for WrappedEnum {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match &self.0 {
+            FixedEnum::I0 => serializer.write_unsigned_integer(0u64),
+            FixedEnum::I1 => serializer.write_unsigned_integer(1u64),
+            FixedEnum::I2 => serializer.write_unsigned_integer(2u64),
+        }
+    }
+}
+
+impl Deserialize for WrappedEnum {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        Ok(Self((|| -> Result<_, DeserializeError> {
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let i0_value = raw.unsigned_integer()?;
+                if i0_value != 0 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i0_value),
+                        expected: Key::Uint(0),
+                    }
+                    .into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(FixedEnum::I0),
+                Err(_) => raw
+                    .as_mut_ref()
+                    .seek(SeekFrom::Start(initial_position))
+                    .unwrap(),
+            };
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let i1_value = raw.unsigned_integer()?;
+                if i1_value != 1 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i1_value),
+                        expected: Key::Uint(1),
+                    }
+                    .into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(FixedEnum::I1),
+                Err(_) => raw
+                    .as_mut_ref()
+                    .seek(SeekFrom::Start(initial_position))
+                    .unwrap(),
+            };
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let i2_value = raw.unsigned_integer()?;
+                if i2_value != 2 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i2_value),
+                        expected: Key::Uint(2),
+                    }
+                    .into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(FixedEnum::I2),
+                Err(_) => raw
+                    .as_mut_ref()
+                    .seek(SeekFrom::Start(initial_position))
+                    .unwrap(),
+            };
+            Err(DeserializeError::new(
+                "FixedEnum",
+                DeserializeFailure::NoVariantMatched,
+            ))
+        })()?))
+    }
+}

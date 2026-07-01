@@ -2628,43 +2628,74 @@ impl GenerationScope {
                                 //     // TODO: potentially simplified deserialization some day
                                 //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
                                 // } else {
-                                deser_code.content.line(
-                                    "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
-                                );
-                                let mut variant_final_exprs = config.final_exprs.clone();
-                                if cli.preserve_encodings {
-                                    for enc_var in encoding_fields(
-                                        types,
-                                        config.var_name,
-                                        variants[0].rust_type(),
-                                        false,
-                                        cli,
-                                    ) {
-                                        variant_final_exprs.push(enc_var.field_name);
-                                    }
-                                }
-                                for variant in variants {
-                                    let mut return_if_deserialized =
-                                        make_enum_variant_return_if_deserialized(
-                                            self,
+                                // A c-style enum has no Deserialize impl of its own: its decode is a
+                                // try-each-variant sequence with early `return Ok(Enum::Variant)` + a
+                                // trailing NoVariantMatched Err, which only type-checks as the body of a
+                                // fn/closure returning `Result<Enum, _>`. When the caller places our
+                                // result directly (empty before/after — e.g. a struct field that wraps us
+                                // in its own annotate closure, or a type-choice variant's closure) that
+                                // body composes as-is. When the caller instead splices our value into a
+                                // larger expression (non-empty before/after — the newtype wrapper's
+                                // `Ok(Self(<here>))`) the statement form can't be spliced (the early
+                                // returns would leak out, dropping the wrapper -> E0308), so we first wrap
+                                // it in an immediately-invoked closure to yield a composable
+                                // `Result<Enum, _>` expression and let before_after wrap that.
+                                let mut enum_body = (!before_after.before.is_empty()
+                                    || !before_after.after.is_empty())
+                                .then(|| {
+                                    let mut b = Block::new(format!(
+                                        "{}(|| -> Result<_, DeserializeError>",
+                                        before_after.before_str(true)
+                                    ));
+                                    b.after(format!(")(){}", before_after.after_str(true)));
+                                    b
+                                });
+                                {
+                                    let target: &mut dyn CodeBlock = match enum_body.as_mut() {
+                                        Some(b) => b,
+                                        None => &mut deser_code.content,
+                                    };
+                                    target.line(
+                                        "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
+                                    );
+                                    let mut variant_final_exprs = config.final_exprs.clone();
+                                    if cli.preserve_encodings {
+                                        for enc_var in encoding_fields(
                                             types,
-                                            variant,
-                                            variant_final_exprs.is_empty(),
-                                            None,
-                                            &mut deser_code.content,
+                                            config.var_name,
+                                            variants[0].rust_type(),
+                                            false,
                                             cli,
-                                        );
-                                    return_if_deserialized
+                                        ) {
+                                            variant_final_exprs.push(enc_var.field_name);
+                                        }
+                                    }
+                                    for variant in variants {
+                                        let mut return_if_deserialized =
+                                            make_enum_variant_return_if_deserialized(
+                                                self,
+                                                types,
+                                                variant,
+                                                variant_final_exprs.is_empty(),
+                                                None,
+                                                target,
+                                                cli,
+                                            );
+                                        return_if_deserialized
                             .line(format!("Ok(({})) => return Ok({}),",
                             variant_final_exprs.join(", "),
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
                             .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
                             .after(";");
-                                    deser_code.content.push_block(return_if_deserialized);
-                                }
-                                deser_code.content.line(&format!(
+                                        target.push_block(return_if_deserialized);
+                                    }
+                                    target.line(&format!(
                         "Err(DeserializeError::new(\"{ident}\", DeserializeFailure::NoVariantMatched))"
                     ));
+                                }
+                                if let Some(enum_body) = enum_body {
+                                    deser_code.content.push_block(enum_body);
+                                }
                             }
                             RustStructType::RawBytesType => {
                                 if config.optional_field {
