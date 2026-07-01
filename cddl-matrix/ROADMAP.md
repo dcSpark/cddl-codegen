@@ -233,16 +233,36 @@ The systematic answer to "we find wasm bugs by luck": `cddl-matrix/project_wasm_
 {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` (one minimal fixture per cell),
 and `integration_tests::wasm_matrix_compiles` generates each `--wasm=true` + `cargo check`s the wasm crate.
 Coverage is now by-construction: a new wasm-ABI boundary bug surfaces as a specific red cell, not a
-production surprise. Standing up the enumeration (69 cells at first cut, 60 green) reconfirmed the two
-open reds above **and found two new ones** the ad-hoc hunt had missed:
+production surprise. Standing up the enumeration (69 cells at first cut, 61 green after fixing known-red
+#2) reconfirmed the two open reds above **and found two new ones** the ad-hoc hunt had missed. Current
+skip-list: 8 red cells (known-red #1 ×5 roles, the two new cenum reds, extern):
 
 - **Red cells (compile-fail), skip-listed in the gate — TDD targets, take off `SKIP` as each is fixed:**
-  - **known-red #1 — passthrough alias → map typedef (`E0425`).** Broader than previously recorded:
-    `passthrumap` (`mp = { * uint => text }; ptm = mp`) fails as `array-element`, `map-value`, `map-key`,
-    `struct-field`, AND `struct-field-opt` (only `newtype-inner` compiles) — one root cause (the map/table
-    typedef isn't emitted/named on the passthrough path), so fixing it greens all five together.
-  - **known-red #2 — collection wrapper as a map KEY (`E0277`).** `coll__map-key`
-    (`nums = [* uint]` at `{ * nums => uint }`): `Vec<u64>: Borrow<&Vec<u64>>`.
+  - **known-red #1 — passthrough alias → map typedef (`E0425`). Still open (deferred, not shallowly
+    fixable).** `passthrumap` (`mp = { * uint => text }; ptm = mp`) fails as `array-element`, `map-value`,
+    `map-key`, `struct-field`, AND `struct-field-opt` (only `newtype-inner` compiles). Root cause: on the
+    wasm side the alias emits `pub type Ptm = MapU64ToText`, but no such wrapper struct exists — the named
+    map's wasm wrapper is `Mp` (from the Table rule ident), while `MapU64ToText` (`name_for_wasm_map`) is
+    only generated for *inline* anonymous maps, which the alias path never triggers.
+    - **Attempted + reverted (dead-end to not repeat):** making the alias base_type keep a reference to
+      the named map (`parsing.rs` `None` branch: `Alias(Rust(Mp), Map)` → `Rust(Mp)`) DOES green
+      `array-element` + `map-value`, but a named map has a **dual representation** — a transparent
+      `pub type Mp = BTreeMap` typedef AND a wasm wrapper struct — and `Rust(Mp)` is not interchangeable
+      with an inlined `Map` in the other emitters: it regressed `collmap__newtype-inner` (newtype wraps
+      `Mp` → `BTreeMap::serialize` doesn't exist, `E0599`), broke `struct-field`/`map-key` (record/key
+      serialization expects the inline `Map`), and turned two red cells into generation panics. Inlining
+      the map is load-bearing for rust/newtype/struct serialization; the wasm side is the only place that
+      needs the wrapper name. A single shared base_type can't serve both (arrays work only because they're
+      transparent on *both* sides).
+    - **The real fix** is the wrapper-logic unification the handoff flags as out-of-scope (one
+      `has_wasm_wrapper(ident)` predicate that naming + boundary + exposability all derive from), or a
+      wasm-only alias-emission path that resolves a `Map` base_type to its named Table wrapper. Left
+      skip-listed as the next TDD target.
+  - **known-red #2 — collection wrapper as a map KEY (`E0277`). ✅ FIXED.** `coll__map-key`
+    (`nums = [* uint]` at `{ * nums => uint }`): `Vec<u64>: Borrow<&Vec<u64>>`. `from_wasm_boundary_ref`
+    unwrapped the wrapper alias into its inline array and hit the `&{expr}` fallthrough (`&key`), then the
+    map-key `get` appended `.as_ref()` → `&key.as_ref()`. Fixed by treating a non-`directly_wasm_exposable`
+    named alias like `Rust(ident)` (return `expr`), so the emitter yields `key.as_ref()`. Off the SKIP list.
   - **NEW red — c-style enum as a map KEY (`E0119`).** `cenum__map-key` (`fe = 0/1/2` at `{ * fe => uint }`)
     emits conflicting `Ord`/`Eq`/`PartialEq`/`PartialOrd` impls on the RUST crate: the enum is already
     `#[derive(..Eq, Ord..)]` and the map-key path derives them again. Compiles fine as array-element /
