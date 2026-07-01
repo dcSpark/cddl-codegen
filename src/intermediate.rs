@@ -1915,7 +1915,24 @@ impl ConceptualRustType {
     pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
         match self {
             Self::Rust(_ident) => expr.to_owned(),
-            Self::Alias(_ident, ty) => ty.from_wasm_boundary_ref(types, expr),
+            // A named alias is exposed to wasm AS its wrapper (for_wasm_member keeps the alias name),
+            // and whether it's a wrapper or a transparent `pub type` is a struct-table fact, not a
+            // shape fact (see directly_wasm_exposable / to_wasm_boundary). A wrapper alias
+            // (nums = [* uint]) is passed by-ref exactly like Rust(ident) — its own AsRef yields the
+            // &native the caller wants (the map-key `get` appends `.as_ref()`), so return `expr`
+            // unchanged. Transparently unwrapping it instead re-derived the inline type and, for an
+            // array wrapper, prepended a stray `&` -> `&key.as_ref()` (E0277). Only a transparent
+            // passthrough (arr2 = arr) or a reserved alias (u64, …) unwraps into what it aliases.
+            Self::Alias(ident, ty) => match ident {
+                AliasIdent::Reserved(_) => ty.from_wasm_boundary_ref(types, expr),
+                AliasIdent::Rust(_) => {
+                    if self.directly_wasm_exposable(types) {
+                        ty.from_wasm_boundary_ref(types, expr)
+                    } else {
+                        expr.to_owned()
+                    }
+                }
+            },
             Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(types, expr),
             Self::Array(ty) => {
                 if self.directly_wasm_exposable(types) {
