@@ -34,6 +34,10 @@ pub type Passthru = Vec<u64>;
 
 pub type PassthruMap = BTreeMap<u64, Passthru>;
 
+pub type PassthruTags = BTreeMap<u64, String>;
+
+pub type PassthruTagsMap = BTreeMap<u64, PassthruTags>;
+
 pub type TaggedList = Vec<Tags>;
 
 pub type Tags = BTreeMap<u64, String>;

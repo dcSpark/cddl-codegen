@@ -45,6 +45,10 @@ pub type Passthru = Vec<u64>;
 
 pub type PassthruMap = OrderedHashMap<u64, Passthru>;
 
+pub type PassthruTags = OrderedHashMap<u64, String>;
+
+pub type PassthruTagsMap = OrderedHashMap<u64, PassthruTags>;
+
 pub type TaggedList = Vec<Tags>;
 
 pub type Tags = OrderedHashMap<u64, String>;

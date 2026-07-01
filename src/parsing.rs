@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 
 use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
-    AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, FixedValue,
-    GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
-    Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
-    VariantIdent,
+    AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
+    FixedValue, GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo,
+    Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
+    RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -581,8 +581,18 @@ fn parse_type(
                     }
                     None => {
                         let mut concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
-                        if let ConceptualRustType::Alias(_ident, ty) = concrete_type.conceptual_type
+                        // Stripping the alias inlines the type for serialization (the rust side stays a
+                        // transparent `pub type`). Remember the aliased ident so the WASM alias can point
+                        // at its wrapper struct if it has one (resolved at emission via `has_wasm_wrapper`,
+                        // so forward references work) — otherwise `for_wasm_member` on the stripped bare
+                        // `Map`/`Vec` would emit the inline-only `MapU64To…`/`…List` name (E0425).
+                        let mut wasm_alias_target = None;
+                        if let ConceptualRustType::Alias(alias_ident, ty) =
+                            concrete_type.conceptual_type
                         {
+                            if let AliasIdent::Rust(rust_ident) = &alias_ident {
+                                wasm_alias_target = Some(rust_ident.clone());
+                            }
                             concrete_type.conceptual_type = *ty;
                         };
                         match &generic_params {
@@ -635,7 +645,8 @@ fn parse_type(
                                                 AliasInfo::new_from_metadata(
                                                     concrete_type,
                                                     rule_metadata,
-                                                ),
+                                                )
+                                                .with_wasm_alias_target(wasm_alias_target),
                                             );
                                         }
                                     }

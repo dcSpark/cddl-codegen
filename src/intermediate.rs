@@ -66,6 +66,14 @@ pub struct AliasInfo {
     pub gen_rust_alias: bool,
     pub gen_wasm_alias: bool,
     pub rule_metadata: Option<RuleMetadata>,
+    /// The named ident this alias was resolved from, when a plain-typename rule (`ptm = mp`) had its
+    /// `Alias(mp, …)` wrapper stripped to inline the type for serialization. The rust `base_type` is
+    /// the correct transparent representation, but the WASM alias must instead point at the target's
+    /// wrapper struct when it has one (`has_wasm_wrapper`) — a named collection is a transparent
+    /// `pub type` in rust but a `#[wasm_bindgen]` wrapper in wasm, so `for_wasm_member` on the stripped
+    /// (bare `Map`/`Vec`) `base_type` would mint the inline-only `MapU64To…`/`…List` name that only
+    /// exists for anonymous members. `None` = emit `for_wasm_member(base_type)` as before.
+    pub wasm_alias_target: Option<RustIdent>,
 }
 
 impl AliasInfo {
@@ -75,6 +83,7 @@ impl AliasInfo {
             gen_rust_alias,
             gen_wasm_alias,
             rule_metadata: None,
+            wasm_alias_target: None,
         }
     }
 
@@ -86,7 +95,13 @@ impl AliasInfo {
             gen_rust_alias,
             gen_wasm_alias,
             rule_metadata: Some(rule_metadata),
+            wasm_alias_target: None,
         }
+    }
+
+    pub fn with_wasm_alias_target(mut self, target: Option<RustIdent>) -> Self {
+        self.wasm_alias_target = target;
+        self
     }
 }
 
@@ -460,6 +475,19 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {
         self.rust_structs.get(ident)
+    }
+
+    /// Whether `ident` is exposed to wasm AS a `#[wasm_bindgen]` wrapper struct (vs. directly, like a
+    /// `Copy` c-style enum, or as a transparent `pub type`). A named collection/struct/wrapper generates
+    /// a wrapper; a c-style enum is exposed directly; anything not a rust-struct (a plain type-alias or
+    /// primitive) has no wrapper. This is the single source of truth the wasm alias emission consults so
+    /// a passthrough alias to a named map/array (`ptm = mp`) points at that wrapper instead of the
+    /// inline-only `MapU64To…` name. Mirrors `ConceptualRustType::directly_wasm_exposable`'s alias arm.
+    pub fn has_wasm_wrapper(&self, ident: &RustIdent) -> bool {
+        match self.rust_struct(ident).map(|rs| rs.variant()) {
+            Some(RustStructType::CStyleEnum { .. }) | None => false,
+            Some(_) => true,
+        }
     }
 
     /// mostly for convenience since this is checked in so many places
