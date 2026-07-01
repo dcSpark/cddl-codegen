@@ -12,6 +12,9 @@
 #   feature   feature id (features.toml)
 #   spec      "allowed" | "disallowed"  (what the CDDL grammar permits)
 #   note      why / grammar justification
+#   example   minimal CDDL snippet isolating the nesting, parsed by the spec-validity oracles to
+#             corroborate `spec` and probed for per-cell cddl-codegen support (verify.ts hard-fails
+#             on rows without one — an example-less cell would be silently unprobed).
 
 [[contain]]
 id = "contain.tag-content.type2.tag"
@@ -19,6 +22,7 @@ role = "role.tag-content"
 feature = "type2.tag"
 spec = "allowed"
 note = "The content of #6.n(...) is any `type`, which includes another tag -> #6.x(#6.y(T)) is legal CDDL."
+example = "t = #6.24(#6.25(uint))"
 
 [[contain]]
 id = "contain.tag-content.type2.array"
@@ -26,6 +30,7 @@ role = "role.tag-content"
 feature = "type2.array"
 spec = "allowed"
 note = "Tagging an array, e.g. rational = #6.30([uint, uint])."
+example = "rational = #6.30([uint, uint])"
 
 [[contain]]
 id = "contain.array-element.type2.tag"
@@ -33,13 +38,15 @@ role = "role.array-element"
 feature = "type2.tag"
 spec = "allowed"
 note = "A tagged item as an array element."
+example = "a = [#6.24(uint), tstr]"
 
 [[contain]]
 id = "contain.map-value.type2.map"
 role = "role.map-value"
 feature = "type2.map"
 spec = "allowed"
-note = "A map as a member value (nested map / table-as-value)."
+note = "A map as a member value (nested map / table-as-value). (2-field inner map: a single-field struct hits an orthogonal panic.)"
+example = "m = { outer: { a: int, c: uint } }"
 
 [[contain]]
 id = "contain.map-key.type2.tag"
@@ -47,6 +54,7 @@ role = "role.map-key"
 feature = "type2.tag"
 spec = "allowed"
 note = "A tagged type as a map key (memberkey can be a type)."
+example = "m = { #6.24(uint) => tstr }"
 
 [[contain]]
 id = "contain.cbor-payload.type2.array"
@@ -54,3 +62,4 @@ role = "role.cbor-payload"
 feature = "type2.array"
 spec = "allowed"
 note = "bytes .cbor [..] — a byte string constrained to encode an array."
+example = "b = bytes .cbor ([uint, uint])"

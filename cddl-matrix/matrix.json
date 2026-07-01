@@ -1030,6 +1030,7 @@
       "spec": "allowed"
     },
     {
+      "example": "t = #6.24(#6.25(uint))",
       "feature": "type2.tag",
       "id": "contain.tag-content.type2.tag",
       "note": "The content of #6.n(...) is any `type`, which includes another tag -> #6.x(#6.y(T)) is legal CDDL.",
@@ -1037,6 +1038,7 @@
       "spec": "allowed"
     },
     {
+      "example": "rational = #6.30([uint, uint])",
       "feature": "type2.array",
       "id": "contain.tag-content.type2.array",
       "note": "Tagging an array, e.g. rational = #6.30([uint, uint]).",
@@ -1044,6 +1046,7 @@
       "spec": "allowed"
     },
     {
+      "example": "a = [#6.24(uint), tstr]",
       "feature": "type2.tag",
       "id": "contain.array-element.type2.tag",
       "note": "A tagged item as an array element.",
@@ -1051,13 +1054,15 @@
       "spec": "allowed"
     },
     {
+      "example": "m = { outer: { a: int, c: uint } }",
       "feature": "type2.map",
       "id": "contain.map-value.type2.map",
-      "note": "A map as a member value (nested map / table-as-value).",
+      "note": "A map as a member value (nested map / table-as-value). (2-field inner map: a single-field struct hits an orthogonal panic.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
     {
+      "example": "m = { #6.24(uint) => tstr }",
       "feature": "type2.tag",
       "id": "contain.map-key.type2.tag",
       "note": "A tagged type as a map key (memberkey can be a type).",
@@ -1065,6 +1070,7 @@
       "spec": "allowed"
     },
     {
+      "example": "b = bytes .cbor ([uint, uint])",
       "feature": "type2.array",
       "id": "contain.cbor-payload.type2.array",
       "note": "bytes .cbor [..] — a byte string constrained to encode an array.",

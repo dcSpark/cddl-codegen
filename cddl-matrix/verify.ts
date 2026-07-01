@@ -3,14 +3,18 @@
  * Mechanical verification gate for the CDDL master matrix.
  *
  * RECONCILES the authored overlay against the pinned native sources (completeness spine), PROBES every
- * feature's `example` through the three oracles (ruby cddl / rust cddl / cddl-codegen), WRITES
- * annotations/cddl_codegen.toml from those probe results, emits verify_report.json, and exits nonzero
- * on a HARD FAILURE. Authority model: the ruby `cddl` reference decides example validity; the rust
- * `cddl` crate only corroborates (ruby-accepts-but-rust-rejects is a recorded parser limitation).
+ * feature's `example` through the three oracles (ruby cddl / rust cddl / cddl-codegen), emits
+ * verify_report.json, and — ONLY when the gate passes — rewrites annotations/cddl_codegen.toml from the
+ * probe results (a failing run must not leave a poisoned execution-grounded file to commit). Authority
+ * model: the ruby `cddl` reference decides example validity; the rust `cddl` crate only corroborates
+ * (ruby-accepts-but-rust-rejects is a recorded parser limitation).
+ *
+ * Exit codes: 0 PASS · 1 hard failure (gate) · 2 HARNESS failure (broken environment / oracle paths /
+ * repeated timeouts — verdicts were not trustworthy, so no verdict files were (re)written).
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ROOT, loadMatrixInputs, stableJson } from "./lib";
@@ -62,7 +66,13 @@ interface AltCoverage {
 }
 
 function resolveRubyCddl(): string | null {
-  if (process.env.RUBY_CDDL && existsSync(process.env.RUBY_CDDL)) return process.env.RUBY_CDDL;
+  if (process.env.RUBY_CDDL) {
+    if (existsSync(process.env.RUBY_CDDL)) return process.env.RUBY_CDDL;
+    // an explicitly pinned oracle that doesn't exist must not silently fall back to gem discovery —
+    // the run would probe a different ruby cddl than the operator intended.
+    console.error(`HARNESS FAILURE: RUBY_CDDL is set to '${process.env.RUBY_CDDL}' but no such file exists.`);
+    process.exit(2);
+  }
   try {
     const r = Bun.spawnSync(["ruby", "-e", "puts Gem.user_dir"], { stdout: "pipe", stderr: "ignore" });
     const cand = join((r.stdout?.toString() ?? "").trim(), "bin", "cddl"); // where the `cddl` gem installs
@@ -71,6 +81,12 @@ function resolveRubyCddl(): string | null {
   return null;
 }
 const RUBY_CDDL = resolveRubyCddl();
+// Validate the rust oracle upfront too: Bun.spawnSync throws ENOENT on a missing binary, which would
+// otherwise surface as a raw stack trace minutes into the probe loop.
+if (!existsSync(RUST_CDDL)) {
+  console.error(`HARNESS FAILURE: rust cddl oracle not found at '${RUST_CDDL}' (set RUST_CDDL or build the sibling repo).`);
+  process.exit(2);
+}
 
 const splitlines = (t: string): string[] => {
   const a = t.split(/\r\n|\r|\n/);
@@ -107,13 +123,25 @@ const controlop_prod_names = new Set<string>([
 const CDDL_CODEGEN_PSEUDO = new Set(["comment_dsl", "sentinel"]);
 const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\n" +
   readFileSync(`${CODEGEN_DIR}/src/parsing.rs`, "utf8");
+// Structured extraction of the vendor surface (shared by the backward lint below and the forward lint):
+// matching the tag("@…")/MARKER constructs rather than substring-searching the whole source means a
+// directive that survives only in a comment or unrelated string no longer passes the backward lint.
+const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
+const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
+// Floor assertion: if a refactor of comment_ast.rs/parsing.rs changes the extractable shape, both lints
+// built on these sets would go vacuous (forward) or flag everything (backward) — fail loud instead.
+if (dslDirectives.length === 0 || dslMarkers.length === 0) {
+  console.error(`HARNESS FAILURE: vendor-source extraction went vacuous (directives=${dslDirectives.length}, markers=${dslMarkers.length}); comment_ast.rs/parsing.rs no longer match the extraction patterns.`);
+  process.exit(2);
+}
+const dslTokens = new Set([...dslDirectives, ...dslMarkers]);
 const fabricated: { id: string; production: string | null }[] = [];
 for (const f of features) {
   const prod = f.production;
   if (prod === PRELUDE_PSEUDO) continue;
   if (prod && CDDL_CODEGEN_PSEUDO.has(prod)) {
-    if (f.alt && dslSource.includes(f.alt)) continue;   // resolves to the pinned vendor source
-    fabricated.push({ id: f.id, production: prod });     // alt token absent from source -> fabricated
+    if (f.alt && dslTokens.has(f.alt)) continue;         // resolves to the pinned vendor source
+    fabricated.push({ id: f.id, production: prod });     // alt absent from the extracted surface -> fabricated
     continue;
   }
   if (prod && abnf_productions.has(prod)) continue;
@@ -127,8 +155,6 @@ for (const f of features) {
 // cddl-codegen injects itself (e.g. _CDDL_CODEGEN_SCOPE_MARKER_, used for module scoping, never written by
 // a user and absent from the docs), while still catching a new documented extension the matrix forgot.
 const docsText = readFileSync(`${CODEGEN_DIR}/docs/docs/comment_dsl.mdx`, "utf8");
-const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
-const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
 const cddlCodegenAlts = new Set(features.filter(f => f.profile === "CDDL_CODEGEN").map(f => f.alt));
 const cddl_codegen_gaps: { kind: string; name: string }[] = [];
 for (const d of [...new Set([...dslDirectives, ...dslMarkers])].sort())
@@ -225,6 +251,14 @@ for (const prod of ALT_PRODUCTIONS) {
   alt_coverage[prod] = { abnf_alternatives: alts ?? [], feature_rows: [...rows].sort(), covered, uncovered, modeled: rows.length > 0 };
 }
 const type2_uncovered: string[] = alt_coverage["type2"].uncovered;
+// Floor assertion for the HARD gate: productionAlternatives stops at the first blank line inside a
+// production block, so a re-pinned ABNF with a mid-block blank line would silently TRUNCATE the
+// alternatives list and shrink the gate's `uncovered` set (the vacuous-pass direction). Pin the count.
+const TYPE2_MIN_ALTERNATIVES = 12; // the pinned cddl-1-1-update.abnf type2 block
+if (alt_coverage["type2"].abnf_alternatives.length < TYPE2_MIN_ALTERNATIVES) {
+  console.error(`HARNESS FAILURE: type2 extraction yielded ${alt_coverage["type2"].abnf_alternatives.length} alternatives (expected >= ${TYPE2_MIN_ALTERNATIVES}); the ABNF block extraction truncated.`);
+  process.exit(2);
+}
 
 // ==================================================================================================
 // 3. PROBE each feature's example through the three oracles.
@@ -248,23 +282,49 @@ function runExit(cmd: string[], cwd?: string, env?: Record<string, string>, time
   return sig != null ? -sig : -1;                   // signal kill -> -signum (returncode convention)
 }
 
+// A negative exit (timeout / signal kill) is a HARNESS condition, not a probe verdict: derive() would
+// classify it as "rejected at parse/lex" and silently flip a genuinely-supported feature to
+// "unsupported" under a PASS. Retry once (transient hiccup), then abort the whole run.
+let harness_timeouts_retried = 0;
+function runProbe(cmd: string[], cwd?: string, env?: Record<string, string>, timeoutS = PROBE_TIMEOUT): number {
+  let exit = runExit(cmd, cwd, env, timeoutS);
+  if (exit < 0) {
+    harness_timeouts_retried++;
+    exit = runExit(cmd, cwd, env, timeoutS);
+    if (exit < 0) {
+      console.error(`HARNESS FAILURE: probe timed out / was killed twice (exit ${exit}): ${cmd.join(" ")}`);
+      process.exit(2);
+    }
+  }
+  return exit;
+}
+
 // COMPILE-GATE: `cargo check` the generated crate. The generator exiting 0 is NOT enough — it can emit
 // non-compiling Rust (e.g. `x = any` -> `pub type X = Any;`, a type defined nowhere), which the exit-code
 // probe over-credits as "supported". Mirrors integration_tests::feature_corpus_compiles (rust-only,
 // shared CARGO_TARGET_DIR). Caller invokes only when generation (`cargo run`) succeeded.
 function runCompile(timeoutS = PROBE_TIMEOUT): number {
-  return runExit(
+  return runProbe(
     ["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
     CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
   );
 }
 
+// The generator MERGES into an existing output dir (it never clears it), so a partially-written crate
+// from a panicking probe — or any future conditionally-emitted module — would leak into the next
+// probe's compile gate. Start every generation from an empty dir.
+const cleanOut = () => rmSync(ccOut, { recursive: true, force: true });
+function runCodegen(): number {
+  cleanOut();
+  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR);
+}
+
 // [ruby, rust, codegen-generate, codegen-compile]. compile is -2 when generation didn't succeed (n/a).
 function oracles(example: string): [number, number, number, number] {
   writeFileSync(probeFile, example + "\n");
-  const a = RUBY_CDDL ? runExit([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
-  const b = runExit([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
-  const c = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR);
+  const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
+  const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
+  const c = runCodegen();
   const comp = c === 0 ? runCompile() : -2;
   return [a, b, c, comp];
 }
@@ -301,9 +361,21 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
 // Warm the shared compile target ONCE (deps build here; per-probe `cargo check` is then incremental and
 // fits PROBE_TIMEOUT). Without this the first probe's check would eat the whole dep build and risk a
 // spurious timeout -> false "does not compile". A trivial valid spec is enough to pull in the deps.
+//
+// The warm-up doubles as the HARNESS SELF-TEST: it runs a known-good spec through the full
+// generate+compile pipeline, so any failure here is by definition environmental (the generator itself
+// doesn't build, cargo/registry/disk trouble). It MUST abort: cargo exits 101 for a compile error of
+// the generator exactly like a per-feature panic, so an unhealthy harness would otherwise record every
+// feature as "panic (exit 101)"/unsupported and still print PASS (no hard-fail term inspects probe
+// exits). Both halves get the warm timeout — a cold full generator build can exceed PROBE_TIMEOUT.
 writeFileSync(probeFile, "warm = [uint, tstr]\n");
-if (runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR) === 0)
-  runCompile(COMPILE_WARM_TIMEOUT);
+cleanOut();
+const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+const warmCompile = warmGen === 0 ? runExit(["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+if (warmGen !== 0 || warmCompile !== 0) {
+  console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, compile exit ${warmCompile}). The environment is unhealthy; no probes were run and nothing was written.`);
+  process.exit(2);
+}
 
 const probe_results: ProbeResult[] = [];
 for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
@@ -313,24 +385,33 @@ for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1
   probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: c, compile: comp, ...d });
 }
 
+// Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
+// that degrades mid-run): zero supported features is not a plausible verdict shape for this repo.
+if (!probe_results.some(pr => pr.support === "supported")) {
+  console.error("HARNESS FAILURE: no feature probed 'supported' — implausible verdict shape; refusing to write verdicts.");
+  process.exit(2);
+}
+
 // Containment corroboration + PER-CELL support. The role × feature axis: a feature's support can DIFFER
 // by nesting context (e.g. a literal value is supported as an array member but not as a top-level type).
 // ruby/rust corroborate the spec verdict; cddl-codegen is probed per cell for an execution-grounded
 // support bit, exactly like the per-feature probe — written to annotations keyed by the containment id.
+// A containment cell without an `example` gets no spec corroboration, no per-cell support probe, and
+// no annotation row — a silent coverage hole (control ops already hard-gate the identical situation;
+// mirror that here so adding an example-less cell is loud, not a quiet shrink of the probed set).
+const containment_missing_example = contain.filter(c => !c.example).map(c => c.id).sort();
 const containment_corroboration: ContainmentCorr[] = [];
 for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
   writeFileSync(probeFile, c.example + "\n");
-  const a = RUBY_CDDL ? runExit([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
-  const b = runExit([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
+  const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
+  const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   // only probe support where the nesting is spec-valid (ruby accepts); a spec-disallowed cell isn't
   // valid CDDL, so "does cddl-codegen support it" is meaningless.
-  const cg = a === 0
-    ? runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR)
-    : -2;
+  const cg = a === 0 ? runCodegen() : -2;
   const cgComp = cg === 0 ? runCompile() : -2;   // compile-gate the cell too (same false-positive class)
   const support = a === 0 ? (cg === 0 && cgComp === 0 ? "supported" : "unsupported") : null;
   const observed = a === 0 ? "allowed" : "disallowed";
-  const parser_limitation = (a === 0) !== (b === 0);
+  const parser_limitation = a === 0 && b !== 0;  // directional, matching the feature-level definition (ruby accepts, rust rejects)
   const contradiction = observed !== c.spec;
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
@@ -428,7 +509,10 @@ for (const co of controlop_support) {
   annoLines.push(`evidence = ${tomlStr(ev)}`);
   annoLines.push("");
 }
-writeFileSync(`${ROOT}/annotations/cddl_codegen.toml`, annoLines.join("\n").replace(/\s+$/, "") + "\n");
+// Written only after the gate passes (bottom of the script): a hard-failing run must not leave a
+// poisoned "EXECUTION-GROUNDED" file on disk for the operator to accidentally commit.
+const annoPath = `${ROOT}/annotations/cddl_codegen.toml`;
+const annoContent = annoLines.join("\n").replace(/\s+$/, "") + "\n";
 
 // ==================================================================================================
 // 5. EMIT verify_report.json, print summary, exit nonzero on hard failures.
@@ -456,6 +540,7 @@ const report = {
   containment_corroboration,
   containment_contradictions: containment_contradictions.map(c => c.id),
   containment_parser_limitations: [...containment_parser_limitations].sort(),
+  containment_missing_example,
   target_profile: CDDL_CODEGEN_TARGET_PROFILE,
   summary: {
     features: features.length,
@@ -483,6 +568,8 @@ const report = {
     parser_limitations: parser_limitations.length,
     containment_contradictions: containment_contradictions.length,
     containment_parser_limitations: containment_parser_limitations.length,
+    containment_missing_example: containment_missing_example.length,
+    harness_timeouts_retried,
   },
 };
 writeFileSync(`${ROOT}/verify_report.json`, stableJson(report));
@@ -549,11 +636,22 @@ if (controlop_missing_example.length) {
   console.log("\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):");
   for (const id of controlop_missing_example) console.log(`  - ${id}`);
 }
+if (containment_missing_example.length) {
+  console.log("\nCONTAINMENT CELLS MISSING AN EXAMPLE (unprobed, uncorroborated — add to containment/*.toml):");
+  for (const id of containment_missing_example) console.log(`  - ${id}`);
+}
+if (harness_timeouts_retried)
+  console.log(`\nNOTE: ${harness_timeouts_retried} probe(s) timed out / were killed and succeeded on retry.`);
 
-console.log("\nwrote annotations/cddl_codegen.toml and verify_report.json");
+console.log("\nwrote verify_report.json");
 
 const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || type2_uncovered.length ||
-  spec_invalid.length || containment_contradictions.length || controlop_missing_example.length;
-if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above)"); process.exit(1); }
+  spec_invalid.length || containment_contradictions.length || controlop_missing_example.length || containment_missing_example.length;
+if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above; annotations/cddl_codegen.toml left untouched)"); process.exit(1); }
+const prevAnno = existsSync(annoPath) ? readFileSync(annoPath, "utf8") : "";
+writeFileSync(annoPath, annoContent);
+console.log("wrote annotations/cddl_codegen.toml");
+if (annoContent !== prevAnno)
+  console.log("NOTE: annotations changed — re-run `bun run build_matrix.ts` to refresh matrix.json (CI's --check gates the committed form).");
 console.log("\nRESULT: PASS");
 process.exit(0);
