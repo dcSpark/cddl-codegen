@@ -7926,6 +7926,21 @@ fn generate_wrapper_struct(
     } else {
         "inner".to_owned()
     };
+    // nint is stored as its u64 magnitude, and magnitude is a *decreasing* function of the value, so
+    // a value bound maps to a SWAPPED magnitude bound (`nint_bounds_to_u64`) — the same transform the
+    // struct-field / setter paths apply. Without it the wrapper's `new()`/deserialize check compares
+    // the u64 `inner` against a negative literal (does not compile: E0600) with inverted semantics.
+    let min_max = if matches!(
+        &field_type.conceptual_type,
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) && !field_type
+        .encodings
+        .contains(&CBOREncodingOperation::CBORBytes)
+    {
+        min_max.map(|mm| nint_bounds_to_u64(&mm))
+    } else {
+        min_max
+    };
     let from_impl = if let Some((min, max)) = min_max {
         let (before, after) = if var_names_str.is_empty() {
             ("".to_owned(), "")

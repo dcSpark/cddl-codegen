@@ -605,6 +605,17 @@ mod tests {
         assert!(Bounds::new(10, 5, 0, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=0 ⇒ v=-1, in range
         assert!(Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=4 ⇒ v=-5, boundary
         assert!(Bounds::new(10, 5, 5, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_err()); // m=5 ⇒ v=-6, below min
+        // Same magnitude-space bound on the Wrapper (`@newtype`) path — regression for the standalone
+        // bounded-nint-newtype bug, where new()/deserialize emitted `if inner < -5` on a u64 `inner`
+        // (E0600, didn't compile). Also round-trips a valid value through the deserializer's own check.
+        assert!(NintGeNewtype::new(0).is_ok()); // m=0 ⇒ v=-1, in range (v >= -5)
+        assert!(NintGeNewtype::new(4).is_ok()); // m=4 ⇒ v=-5, boundary
+        assert!(NintGeNewtype::new(5).is_err()); // m=5 ⇒ v=-6, out (v < -5)
+        deser_test(&NintGeNewtype::new(4).unwrap());
+        assert!(NintLeNewtype::new(5).is_ok()); // m=5 ⇒ v=-6, in range (v <= -5)
+        assert!(NintLeNewtype::new(4).is_ok()); // m=4 ⇒ v=-5, boundary
+        assert!(NintLeNewtype::new(0).is_err()); // m=0 ⇒ v=-1, out (v > -5)
+        deser_test(&NintLeNewtype::new(5).unwrap());
         enum OOB {
             Below,
             Lower,
