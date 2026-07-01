@@ -239,8 +239,9 @@ Coverage is by-construction **over the enumerated grid** — a bug in a covered 
 not by luck. The type-shape axis is hand-curated and extensible: a wasm representation not in `SHAPES`
 isn't covered, so the axis is a living list (a holistic audit added the `nullable` shape after generating
 `opt = uint / null` at a map value and finding a live `E0277` the grid had missed — see below).
-Standing up the enumeration and reconfirming/finding reds: **80 cells, 70 green, 10 skip-listed.** Current
-skip-list: known-red #1 (`passthrumap` ×5 roles), the two `cenum` reds, the two `nullable` reds, `extern`.
+Standing up the enumeration and reconfirming/finding reds, then fixing several: **80 cells, 71 green,
+9 skip-listed.** Current skip-list: known-red #1 (`passthrumap` ×5 roles), `cenum__newtype-inner`, the two
+`nullable` reds, `extern`. Fixed so far: `coll__map-key` (E0277) and `cenum__map-key` (E0119 + E0308).
 
 - **Red cells (compile-fail), skip-listed in the gate — TDD targets, take off `SKIP` as each is fixed:**
   - **known-red #1 — passthrough alias → map typedef (`E0425`). Still open (deferred, not shallowly
@@ -276,16 +277,29 @@ skip-list: known-red #1 (`passthrumap` ×5 roles), the two `cenum` reds, the two
     by the holistic audit, which is why `nullable` is now a shape (the grid was blind to it). `map-key` is
     pruned in the projection: a null/Option key hits a deliberate "special-typed map key" assert in
     generation (a generation limitation for the robustness matrix, not a wasm-ABI concern).
-  - **NEW red — c-style enum as a map KEY (`E0119`). *(rust-crate bug, surfaced by the sweep.)***
-    `cenum__map-key` (`fe = 0/1/2` at `{ * fe => uint }`) emits conflicting `Ord`/`Eq`/`PartialEq`/`PartialOrd`
-    impls on the RUST crate (the enum is already `#[derive(..Eq, Ord..)]` and the map-key path derives them
-    again). Not a wasm-boundary bug — the *rust* crate fails standalone; it surfaces here only because the
-    wasm check path-deps rust, and this is the first systematic role×shape sweep. Fixing it also wants a
-    rust-corpus fixture (`tests/corpus` has no cenum-as-map-key today). array-element / map-value are green.
-  - **NEW red — `@newtype` over a c-style enum (`E0308`). *(rust-crate bug, surfaced by the sweep.)***
-    `cenum__newtype-inner` (`holder = fe ; @newtype`): mismatched types in the generated wrapper body,
-    again a rust-crate failure. Newtype over primitive / collection / struct / cbor / generic all compile —
-    the enum inner is the trigger.
+  - **c-style enum as a map KEY (`E0119` + `E0308`). ✅ FIXED.** `cenum__map-key` (`fe = 0/1/2` at
+    `{ * fe => uint }`) had TWO root causes: (1) **rust crate, E0119** — the c-style enum unconditionally
+    derived `Copy, Eq, PartialEq, Ord, PartialOrd`, and `add_struct_derives` re-added the ordering four when
+    the enum is a `BTreeMap` key → duplicate impls. Fixed by deriving the ordering four in the base *only*
+    when NOT `used_as_key`; `add_struct_derives` supplies them (with the `derivative` path under
+    `--preserve-encodings`) for the key case. (2) **wasm crate, E0308** — the `get(key: Fe)` emitted
+    `self.0.get(key)` by value, but `BTreeMap::get` needs `&Q`. Fixed in `from_wasm_boundary_ref`: a
+    *directly-exposable* `Rust` ident (a Copy c-style enum, by value, reaching the no-`.as_ref()` get
+    branch) now returns `&expr`; a wrapper struct (not exposable, `.as_ref()`-path) still returns `expr`.
+    Off the SKIP list; guarded by the new corpus fixture `tests/corpus/c_style_enum_map_key.cddl` under all
+    three profiles.
+  - **`@newtype` over a c-style enum (`E0308`). Still open — deferred (deser-generator composition).**
+    `cenum__newtype-inner` (`holder = fe ; @newtype`) fails in the RUST crate under BOTH profiles (non-preserve
+    leaks the enum's early `return`s out of the wrapper's `deserialize`; preserve fails to assign `inner`).
+    Root cause: a c-style enum has no `Deserialize` impl — its decoding is inlined by `generate_deserialize`
+    (`generation.rs` ~2621) as a block of early `return Ok(Enum::Variant)` statements + a trailing
+    `Err(NoVariantMatched)`, and — unlike every other type branch — it ignores the `before_after` wrapping.
+    That composes only as a standalone enum-deserialize fn body; nesting it in the wrapper (`Ok(Self(<deser>))`
+    or `let inner = <deser>;`) leaks the returns / never assigns. The green struct-field cenum case works only
+    because *that* path wraps the deser in a value-returning closure. The fix needs the enum branch to honor
+    `before_after` (produce a closure-wrapped value expression) OR the wrapper to replicate the struct-field
+    closure-wrapping — a change to the deser generator's most intricate branch, affecting both profiles and
+    all cenum positions, so it wants its own focused effort. Kept skip-listed.
 - **The wrapper-vs-transparent distinction the serialization matrix collapses is a first-class axis here:**
   `coll` (Array wrapper) vs `collmap` (Table wrapper) vs `passthru`/`passthrumap` (transparent `pub type`)
   vs `struct` (Record) vs `cborwrap` (transparent-to-wrapper) vs `cenum` (Copy re-export) vs `denum`

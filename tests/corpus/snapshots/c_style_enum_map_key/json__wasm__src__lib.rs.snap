@@ -1,0 +1,60 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub use cddl_lib::FixedEnum;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct EnumKeyedMap(cddl_lib::EnumKeyedMap);
+
+#[wasm_bindgen]
+impl EnumKeyedMap {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: FixedEnum, value: u64) -> Option<u64> {
+        self.0.insert(key.into(), value)
+    }
+
+    pub fn get(&self, key: FixedEnum) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<FixedEnum> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::EnumKeyedMap> for EnumKeyedMap {
+    fn from(native: cddl_lib::EnumKeyedMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<EnumKeyedMap> for cddl_lib::EnumKeyedMap {
+    fn from(wasm: EnumKeyedMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::EnumKeyedMap> for EnumKeyedMap {
+    fn as_ref(&self) -> &cddl_lib::EnumKeyedMap {
+        &self.0
+    }
+}

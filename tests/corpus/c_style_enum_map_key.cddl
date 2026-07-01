@@ -1,0 +1,2 @@
+fixed_enum = 0 / 1 / 2
+enum_keyed_map = { * fixed_enum => uint }

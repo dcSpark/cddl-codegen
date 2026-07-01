@@ -387,9 +387,6 @@ fn wasm_matrix_compiles() {
         "passthrumap__map-value",
         "passthrumap__struct-field",
         "passthrumap__struct-field-opt",
-        // new red — a c-style enum used as a map KEY emits duplicate Ord/Eq derives (E0119): the enum
-        // is already `#[derive(..Eq, Ord..)]` and the map-key path adds them again.
-        "cenum__map-key",
         // new red — `@newtype` over a c-style enum: mismatched types in the generated wrapper (E0308).
         "cenum__newtype-inner",
         // new red — a nullable type (`opt = uint / null` -> `Option<u64>`) in a NESTED position emits an

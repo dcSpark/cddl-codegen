@@ -82,7 +82,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      `tests/matrix_wasm/*.cddl` (one minimal fixture per cell), and `integration_tests::wasm_matrix_compiles`
      generates each `--wasm=true` and `cargo check`s the wasm crate; `--check` drift runs in CI's
      `matrix-drift` job. Coverage is now by-construction — a bug in a covered cell surfaces as a specific red
-     cell instead of by luck. **80 cells, 70 green, 10 skip-listed.** Holistic system doc:
+     cell instead of by luck. **80 cells, 71 green, 9 skip-listed.** Holistic system doc:
      `tests/README.md` § "wasm-ABI matrix"; findings ledger: `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix".
      - **Type-shape axis** (`is_copy` × `directly_wasm_exposable` × has-a-wrapper-`RustStruct` — NOT a CBOR
        distinction): prim, palias, talias, coll/collmap (array/map wrapper structs), passthru/passthrumap
@@ -94,13 +94,14 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    - **Open red cells = the TDD backlog** (skip-listed in `wasm_matrix_compiles`, each ledgered in
      `cddl-matrix/ROADMAP.md`). Close one by removing it from `SKIP` → fixing the emitter → green (the gate's
      "resurfaced" guard fails if a `SKIP` cell starts compiling, so the list can't rot). Priority order:
-     1. **`cenum` ×2 — RUST-CRATE bugs (highest priority: they break *primary* output, not just wasm).**
-        `cenum__map-key` → `E0119` (duplicate `Ord`/`Eq` derives when a c-style enum is a `BTreeMap` key);
-        `cenum__newtype-inner` → `E0308` (`@newtype` over a c-style enum). The wasm sweep surfaced them, but
-        they fail the *rust* crate — so **also add `tests/corpus` fixtures** (cenum-as-map-key,
-        newtype-over-cenum; today the corpus has only a bare `c_style_enum.cddl`) to guard them in the fast
-        snapshot loop.
-     2. **`nullable` ×2 — genuine wasm-boundary gap.** `Option<T>` at a nested position
+     1. **✅ `cenum__map-key` — FIXED** (`E0119` duplicate derives + `E0308` by-value `BTreeMap::get`);
+        guarded by the new `tests/corpus/c_style_enum_map_key.cddl` under all three profiles. **Still open:
+        `cenum__newtype-inner`** (`E0308`, `@newtype` over a c-style enum) — a RUST-CRATE deser bug, deferred:
+        a c-style enum's inline deserialize (early `return`s, ignores `before_after`) doesn't compose inside
+        the wrapper's `deserialize`; the fix touches the deser generator's enum branch (both profiles, all
+        cenum positions) so it wants its own effort. **Also still wanted:** a `tests/corpus` newtype-over-cenum
+        fixture to guard it in the fast snapshot loop once fixed (the map-key one already landed).
+     2. **`nullable` ×2 — genuine wasm-boundary gap (next up).** `Option<T>` at a nested position
         (`nullable__map-value`, `nullable__struct-field-opt`) → `E0277` (`OptionIntoWasmAbi`); rust compiles,
         wasm doesn't.
      3. **`passthrumap` ×5 — deferred (`E0425`).** A passthrough alias to a named map typedef emits a dangling
