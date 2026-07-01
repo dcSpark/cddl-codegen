@@ -67,25 +67,39 @@ green. The Tier-1 items below are the missing pieces of that oracle:
    invisible because the *rust* side compiled fine. The wasm bindings are a wasm-ABI concern (`is_copy` ×
    `directly_wasm_exposable` × the boundary-op tables in `intermediate.rs`), which the CBOR-serialization
    feature axis doesn't individuate — so even a "fully covered" matrix had this hole by construction.
-   - **✅ Done:** `feature_corpus_compiles` now generates `--wasm=true` and `cargo check`s BOTH the `rust`
-     and (when emitted) `wasm` crates on the host target — no `wasm32`/`wasm-pack` needed (`wasm-bindgen` is
-     a normal dep; the shared `CARGO_TARGET_DIR` amortizes it). It immediately caught the `[* nums]`
-     named-exposable-array bug (`get(&self) -> Nums` returned the inlined `Vec<u64>` → `E0308`), now **fixed**
-     in the emitter (`to_wasm_boundary`/`from_wasm_boundary_clone` respect `AliasIdent::Rust`; see ledger).
-     Gated by `tests/corpus/wasm_nested_alias.cddl`.
-   - **Still open:**
-     1. **Give `cddl-matrix/verify.ts` a wasm verdict axis** — a per-feature `wasm-compiles` value alongside
-        the rust `cargo check`, so the matrix reports wasm support per feature/role. Shares the `verify.ts` /
-        `feature_corpus_compiles` surface with item 1's `cargo check → cargo test` round-trip flip —
-        coordinate the two edits.
-     2. **More wasm-binding fixtures** — one per boundary-op branch the serialization axis doesn't
-        individuate: exposable vs non-exposable **map** value; `Copy` vs non-`Copy` in
-        `get`/`add`/`insert`/`keys`; the c-style-enum re-export edge (`wasm_list_macro_needs_into`).
-        `tests/wasm-list-macro/input.cddl` covers several list-element branches — generalize to maps and the
-        non-macro path.
-     3. **The map-value + optional/ref sibling** of the fixed array bug still doesn't compile — the map
-        wrapper's return path also routes through `directly_wasm_exposable` (which unwraps `AliasIdent::Rust`,
-        inconsistent with the naming), a wider change. See ledger.
+   - **✅ Done (the oracle):** `feature_corpus_compiles` now generates `--wasm=true` and `cargo check`s BOTH
+     the `rust` and (when emitted) `wasm` crates on the host target — no `wasm32`/`wasm-pack` needed
+     (`wasm-bindgen` is a normal dep; the shared `CARGO_TARGET_DIR` amortizes it). It caught, and the emitter
+     was fixed for, the named-alias-collection class at the array-element, map-value, optional-field, and
+     passthrough-alias positions (see ledger). Gated by `tests/corpus/wasm_nested_alias.cddl`.
+
+   - **⚠️ The gap this leaves — and the system to close it (this is the real wasm work).** The compile-gate
+     is an *oracle* ("does THIS fixture's wasm compile?"), but **nothing enumerates which fixtures are
+     needed.** Every wasm-ABI bug found so far lived in an un-covered cell of a finite cross-product and was
+     found by ad-hoc exploration — which does not converge (fix-one-per-stumble is not TDD). A green gate
+     today means "the hand-picked cells compile," *not* "wasm codegen is correct." The fix is a **systematic
+     wasm-ABI matrix** — the same idea as `cddl-matrix`'s feature enumeration, but on the axis the
+     serialization matrix deliberately does NOT individuate: the **wasm-ABI representation** of a type.
+     - **Type-shape axis** (`is_copy` × `directly_wasm_exposable` × has-a-wrapper-`RustStruct` — NOT a CBOR
+       distinction): primitive; named primitive alias (transparent `pub type`); named collection (wrapper
+       struct); passthrough alias → collection (transparent → `Vec`); passthrough alias → wrapper (transparent
+       → wrapper, e.g. `.cbor`/tagged); struct; c-style enum; optional; generic instance; extern.
+     - **Role axis** (already modelled by `cddl-matrix`'s `roles.toml`): array element, map key, map value,
+       struct field (mandatory + optional), newtype inner — each drives distinct accessor emission
+       (`get`/`add`/`insert`/`keys`, param vs return, by-value vs by-ref).
+     - **The projection:** a `project_wasm_matrix.ts` (sibling of `project_corpus.ts` / `project_robustness.ts`)
+       emits ONE minimal CDDL fixture per (type-shape × role) cell, runs each through the wasm compile-gate
+       (and later the round-trip harness for *behaviour*), and reports a per-cell verdict. This subsumes the
+       former "give `verify.ts` a wasm verdict axis" + "add more wasm fixtures" bullets: not "add a few
+       fixtures" but **enumerate the cross-product and gate every cell**, so coverage is by-construction and
+       new wasm-ABI bugs surface as specific red cells instead of production surprises. Until this exists,
+       treat every ad-hoc wasm fix as incurring a debt: it needs its matrix cell, or the class recurs.
+       **Concrete cell taxonomy + build plan (copy-paste CDDL per type-shape, the projection template,
+       gate wiring, landmines): `draft/handoff-wasm-abi-matrix.md`.**
+   - **First red cells for that matrix (known-failing — do NOT ad-hoc fix; fix as matrix targets):**
+     (a) passthrough alias to a **map** typedef at a wasm map value/element (`m2 = amap; amap = {…}`) →
+     dangling `MapU64To…` type ref (`E0425`); (b) a named collection **wrapper** used as a map **key** →
+     `Borrow` mismatch (`E0277`). Both pre-existing (byte-identical at HEAD); see the ledger.
    - **Scope note:** the host `cargo check` catches type/signature errors cheaply; `#[wasm_bindgen]`
      macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
      `run_test` fixtures + item 7's `--package-json` run.
