@@ -1,0 +1,3 @@
+; cell: cenum x map-value
+fe = 0 / 1 / 2
+holder = { * uint => fe }

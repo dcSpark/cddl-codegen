@@ -1,0 +1,4 @@
+; cell: passthrumap x struct-field
+mp = { * uint => text }
+ptm = mp
+holder = [field0: ptm]

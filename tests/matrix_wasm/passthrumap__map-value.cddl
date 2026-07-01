@@ -1,0 +1,4 @@
+; cell: passthrumap x map-value
+mp = { * uint => text }
+ptm = mp
+holder = { * uint => ptm }

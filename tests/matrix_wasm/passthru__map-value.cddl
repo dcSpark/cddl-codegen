@@ -1,0 +1,4 @@
+; cell: passthru x map-value
+nums = [* uint]
+pt = nums
+holder = { * uint => pt }

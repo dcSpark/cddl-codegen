@@ -1,0 +1,4 @@
+; cell: passthrumap x newtype-inner
+mp = { * uint => text }
+ptm = mp
+holder = ptm ; @newtype

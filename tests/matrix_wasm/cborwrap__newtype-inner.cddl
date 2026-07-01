@@ -1,0 +1,4 @@
+; cell: cborwrap x newtype-inner
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = fb ; @newtype

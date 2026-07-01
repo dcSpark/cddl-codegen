@@ -1,0 +1,3 @@
+; cell: coll x map-key
+nums = [* uint]
+holder = { * nums => uint }

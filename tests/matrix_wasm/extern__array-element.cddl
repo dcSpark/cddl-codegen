@@ -1,0 +1,3 @@
+; cell: extern x array-element
+ext = _CDDL_CODEGEN_EXTERN_TYPE_
+holder = [* ext]

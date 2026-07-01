@@ -227,6 +227,36 @@ from a degenerate example.**
   (`Vec<u64>: Borrow<&Vec<u64>>`, `E0277`). Both need the wasm map key/value typedef-resolution path, distinct
   from the `directly_wasm_exposable` predicate. Good future clear-win candidates now that the wasm gate exists.
 
+## wasm-ABI matrix (systematic wasm-boundary coverage — `project_wasm_matrix.ts`)
+
+The systematic answer to "we find wasm bugs by luck": `cddl-matrix/project_wasm_matrix.ts` enumerates
+{wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` (one minimal fixture per cell),
+and `integration_tests::wasm_matrix_compiles` generates each `--wasm=true` + `cargo check`s the wasm crate.
+Coverage is now by-construction: a new wasm-ABI boundary bug surfaces as a specific red cell, not a
+production surprise. Standing up the enumeration (69 cells at first cut, 60 green) reconfirmed the two
+open reds above **and found two new ones** the ad-hoc hunt had missed:
+
+- **Red cells (compile-fail), skip-listed in the gate — TDD targets, take off `SKIP` as each is fixed:**
+  - **known-red #1 — passthrough alias → map typedef (`E0425`).** Broader than previously recorded:
+    `passthrumap` (`mp = { * uint => text }; ptm = mp`) fails as `array-element`, `map-value`, `map-key`,
+    `struct-field`, AND `struct-field-opt` (only `newtype-inner` compiles) — one root cause (the map/table
+    typedef isn't emitted/named on the passthrough path), so fixing it greens all five together.
+  - **known-red #2 — collection wrapper as a map KEY (`E0277`).** `coll__map-key`
+    (`nums = [* uint]` at `{ * nums => uint }`): `Vec<u64>: Borrow<&Vec<u64>>`.
+  - **NEW red — c-style enum as a map KEY (`E0119`).** `cenum__map-key` (`fe = 0/1/2` at `{ * fe => uint }`)
+    emits conflicting `Ord`/`Eq`/`PartialEq`/`PartialOrd` impls on the RUST crate: the enum is already
+    `#[derive(..Eq, Ord..)]` and the map-key path derives them again. Compiles fine as array-element /
+    map-value — the cell individuates the map-key trigger exactly.
+  - **NEW red — `@newtype` over a c-style enum (`E0308`).** `cenum__newtype-inner` (`holder = fe ; @newtype`):
+    mismatched types in the generated wrapper body. Newtype over primitive / collection / struct / cbor /
+    generic all compile — the enum inner is the trigger.
+- **The wrapper-vs-transparent distinction the serialization matrix collapses is a first-class axis here:**
+  `coll` (Array wrapper) vs `collmap` (Table wrapper) vs `passthru`/`passthrumap` (transparent `pub type`)
+  vs `struct` (Record) vs `cborwrap` (transparent-to-wrapper) vs `cenum` (Copy re-export) vs `generic`
+  (monomorphized wrapper) — each a distinct `is_copy × directly_wasm_exposable × has-a-RustStruct` cell.
+  Depth/redundant shapes (`chain` 2-hop passthru, `cborwrap2` chained, `extern`) are kept as one
+  representative role each (their accessors differ from the 1-hop shape only by type name).
+
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
 `~/.cargo/bin/cddl`), and cddl-codegen builds from this repo. The compile-gate reuses

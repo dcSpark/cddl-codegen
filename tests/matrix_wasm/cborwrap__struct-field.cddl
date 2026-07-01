@@ -1,0 +1,4 @@
+; cell: cborwrap x struct-field
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = [field0: fb]

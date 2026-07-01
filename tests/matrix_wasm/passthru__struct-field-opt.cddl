@@ -1,0 +1,4 @@
+; cell: passthru x struct-field-opt
+nums = [* uint]
+pt = nums
+holder = [pre: uint, ? field0: pt]

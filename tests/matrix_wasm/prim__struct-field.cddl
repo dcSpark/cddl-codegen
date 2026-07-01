@@ -1,0 +1,2 @@
+; cell: prim x struct-field
+holder = [field0: uint]

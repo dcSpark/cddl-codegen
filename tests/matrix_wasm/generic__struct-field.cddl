@@ -1,0 +1,4 @@
+; cell: generic x struct-field
+cont<T0> = [value: T0]
+uc = cont<uint>
+holder = [field0: uc]

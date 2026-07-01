@@ -351,6 +351,133 @@ fn feature_corpus_compiles() {
     );
 }
 
+/// The wasm-ABI matrix compile-gate. `cddl-matrix/project_wasm_matrix.ts` enumerates the cross-product
+/// {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` — one minimal fixture per
+/// cell. This generates each `--wasm=true` and `cargo check`s the wasm crate (which pulls the rust crate
+/// in as a path dep, so rust-side errors surface here too). It's the *coverage* counterpart to
+/// `feature_corpus_compiles`'s oracle: the CBOR-feature corpus doesn't individuate a type's wasm-ABI
+/// representation (`is_copy` × `directly_wasm_exposable` × has-a-wrapper-`RustStruct`), so a whole class
+/// of boundary bugs (wrong accessor type, bad `.into()`/`.clone()`/by-ref slips, dangling map typedefs)
+/// was invisible. Here an un-covered boundary bug shows up as a specific red cell instead of by luck.
+///
+/// `SKIP` holds the deliberately-red cells (pre-existing gaps tracked in `cddl-matrix/ROADMAP.md`, plus
+/// `extern`, which references a user-supplied type and can't compile standalone). A fix lands by taking
+/// its cell off `SKIP` — and the guard below fails if a `SKIP` cell starts compiling, so the list can't
+/// silently rot. A cell that's red but NOT in `SKIP` fails the test: it's a new wasm-ABI bug to fix or
+/// (deliberately, with a ledger entry) skip-list. `cargo check`s only the wasm crate (single default
+/// profile) — lighter than `feature_corpus_compiles`; upgrade to a round-trip oracle once that harness
+/// lands (see `tests/TESTING_ROADMAP.md`).
+#[test]
+fn wasm_matrix_compiles() {
+    use std::str::FromStr;
+
+    // Deliberately-red cells (`<shape>__<role>`), each tracked in cddl-matrix/ROADMAP.md.
+    const SKIP: &[&str] = &[
+        // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
+        // is integration-tested in tests/extern-deps. Permanent skip (never compiles here).
+        "extern__array-element",
+        // known-red #1 — a transparent alias to a MAP typedef emits a dangling `MapU64To…` wasm type
+        // reference (E0425). Fails in every role but newtype-inner. One root cause (map/table typedef
+        // not emitted/named on the passthrough path); fixing it greens all five together.
+        "passthrumap__array-element",
+        "passthrumap__map-key",
+        "passthrumap__map-value",
+        "passthrumap__struct-field",
+        "passthrumap__struct-field-opt",
+        // known-red #2 — a collection WRAPPER used as a map KEY: `Vec<u64>: Borrow<&Vec<u64>>` (E0277).
+        "coll__map-key",
+        // new red — a c-style enum used as a map KEY emits duplicate Ord/Eq derives (E0119): the enum
+        // is already `#[derive(..Eq, Ord..)]` and the map-key path adds them again.
+        "cenum__map-key",
+        // new red — `@newtype` over a c-style enum: mismatched types in the generated wrapper (E0308).
+        "cenum__newtype-inner",
+    ];
+
+    let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    assert!(
+        !entries.is_empty(),
+        "no wasm-matrix fixtures in {dir:?} (run `bun run project_wasm_matrix.ts`)"
+    );
+
+    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
+    let root = std::env::temp_dir().join("cddl_codegen_wasm_matrix");
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![]; // red cells NOT on SKIP — real bugs
+    let mut resurfaced = vec![]; // SKIP cells that now compile — remove them from SKIP
+    for input in &entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        let skipped = SKIP.contains(&stem);
+        let out = root.join(stem);
+        let gen_out = std::process::Command::new("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=true")
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            // A generation failure is also "red". Only a NON-skipped one is a test failure.
+            if !skipped {
+                failures.push(format!(
+                    "{stem}: generation failed\n{}",
+                    String::from_utf8_lossy(&gen_out.stderr)
+                ));
+            }
+            continue;
+        }
+        let wasm_dir = out.join("wasm");
+        if !wasm_dir.exists() {
+            // Every cell wraps its shape in a composite `holder`, so a wasm crate is always expected.
+            // Treat a missing one symmetrically: for a skip cell it means the red is gone ("resurfaced");
+            // for a non-skip cell it's a real coverage regression (the cell silently stops being gated),
+            // not a pass — fail loudly rather than count it green.
+            if skipped {
+                resurfaced.push(format!("{stem} (emits no wasm crate)"));
+            } else {
+                failures.push(format!(
+                    "{stem}: generated no wasm crate (expected a wasm wrapper for every cell — the cell \
+                     is no longer being compile-gated)"
+                ));
+            }
+            continue;
+        }
+        let check = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(&wasm_dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        match (skipped, check.status.success()) {
+            (false, false) => failures.push(format!(
+                "{stem}: cargo check failed (new wasm-ABI red cell — fix the emitter or, deliberately, \
+                 add to SKIP + cddl-matrix/ROADMAP.md)\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            )),
+            (true, true) => resurfaced.push(stem.to_string()),
+            _ => {} // (false,true)=green as expected; (true,false)=red as expected
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        resurfaced.is_empty(),
+        "these SKIP-listed wasm-matrix cells now compile — remove them from SKIP (a fix landed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "wasm-matrix cells failed to compile:\n\n{}",
+        failures.join("\n\n")
+    );
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;

@@ -1,0 +1,3 @@
+; cell: palias x map-value
+pa = uint
+holder = { * uint => pa }

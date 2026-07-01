@@ -1,0 +1,3 @@
+; cell: coll x struct-field-opt
+nums = [* uint]
+holder = [pre: uint, ? field0: nums]

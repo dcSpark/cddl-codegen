@@ -1,0 +1,3 @@
+; cell: collmap x newtype-inner
+mp = { * uint => text }
+holder = mp ; @newtype

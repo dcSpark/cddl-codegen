@@ -1,0 +1,3 @@
+; cell: struct x struct-field-opt
+st = [a: uint, b: text]
+holder = [pre: uint, ? field0: st]

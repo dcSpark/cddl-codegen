@@ -1,0 +1,3 @@
+; cell: talias x struct-field-opt
+ta = text
+holder = [pre: uint, ? field0: ta]

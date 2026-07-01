@@ -1,0 +1,2 @@
+; cell: prim x struct-field-opt
+holder = [pre: uint, ? field0: uint]

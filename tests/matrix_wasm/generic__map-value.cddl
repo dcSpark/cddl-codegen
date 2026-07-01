@@ -1,0 +1,4 @@
+; cell: generic x map-value
+cont<T0> = [value: T0]
+uc = cont<uint>
+holder = { * uint => uc }

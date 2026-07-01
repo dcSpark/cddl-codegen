@@ -1,0 +1,3 @@
+; cell: struct x array-element
+st = [a: uint, b: text]
+holder = [* st]
