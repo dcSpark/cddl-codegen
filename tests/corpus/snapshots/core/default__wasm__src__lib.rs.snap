@@ -1856,6 +1856,76 @@ impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct NintGeNewtype(cddl_lib::NintGeNewtype);
+
+#[wasm_bindgen]
+impl NintGeNewtype {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NintGeNewtype, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::NintGeNewtype> for NintGeNewtype {
+    fn from(native: cddl_lib::NintGeNewtype) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NintGeNewtype> for cddl_lib::NintGeNewtype {
+    fn from(wasm: NintGeNewtype) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NintGeNewtype> for NintGeNewtype {
+    fn as_ref(&self) -> &cddl_lib::NintGeNewtype {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NintLeNewtype(cddl_lib::NintLeNewtype);
+
+#[wasm_bindgen]
+impl NintLeNewtype {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NintLeNewtype, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::NintLeNewtype> for NintLeNewtype {
+    fn from(native: cddl_lib::NintLeNewtype) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NintLeNewtype> for cddl_lib::NintLeNewtype {
+    fn from(wasm: NintLeNewtype) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NintLeNewtype> for NintLeNewtype {
+    fn as_ref(&self) -> &cddl_lib::NintLeNewtype {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct NoAlias(cddl_lib::NoAlias);
 
 #[wasm_bindgen]

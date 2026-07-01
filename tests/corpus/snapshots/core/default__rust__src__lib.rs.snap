@@ -579,6 +579,60 @@ impl Default for MapWithDefaults {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct NintGeNewtype(u64);
+
+impl NintGeNewtype {
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner > 4 {
+            return Err(DeserializeError::new(
+                "NintGeNewtype",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: None,
+                    max: Some(4),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for NintGeNewtype {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        NintGeNewtype::new(inner)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct NintLeNewtype(u64);
+
+impl NintLeNewtype {
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner < 4 {
+            return Err(DeserializeError::new(
+                "NintLeNewtype",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(4),
+                    max: None,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for NintLeNewtype {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        NintLeNewtype::new(inner)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct NoAlias {
     pub no_alias_u32: u32,
@@ -1186,6 +1240,18 @@ impl From<BTreeMap<u64, u64>> for WrapperTable {
 
 impl From<WrapperTable> for BTreeMap<u64, u64> {
     fn from(wrapper: WrapperTable) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintGeNewtype> for u64 {
+    fn from(wrapper: NintGeNewtype) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintLeNewtype> for u64 {
+    fn from(wrapper: NintLeNewtype) -> Self {
         wrapper.0
     }
 }

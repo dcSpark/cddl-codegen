@@ -226,6 +226,9 @@ bounds = [
     b: { * uint => uint } .le 3
 ]
 
+nint_ge_newtype = nint .ge -5 ; @newtype
+nint_le_newtype = nint .le -5 ; @newtype
+
 bounds_type_choice = bytes .size (0..64)
                    / text .size (0..64)
 

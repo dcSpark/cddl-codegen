@@ -174,12 +174,14 @@ from a degenerate example.**
   **Fixed** by swapping the endpoints in `nint_bounds_to_u64` (`(min,max) → (|max+1|,|min+1|)`); regression is
   a construct-reject in `tests/core/tests.rs::bounds()` (executes in `core_no_wasm`). Originally surfaced by
   the **c6 `--emit-tests`** work, which skipped `nint` reject targets for this reason.
-- **Standalone bounded-`nint` newtype does not compile** (sibling of the above, but a *different* code path —
-  does NOT go through `nint_bounds_to_u64`, so it remains broken). `a = nint .ge -5` generates `A(u64)` whose
-  `new()` and deserializer both emit `if inner < -5` with `inner: u64` → `error[E0600]: cannot apply unary
-  operator - to type u64`; the crate doesn't compile. The Wrapper (`@newtype`-style) bounds path applies the
-  raw signed bound to the u64 magnitude without the nint transform. Not caught by any fixture (json's
-  `nint_wrapper` is unbounded). Good clear-win candidate.
+- **✅ FIXED — Standalone bounded-`nint` newtype did not compile** (sibling of the above, a *different* code
+  path). `a = nint .ge -5 ; @newtype` generated `A(u64)` whose `new()`/deserialize both emitted `if inner < -5`
+  with `inner: u64` → `error[E0600]: cannot apply unary operator - to type u64`; the crate didn't compile. The
+  Wrapper (`@newtype`) bounds path is hand-rolled (not `bounds_check_if_block`) and applied the raw signed
+  bound to the u64 magnitude without the nint transform. **Fixed** by applying `nint_bounds_to_u64` to the
+  wrapper's `min_max` when the wrapped type is `N64` (`generate_wrapper_struct`); `new()` and deserialize share
+  one check block so they stay in agreement. Regression: bounded-nint newtypes in `tests/core` with
+  construct-reject + round-trip assertions (`bounds()`, runs in `core_no_wasm`).
 - **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
   bounds don't reach the field bounds check as `(Some,Some)`.
