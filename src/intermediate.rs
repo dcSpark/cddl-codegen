@@ -1914,7 +1914,18 @@ impl ConceptualRustType {
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
         match self {
-            Self::Rust(_ident) => expr.to_owned(),
+            // A wrapper struct (`Rust` ident, NOT directly exposable) is exposed by-ref and the map-key
+            // `get` caller appends `.as_ref()` to reach `&native`, so return `expr` unchanged. A
+            // *directly-exposable* `Rust` ident — a Copy c-style enum re-exported by value — is passed
+            // BY VALUE and reaches the no-`.as_ref()` get branch, so it needs an explicit `&` for
+            // `BTreeMap::get` (like a primitive key), else `self.0.get(key)` mismatches `&Q` (E0308).
+            Self::Rust(_ident) => {
+                if self.directly_wasm_exposable(types) {
+                    format!("&{expr}")
+                } else {
+                    expr.to_owned()
+                }
+            }
             // A named alias is exposed to wasm AS its wrapper (for_wasm_member keeps the alias name),
             // and whether it's a wrapper or a transparent `pub type` is a struct-table fact, not a
             // shape fact (see directly_wasm_exposable / to_wasm_boundary). A wrapper alias
