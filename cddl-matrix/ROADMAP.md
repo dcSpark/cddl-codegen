@@ -177,37 +177,22 @@ from a degenerate example.**
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
 The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
-"wasm-ABI matrix". This section is the remaining backlog: the open red cells skip-listed in
-`integration_tests::wasm_matrix_compiles`, and the durable fix that would clear the largest group. Each
-open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In priority order:
+"wasm-ABI matrix". Every enumerated cell now compiles — the only entry left on
+`integration_tests::wasm_matrix_compiles`' `SKIP` is the permanent `extern__array-element` (it references
+a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
+cell reappearing is a **regression to fix**, not a backlog item. The remaining frontiers are extending the
+grid and the behavioural compile→round-trip upgrade (both below).
 
-- **`passthrumap` — passthrough alias to a map typedef (`E0425`) — wants the predicate unification.**
-  `mp = { * uint => text }; ptm = mp` fails as `array-element`, `map-value`, `map-key`, `struct-field`,
-  `struct-field-opt` (only `newtype-inner` compiles): the wasm alias emits `pub type Ptm = MapU64ToText`,
-  but the named map's wasm wrapper is `Mp` (from the Table rule ident) — `MapU64ToText`
-  (`name_for_wasm_map`) is only generated for *inline* anonymous maps, which the alias path never hits.
-  Ruled-out dead-end: making the alias base_type a `Rust(Mp)` reference (`parsing.rs` `None` branch) greens
-  array-element/map-value but breaks the rest — a named map has a *dual representation* (a transparent
-  `pub type Mp = BTreeMap` **and** a wrapper struct), and `Rust(Mp)` isn't interchangeable with an inlined
-  `Map` in the newtype/struct/key serializers (regresses `collmap__newtype-inner` → `E0599`). A single
-  shared base_type can't serve both crates (arrays only work because they're transparent on *both*).
-  - **Durable fix — the `has_wasm_wrapper(ident)` predicate unification.** The wrapper-vs-transparent fact
-    is a *struct-table* property, not a `ConceptualRustType` shape (a named collection `nums = [* uint]` is
-    a wrapper; a passthrough `arr2 = arr` is a transparent `pub type` — same IR shape). Today naming,
-    boundary conversion, and exposability each decide it separately, and their disagreements have been the
-    recurring source of wasm boundary bugs. Route them all through one `has_wasm_wrapper(ident)` source of
-    truth; that clears `passthrumap` and forecloses the class. (Narrower alternative: a wasm-only
-    alias-emission path resolving a `Map` base_type to its named Table wrapper.)
-  - **Where the name is lost (the exact site).** `ptm = mp` resolves `mp` via `new_type` to
-    `Alias(mp, Map)`, but `parsing.rs`'s plain-typename rule branch (the `None` control-op arm) then
-    *strips* the alias (`concrete_type.conceptual_type = *ty`) so `ptm`'s stored `base_type` is a bare
-    `Map` — the link to `mp` is gone before the emitters run. Rust is fine (`for_rust_member(Map)` →
-    `BTreeMap<..>`, transparent, correct); wasm is broken (`for_wasm_member(Map)` → the inline-only
-    `MapU64ToText`). Narrow-fix shape (additive, base_type untouched so serialization is unaffected):
-    at the strip site capture the target ident when `has_wasm_wrapper(target)`, store it on `AliasInfo`,
-    and have the wasm alias emission prefer it (`pub type Ptm = Mp`). Must verify **all** passthrumap
-    roles + both profiles — the `Rust(Mp)` dead-end greened only array-element/map-value, so per-role
-    checking is mandatory (the wasm *usage* of `ptm` in each role must still resolve).
+**Wrapper-vs-transparent — route through one predicate.** The recurring wasm-boundary bug source was
+naming, boundary conversion, and exposability each *separately* deciding whether an ident is exposed as a
+`#[wasm_bindgen]` wrapper struct or a transparent `pub type` — a *struct-table* property, not a
+`ConceptualRustType` shape (a named collection `nums = [* uint]` is a wrapper; a passthrough `arr2 = arr`
+is transparent — same IR shape). The single source of truth is `IntermediateTypes::has_wasm_wrapper(ident)`;
+new decision sites should consult it instead of re-deriving. Gotcha it encodes: an exposable named array
+has a wrapper struct *and* is used transparently as `Vec<T>`, so a passthrough-alias emission must gate on
+`has_wasm_wrapper(target) && !base_type.directly_wasm_exposable()` (maps are never directly exposable;
+exposable arrays are — that split is what keeps `passthrumap` pointing at the wrapper while `passthru`
+stays a transparent `Vec`).
 
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*

@@ -73,13 +73,13 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      (`wasm_matrix_compiles`, an enumerated `{type-shape × role}` grid) both generate `--wasm=true` and
      `cargo check` the wasm crate on the host target (no `wasm32`/`wasm-pack`; a shared `CARGO_TARGET_DIR`
      amortizes deps). Coverage is by-construction over the enumerated grid; system doc: `tests/README.md`
-     § "wasm-ABI matrix". The frontier is now the open cells + behaviour.
-   - **Open red cells = the TDD backlog** (skip-listed in `wasm_matrix_compiles`, root-caused in
-     `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work"; each with its ruled-out dead-ends). Close
-     one by taking it off `SKIP` → fixing the emitter → green. Remaining: **`passthrumap`** (`E0425`) — wants
-     the durable **`has_wasm_wrapper(ident)` predicate unification**: one source of truth for the
-     wrapper-vs-transparent fact, which naming / boundary / exposability currently each decide separately
-     (their disagreement is the recurring wasm-boundary bug class).
+     § "wasm-ABI matrix". The frontier is now behavioural (round-trip) coverage, not the compile backlog.
+   - **Compile backlog: cleared.** Every enumerated cell compiles; the only `SKIP` left in
+     `wasm_matrix_compiles` is the permanent `extern__array-element` (user-supplied type, can't compile
+     standalone). A red cell reappearing is a regression to fix, not a backlog item. The wrapper-vs-transparent
+     fact — the recurring wasm-boundary bug class — now has one source of truth,
+     `IntermediateTypes::has_wasm_wrapper(ident)`; route new naming / boundary / exposability decisions
+     through it (see `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work").
    - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
      it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
    - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
