@@ -5,17 +5,23 @@ mod tests {
     use serialization::Deserialize;
 
     fn deser_test_orig<T: Deserialize + Serialize>(orig: &T) {
-        print_cbor_types("orig (original enc)", &orig.to_cbor_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_cbor_bytes()))).unwrap();
+        let orig_bytes = orig.to_cbor_bytes();
+        print_cbor_types("orig (original enc)", &orig_bytes);
+        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", &deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
+        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
     fn deser_test_canonical<T: Deserialize + Serialize>(orig: &T) {
-        print_cbor_types("orig (canonical)", &orig.to_canonical_cbor_bytes());
-        let deser = T::deserialize(&mut Deserializer::from(std::io::Cursor::new(orig.to_canonical_cbor_bytes()))).unwrap();
+        let orig_bytes = orig.to_canonical_cbor_bytes();
+        print_cbor_types("orig (canonical)", &orig_bytes);
+        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", &deser.to_canonical_cbor_bytes());
         assert_eq!(orig.to_canonical_cbor_bytes(), deser.to_canonical_cbor_bytes());
+        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
     #[test]
@@ -515,5 +521,32 @@ mod tests {
                 assert_eq!(canonical_bytes, irregular.to_canonical_cbor_bytes());
             }
         }
+    }
+
+    #[test]
+    fn mixed_len_keys_ordering_rule() {
+        // Pins WHICH canonical map-key ordering rule --canonical-form implements: length-first,
+        // then bytewise (RFC 7049 §3.9 "canonical CBOR"), NOT RFC 8949 §4.2.1 bytewise-
+        // lexicographic. These keys are the discriminating pair: "a" = [0x61, 0x61] (2 bytes),
+        // 256 = [0x19, 0x01, 0x00] (3 bytes) — length-first puts "a" first, bytewise would put
+        // 256 first (0x19 < 0x61). Every other fixture's key set orders identically under both
+        // rules, so this is the only vector that fails if the rule is swapped. Expected bytes are
+        // raw hex literals on purpose (independent of the cbor_event helpers).
+        let x = MixedLenKeys::new(1, 2);
+        let canonical_bytes = vec![
+            0xA2, // map(2)
+            0x61, 0x61, // "a"
+            0x02, // a = 2
+            0x19, 0x01, 0x00, // 256
+            0x01, // key_256 = 1
+        ];
+        assert_eq!(x.to_canonical_cbor_bytes(), canonical_bytes);
+        deser_test_canonical(&x);
+        deser_test_orig(&x);
+        // decode from the canonical bytes and read the fields back, so a decoder that swaps the
+        // two same-typed values doesn't pass on re-encode symmetry alone
+        let decoded = MixedLenKeys::from_cbor_bytes(&canonical_bytes).unwrap();
+        assert_eq!(decoded.key_256, 1);
+        assert_eq!(decoded.a, 2);
     }
 }
