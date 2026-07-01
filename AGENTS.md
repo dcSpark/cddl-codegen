@@ -79,6 +79,8 @@ Entries in both projects should generally avoid "we tried X, then we did Y", and
 
 Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so auditing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped.
 
+Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
+
 Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.)
 
 ## Testing & further docs
