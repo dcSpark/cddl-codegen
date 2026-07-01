@@ -427,7 +427,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok (out of profile: feature profile RFC9682 is newer than cddl-codegen target RFC8610)",
+        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok (out of profile: feature profile RFC9682 is newer than cddl-codegen target RFC8610)",
         "id": "type2.tag_head_type",
         "status": "out_of_profile"
       },
@@ -447,7 +447,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
         "id": "value.bytes",
         "status": "unsupported"
       },
@@ -487,6 +487,11 @@
         "status": "unsupported"
       },
       {
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
+        "id": "contain.array-element.type2.tag",
+        "status": "supported"
+      },
+      {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
         "id": "contain.array-element.type2.unwrap",
         "status": "unsupported"
@@ -510,6 +515,11 @@
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.cbor-payload.type.choice",
         "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.cbor-payload.type2.array",
+        "status": "unsupported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
@@ -547,9 +557,14 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=fail",
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
         "id": "contain.map-key.type2.array",
         "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
+        "id": "contain.map-key.type2.tag",
+        "status": "supported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
@@ -559,6 +574,11 @@
       {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
         "id": "contain.map-value.type2.array",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.map-value.type2.map",
         "status": "unsupported"
       },
       {
@@ -593,8 +613,18 @@
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
+        "id": "contain.tag-content.type2.array",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok",
         "id": "contain.tag-content.type2.map",
         "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "id": "contain.tag-content.type2.tag",
+        "status": "unsupported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
@@ -617,37 +647,37 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b32",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b45",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b64c",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b64c-sloppy",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b64u",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.b64u-sloppy",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.base10",
         "status": "unsupported"
       },
@@ -667,7 +697,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=fail",
+        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=fail",
         "id": "ctl.cborseq",
         "status": "unsupported"
       },
@@ -702,32 +732,32 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.h32",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.hex",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.hexlc",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.hexuc",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.join",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.json",
         "status": "unsupported"
       },
@@ -757,7 +787,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.printf",
         "status": "unsupported"
       },

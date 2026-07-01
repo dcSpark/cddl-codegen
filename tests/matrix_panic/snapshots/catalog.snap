@@ -10,12 +10,25 @@ expression: catalog
 ctl.abnf                           PANIC
 ctl.abnfb                          PANIC
 ctl.and                            PANIC
+ctl.b32                            PANIC
+ctl.b45                            PANIC
+ctl.b64c-sloppy                    PANIC
+ctl.b64c                           PANIC
+ctl.b64u-sloppy                    PANIC
+ctl.b64u                           PANIC
+ctl.base10                         PANIC
 ctl.bits                           PANIC
 ctl.cat                            PANIC
-ctl.cborseq                        error (graceful)
 ctl.det                            PANIC
 ctl.feature                        PANIC
+ctl.h32                            PANIC
+ctl.hex                            PANIC
+ctl.hexlc                          PANIC
+ctl.hexuc                          PANIC
+ctl.join                           PANIC
+ctl.json                           PANIC
 ctl.plus                           PANIC
+ctl.printf                         PANIC
 ctl.regexp                         PANIC
 ctl.within                         PANIC
 genericparm.group                  PANIC
@@ -39,6 +52,5 @@ type2.major                        PANIC
 type2.major7                       PANIC
 type2.unwrap                       PANIC
 type2.value                        PANIC
-value.bytes                        error (graceful)
 value.number                       PANIC
 value.text                         PANIC

@@ -204,7 +204,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `type2.tag_head_type` | ➖ | Tagged data item, type-valued tag number (#6.<T>) | out of profile — cddl-codegen rejected at parse/lex (exit 1) |
+| `type2.tag_head_type` | ➖ | Tagged data item, type-valued tag number (#6.<T>) | out of profile — cddl-codegen panic (exit 101) |
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
@@ -240,35 +240,35 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `.abnf` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.abnfb` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.and` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b64c-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b64u` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b64u-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.base10` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b64c-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b64u` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b64u-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.base10` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.bits` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.cat` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.cbor` | ✅ | `cbor_in_bytes.cddl` |
-| `.cborseq` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.cborseq` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.default` | ✅ | `default_value.cddl` |
 | `.det` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.eq` | ✅ | `comparison_controls.cddl` |
 | `.feature` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.ge` | ✅ | `comparison_controls.cddl` |
 | `.gt` | ✅ | `comparison_controls.cddl` |
-| `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.hexuc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.hexuc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.le` | ✅ | `sized_int.cddl` |
 | `.lt` | ✅ | `comparison_controls.cddl` |
 | `.ne` | ✅ | `comparison_controls.cddl` |
 | `.oid` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.plus` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.regexp` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.sdnv` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.sdnvseq` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
