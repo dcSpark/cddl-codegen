@@ -201,6 +201,17 @@ open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In pri
   regresses them; doing it only in option-wrapping positions requires a **position-dependent dual
   representation** (transparent `Option<u64>` in flat positions, wrapper in option-wrapping ones), i.e. the
   same wrapper-vs-transparent seam called out under `passthrumap` below and in `src/intermediate.rs`.
+  - **Upstream (why we must fix this ourselves; what to watch).** There is **no** wasm-bindgen tracker for
+    the nested-`Option<Option<primitive>>` case — one `Option` layer is a deliberate ABI design limit
+    (`Option<T>` is representable only when `T: OptionIntoWasmAbi`, and `Option<_>` isn't), not a filed bug,
+    so there is nothing to wait on. The eventual built-in path is the in-tree JS-value-backed `JsOption<T>`
+    (nestable) once it accepts non-handle types — wasm-bindgen/wasm-bindgen#5167 (open PR) — and the ABI
+    trait-hierarchy cleanup wasm-bindgen/wasm-bindgen#4720 (open PR). The wrapper fix's requirement —
+    `Option<wasm-struct>` as a **return** value — is supported today (maintainer-confirmed; the green
+    `struct__struct-field-opt` cell returns `Option<St>`), and the known `Option<struct>` footgun is
+    **arguments-only** (owned `Option<MyStruct>` args zero the JS pointer): tracked by
+    wasm-bindgen/wasm-bindgen#2370 + fix PR #4873 (both open, unreleased) — watch these only if we ever
+    take a nullable wrapper as a by-value wasm *argument*.
 
 - **`passthrumap` — passthrough alias to a map typedef (`E0425`) — wants the predicate unification.**
   `mp = { * uint => text }; ptm = mp` fails as `array-element`, `map-value`, `map-key`, `struct-field`,
