@@ -25,8 +25,8 @@ green. The Tier-1 items below are the missing pieces of that oracle:
 
 - **Correctness** — the round-trip harness (item 1): turns "output didn't change" into "output is right."
 - **Coverage** — a wasm compile-gate (item 2): a whole output mode no systematic gate compiles today.
-- **Fail-loud** — make silent-invalid-output (`rustfmt` swallow) a hard error, so malformed emission
-  can never again pass as supported.
+- **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
+  emission can never again pass as supported (item 7).
 
 ## Recommended next steps, in priority order
 
@@ -122,11 +122,13 @@ green. The Tier-1 items below are the missing pieces of that oracle:
    expression position → non-compiling crate — is **fixed** (qualified-path `<T as
    schemars::JsonSchema>::` emission in `generate_wrapper_struct`) and gated by
    `tests/corpus/newtype_generic.cddl` under the `json` profile of `feature_corpus_compiles`.
-   **Still open:** (a) make a rustfmt parse/internal failure **fatal** (propagate `Err` from
-   `rustfmt_generated_string`) — the turbofish shipped green at exit 0 *only* because rustfmt parse
-   errors are swallowed, so making it fatal kills the whole silent-invalid-output class (see also item
-   6 and the north star's "fail-loud"); (b) the full `--package-json` run (json-gen `cargo run` → both
-   scripts → wasm-pack). `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
+   The silent-invalid-output hole that let the turbofish ship green — `rustfmt_generated_string`
+   swallowing a parse/internal failure and returning the unformatted source at exit 0 — is now **fixed
+   too** (fail-loud: propagates `Err`; `Some(3)` "unformatted-but-valid" still `Ok`), so any future
+   non-parsing emission is a hard generator error, guarded by
+   `snapshot_tests::rustfmt_rejects_unparseable_source` (the north star's "fail-loud" pillar).
+   **Still open:** the full `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack).
+   `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
 
 8. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine

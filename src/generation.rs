@@ -8556,18 +8556,28 @@ pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
     match String::from_utf8(output) {
         Ok(bindings) => match status.code() {
             Some(0) => Ok(Cow::Owned(bindings)),
-            Some(2) => {
-                println!("Rustfmt parsing errors.");
-                Ok(Cow::Owned(source))
-            }
+            // exit 2 = rustfmt could not PARSE the input: the generator emitted invalid Rust. This
+            // used to be swallowed (return the unformatted source, exit 0), which is exactly how the
+            // JSON-schema turbofish bug shipped green. Fail loud instead — the rustfmt errors are on
+            // stderr (inherited) above; a parse failure is always a generator bug, never benign.
+            Some(2) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "rustfmt rejected the generated source as unparseable — this is a generator bug \
+                 (see the rustfmt errors above)",
+            )),
+            // exit 3 = formatted fine but gave up on SOME lines: the output is still valid Rust, so
+            // keep it (not a correctness problem, just cosmetic).
             Some(3) => {
                 println!("Rustfmt could not format some lines.");
                 Ok(Cow::Owned(bindings))
             }
-            _ => {
-                println!("Rustfmt internal error.");
-                Ok(Cow::Owned(source))
-            }
+            // any other exit (rustfmt internal error) — the turbofish bug actually hit this arm, not
+            // exit 2 — also indicates the generator fed rustfmt something it couldn't handle. Fatal.
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "rustfmt failed on the generated source (internal error) — likely invalid Rust \
+                 emitted; this is a generator bug (see the rustfmt output above)",
+            )),
         },
         _ => Ok(Cow::Owned(source)),
     }
