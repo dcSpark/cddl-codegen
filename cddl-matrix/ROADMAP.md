@@ -45,8 +45,13 @@ All tooling is **Bun/TypeScript, run manually** from `cddl-matrix/`; `lib.ts` ho
 the stable-JSON serializer. Oracle paths are env-overridable (`RUST_CDDL`, `RUBY_CDDL`; `CODEGEN_DIR`
 derives from the repo root).
 
-**Full verification suite (run all to confirm consistency — none wired into CI yet):**
-- `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay.
+**Full verification suite (run all to confirm consistency).** The fast, pure-`matrix.json` drift checks
+are **wired into CI** (`.github/workflows/build.yml` `matrix-drift` job runs `build_matrix.ts --check`,
+`project_robustness.ts --check`, `project_wasm_matrix.ts --check`, and `project_corpus.ts`); only the
+heavy `verify.ts` oracle probe is still run manually (see Remaining).
+- `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay. **(CI)**
+- `bun run project_wasm_matrix.ts --check` — drift gate for the wasm-ABI matrix fixtures
+  (`tests/matrix_wasm/*.cddl`); pure `SHAPES`/`ROLES` projection, no cargo/oracles. **(CI)**
 - `bun run verify.ts` — reconcile (bidirectional grammar/prelude/vendor lints) + probe **per-feature,
   per-cell, AND per-control-op** support, **compile-gated** (generate + `cargo check`); rewrites
   `annotations/cddl_codegen.toml`. Needs the three oracles (ruby `cddl`, rust `cddl` CLI, `cddl-codegen`) —
@@ -55,18 +60,17 @@ derives from the repo root).
 - `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
   (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role
-  floor), so it needs the cargo toolchain like `verify.ts`.
+  floor), so it needs the cargo toolchain like `verify.ts`. **(CI)**
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
 - `bun run project_robustness.ts` — projects the support verdict into the robustness-catalog fixtures
   (`tests/matrix_{supported,panic}/*.cddl`); `--check` is the drift gate. Pure
-  `matrix.json` read (no cargo/oracles), so it's a fast CI gate.
+  `matrix.json` read (no cargo/oracles), so it's a fast CI gate. **(CI)**
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 
 Remaining:
-- **Wire into CI** so the drift-check, snapshot guard, and reconciliation run automatically. `verify.ts`
-  needs the three oracle tools present; have the CI lane provide them or skip that probe gracefully when
-  absent.
+- **Wire `verify.ts` into CI** (the fast drift/snapshot gates already run — see above). `verify.ts` needs
+  the three oracle tools present; have the CI lane provide them or skip that probe gracefully when absent.
 - **Typecheck enforcement.** The scripts are strict-typed but nothing runs `tsc`. Add a `tsconfig.json` +
   `@types/bun` (dev-only) and a `tsc --noEmit` step beside the gate (needs an ambient `declare module
   "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is worth it; the
