@@ -384,8 +384,6 @@ fn wasm_matrix_compiles() {
         "passthrumap__map-value",
         "passthrumap__struct-field",
         "passthrumap__struct-field-opt",
-        // known-red #2 — a collection WRAPPER used as a map KEY: `Vec<u64>: Borrow<&Vec<u64>>` (E0277).
-        "coll__map-key",
         // new red — a c-style enum used as a map KEY emits duplicate Ord/Eq derives (E0119): the enum
         // is already `#[derive(..Eq, Ord..)]` and the map-key path adds them again.
         "cenum__map-key",
