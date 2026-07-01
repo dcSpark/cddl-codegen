@@ -22,6 +22,10 @@ Map literals also generate a type for them with `len() -> usize` and `insert(K, 
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.
 
+## Nullable / nested Options
+
+`wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
+
 ## JSON and large integers
 
 With `--json-serde-derives` a wasm type exposes two ways to produce JSON: `to_json()` returns a string (via `serde_json`) and `to_json_value()` returns a live JS value (via `serde-wasm-bindgen`). They agree for every value inside JavaScript's safe-integer range (`|n| ≤ 2^53 − 1`).

@@ -1,0 +1,31 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type MaybeUint = Option<u64>;
+
+pub type NullableMapValue = BTreeMap<u64, MaybeUint>;
+
+#[derive(Clone, Debug)]
+pub struct NullableOptionalField {
+    pub pre: u64,
+    pub field0: Option<MaybeUint>,
+}
+
+impl NullableOptionalField {
+    pub fn new(pre: u64) -> Self {
+        Self { pre, field0: None }
+    }
+}

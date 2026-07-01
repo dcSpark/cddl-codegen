@@ -1,0 +1,131 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for NullableOptionalField {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    1 + match &self.field0 {
+                        Some(x) => 1,
+                        None => 0,
+                    },
+                ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.pre,
+            fit_sz(
+                self.pre,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.pre_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        if let Some(field) = &self.field0 {
+            match field {
+                Some(x) => serializer.write_unsigned_integer_sz(
+                    *x,
+                    fit_sz(
+                        *x,
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.field0_encoding)
+                            .unwrap_or_default(),
+                    ),
+                ),
+                None => serializer.write_special(cbor_event::Special::Null),
+            }?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NullableOptionalField {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(1)?;
+        (|| -> Result<_, DeserializeError> {
+            let (pre, pre_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("pre"))?;
+            let (field0, field0_encoding) = if raw
+                .as_mut_ref()
+                .fill_buf()
+                .ok()
+                .and_then(|buf| buf.get(0))
+                .map(|byte: &u8| {
+                    vec![cbor_event::Type::UnsignedInteger, cbor_event::Type::Special]
+                        .contains(&cbor_event::Type::from(*byte))
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                        true => {
+                            read_len.read_elems(1)?;
+                            Result::<_, DeserializeError>::Ok(
+                                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?,
+                            )
+                            .map(|(x, field0_encoding)| (Some(x), field0_encoding))?
+                        }
+                        false => {
+                            read_len.read_elems(1)?;
+                            if raw.special()? != cbor_event::Special::Null {
+                                return Err(DeserializeFailure::ExpectedNull.into());
+                            }
+                            (None, None)
+                        }
+                    })
+                })()
+                .map_err(|e| e.annotate("field0"))
+                .map(|(field0, field0_encoding)| (Some(field0), field0_encoding))
+            } else {
+                Ok((None, None))
+            }?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NullableOptionalField {
+                pre,
+                field0,
+                encodings: Some(NullableOptionalFieldEncoding {
+                    len_encoding,
+                    pre_encoding,
+                    field0_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NullableOptionalField"))
+    }
+}

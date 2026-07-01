@@ -4509,6 +4509,25 @@ fn codegen_table_type(
         .ret("usize")
         .arg_ref_self()
         .line("self.0.len()");
+    // A nullable value (`* uint => (T / null)` -> `Option<T>`) would make get/insert return
+    // `Option<Option<T>>` — which wasm-bindgen can't represent (`Option<T>: OptionIntoWasmAbi` is not
+    // satisfied). So when the value is itself an `Option`, we flatten the presence-`Option` these
+    // accessors add into it and return a single `Option<T>`. This is the same convention the c-style
+    // enum-getter (`add_wasm_enum_getters`) uses; native storage still holds all three states
+    // (key-absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm
+    // read conflates absent with present-null.
+    let value_nullable = matches!(
+        value_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Optional(_)
+    );
+    let map_value_ret = || {
+        if value_nullable {
+            value_type.for_wasm_return(types)
+        } else {
+            format!("Option<{}>", value_type.for_wasm_return(types))
+        }
+    };
+    let value_flatten = if value_nullable { ".flatten()" } else { "" };
     // insert
     let mut insert_func = codegen::Function::new("insert");
     insert_func
@@ -4516,25 +4535,30 @@ fn codegen_table_type(
         .arg_mut_self()
         .arg("key", key_type.for_wasm_param(types))
         .arg("value", value_type.for_wasm_param(types))
-        .ret(format!("Option<{}>", value_type.for_wasm_return(types)))
-        .line(format!(
-            "self.0.insert({}, {}){}",
-            ToWasmBoundaryOperations::format(
-                key_type
-                    .from_wasm_boundary_clone(types, "key", false)
-                    .into_iter()
-            ),
-            ToWasmBoundaryOperations::format(
-                value_type
-                    .from_wasm_boundary_clone(types, "value", false)
-                    .into_iter()
-            ),
-            if value_type.directly_wasm_exposable(types) {
-                ""
-            } else {
-                ".map(Into::into)"
-            }
-        ));
+        .ret(map_value_ret());
+    if value_nullable {
+        insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+    }
+    insert_func.line(format!(
+        "self.0.insert({}, {}){}",
+        ToWasmBoundaryOperations::format(
+            key_type
+                .from_wasm_boundary_clone(types, "key", false)
+                .into_iter()
+        ),
+        ToWasmBoundaryOperations::format(
+            value_type
+                .from_wasm_boundary_clone(types, "value", false)
+                .into_iter()
+        ),
+        if value_nullable {
+            value_flatten
+        } else if value_type.directly_wasm_exposable(types) {
+            ""
+        } else {
+            ".map(Into::into)"
+        }
+    ));
     // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
     wrapper.s_impl.push_fn(insert_func);
     // get
@@ -4549,27 +4573,32 @@ fn codegen_table_type(
     getter
         .arg_ref_self()
         .arg("key", key_type.for_wasm_param(types))
-        .ret(format!("Option<{}>", value_type.for_wasm_return(types)))
+        .ret(map_value_ret())
         .vis("pub");
+    if value_nullable {
+        getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+    }
     if key_type.directly_wasm_exposable(types) {
         getter.line(format!(
-            "self.0.get({}){}",
+            "self.0.get({}){}{}",
             key_type.from_wasm_boundary_ref(types, "key"),
             if value_type.is_copy(types) {
                 ".copied()"
             } else {
                 get_ret_modifier
-            }
+            },
+            value_flatten
         ));
     } else {
         getter.line(format!(
-            "self.0.get({}.as_ref()){}",
+            "self.0.get({}.as_ref()){}{}",
             key_type.from_wasm_boundary_ref(types, "key"),
             if value_type.is_copy(types) {
                 ".copied()"
             } else {
                 get_ret_modifier
-            }
+            },
+            value_flatten
         ));
     }
     wrapper.s_impl.push_fn(getter);
@@ -5386,6 +5415,28 @@ fn codegen_struct(
                                 false,
                             ),
                         );
+                    } else if matches!(
+                        field.rust_type.conceptual_type.resolve_alias_shallow(),
+                        ConceptualRustType::Optional(_)
+                    ) {
+                        // A nullable optional field is stored as `Option<Option<T>>`, which
+                        // wasm-bindgen can't return. Flatten the presence-`Option` into the value's
+                        // `Option` and return a single `Option<T>` (same convention as the map
+                        // accessors / c-style enum getters). Native storage keeps all three states
+                        // (absent / present-null / present-value), so CBOR round-trips are unaffected —
+                        // only the wasm read conflates absent with present-null.
+                        getter
+                            .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
+                            .ret(field.rust_type.for_wasm_return(types))
+                            .line(format!(
+                                "self.0.{}{}.flatten()",
+                                field.name,
+                                if field.rust_type.is_copy(types) {
+                                    ""
+                                } else {
+                                    ".clone()"
+                                }
+                            ));
                     } else {
                         getter
                             .ret(format!(

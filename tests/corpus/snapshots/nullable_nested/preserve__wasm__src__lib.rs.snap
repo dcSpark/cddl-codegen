@@ -1,0 +1,115 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+pub type MaybeUint = Option<u64>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableMapValue(cddl_lib::NullableMapValue);
+
+#[wasm_bindgen]
+impl NullableMapValue {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn insert(&mut self, key: u64, value: Option<u64>) -> MaybeUint {
+        self.0.insert(key, value.into()).flatten()
+    }
+
+    /// Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn get(&self, key: u64) -> MaybeUint {
+        self.0.get(&key).copied().flatten()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::NullableMapValue> for NullableMapValue {
+    fn from(native: cddl_lib::NullableMapValue) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableMapValue> for cddl_lib::NullableMapValue {
+    fn from(wasm: NullableMapValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableMapValue> for NullableMapValue {
+    fn as_ref(&self) -> &cddl_lib::NullableMapValue {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableOptionalField(cddl_lib::NullableOptionalField);
+
+#[wasm_bindgen]
+impl NullableOptionalField {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableOptionalField, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pre(&self) -> u64 {
+        self.0.pre
+    }
+
+    pub fn set_field0(&mut self, field0: Option<u64>) {
+        self.0.field0 = Some(field0.into())
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn field0(&self) -> MaybeUint {
+        self.0.field0.flatten()
+    }
+
+    pub fn new(pre: u64) -> Self {
+        Self(cddl_lib::NullableOptionalField::new(pre))
+    }
+}
+
+impl From<cddl_lib::NullableOptionalField> for NullableOptionalField {
+    fn from(native: cddl_lib::NullableOptionalField) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableOptionalField> for cddl_lib::NullableOptionalField {
+    fn from(wasm: NullableOptionalField) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableOptionalField> for NullableOptionalField {
+    fn as_ref(&self) -> &cddl_lib::NullableOptionalField {
+        &self.0
+    }
+}
