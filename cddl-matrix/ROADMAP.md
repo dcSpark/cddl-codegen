@@ -187,11 +187,20 @@ open cell is a TDD target — take it off `SKIP`, fix the emitter, green. In pri
   getter returns `Option<F>`; when the value/field is itself `Option<u64>`, the accessor return is
   `Option<Option<u64>>`, and wasm-bindgen's `Option<T>` requires `T: OptionIntoWasmAbi`, which `Option<_>`
   is not. Rust compiles; the green positions (`array-element` / `struct-field` / `newtype-inner`) return a
-  *single* `Option<u64>` — nesting is the trigger. Fix direction: this is the same class as nested `Vec`
-  (which `directly_wasm_exposable` handles by returning false → emitting an inner **wrapper struct** so the
-  outer holds `Vec<Wrapper>` not `Vec<Vec>`); extend that to `Option` so a nullable inner in an
-  option-wrapping position becomes a wrapper (outer holds `Option<Wrapper>`), or have the map/optional
-  emitter flatten. A design change, not a localized patch.
+  *single* `Option<u64>` — nesting is the trigger. The rust struct genuinely stores the three-state
+  `field0: Option<Opt>` (`Option<Option<u64>>` = absent / present-null / present-value), so the extra
+  `Option` is real information, not spurious — a wasm-boundary flatten to a single `Option<u64>` **loses**
+  the absent-vs-present-null distinction (defensible as a JS-API choice, but a semantic change, not a free
+  win). Fix direction: this is the same class as nested `Vec` (which `directly_wasm_exposable` handles by
+  returning false → emitting an inner **wrapper struct** so the outer holds `Vec<Wrapper>` not `Vec<Vec>`);
+  extend that to `Option` so a nullable inner in an option-wrapping position becomes a wrapper (outer holds
+  `Option<Wrapper>`), or have the map/optional emitter flatten. **Why it's a design change, not a localized
+  patch:** `opt` is a transparent `pub type Opt = Option<u64>` shared by the *green* cells too —
+  `array-element` stores `Vec<cddl_lib::Opt>` (making `Opt` a `#[wasm_bindgen]` wrapper forces `Vec<wrapper>`
+  → the `XList` machinery) and `struct-field`/`newtype-inner` conversions shift — so a *global* wrapper
+  regresses them; doing it only in option-wrapping positions requires a **position-dependent dual
+  representation** (transparent `Option<u64>` in flat positions, wrapper in option-wrapping ones), i.e. the
+  same wrapper-vs-transparent seam called out under `passthrumap` below and in `src/intermediate.rs`.
 
 - **`passthrumap` — passthrough alias to a map typedef (`E0425`) — wants the predicate unification.**
   `mp = { * uint => text }; ptm = mp` fails as `array-element`, `map-value`, `map-key`, `struct-field`,
