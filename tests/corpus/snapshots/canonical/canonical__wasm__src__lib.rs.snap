@@ -427,7 +427,7 @@ impl GroupChoice {
     }
 
     pub fn new_plain(d: u64, e: TaggedText) -> Self {
-        Self(cddl_lib::GroupChoice::new_plain(d, e))
+        Self(cddl_lib::GroupChoice::new_plain(d, e.clone().into()))
     }
 
     pub fn kind(&self) -> GroupChoiceKind {
@@ -651,11 +651,11 @@ impl Plain {
     }
 
     pub fn e(&self) -> TaggedText {
-        self.0.e.clone()
+        self.0.e.clone().into()
     }
 
     pub fn new(d: u64, e: TaggedText) -> Self {
-        Self(cddl_lib::Plain::new(d, e))
+        Self(cddl_lib::Plain::new(d, e.clone().into()))
     }
 }
 
@@ -777,7 +777,7 @@ impl TableArrMembers {
 
     pub fn new(arr: Vec<U32>, arr2: &FooList, table: &MapU64ToText) -> Self {
         Self(cddl_lib::TableArrMembers::new(
-            arr,
+            arr.into(),
             arr2.clone().into(),
             table.clone().into(),
         ))

@@ -1430,11 +1430,11 @@ impl Foo2 {
     }
 
     pub fn opt_text(&self) -> OptText {
-        self.0.opt_text.clone()
+        self.0.opt_text.clone().into()
     }
 
     pub fn new(index_0: u64, opt_text: Option<TaggedText>) -> Self {
-        Self(cddl_lib::Foo2::new(index_0, opt_text))
+        Self(cddl_lib::Foo2::new(index_0, opt_text.clone().into()))
     }
 }
 
@@ -1524,7 +1524,7 @@ impl GroupChoice {
     }
 
     pub fn new_plain(d: u64, e: TaggedText) -> Self {
-        Self(cddl_lib::GroupChoice::new_plain(d, e))
+        Self(cddl_lib::GroupChoice::new_plain(d, e.clone().into()))
     }
 
     pub fn kind(&self) -> GroupChoiceKind {
@@ -1816,7 +1816,7 @@ impl MapWithDefaults {
     }
 
     pub fn set_key_1(&mut self, key_1: DefaultUint) {
-        self.0.key_1 = key_1
+        self.0.key_1 = key_1.into()
     }
 
     pub fn key_1(&self) -> DefaultUint {
@@ -2980,11 +2980,11 @@ impl Plain {
     }
 
     pub fn e(&self) -> TaggedText {
-        self.0.e.clone()
+        self.0.e.clone().into()
     }
 
     pub fn new(d: u64, e: TaggedText) -> Self {
-        Self(cddl_lib::Plain::new(d, e))
+        Self(cddl_lib::Plain::new(d, e.clone().into()))
     }
 }
 
@@ -3300,7 +3300,7 @@ impl StructWithCustomSerialization {
     }
 
     pub fn custom_bytes(&self) -> CustomBytes {
-        self.0.custom_bytes.clone()
+        self.0.custom_bytes.clone().into()
     }
 
     pub fn field(&self) -> Vec<u8> {
@@ -3308,11 +3308,11 @@ impl StructWithCustomSerialization {
     }
 
     pub fn overridden(&self) -> CustomBytes {
-        self.0.overridden.clone()
+        self.0.overridden.clone().into()
     }
 
     pub fn tagged1(&self) -> CustomBytes {
-        self.0.tagged1.clone()
+        self.0.tagged1.clone().into()
     }
 
     pub fn tagged2(&self) -> u64 {
@@ -3327,10 +3327,10 @@ impl StructWithCustomSerialization {
         tagged2: u64,
     ) -> Self {
         Self(cddl_lib::StructWithCustomSerialization::new(
-            custom_bytes,
+            custom_bytes.clone().into(),
             field,
-            overridden,
-            tagged1,
+            overridden.clone().into(),
+            tagged1.clone().into(),
             tagged2,
         ))
     }

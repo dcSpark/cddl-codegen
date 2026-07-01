@@ -115,9 +115,9 @@ impl Holder {
 
     pub fn new(ref_basic: Basic, ref_choice: &Choice, ref_newtype: NewtypeDropped) -> Self {
         Self(cddl_lib::Holder::new(
-            ref_basic,
+            ref_basic.into(),
             ref_choice.clone().into(),
-            ref_newtype,
+            ref_newtype.into(),
         ))
     }
 }

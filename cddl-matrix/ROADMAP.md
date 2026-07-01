@@ -185,6 +185,22 @@ from a degenerate example.**
   bounds don't reach the field bounds check as `(Some,Some)`.
 - **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
   with no range check at all (bounds lost).
+- **✅ FIXED (array position) — wasm boundary dropped the wrapper conversion for a named-alias collection.**
+  A named exposable collection alias used as an array element — `nested = [* nums]` where `nums = [* uint]` —
+  generated `NestedNum::get(&self) -> Nums { self.0[index].clone() }`: the return type is the wasm wrapper
+  `Nums` (naming keeps `AliasIdent::Rust`) but the body yielded the inlined `Vec<u64>` (the boundary fns
+  transparently *unwrapped* the alias) → `error[E0308]`; the wasm crate didn't compile (rust did — nothing
+  systematically compiled wasm, now fixed by the corpus wasm gate). Fixed by making `to_wasm_boundary` /
+  `from_wasm_boundary_clone` respect `AliasIdent::Rust` (convert into the wrapper) while still unwrapping
+  `AliasIdent::Reserved`; used `is_copy` (not `is_enum`, which panics on pure type-aliases). Gated by
+  `tests/corpus/wasm_nested_alias.cddl` + the new `--wasm=true` `cargo check` in `feature_corpus_compiles`.
+- **STILL OPEN (map-value + optional/ref positions) — same class, wider fix.** The map-wrapper *value*
+  position — `m = { * uint => nums }` — still doesn't compile: `get`/`insert` *return* `Option<Nums>` but the
+  body yields `Option<Vec<u64>>`. The map return path additionally routes through `directly_wasm_exposable`
+  (which unwraps `AliasIdent::Rust` to an exposable inner, inconsistent with the naming) and the map
+  get/insert return emission — a broader change with wide blast radius, deferred. The `_optional` / `_ref`
+  boundary variants (optional named-alias-collection fields/params) likely share the class and are unverified
+  (no fixture yet). Add a `{ * uint => named_alias }` corpus fixture to gate the map fix.
 
 **Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

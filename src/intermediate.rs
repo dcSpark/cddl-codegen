@@ -1826,7 +1826,15 @@ impl ConceptualRustType {
                 ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
             ],
-            Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone(types, expr, can_fail),
+            // named alias: exposed as its wrapper type, so convert FROM the wrapper like
+            // `Rust(ident)` (only reserved aliases unwrap to the inner rust type).
+            Self::Alias(ident, ty) => match ident {
+                AliasIdent::Reserved(_) => ty.from_wasm_boundary_clone(types, expr, can_fail),
+                AliasIdent::Rust(_) => vec![
+                    ToWasmBoundaryOperations::Code(expr_cloned),
+                    ToWasmBoundaryOperations::Into,
+                ],
+            },
             Self::Optional(ty) => ty
                 .conceptual_type
                 .from_wasm_boundary_clone_optional(types, expr, can_fail),
@@ -1937,7 +1945,24 @@ impl ConceptualRustType {
             Self::Optional(ty) => ty
                 .conceptual_type
                 .to_wasm_boundary_optional(types, expr, is_ref),
-            Self::Alias(_ident, ty) => ty.to_wasm_boundary(types, expr, is_ref),
+            // a named alias (`AliasIdent::Rust`) is exposed to wasm AS its wrapper type (see
+            // `for_wasm_member`), so the boundary must convert INTO that wrapper — mirror the
+            // `Rust(ident)` arm rather than transparently unwrapping (which yields the inlined inner
+            // type and mismatches the wrapper return type). Only reserved aliases (u64, …) unwrap.
+            Self::Alias(ident, ty) => match ident {
+                AliasIdent::Reserved(_) => ty.to_wasm_boundary(types, expr, is_ref),
+                // a `Copy` named alias (e.g. a c-style-enum or primitive alias) is exposed by value
+                // with no wrapper conversion; a non-copy named alias (array/map/struct wrapper) needs
+                // `.into()` into its wrapper. `is_copy` handles the alias without the `is_enum`
+                // precondition (which panics on pure type-aliases that are neither struct nor generic).
+                AliasIdent::Rust(_) => {
+                    if self.is_copy(types) {
+                        primitive_impl()
+                    } else {
+                        format!("{expr}.clone().into()")
+                    }
+                }
+            },
         }
     }
 
