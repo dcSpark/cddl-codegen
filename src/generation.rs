@@ -7818,11 +7818,17 @@ fn generate_wrapper_struct(
             json_schema_fn
                 .arg("generator", "&mut schemars::SchemaGenerator")
                 .ret("schemars::Schema")
-                .line(format!("{json_schema_type}::json_schema(generator)"));
+                // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
+                // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
+                // (which parses `<` as a comparison in expression position). Matches the
+                // `<{json_schema_type} as serde::de::Deserialize>::deserialize` precedent above.
+                .line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::json_schema(generator)"
+                ));
             let mut inline_schema = codegen::Function::new("inline_schema");
-            inline_schema
-                .ret("bool")
-                .line(format!("{json_schema_type}::inline_schema()"));
+            inline_schema.ret("bool").line(format!(
+                "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
+            ));
             json_schema_impl
                 .impl_trait("schemars::JsonSchema")
                 .push_fn(schema_name_fn)

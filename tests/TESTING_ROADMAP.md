@@ -145,21 +145,17 @@ green. The Tier-1 items below are the missing pieces of that oracle:
    mitigates churn.
 
 7. **Output-validate `--json-schema-export` end-to-end.** *(small)* The in-process schema-vs-serde
-   check, the `.d.ts` merge, and json-gen's `export_schemas()` execution are covered for *scalar*
-   newtypes (`integration_tests::json` / `json_preserve`). **Known bug (uncovered until now):** a
-   wrapper struct over a **generic** backing type (map/array `@newtype`) emits a `JsonSchema` impl
-   without the turbofish — `OrderedHashMap<K, V>::json_schema(...)` instead of
-   `OrderedHashMap::<K, V>::json_schema(...)` — so the crate doesn't compile, and the generator still
-   exits 0 (rustfmt parse failure is swallowed). Every json gate misses it because no fixture is a
-   generic-backed newtype and the snapshot oracle can't see non-parsing output. Full analysis +
-   reproduction: [`../draft/json-schema-map-newtype-turbofish-bug.md`](../draft/json-schema-map-newtype-turbofish-bug.md).
-   **Still open:** (a) the source fix (qualified-path emission in `generate_wrapper_struct`); (b) a
-   generic-backed newtype fixture in a **compile** gate — cheapest is `tests/corpus/newtype_map.cddl`
-   (`{ * uint => text } ; @newtype`) + an array analogue, since `feature_corpus_compiles` already
-   `cargo check`s the `json` profile; (c) make a rustfmt parse/internal failure **fatal**
-   (propagate `Err` from `rustfmt_generated_string`) so this whole class stops shipping silently — see
-   also item 6; (d) the full `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack).
-   `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
+   check, the `.d.ts` merge, and json-gen's `export_schemas()` execution are covered for scalar
+   newtypes (`integration_tests::json` / `json_preserve`), and now for generic-backed newtypes too:
+   the turbofish bug — a wrapper over a map/array `@newtype` emitted `T<..>::json_schema` in
+   expression position → non-compiling crate — is **fixed** (qualified-path `<T as
+   schemars::JsonSchema>::` emission in `generate_wrapper_struct`) and gated by
+   `tests/corpus/newtype_generic.cddl` under the `json` profile of `feature_corpus_compiles`.
+   **Still open:** (a) make a rustfmt parse/internal failure **fatal** (propagate `Err` from
+   `rustfmt_generated_string`) — the turbofish shipped green at exit 0 *only* because rustfmt parse
+   errors are swallowed, so making it fatal kills the whole silent-invalid-output class (see also item
+   6 and the north star's "fail-loud"); (b) the full `--package-json` run (json-gen `cargo run` → both
+   scripts → wasm-pack). `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
 
 8. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
@@ -182,12 +178,9 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   Introduces a "snapshot-only corpus" concept the docs don't have yet.
 - **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
   float under the `json` profile; `OrderedHashMap` JSON **serde** (a map-bearing json fixture —
-  `tests/json/input.cddl` has none); re-enabling `bool_wrapper` JSON newtype (blocked on generator
-  issue #223). *(Note: the `OrderedHashMap` `JsonSchema` half of this was mis-filed here as a
-  snapshot chore — it's a confirmed compile bug, not a re-bless. A snapshot fixture can't catch it
-  because the rustfmt-swallow makes the snapshot oracle blind to non-parsing output; it needs a
-  compile-gate fixture. Tracked in item 7 above +
-  [`../draft/json-schema-map-newtype-turbofish-bug.md`](../draft/json-schema-map-newtype-turbofish-bug.md).)*
+  `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
+  `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
+  chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
 
 ## Explicitly not worth it (decided, not overlooked)
 

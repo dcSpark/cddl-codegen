@@ -1,0 +1,159 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToText(BTreeMap<u64, String>);
+
+#[wasm_bindgen]
+impl MapU64ToText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, String>> for MapU64ToText {
+    fn from(native: BTreeMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToText> for BTreeMap<u64, String> {
+    fn from(wasm: MapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, String>> for MapU64ToText {
+    fn as_ref(&self) -> &BTreeMap<u64, String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedArr(cddl_lib::WrappedArr);
+
+#[wasm_bindgen]
+impl WrappedArr {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedArr, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WrappedArr, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+}
+
+impl From<cddl_lib::WrappedArr> for WrappedArr {
+    fn from(native: cddl_lib::WrappedArr) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedArr> for cddl_lib::WrappedArr {
+    fn from(wasm: WrappedArr) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedArr> for WrappedArr {
+    fn as_ref(&self) -> &cddl_lib::WrappedArr {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedMap(cddl_lib::WrappedMap);
+
+#[wasm_bindgen]
+impl WrappedMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WrappedMap, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+}
+
+impl From<cddl_lib::WrappedMap> for WrappedMap {
+    fn from(native: cddl_lib::WrappedMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedMap> for cddl_lib::WrappedMap {
+    fn from(wasm: WrappedMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedMap> for WrappedMap {
+    fn as_ref(&self) -> &cddl_lib::WrappedMap {
+        &self.0
+    }
+}
