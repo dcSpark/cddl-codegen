@@ -36,3 +36,13 @@ foo_bytes = bytes .cbor foo
 
 ; since we don't generate code for definitions like the above (should we if no one refers to it?)
 cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint]
+
+; keys chosen so length-first (RFC 7049 canonical) and bytewise-lexicographic (RFC 8949
+; deterministic) ordering DISAGREE: text key "a" encodes to 2 bytes, uint key 256 to 3 bytes, so
+; length-first puts "a" first while bytewise would put 256 first (0x19 < 0x61). Every other
+; fixture's keys order identically under both rules, so only this type pins WHICH rule
+; --canonical-form implements.
+mixed_len_keys = {
+	256: uint,
+	a: uint,
+}

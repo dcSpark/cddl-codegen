@@ -70,6 +70,16 @@ pub struct FooEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MixedLenKeysEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_256_encoding: Option<cbor_event::Sz>,
+    pub key_256_key_encoding: Option<cbor_event::Sz>,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub a_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PlainEncoding {
     pub len_encoding: LenEncoding,
     pub d_tag_encoding: Option<cbor_event::Sz>,

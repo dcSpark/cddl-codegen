@@ -77,8 +77,9 @@ jobs:
         run: cargo insta test --unreferenced=reject -- snapshot_tests robustness
 
   # The cddl-matrix projection scripts keep the committed corpus/robustness fixtures and COVERAGE.md
-  # in sync with matrix.json. They're pure file-reading string-scanners (~0.2s total, no cargo), so
-  # this gates PRs cheaply. The heavy verify.ts (cargo-check-per-schema) is deliberately NOT run here
+  # docs in sync with matrix.json. Cheap PR gate: mostly file-reading string-scanners, except
+  # project_corpus, which also runs the repo's own AST walker (`cargo run --example ast_roles`) for
+  # its role checks. The heavy verify.ts (cargo-check-per-schema) is deliberately NOT run here
   # — see tests/TESTING_ROADMAP.md.
   matrix-drift:
     name: cddl-matrix drift gate
@@ -90,6 +91,8 @@ jobs:
       # build_matrix --check: matrix.json matches its authored TOMLs/annotations.
       # project_robustness --check: matrix_{supported,panic}/ fixtures match the support verdict.
       # project_wasm_matrix --check: matrix_wasm/ fixtures match the wasm-ABI cell projection.
+      # project_golden_hex --check: golden_hex COVERAGE.md matches tests.rs + the encoding matrix
+      #   (its header claims CI drift-gating, so it must actually be gated here).
       # project_corpus: validates the corpus overlay (hard-fails on drift) and rewrites COVERAGE.md.
       - name: Matrix snapshot + fixture drift
         working-directory: cddl-matrix
@@ -97,6 +100,7 @@ jobs:
           bun run build_matrix.ts --check
           bun run project_robustness.ts --check
           bun run project_wasm_matrix.ts --check
+          bun run project_golden_hex.ts --check
           bun run project_corpus.ts
 
       # project_corpus's exit code doesn't catch stale *rendered* counts in COVERAGE.md (only overlay

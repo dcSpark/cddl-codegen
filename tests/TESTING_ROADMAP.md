@@ -128,6 +128,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    on PRs. The defining technique for a codegen tool — proves the suite *catches* wrong-codegen
    bugs, not just covers lines. Only bites once #1 gives assertions with teeth; needs
    `cargo-nextest` as the runner.
+   **Score mutants against the behavioral layers only** (a nextest filter excluding
+   `snapshot_tests`): nearly every emit-core mutant changes output text, so under the full suite it
+   is trivially "killed" by a snapshot mismatch and the score measures snapshot *sensitivity* —
+   which says nothing about whether a human-blessed wrong emission would be caught (the failure
+   mode that actually ships). Scored behaviorally, the survivor list is a direct map of emit logic
+   no behavioral oracle observes.
 
 6. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
@@ -173,6 +179,25 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
   `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
   chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
+- **cddl-crate conformance oracle** (RECOMMENDATIONS #9 — accept or reject explicitly; it is in
+  neither the do-list nor the not-worth-it list today). The `cddl` crate is already a dependency,
+  so validating every serialized value against the source `.cddl`
+  (`validate_cbor_from_slice(spec, bytes)`) inside the fixtures' `deser_test` helpers would give
+  every existing and future round-trip a second, *independent* oracle nearly for free — it fails
+  on exactly the enforcement class (occurrence counts, range bounds) that generator+test shared
+  assumptions can't catch. Caveats to weigh: the rust validator has known gaps (a fail is a strong
+  signal, a pass is weak), and the ruby `cddl` gem (already an oracle in `cddl-matrix/verify.ts`)
+  could serve the same role out-of-process at higher cost.
+- **Adversarial CBOR bytes into generated deserializers** (RECOMMENDATIONS #8 + #5 — accept or
+  reject explicitly; currently in neither list). The robustness layer covers malformed CDDL into
+  the *generator*; hostile bytes into `from_cbor_bytes` — the untrusted input this library's
+  consumers actually parse (chain data) — have no systematic coverage, and item 1 will not add any
+  (it generates valid values by construction). A panic (vs `Err`), over-allocation, or stack
+  overflow on deep nesting in generated code or the `static/` runtime is a DoS in every consumer
+  and is invisible to every current and planned layer. Cheapest acceptance: one `cargo-fuzz`
+  target over a rich generated crate's `from_cbor_bytes`, seeded from the golden vectors, plus a
+  committed crash-replay test; note `catch_unwind`-based harnesses cannot observe stack overflow,
+  so the fuzz process boundary is the only oracle for that case.
 
 ## Explicitly not worth it (decided, not overlooked)
 

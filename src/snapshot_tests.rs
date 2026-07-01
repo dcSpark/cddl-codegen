@@ -37,7 +37,10 @@ type Profile = (&'static str, &'static [&'static str]);
 /// The flag axes that drive meaningfully different generation paths. (`canonical` is a
 /// serialization sub-mode of `preserve` and differs only where maps/sets exist, so it's covered
 /// once at whole-program scale rather than duplicated per feature.)
-const ALL_PROFILES: &[Profile] = &[
+///
+/// Shared with `integration_tests::feature_corpus_compiles` so the snapshot axis and the compile
+/// gate can never silently diverge (dropping a profile from one must drop it from both).
+pub(crate) const ALL_PROFILES: &[Profile] = &[
     ("default", &[]),
     ("preserve", &["--preserve-encodings=true"]),
     (

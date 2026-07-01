@@ -17,8 +17,8 @@ use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
-    BarEncoding, CborInCborEncoding, DeeplyNestedEncoding, FooEncoding, PlainEncoding,
-    String32Encoding, String64Encoding, TableArrMembersEncoding,
+    BarEncoding, CborInCborEncoding, DeeplyNestedEncoding, FooEncoding, MixedLenKeysEncoding,
+    PlainEncoding, String32Encoding, String64Encoding, TableArrMembersEncoding,
 };
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -159,6 +159,23 @@ impl GroupChoice {
 
     pub fn new_plain(d: u64, e: TaggedText) -> Self {
         Self::Plain(Plain::new(d, e))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MixedLenKeys {
+    pub key_256: u64,
+    pub a: u64,
+    pub encodings: Option<MixedLenKeysEncoding>,
+}
+
+impl MixedLenKeys {
+    pub fn new(key_256: u64, a: u64) -> Self {
+        Self {
+            key_256,
+            a,
+            encodings: None,
+        }
     }
 }
 

@@ -315,15 +315,7 @@ fn run_test(
 #[test]
 fn feature_corpus_compiles() {
     use std::str::FromStr;
-    // Mirrors snapshot_tests::ALL_PROFILES (kept in sync by hand — both are tiny).
-    let profiles: &[(&str, &[&str])] = &[
-        ("default", &[]),
-        ("preserve", &["--preserve-encodings=true"]),
-        (
-            "json",
-            &["--json-serde-derives=true", "--json-schema-export=true"],
-        ),
-    ];
+    let profiles = crate::snapshot_tests::ALL_PROFILES;
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
         .unwrap()
@@ -576,6 +568,54 @@ fn wasm_enum_nullable_variant_three_state_fidelity() {
          without kind()); a double-nested optional variant getter is emitted as nothing at all. Give the \
          getter unambiguous three-state fidelity (or emit the skipped double-nested getter) or wire this \
          to the round-trip harness (TESTING_ROADMAP item 1), then assert and remove #[ignore]."
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tracked SILENT-WRONG-OUTPUT gaps (compile-green, snapshot-blessed, behaviorally wrong).
+//
+// These three corpus constructs generate code whose behavior contradicts the CDDL spec, and no
+// automated oracle observes it: the corpus's only verdicts are "snapshot unchanged" + "it
+// compiles" (`feature_corpus_compiles`), both of which the wrong code passes. Each is ledgered in
+// cddl-matrix/ROADMAP.md ("Bugs / gaps surfaced as findings") and flagged ⚠️ in
+// tests/corpus/COVERAGE.md, but a hand-authored overlay note can't fail a build — these stubs make
+// the gaps visible in the suite itself, per the same convention as the wasm-fidelity pair above.
+// Remove #[ignore] and write the real behavioral assertion when the generator is fixed (or when
+// the round-trip harness, TESTING_ROADMAP item 1, lands and covers it).
+
+/// `a...b` must EXCLUDE b (max valid = b-1) but the generator emits `max = b+1`:
+/// `[v: 0...10]` generates `max: Some(11)`, accepting both 10 and 11 (two invalid values).
+#[test]
+#[ignore = "exclusive range upper bound mis-computed: a...b emits max=b+1 instead of b-1 (accepts two out-of-range values). Pinned by tests/corpus/snapshots/exclusive_range; ledgered in cddl-matrix/ROADMAP.md."]
+fn corpus_exclusive_range_upper_bound() {
+    unimplemented!(
+        "0...10 generates `if v > 11` / `max: Some(11)`; the correct exclusive max is 9. Fix the \
+         bound in parsing.rs (range_end + 1 -> range_end - 1), re-bless the exclusive_range corpus \
+         snapshots, then assert here that 9 round-trips and 10/11 are rejected, and remove #[ignore]."
+    );
+}
+
+/// `[+ uint]` (>=1) and `[2*5 uint]` (2..=5) both emit a bare `Vec<u64>` with no length check —
+/// out-of-bounds lengths serialize and deserialize without error.
+#[test]
+#[ignore = "occurrence-count constraints (+, n*m) are not enforced on homogeneous arrays: emitted Vec has no length check. Pinned by tests/corpus/snapshots/occurrence; ledgered in cddl-matrix/ROADMAP.md."]
+fn corpus_occurrence_bounds_enforced() {
+    unimplemented!(
+        "[+ uint] and [2*5 uint] emit bare Vec<u64> with no length validation in serialize or \
+         deserialize. Add bounds enforcement, re-bless the occurrence corpus snapshots, then assert \
+         here that an empty / 6-element vector is rejected, and remove #[ignore]."
+    );
+}
+
+/// `[(uint, tstr)]` generates a 1-field struct (`read_elems(1)`) — the `tstr` member is silently
+/// dropped: data loss that parses, compiles, snapshots, and round-trips green.
+#[test]
+#[ignore = "inline-group splice drops members: [(uint, tstr)] emits a 1-field struct, silently losing tstr. Pinned by tests/corpus/snapshots/inline_group; ledgered in cddl-matrix/ROADMAP.md."]
+fn corpus_inline_group_members_kept() {
+    unimplemented!(
+        "[(uint, tstr)] generates InlineGroup {{ index_0: u64 }} and never reads the tstr. Flatten \
+         inline-group entries into the record, re-bless the inline_group corpus snapshots, then \
+         assert here that both members round-trip, and remove #[ignore]."
     );
 }
 

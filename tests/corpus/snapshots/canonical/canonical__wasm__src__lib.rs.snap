@@ -632,6 +632,53 @@ impl AsRef<OrderedHashMap<u64, String>> for MapU64ToText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct MixedLenKeys(cddl_lib::MixedLenKeys);
+
+#[wasm_bindgen]
+impl MixedLenKeys {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MixedLenKeys, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_256(&self) -> u64 {
+        self.0.key_256
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn new(key_256: u64, a: u64) -> Self {
+        Self(cddl_lib::MixedLenKeys::new(key_256, a))
+    }
+}
+
+impl From<cddl_lib::MixedLenKeys> for MixedLenKeys {
+    fn from(native: cddl_lib::MixedLenKeys) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MixedLenKeys> for cddl_lib::MixedLenKeys {
+    fn from(wasm: MixedLenKeys) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MixedLenKeys> for MixedLenKeys {
+    fn as_ref(&self) -> &cddl_lib::MixedLenKeys {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Plain(cddl_lib::Plain);
 
 #[wasm_bindgen]
