@@ -1,0 +1,4 @@
+; cell: cborwrap x map-key
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = { * fb => uint }

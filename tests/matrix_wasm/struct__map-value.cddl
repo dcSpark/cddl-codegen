@@ -1,0 +1,3 @@
+; cell: struct x map-value
+st = [a: uint, b: text]
+holder = { * uint => st }

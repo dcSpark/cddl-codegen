@@ -1,0 +1,4 @@
+; cell: cborwrap x array-element
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = [* fb]

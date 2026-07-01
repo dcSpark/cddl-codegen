@@ -1,0 +1,3 @@
+; cell: collmap x array-element
+mp = { * uint => text }
+holder = [* mp]

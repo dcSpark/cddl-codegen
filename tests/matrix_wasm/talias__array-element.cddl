@@ -1,0 +1,3 @@
+; cell: talias x array-element
+ta = text
+holder = [* ta]

@@ -1,0 +1,3 @@
+; cell: palias x array-element
+pa = uint
+holder = [* pa]

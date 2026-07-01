@@ -1,0 +1,3 @@
+; cell: struct x newtype-inner
+st = [a: uint, b: text]
+holder = st ; @newtype

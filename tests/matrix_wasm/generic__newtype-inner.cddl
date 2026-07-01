@@ -1,0 +1,4 @@
+; cell: generic x newtype-inner
+cont<T0> = [value: T0]
+uc = cont<uint>
+holder = uc ; @newtype

@@ -1,0 +1,5 @@
+; cell: chain x array-element
+ca = [* uint]
+cb = ca
+cc = cb
+holder = [* cc]

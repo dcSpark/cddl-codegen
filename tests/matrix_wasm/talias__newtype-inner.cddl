@@ -1,0 +1,3 @@
+; cell: talias x newtype-inner
+ta = text
+holder = ta ; @newtype

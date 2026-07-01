@@ -1,0 +1,4 @@
+; cell: passthru x newtype-inner
+nums = [* uint]
+pt = nums
+holder = pt ; @newtype

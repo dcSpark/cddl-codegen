@@ -79,12 +79,14 @@ jobs:
 
       # build_matrix --check: matrix.json matches its authored TOMLs/annotations.
       # project_robustness --check: matrix_{supported,panic}/ fixtures match the support verdict.
+      # project_wasm_matrix --check: matrix_wasm/ fixtures match the wasm-ABI cell projection.
       # project_corpus: validates the corpus overlay (hard-fails on drift) and rewrites COVERAGE.md.
       - name: Matrix snapshot + fixture drift
         working-directory: cddl-matrix
         run: |
           bun run build_matrix.ts --check
           bun run project_robustness.ts --check
+          bun run project_wasm_matrix.ts --check
           bun run project_corpus.ts
 
       # project_corpus's exit code doesn't catch stale *rendered* counts in COVERAGE.md (only overlay

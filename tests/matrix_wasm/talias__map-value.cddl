@@ -1,0 +1,3 @@
+; cell: talias x map-value
+ta = text
+holder = { * uint => ta }

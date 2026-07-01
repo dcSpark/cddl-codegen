@@ -1,0 +1,2 @@
+; cell: prim x map-value
+holder = { * uint => uint }

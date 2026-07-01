@@ -1,0 +1,3 @@
+; cell: palias x newtype-inner
+pa = uint
+holder = pa ; @newtype

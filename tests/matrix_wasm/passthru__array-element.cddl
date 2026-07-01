@@ -1,0 +1,4 @@
+; cell: passthru x array-element
+nums = [* uint]
+pt = nums
+holder = [* pt]

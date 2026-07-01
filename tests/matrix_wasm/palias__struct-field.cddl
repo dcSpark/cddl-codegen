@@ -1,0 +1,3 @@
+; cell: palias x struct-field
+pa = uint
+holder = [field0: pa]

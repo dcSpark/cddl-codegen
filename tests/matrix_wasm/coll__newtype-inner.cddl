@@ -1,0 +1,3 @@
+; cell: coll x newtype-inner
+nums = [* uint]
+holder = nums ; @newtype

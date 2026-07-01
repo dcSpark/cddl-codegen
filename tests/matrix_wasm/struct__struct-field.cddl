@@ -1,0 +1,3 @@
+; cell: struct x struct-field
+st = [a: uint, b: text]
+holder = [field0: st]
