@@ -165,11 +165,11 @@ impl Bounds {
             }
             .into());
         }
-        if y < 4 {
+        if y > 4 {
             return Err(DeserializeFailure::RangeCheck {
                 found: y as isize,
-                min: Some(4),
-                max: None,
+                min: None,
+                max: Some(4),
             }
             .into());
         }
