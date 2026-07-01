@@ -173,6 +173,11 @@ from a degenerate example.**
   bounds don't reach the field bounds check as `(Some,Some)`.
 - **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
   with no range check at all (bounds lost).
+- **Quoted text member keys emit invalid Rust.** `{ "a": uint }` generates the field `pub key_"a": u64` —
+  the quoted key takes the value-key naming path instead of the bareword-text path (`{ a: uint }`, the
+  identical CBOR, works). Caught loudly by the rustfmt fail-loud gate at generation time. Surfaced while
+  authoring the canonical `mixed_len_keys` ordering fixture; related member-key notes:
+  `draft/cddl-bareword-member-key-bug.md`.
 
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
