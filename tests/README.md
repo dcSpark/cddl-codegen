@@ -72,18 +72,18 @@ Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and
 
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
-A **coverage-by-construction** gate for the generated wasm-bindgen bindings. The suites above exercise
-the wasm ABI only *incidentally* — whatever the hand-picked fixtures happen to use — so a whole class of
-boundary bugs (wrong accessor return type, bad `.into()`/`.clone()`/by-ref slips, dangling map typedefs)
-was invisible: the *rust* side compiled fine and nothing systematically compiled the wasm crate. This
-enumerates a **grid** of `{wasm-ABI type-shape} × {boundary role}` and gates every cell of it, so a bug
-in a covered cell surfaces specifically instead of by luck.
+A **coverage-by-construction** gate for the generated wasm-bindgen bindings: it compiles the wasm crate
+for every cell of a `{wasm-ABI type-shape} × {boundary role}` grid, so any cell whose bindings don't
+type-check is a specific red cell. It exists because the wasm ABI — accessor return types, boundary
+`.into()`/`.clone()`/by-ref conversions, map typedefs — is a concern the CBOR-serialization suites don't
+compile-check by construction: the rust crate can type-check while the generated wasm crate does not, so
+without an enumerated gate that class of bug is only caught by whichever fixtures happen to hit it. Gating
+the whole grid makes the coverage systematic instead of incidental.
 
-The grid is only as complete as its **type-shape axis**, which is hand-curated and *extensible*: a wasm
-representation not in `SHAPES` isn't covered. When a new distinct representation appears, add a shape (see
-"Adding / changing cells"). This is not hypothetical — the `nullable` shape was added after a holistic
-audit generated `opt = uint / null` at a map value and found a live `E0277` (`OptionIntoWasmAbi`) red the
-grid was silently missing. Treat the axis as a living list, not a finished one.
+Coverage equals the **type-shape axis**, which is hand-curated: a wasm representation not in `SHAPES` is
+not gated. Treat the axis as a living list — when a type reaches the wasm boundary in a representation no
+existing shape captures, add a shape (see "Adding / changing cells"), and periodically ask "which
+representation are we *not* enumerating?", because a missing shape is a silent hole, not a red cell.
 
 Pipeline (projection → fixtures → gate), the same shape as the robustness projection:
 
@@ -106,21 +106,22 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     — see the docstrings in `src/intermediate.rs`).
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
-    `keys`, by-value vs by-ref). Structs use the **array representation** (`[field0: T]`,
-    `[pre: uint, ? field0: T]`) to dodge a pre-existing map-rep bareword-member-key generation panic, so
-    map-representation structs and optional-fields-inside-maps are not gated here. A shape may also skip a
-    role that panics generation on it (`nullable` skips `map-key` — a null key hits a "special-typed map
-    key" assert).
+    `keys`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
+    `[pre: uint, ? field0: T]`) because a map-representation struct with a bareword member key currently
+    panics generation (a separate, still-open limitation); consequently map-representation structs and
+    optional-fields-inside-maps are outside this grid's scope. A shape may likewise skip a role it can't
+    occupy — `nullable` skips `map-key`, since a null/`Option` key hits a "special-typed map key" assert
+    in generation.
 - **The gate** (`integration_tests::wasm_matrix_compiles`) globs the fixtures, generates each
-  `--wasm=true`, and `cargo check`s the wasm crate (which path-depends on the rust crate, so rust-side
-  errors surface too — a couple of skip-listed reds are in fact rust-crate generation bugs the sweep
-  caught, not wasm-boundary ones). It follows `feature_corpus_compiles`' shared-target-dir *pattern* but
-  uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), deliberately separate so
-  the two tests don't collide when `cargo test` runs them in parallel. The verdict is **compile** for
-  now — note a cell can compile green while emitting *semantically* wrong bindings (e.g. an identity
-  `.into()` where a transform was needed); catching those awaits upgrading the verdict to *round-trip*
-  once the property round-trip harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 1; the
-  wasm-verdict upgrade is the item-2 follow-on that depends on it).
+  `--wasm=true`, and `cargo check`s the wasm crate. The wasm crate path-depends on the rust crate, so
+  rust-side type errors surface here too — which means some skip-listed reds are rust-crate generation
+  bugs rather than wasm-boundary ones. It follows `feature_corpus_compiles`' shared-target-dir *pattern*
+  but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
+  tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
+  compile green while emitting *semantically* wrong bindings (e.g. an identity `.into()` where a transform
+  was needed), so catching those needs the verdict upgraded to *round-trip* once the property round-trip
+  harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 1; the wasm-verdict upgrade is the
+  item-2 follow-on that depends on it).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `SKIP` list, each with a comment + a ledger entry in
