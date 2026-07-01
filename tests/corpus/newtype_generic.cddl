@@ -1,0 +1,2 @@
+wrapped_map = { * uint => text } ; @newtype
+wrapped_arr = [* uint] ; @newtype
