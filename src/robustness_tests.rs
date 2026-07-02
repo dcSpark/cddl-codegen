@@ -20,6 +20,29 @@ use clap::Parser;
 /// (poison-tolerant: a panic mid-section only means the *other* test re-silences, which is harmless).
 static PANIC_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Silence panic output from THIS test's thread for the duration of `f` (the deliberate
+/// `catch_unwind` probes would otherwise spew every expected panic). The hook is process-global
+/// and `cargo test` runs tests concurrently, so a blanket no-op hook would also eat the panic
+/// message of any UNRELATED test that fails during the window — its failure would report with no
+/// diagnostics. Filter by thread id instead, delegating other threads' panics to the
+/// previously-installed hook.
+fn with_thread_silenced_panics<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = PANIC_HOOK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let prev: std::sync::Arc<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync> =
+        std::sync::Arc::from(std::panic::take_hook());
+    let silenced = std::thread::current().id();
+    let delegate = prev.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        if std::thread::current().id() != silenced {
+            delegate(info)
+        }
+    }));
+    let out = f();
+    let _ = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| prev(info)));
+    out
+}
+
 /// Every construct the matrix marks `status = "supported"` (features + control-ops) must drive the
 /// generator without panicking or erroring. Broadens the old hand-synced 16-entry prelude list to the
 /// matrix's full supported surface (`tests/matrix_supported/*.cddl`, projected by
@@ -101,40 +124,36 @@ fn unsupported_construct_panic_catalog() {
         "no panic fixtures in {dir:?} (run `bun run project_robustness.ts`)"
     );
 
-    // We deliberately trigger panics below; silence the default hook so the test output stays clean.
-    // Hold the shared lock across take/set/restore so we don't race the other hook-silencing test.
-    let hook_guard = PANIC_HOOK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
     let mut catalog = String::from(
         "# generator outcome per matrix `unsupported` (panic-class) construct — a SCORECARD, not a contract.\n\
          # PANIC = tracked-known gap (the matrix's `panic (exit 101)` verdict). Flipping it to `error (graceful)`\n\
          # is a FIX (re-bless); a new panic, or a panic decaying to a silently-wrong `ok`, is a regression.\n\
          # Generate-only: captures panic-class gaps only, not compile-class. Source: cddl-matrix/project_robustness.ts.\n\n",
     );
-    for path in &inputs {
-        let id = path.file_stem().unwrap().to_str().unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "matrix_panic_unused",
-            "--wasm",
-            "false",
-        ]);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::api::generated_strings(&cli)
-        }));
-        let label = match outcome {
-            Ok(Ok(_)) => "ok",
-            Ok(Err(_)) => "error (graceful)",
-            Err(_) => "PANIC",
-        };
-        catalog.push_str(&format!("{id:34} {label}\n"));
-    }
-    std::panic::set_hook(prev_hook);
-    drop(hook_guard); // release before the (possibly-panicking) snapshot assertion
+    // hook restored (and lock released) before the possibly-panicking snapshot assertion below
+    with_thread_silenced_panics(|| {
+        for path in &inputs {
+            let id = path.file_stem().unwrap().to_str().unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "matrix_panic_unused",
+                "--wasm",
+                "false",
+            ]);
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::api::generated_strings(&cli)
+            }));
+            let label = match outcome {
+                Ok(Ok(_)) => "ok",
+                Ok(Err(_)) => "error (graceful)",
+                Err(_) => "PANIC",
+            };
+            catalog.push_str(&format!("{id:34} {label}\n"));
+        }
+    });
 
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path(
@@ -157,35 +176,31 @@ fn input_robustness_catalog() {
     inputs.sort();
     assert!(!inputs.is_empty(), "no robustness inputs in {:?}", dir);
 
-    // We deliberately trigger panics below; silence the default hook so the test output stays clean.
-    // Hold the shared lock across take/set/restore so we don't race the other hook-silencing test.
-    let hook_guard = PANIC_HOOK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
     let mut catalog = String::from(
         "# generator outcome per malformed/edge input\n# PANIC = regression: malformed input must error gracefully, never panic\n\n",
     );
-    for path in &inputs {
-        let name = path.file_stem().unwrap().to_str().unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "robustness_unused",
-        ]);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::api::generated_strings(&cli)
-        }));
-        let label = match outcome {
-            Ok(Ok(_)) => "ok",
-            Ok(Err(_)) => "error (graceful)",
-            Err(_) => "PANIC",
-        };
-        catalog.push_str(&format!("{:26} {}\n", name, label));
-    }
-    std::panic::set_hook(prev_hook);
-    drop(hook_guard); // release before the (possibly-panicking) snapshot assertion
+    // hook restored (and lock released) before the possibly-panicking snapshot assertion below
+    with_thread_silenced_panics(|| {
+        for path in &inputs {
+            let name = path.file_stem().unwrap().to_str().unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "robustness_unused",
+            ]);
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::api::generated_strings(&cli)
+            }));
+            let label = match outcome {
+                Ok(Ok(_)) => "ok",
+                Ok(Err(_)) => "error (graceful)",
+                Err(_) => "PANIC",
+            };
+            catalog.push_str(&format!("{:26} {}\n", name, label));
+        }
+    });
 
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path(
