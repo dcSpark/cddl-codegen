@@ -1110,6 +1110,15 @@ impl GenerationScope {
         {
             self.rust_lib().raw(&test_mod);
         }
+        // the wasm-crate counterpart: same MintValue derivation, rendered through the wrapper API +
+        // the cddl_lib rust twin (cross-crate byte differential). `#[cfg(test)]` so it's inert for
+        // build/check/wasm-pack — only a `cargo test` of the wasm crate compiles and runs it.
+        if cli.wasm
+            && cli.emit_tests
+            && let Some(test_mod) = crate::emit_tests_wasm::emit_generated_wasm_tests(types, cli)
+        {
+            self.wasm_lib().raw(&test_mod);
+        }
     }
 
     /// Exports all already-generated state to the provided directory.

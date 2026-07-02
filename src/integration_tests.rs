@@ -1230,53 +1230,121 @@ fn emit_tests_execute() {
 }
 
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (TESTING_ROADMAP item 2, the
-/// behavioural frontier): generate the rich `core` fixture with `--wasm=true --emit-tests=true` and
-/// `cargo test` the generated WASM crate — run_test's wasm test step runs the emitted
-/// `wasm_roundtrip_*`/`wasm_reject_*` tests alongside the hand-written `tests_wasm.rs` suite (the
-/// plausibility cross-check: where the emitted module overlaps the hand-written one, both must pass).
-/// This is the wasm emitter's execution gate. The floor asserts keep the gate from going vacuous if
-/// emission silently shrinks.
+/// behavioural frontier): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
+/// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
+/// (alongside the hand-written `tests_wasm.rs` — the plausibility cross-check where the two overlap).
+/// The floor asserts keep the gate from going vacuous if emission silently shrinks.
 ///
-/// `cargo check` never compiles `#[cfg(test)]` code, so the emitted wasm test module is invisible to
-/// every check-only gate (`feature_corpus_compiles`, `wasm_matrix_compiles`); a `cargo test` of the
-/// wasm crate is the only thing that compiles AND runs it.
+/// This deliberately does NOT reuse `run_test`, and does NOT `cargo test` the RUST crate: the rust
+/// emitter is gated separately by `emit_tests_execute` (on the preserve fixture). The `core` fixture
+/// is not `--emit-tests`-clean on the *rust* side — its hand-written `tests::docs`/`tests::no_alias`
+/// truncate `lib.rs` at the first `#[cfg(test)]` (which the injected emitted module now precedes), and
+/// its wire-ambiguous `TypeChoice` (uint `0` collides with the fixed `i0` variant) trips the rust
+/// value-equality oracle. None of those are wasm concerns: the wasm crate builds the rust crate as a
+/// *non-test* dependency, so the rust `#[cfg(test)]` module is never compiled here. `cargo check`
+/// never compiles `#[cfg(test)]` code, so a `cargo test` of the wasm crate is the only thing that
+/// compiles AND runs the emitted wasm module.
 #[test]
 fn emit_wasm_tests_execute() {
     use std::str::FromStr;
-    let extern_rust_path = std::path::PathBuf::from_str("tests")
-        .unwrap()
-        .join("external_rust_defs");
-    let extern_wasm_path = std::path::PathBuf::from_str("tests")
-        .unwrap()
-        .join("external_wasm_defs");
-    let custom_ser_path = std::path::PathBuf::from_str("tests")
-        .unwrap()
-        .join("custom_serialization");
-    run_test(
-        "core",
-        &["--wasm=true", "--emit-tests=true"],
-        Some("emit_wasm_tests"),
-        &[extern_rust_path, custom_ser_path],
-        &[extern_wasm_path],
-        false,
-        &[],
+    if !tool_exists("cargo") {
+        return;
+    }
+    let test_path = std::path::PathBuf::from_str("tests").unwrap().join("core");
+    let export = "export_emit_wasm_tests";
+    let export_path = test_path.join(export);
+
+    // generate the crate(s)
+    let generate = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg(format!("--output={}", export_path.to_str().unwrap()))
+        .arg(format!(
+            "--input={}",
+            test_path.join("input.cddl").to_str().unwrap()
+        ))
+        .arg("--wasm=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(generate.status.success());
+
+    // The wasm crate builds the rust crate as a (non-test) dependency, so the rust lib only needs to
+    // COMPILE — append just the production externs it references (extern types + custom serializers),
+    // NOT the rust test suite (deser_test/tests.rs), whose core-specific `--emit-tests` incompat is
+    // out of scope here (see the doc comment).
+    let mut rust_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(export_path.join("rust/src/lib.rs"))
+        .unwrap();
+    rust_lib.write_all(b"\nuse serialization::*;\n").unwrap();
+    for f in ["external_rust_defs", "custom_serialization"] {
+        rust_lib.write_all(b"\n\n").unwrap();
+        rust_lib
+            .write_all(
+                std::fs::read_to_string(test_path.parent().unwrap().join(f))
+                    .unwrap()
+                    .as_bytes(),
+            )
+            .unwrap();
+    }
+    std::mem::drop(rust_lib);
+
+    // The wasm crate: append the extern wasm defs it references + the hand-written tests_wasm.rs
+    // (which runs beside the emitted module as the plausibility cross-check).
+    let wasm_lib_path = export_path.join("wasm/src/lib.rs");
+    let mut wasm_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&wasm_lib_path)
+        .unwrap();
+    for f in [
+        test_path.parent().unwrap().join("external_wasm_defs"),
+        test_path.join("tests_wasm.rs"),
+    ] {
+        wasm_lib.write_all(b"\n\n").unwrap();
+        wasm_lib
+            .write_all(std::fs::read_to_string(&f).unwrap().as_bytes())
+            .unwrap();
+    }
+    std::mem::drop(wasm_lib);
+
+    // cargo test the WASM crate only
+    let wasm_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(export_path.join("wasm"))
+        .output()
+        .unwrap();
+    if !wasm_test.status.success() {
+        eprintln!(
+            "wasm test stderr:\n{}",
+            String::from_utf8_lossy(&wasm_test.stderr)
+        );
+    }
+    println!(
+        "wasm test stdout:\n{}",
+        String::from_utf8_lossy(&wasm_test.stdout)
     );
-    let lib = std::fs::read_to_string("tests/core/export_emit_wasm_tests/wasm/src/lib.rs").unwrap();
+    assert!(wasm_test.status.success());
+
+    // Floors pinned from the first real Phase-2 run (see emit_tests_wasm.rs); they keep the gate
+    // from going vacuous if emission silently shrinks.
+    let lib = std::fs::read_to_string(&wasm_lib_path).unwrap();
     assert!(
         lib.contains("mod cddl_generated_wasm_tests"),
         "--emit-tests emitted no generated WASM-test module"
     );
-    // Floors pinned from the first real Phase-2 run (see emit_tests_wasm.rs); they keep the gate
-    // from going vacuous if emission silently shrinks.
     let n_roundtrip = lib.matches("fn wasm_roundtrip_").count();
-    let n_reject = lib.matches("fn wasm_reject_").count();
+    let n_bounds = lib.matches("fn wasm_bounds_").count();
     assert!(
-        n_roundtrip >= 1,
+        n_roundtrip >= 45,
         "emitted only {n_roundtrip} wasm_roundtrip tests for the core fixture — emission silently shrank"
     );
     assert!(
-        n_reject >= 1,
-        "emitted only {n_reject} wasm_reject tests for the core fixture — emission silently shrank"
+        n_bounds >= 4,
+        "emitted only {n_bounds} wasm_bounds tests for the core fixture — emission silently shrank"
     );
 }
 

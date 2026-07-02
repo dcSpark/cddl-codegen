@@ -213,9 +213,11 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             RustStructType::Record(record) => {
                 record_deser_reject(types, &name, record, !cli.preserve_encodings)
             }
-            RustStructType::TypeChoice { variants }
-            | RustStructType::GroupChoice { variants, .. } => {
-                choice_construct_reject(types, &name, variants)
+            RustStructType::TypeChoice { variants } => {
+                choice_construct_reject(types, &name, variants, false)
+            }
+            RustStructType::GroupChoice { variants, .. } => {
+                choice_construct_reject(types, &name, variants, true)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
                 min_max.and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm))
@@ -248,9 +250,11 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             RustStructType::Record(record) => {
                 record_roundtrip(types, &name, record, conf, value_eq)
             }
-            RustStructType::TypeChoice { variants }
-            | RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants, conf, value_eq)
+            RustStructType::TypeChoice { variants } => {
+                choice_roundtrip(types, &name, variants, false, conf, value_eq)
+            }
+            RustStructType::GroupChoice { variants, .. } => {
+                choice_roundtrip(types, &name, variants, true, conf, value_eq)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
                 wrapper_roundtrip(types, &name, wrapped, *min_max, conf, value_eq)
@@ -387,7 +391,7 @@ fn roundtrip_body(
 
 /// Mirrors the record constructor's fallibility rule (`generation.rs` `new_can_fail`): `new()`
 /// returns `Result` iff any non-optional field is bounded.
-fn record_ctor_can_fail(record: &RustRecord) -> bool {
+pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
     record
         .fields
         .iter()
@@ -478,13 +482,14 @@ fn choice_roundtrip(
     types: &IntermediateTypes,
     name: &str,
     variants: &[EnumVariant],
+    group_choice: bool,
     conf: Option<&str>,
     value_eq: bool,
 ) -> Option<String> {
     let mut cases = Vec::new();
     for variant in variants {
         let ctor = format!("new_{}", variant.name_as_var());
-        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+        let Some(arg_fields) = variant_arg_fields(types, variant, group_choice) else {
             eprintln!(
                 "cddl-codegen --emit-tests: {name}::{ctor} not cheaply constructible — no round-trip case"
             );
@@ -531,7 +536,7 @@ fn wrapper_roundtrip(
     value_eq: bool,
 ) -> Option<String> {
     let inner = match min_max {
-        Some(mm) => materialize(types, wrapped, valid_measure(mm)),
+        Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
         None => valid_value(types, wrapped),
     };
     let Some(inner) = inner else {
@@ -553,7 +558,7 @@ fn wrapper_roundtrip(
 /// an arg makes `new_<variant>` return `Result` only when it needs an inlined bounds check AND a
 /// check expression exists for its shape (a bounded named wrapper like `Hash` checks at ITS OWN
 /// construction, so passing one in stays infallible).
-fn arg_can_fail(types: &IntermediateTypes, ty: &RustType) -> bool {
+pub(crate) fn arg_can_fail(types: &IntermediateTypes, ty: &RustType) -> bool {
     ty.needs_bounds_check_if_inlined(types)
         && crate::generation::bounds_check_expr_rust_type(ty, "x").is_some()
 }
@@ -671,11 +676,12 @@ fn choice_construct_reject(
     types: &IntermediateTypes,
     name: &str,
     variants: &[EnumVariant],
+    group_choice: bool,
 ) -> Option<String> {
     let mut lines = Vec::new();
     for variant in variants {
         let ctor = format!("new_{}", variant.name_as_var());
-        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+        let Some(arg_fields) = variant_arg_fields(types, variant, group_choice) else {
             continue;
         };
 
@@ -756,7 +762,7 @@ fn wrapper_construct_reject(
 }
 
 #[derive(PartialEq, Clone, Copy)]
-enum MeasureKind {
+pub(crate) enum MeasureKind {
     /// the value itself is bounded (integer primitives)
     Value,
     /// the length is bounded (text / bytes / array / map)
@@ -765,7 +771,7 @@ enum MeasureKind {
 
 /// How `ty`'s bound is measured, or `None` if it isn't a cheaply-testable bounded shape
 /// (`nint`/bool/float values are excluded — see module docs).
-fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
+pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => match p {
             Primitive::Str | Primitive::Bytes => Some(MeasureKind::Len),
@@ -786,8 +792,24 @@ fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
 }
 
 /// In-range measure for a valid baseline: the inclusive min (or max, or 0).
-fn valid_measure(b: Bounds) -> i128 {
+pub(crate) fn valid_measure(b: Bounds) -> i128 {
     b.0.or(b.1).unwrap_or(0)
+}
+
+/// The in-range inner measure for a bounded wrapper's `new(inner)`. A bounded `nint` wrapper stores
+/// the inner as a `u64` MAGNITUDE and its `new` checks the nint-transformed bounds (`generation.rs`
+/// applies `nint_bounds_to_u64` there), so the baseline must be minted from the transformed bounds —
+/// otherwise a raw negative literal (e.g. `-5`) is passed to a `u64` ctor and the emitted code won't
+/// compile. Non-nint wrappers check the raw measure directly.
+fn wrapper_measure(wrapped: &RustType, mm: Bounds) -> i128 {
+    if matches!(
+        wrapped.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) {
+        valid_measure(nint_bounds_to_u64(mm))
+    } else {
+        valid_measure(mm)
+    }
 }
 
 /// nint bounds are stored as u64 magnitudes; the minted baseline must pass the exact check `new()`
@@ -824,7 +846,7 @@ fn prim_range(p: &Primitive) -> (i128, i128) {
 /// are the inclusive min/max boundaries (must round-trip / construct); reject cases are one step
 /// beyond (must be rejected as `RangeCheck`). Two-sided when both endpoints are present; each case
 /// is dropped if its value isn't representable in the backing rust type.
-fn bound_cases(
+pub(crate) fn bound_cases(
     types: &IntermediateTypes,
     ty: &RustType,
     bounds: Bounds,
@@ -859,7 +881,7 @@ fn bound_cases(
 const MAX_MINT_DEPTH: u8 = 4;
 
 /// A valid in-range minted value for `ty`, or `None` if it can't be cheaply minted.
-fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<MintValue> {
+pub(crate) fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<MintValue> {
     valid_value_at(types, ty, 0)
 }
 
@@ -921,7 +943,7 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
 /// Mint a valid instance of a NAMED generated struct, recursing into its fields (depth-capped so
 /// recursion terminates: at the cap this returns `None`, which an enclosing unbounded collection
 /// absorbs by minting empty — loudly — while any other enclosing mint gets the caller's loud skip).
-fn mint_struct(
+pub(crate) fn mint_struct(
     types: &IntermediateTypes,
     ident: &crate::intermediate::RustIdent,
     depth: u8,
@@ -954,7 +976,9 @@ fn mint_struct(
         }
         RustStructType::Wrapper { wrapped, min_max } => {
             let inner = match min_max {
-                Some(mm) => materialize_at(types, wrapped, valid_measure(*mm), depth + 1)?,
+                Some(mm) => {
+                    materialize_at(types, wrapped, wrapper_measure(wrapped, *mm), depth + 1)?
+                }
                 None => valid_value_at(types, wrapped, depth + 1)?,
             };
             Some(MintValue::Wrapper {
@@ -967,8 +991,11 @@ fn mint_struct(
             ident: name,
             variant: v.name.to_string(),
         }),
-        RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
-            mint_choice(types, &name, variants, depth)
+        RustStructType::TypeChoice { variants } => {
+            mint_choice(types, &name, variants, false, depth)
+        }
+        RustStructType::GroupChoice { variants, .. } => {
+            mint_choice(types, &name, variants, true, depth)
         }
         // transparent aliases: an empty map/vec is valid for `*`-occurrence tables/arrays, and the
         // alias's associated `new()` resolves to the underlying map type's constructor
@@ -994,10 +1021,11 @@ fn mint_choice(
     types: &IntermediateTypes,
     name: &str,
     variants: &[EnumVariant],
+    group_choice: bool,
     depth: u8,
 ) -> Option<MintValue> {
     for variant in variants {
-        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+        let Some(arg_fields) = variant_arg_fields(types, variant, group_choice) else {
             continue;
         };
         let args: Option<Vec<MintValue>> = arg_fields
@@ -1032,7 +1060,11 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
 
 /// Build a minted value for `ty` whose bound-relevant measure equals `measure`
 /// (the value itself for integers, the length for text/bytes/array/map).
-fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Option<MintValue> {
+pub(crate) fn materialize(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    measure: i128,
+) -> Option<MintValue> {
     materialize_at(types, ty, measure, 0)
 }
 
@@ -1111,13 +1143,19 @@ fn materialize_at(
 
 /// The constructor arg list of a choice variant's `new_<variant>` (mirrors `generate_enum`), or
 /// `None` when it isn't cheaply constructible (inlined records with optional fields — deferred).
-fn variant_arg_fields<'a>(
+///
+/// `group_choice` mirrors the generator's `rep.and(fields)` flatten rule (`generation.rs`): a
+/// GROUP-choice variant that names a record flattens its fields into `new_<variant>(field, ..)`,
+/// but a TYPE-choice variant (no representation) passes the whole named value as one arg
+/// (`new_<variant>(WholeType)`). Flattening a type-choice variant emits an uncompilable ctor call.
+pub(crate) fn variant_arg_fields<'a>(
     types: &'a IntermediateTypes,
     variant: &'a EnumVariant,
+    group_choice: bool,
 ) -> Option<Vec<(&'a RustType, String)>> {
     match &variant.data {
         EnumVariantData::RustType(ty) => {
-            if let Some(record) = ty_as_record(types, ty) {
+            if let Some(record) = group_choice.then(|| ty_as_record(types, ty)).flatten() {
                 // group-choice variant backed by a multi-field record: ctor flattens its fields
                 Some(
                     record
