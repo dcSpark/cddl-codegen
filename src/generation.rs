@@ -881,6 +881,12 @@ impl GenerationScope {
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
+                    // encoding structs can reference GENERATED types (a table keyed by a
+                    // type-choice enum stores `BTreeMap<KeyEnum, StringEncoding>`), so like
+                    // serialization.rs this needs the scope module's items — `super::*` also
+                    // covers cross-scope keys, since a child glob re-imports the parent struct
+                    // file's `use` bindings (the scope_references imports pushed above)
+                    .push_import("super", "*", None)
                     .push_import("std::collections", "BTreeMap", None)
                     .push_import(
                         format!("{}::serialization", cli.common_import_rust()),

@@ -1,0 +1,10 @@
+; Tables keyed by a GENERATED ENUM (a type-choice `@used_as_key`, or the reserved `int` enum),
+; embedded in a record. Under --preserve-encodings the embedder's encoding struct stores the
+; table's value encodings keyed by the key TYPE (`BTreeMap<IKey, StringEncoding>`), so
+; cbor_encodings.rs must be able to resolve generated types — it once imported only the
+; serialization helpers, failing E0425 on any named key type (plus an E0034 `.cloned()`
+; inference cascade). Generation exited 0 either way: only the compile gate catches this class.
+ikey = uint / nint ; @used_as_key
+enum_keyed = { * ikey => text }
+int_keyed = { * int => text }
+enum_key_holder = [choice_keyed: enum_keyed, int_keyed: int_keyed]
