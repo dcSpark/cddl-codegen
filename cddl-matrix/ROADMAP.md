@@ -185,9 +185,6 @@ from a degenerate example.**
 - **Occurrence-count constraints aren't enforced** on homogeneous arrays — `[+ uint]` (≥1) and `[2*5 uint]`
   (2..5) both emit a bare `Vec<u64>` with no length check (bare `*` is faithfully a `Vec`, so only `+`/`n*m`
   drop a constraint). Surfaced by `occurrence.cddl`.
-- **Inline-group splice drops members** — `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }`
-  (`read_elems(1)`), silently losing `tstr` (inline-group entries aren't flattened into the record). Surfaced
-  by `inline_group.cddl`; `grpent.inline_group` is ⚠️.
 - **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
   bounds don't reach the field bounds check as `(Some,Some)`.

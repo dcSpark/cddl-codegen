@@ -359,12 +359,6 @@ note = "text literal member (`b: \"marker\"`)"
 
 # ---- ⚠️ partial — parsed but the semantics aren't honored ----
 [[note]]
-id = "grpent.inline_group"
-status = "partial"
-reason = "an inline parenthesized group spliced as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It parses + compiles (so the matrix probe marks it supported), but the output is wrong — silent data loss. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record."
-code_anchor = "GroupEntry::InlineGroup { .. } => None"
-
-[[note]]
 id = "rangeop.exclusive"
 status = "partial"
 reason = "the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`)."

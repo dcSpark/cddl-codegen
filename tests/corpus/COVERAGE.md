@@ -87,7 +87,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `grpent.groupname` | ➕ | Group-name reference entry | supported, no corpus fixture (cddl-codegen exit 0) |
-| `grpent.inline_group` | ⚠️ | Inline (parenthesized) group entry | an inline parenthesized group spliced as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It parses + compiles (so the matrix probe marks it supported), but the output is wrong — silent data loss. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.  [`GroupEntry::InlineGroup { .. } => None`] |
+| `grpent.inline_group` | ✅ | Inline (parenthesized) group entry | `inline_group.cddl` |
 | `grpent.member` | ➕ | Member entry (optional occur + optional memberkey + type) | supported, no corpus fixture (cddl-codegen exit 0) |
 
 ### `memberkey` (4)
@@ -302,7 +302,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **92** — ✅ 52 covered · ➕ 7 supported-untested · ⚠️ 7 partial · ➖ 26 not supported
+- Features: **92** — ✅ 53 covered · ➕ 7 supported-untested · ⚠️ 6 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 41
 
