@@ -2,3 +2,9 @@
 ; (optional `?` and zero-or-more `*` are already covered by optional.cddl / table-style fixtures.)
 one_or_more = [+ uint]
 bounded = [2*5 uint]
+; Embed sites are where occurrence counts are actually enforceable (the top-level rules are
+; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints
+; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the
+; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length
+; passed). The emit-tests deser-reject cases push each field's length out of bounds.
+occurrence_holder = [o: one_or_more, b: bounded, inline_bounded: [1*3 text]]

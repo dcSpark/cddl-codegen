@@ -676,7 +676,7 @@ impl GenerationScope {
                         //    .rust()
                         //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
                     }
-                    RustStructType::Array { element_type } => {
+                    RustStructType::Array { element_type, .. } => {
                         if cli.wasm {
                             self.generate_array_type(types, element_type.clone(), rust_ident, cli);
                         }
@@ -3322,7 +3322,7 @@ impl GenerationScope {
                     }
                     deser_code.throws = true;
                 }
-                SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), _cfg) => {
+                SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
                     let config_for_alias = if let Some(custom_deserialize) = types
                         .type_aliases()
                         .get(ident)
@@ -3335,9 +3335,14 @@ impl GenerationScope {
                     } else {
                         config
                     };
+                    // keep the OUTER config: an Alias's inner is a bare ConceptualRustType (no
+                    // config of its own — see `as_alias`), so recursing with `(&**ty).into()`
+                    // would default the config and drop e.g. the occurrence-count bounds a named
+                    // array alias carries (its length check would silently vanish here while the
+                    // constructor check, emitted from the field's RustType, kept working)
                     self.generate_deserialize(
                         types,
-                        (&**ty).into(),
+                        SerializingRustType::Root(ty, cfg),
                         before_after,
                         config_for_alias,
                         cli,

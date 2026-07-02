@@ -25,19 +25,20 @@ expression: ir
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
-                    bounds: Some(
-                        (
-                            Some(
-                                2,
-                            ),
-                            Some(
-                                5,
-                            ),
-                        ),
-                    ),
+                    bounds: None,
                     basic_override: false,
                 },
             },
+            bounds: Some(
+                (
+                    Some(
+                        2,
+                    ),
+                    Some(
+                        5,
+                    ),
+                ),
+            ),
         },
     },
     RustIdent(
@@ -55,6 +56,175 @@ expression: ir
             newtype_getter: None,
         },
         variant: Extern,
+    },
+    RustIdent(
+        "OccurrenceHolder",
+    ): RustStruct {
+        ident: RustIdent(
+            "OccurrenceHolder",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "o",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "OneOrMore",
+                                    ),
+                                ),
+                                Array(
+                                    RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        Some(
+                                            1,
+                                        ),
+                                        None,
+                                    ),
+                                ),
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "b",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "Bounded",
+                                    ),
+                                ),
+                                Array(
+                                    RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        Some(
+                                            2,
+                                        ),
+                                        Some(
+                                            5,
+                                        ),
+                                    ),
+                                ),
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "inline_bounded",
+                        rust_type: RustType {
+                            conceptual_type: Array(
+                                RustType {
+                                    conceptual_type: Primitive(
+                                        Str,
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        Some(
+                                            1,
+                                        ),
+                                        Some(
+                                            3,
+                                        ),
+                                    ),
+                                ),
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
     },
     RustIdent(
         "OneOrMore",
@@ -78,17 +248,18 @@ expression: ir
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
-                    bounds: Some(
-                        (
-                            Some(
-                                1,
-                            ),
-                            None,
-                        ),
-                    ),
+                    bounds: None,
                     basic_override: false,
                 },
             },
+            bounds: Some(
+                (
+                    Some(
+                        1,
+                    ),
+                    None,
+                ),
+            ),
         },
     },
 }

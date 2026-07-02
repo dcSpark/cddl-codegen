@@ -84,21 +84,6 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      `uint / nint ; @used_as_key` choice key under `--preserve-encodings` (missing import in
      `cbor_encodings.rs` + a `.cloned()` ambiguity). Fix either bug, then add the `-1`/`256`
      hex-pinned vector (hand-derive per RFC 8949 — a wrong KAT is a wrong oracle).
-   - **Occurrence-count enforcement needs a REJECT-side oracle** (value-conformance structurally
-     can't catch it). Standalone round-trips for transparent Table/Array aliases are NOT the path:
-     they are impossible AND would test the wrong code — `pub type X = Vec<T>` has no standalone
-     `Serialize` (cbor_event implements it for `String` but not `Vec`/`BTreeMap`; the orphan rule
-     forbids adding it; collection serialization is inlined at embed sites), and `from_cbor_bytes`
-     on such an alias routes through cbor_event's generic `Vec<T>` impl, not the generated element
-     loop — so the generator-emitted wire path only exists at EMBED sites (the `bool_holder`
-     pattern, which covers it). Meanwhile occurrence bounds SURVIVE to the IR
-     (`parsing.rs` puts them on `element_type.config.bounds`) — the bug is missing *enforcement*,
-     so any spec-honest minted value is valid and the conformance oracle passes. The catch
-     therefore requires: (1) the generator emitting the length check (the open
-     `corpus_occurrence_bounds_enforced` product fix), then (2) an emit-tests reject case minting
-     an out-of-count array and asserting the decoder rejects it (the `cddl` validator *does*
-     enforce occurrence counts — verified — so the conformance oracle also gates any future minted
-     out-of-count value).
    - **Minter coverage:** the reserved `Int` extern (a `primitives.cddl` `int` resolves to
      `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a real record
      surface — special-case the constructible `Int` enum in the minter); non-primitive map keys;

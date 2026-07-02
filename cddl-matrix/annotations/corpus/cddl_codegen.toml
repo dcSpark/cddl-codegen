@@ -576,7 +576,4 @@ text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = nu
 text = "Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work."
 
 [[finding]]
-text = "Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix."
-
-[[finding]]
 text = "Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record."

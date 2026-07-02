@@ -901,8 +901,10 @@ pub fn create_variants_from_type_choices(
 /// Possible special cases for groups that can be handled to generate much nicer code
 /// instead of treating all groups as structs.
 enum GroupParsingType {
-    /// Fields are the same e.g. field: [* uint]
-    HomogenousArray(RustType),
+    /// Fields are the same e.g. field: [* uint]. The second field is the occurrence-count bounds
+    /// (`+` / `n*m`) — a LENGTH constraint belonging to the enclosing array type, kept separate
+    /// from the element so it can never be misread as an element VALUE bound.
+    HomogenousArray(RustType, Option<(Option<i128>, Option<i128>)>),
     /// Pairs are the same e.g. field:{ *text => uint }
     HomogenousMap(RustType, RustType),
     /// Fields are different - needs new struct created e.g. field: [a: uint, b: bstr]
@@ -972,7 +974,9 @@ fn parse_group_type<'a>(
                 });
                 match bounds {
                     // no bounds
-                    Some((None, None)) => return GroupParsingType::HomogenousArray(elem_type),
+                    Some((None, None)) => {
+                        return GroupParsingType::HomogenousArray(elem_type, None);
+                    }
                     None | Some((Some(1), Some(1))) => {
                         // if the only element is a basic group we don't need to create a new group but can just
                         // change how it is (de)serialized
@@ -985,7 +989,7 @@ fn parse_group_type<'a>(
                         // fall-through generic case. this is a general 1-element struct that needs creating
                     }
                     Some(bounds) => {
-                        return GroupParsingType::HomogenousArray(elem_type.with_bounds(bounds));
+                        return GroupParsingType::HomogenousArray(elem_type, Some(bounds));
                     }
                 }
             }
@@ -1331,7 +1335,7 @@ fn rust_type_from_type2(
                         Representation::Array,
                         cli,
                     ) {
-                        GroupParsingType::HomogenousArray(element_type) => {
+                        GroupParsingType::HomogenousArray(element_type, bounds) => {
                             if let ConceptualRustType::Rust(element_ident) =
                                 &element_type.conceptual_type
                             {
@@ -1342,7 +1346,12 @@ fn rust_type_from_type2(
                                     cli,
                                 );
                             }
-                            ConceptualRustType::Array(Box::new(element_type)).into()
+                            let array_type: RustType =
+                                ConceptualRustType::Array(Box::new(element_type)).into();
+                            match bounds {
+                                Some(bounds) => array_type.with_bounds(bounds),
+                                None => array_type,
+                            }
                         }
                         GroupParsingType::HomogenousMap(_, _) => unreachable!(),
                         GroupParsingType::Heterogenous => {
@@ -1605,19 +1614,24 @@ fn parse_group_choice(
         rule_metadata
     };
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
-        GroupParsingType::HomogenousArray(element_type) => {
+        GroupParsingType::HomogenousArray(element_type, bounds) => {
             if rule_metadata.newtype.is_some() {
                 // generate newtype over array
-                RustStruct::new_wrapper(
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type)).into();
+                if let Some(bounds) = bounds {
+                    array_type = array_type.with_bounds(bounds);
+                }
+                RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), array_type, None)
+            } else {
+                // Array - homogeneous element type with proper occurence operator
+                RustStruct::new_array(
                     name.clone(),
                     tag,
                     Some(&rule_metadata),
-                    ConceptualRustType::Array(Box::new(element_type)).into(),
-                    None,
+                    element_type,
+                    bounds,
                 )
-            } else {
-                // Array - homogeneous element type with proper occurence operator
-                RustStruct::new_array(name.clone(), tag, Some(&rule_metadata), element_type)
             }
         }
         GroupParsingType::HomogenousMap(key_type, value_type) => {

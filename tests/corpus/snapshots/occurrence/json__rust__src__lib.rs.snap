@@ -16,4 +16,49 @@ use std::convert::TryFrom;
 
 pub type Bounded = Vec<u64>;
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct OccurrenceHolder {
+    pub o: OneOrMore,
+    pub b: Bounded,
+    pub inline_bounded: Vec<String>,
+}
+
+impl OccurrenceHolder {
+    pub fn new(
+        o: OneOrMore,
+        b: Bounded,
+        inline_bounded: Vec<String>,
+    ) -> Result<Self, DeserializeError> {
+        if o.len() < 1 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: o.len() as isize,
+                min: Some(1),
+                max: None,
+            }
+            .into());
+        }
+        if b.len() < 2 || b.len() > 5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: b.len() as isize,
+                min: Some(2),
+                max: Some(5),
+            }
+            .into());
+        }
+        if inline_bounded.len() < 1 || inline_bounded.len() > 3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: inline_bounded.len() as isize,
+                min: Some(1),
+                max: Some(3),
+            }
+            .into());
+        }
+        Ok(Self {
+            o,
+            b,
+            inline_bounded,
+        })
+    }
+}
+
 pub type OneOrMore = Vec<u64>;

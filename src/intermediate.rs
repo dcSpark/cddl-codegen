@@ -292,7 +292,7 @@ impl<'a> IntermediateTypes<'a> {
         for rust_struct in self.rust_structs().values() {
             let current_scope = self.scope(&rust_struct.ident);
             match rust_struct.variant() {
-                RustStructType::Array { element_type } => {
+                RustStructType::Array { element_type, .. } => {
                     mark_refs(&mut refs, self, wasm, current_scope, element_type)
                 }
                 RustStructType::GroupChoice { variants, .. }
@@ -529,9 +529,17 @@ impl<'a> IntermediateTypes<'a> {
                     AliasInfo::new_manual(map_type, true, false),
                 )
             }
-            RustStructType::Array { element_type } => {
+            RustStructType::Array {
+                element_type,
+                bounds,
+            } => {
                 let mut array_type: RustType =
                     ConceptualRustType::Array(Box::new(element_type.clone())).into();
+                if let Some(bounds) = bounds {
+                    // the occurrence-count length bounds ride the alias so every embed site of
+                    // the named array enforces them (deserialize + fallible constructor)
+                    array_type = array_type.with_bounds(*bounds);
+                }
                 if let Some(tag) = rust_struct.tag {
                     array_type = array_type.tag(tag);
                 }
@@ -582,7 +590,7 @@ impl<'a> IntermediateTypes<'a> {
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
                 parent_visitor,
-                RustStruct::new_array(array_type_ident, None, None, element_type.clone()),
+                RustStruct::new_array(array_type_ident, None, None, element_type.clone(), None),
                 cli,
             );
         }
@@ -2511,6 +2519,10 @@ pub enum RustStructType {
     },
     Array {
         element_type: RustType,
+        /// occurrence-count bounds (`+` / `n*m`) — a LENGTH constraint on the array itself.
+        /// Applied to the registered alias RustType's config so embed sites enforce it; kept off
+        /// the element_type so it can't be misread as an element VALUE bound.
+        bounds: Option<(Option<i128>, Option<i128>)>,
     },
     TypeChoice {
         variants: Vec<EnumVariant>,
@@ -2568,12 +2580,16 @@ impl RustStruct {
         tag: Option<usize>,
         rule_metadata: Option<&RuleMetadata>,
         element_type: RustType,
+        bounds: Option<(Option<i128>, Option<i128>)>,
     ) -> Self {
         Self {
             ident,
             tag,
             config: RustStructConfig::from(rule_metadata),
-            variant: RustStructType::Array { element_type },
+            variant: RustStructType::Array {
+                element_type,
+                bounds,
+            },
         }
     }
 
@@ -2800,7 +2816,7 @@ impl RustStruct {
         already_visited: &mut BTreeSet<RustIdent>,
     ) {
         match &self.variant {
-            RustStructType::Array { element_type } => element_type
+            RustStructType::Array { element_type, .. } => element_type
                 .conceptual_type
                 .visit_types_excluding(types, f, already_visited),
             RustStructType::GroupChoice { variants, .. }
@@ -3121,7 +3137,7 @@ impl GenericInstance {
                 *domain = Self::resolve_type(&resolved_args, domain);
                 *range = Self::resolve_type(&resolved_args, range);
             }
-            RustStructType::Array { element_type } => {
+            RustStructType::Array { element_type, .. } => {
                 *element_type = Self::resolve_type(&resolved_args, element_type);
             }
             RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
