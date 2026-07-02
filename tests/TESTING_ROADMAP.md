@@ -71,8 +71,28 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers); the
      remaining frontier is minted *encodings* at scale (not just hand-picked ones), the only
      at-scale test of those high-stakes flags.
-   - **Minter coverage:** top-level transparent Table/Array alias round-trips; non-primitive map
-     keys; optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it
+   - **IR-bug oracle at breadth (the residual that closes the oracle-inversion theme).** The emitted
+     harness proves the encoder and decoder agree with *each other*, but its minted value is derived
+     from the SAME IR as the code under test — so an IR-level miscompile (a bound/member computed
+     wrong at parse time) mints a spec-violating value and then asserts it round-trips *green*. Live
+     example: `tests/corpus/exclusive_range.cddl` (`0...10`) mints `ExclusiveRange::new(11)` and
+     asserts "must deserialize" in CI, though 11 is out of spec. The cheap closing composition —
+     recorded nowhere until now — is to validate every minted byte string against the fixture's
+     SOURCE `.cddl` using the already-pinned `cddl` validator (`CDDL_ORACLE_DEP`, the same one
+     `deser_test_conformance.rs` uses), with the known IR-bug fixtures (`exclusive_range`,
+     `occurrence`, `inline_group` — all ledgered in `cddl-matrix/ROADMAP.md`) on an explicit
+     expected-fail list so a *new* IR miscompile turns a green cell red. Cost trade-off (why it is
+     manual/local under the CI freeze, not auto-wired): it adds the heavy `cddl` dep to every corpus
+     test crate — same reason the conformance oracle is wired only into `preserve-encodings` today.
+     Caveat: shares the fork's parser with the generator (see the conformance-oracle caveat), so it
+     catches wrong *values*, not fork-level misparses.
+   - **Minter coverage:** top-level transparent Table/Array alias round-trips (named Table/Array
+     types currently mint empty — `emit_tests.rs`, `mint_struct`'s Table arm — so a named
+     collection's element wire path isn't exercised standalone; inline `{ * k => v }` / `[* T]`
+     *fields* now mint one entry/element); the reserved `Int` extern (a `primitives.cddl` `int`
+     resolves to `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a
+     real record surface — special-case the constructible `Int` enum in the minter); non-primitive
+     map keys; optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it
      targeted is fixed; a construct-reject would guard regression + still fails on the
      *standalone* bounded-`nint`-newtype bug — see the ledger).
 
@@ -178,6 +198,20 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
    divergence/crash into the snapshot corpus (review once, commit). Complements the real on-chain
    differential (item 3): synthetic breadth vs real-world depth.
+   - **Existing `fuzz/` rot residuals (the harness is manual-only under the CI freeze).** The seed
+     corpus now harvests all three golden-hex suites (default + preserve + canonical — done in
+     `generate.sh`), but two gaps remain: the 22-type probe list in `fuzz_targets/from_cbor_bytes.rs`
+     is hand-synced against the generated crate's `impl Deserialize` set with no drift guard (a new
+     `input.cddl` rule is silently unfuzzed) — derive or assert it from that set in `generate.sh`; and
+     the fuzz crate has no compile-rot check despite a ~5s stable-toolchain `cargo check` (a probe
+     rename or scrape-regex break silently rots the repo's sole OOM/stack-overflow oracle) — add it as
+     a documented manual/local step, not a workflow job.
+   - **`corpus_detect` dsl-prose residual (LOW).** On a directive-leading comment line the detector
+     credits every later `@word` via `matchAll`, which doesn't mirror `comment_ast`'s sequential parse
+     (`@doc` prose runs to the next `@`; other directives stop at the first non-directive token) — a
+     real directive id buried in trailing prose after a leading directive could keep a dsl cover green.
+     No current fixture triggers it; the fix must replicate that asymmetric `@doc` grammar, not a naive
+     stop-at-first rule.
 
 ## Pending decisions (maintainer call — blocks the related test, not on effort)
 
@@ -201,6 +235,37 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
   preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
   expected-fail list; longer-term, a profile axis on the matrix annotation schema.
+- **Recursive-deserializer depth guard (product/security decision — no default is obviously right).**
+  Terminable recursive types (e.g. `tree = [value: uint, children: [* tree]]`, Plutus-style data)
+  generate and compile, but the generated recursive-descent deserializer has NO depth bound: ~200k-deep
+  hostile CBOR overflows the stack and **SIGABRTs (exit 134, uncatchable by `catch_unwind`)** — a DoS
+  on any consumer parsing untrusted chain data. Adding a guard is genuinely ambiguous on three axes,
+  and the pieces interact, so it needs a maintainer call rather than a default:
+  (a) *enforcement locus* — a thread-local recursion counter in `static/` runtime vs a depth param
+  threaded through every generated `deserialize` vs an OS stack-size / `stacker`-style growable stack;
+  each has a different blast radius on the stable generic `Vec<T>` / nested-type emission path;
+  (b) *limit* — any fixed cap (128? 1024?) rejects legitimately deep valid documents, and making it
+  configurable adds API surface to every generated deserializer;
+  (c) *error contract* — returning a `DeserializeError` (graceful) changes the generated error contract
+  and must thread through every recursive call site; today it aborts uncatchably.
+  Coverage prerequisite (mechanical, do regardless of the guard call): there is **zero** positive
+  recursion coverage in any layer — add a terminable recursive corpus fixture + matrix row so the
+  compile/round-trip path is exercised, and a recursive fuzzed spec (`fuzz/generate.sh` fuzzes only the
+  non-recursive preserve spec, so its stack-overflow oracle is structurally unreachable today).
+- **Top-level tagged / parenthesized *primitive* alias: auto-wrap vs opt-in (API-policy decision).**
+  `tagged = #6.42(text)` (and any single-type tag/parens wrapper of a primitive) emits
+  `pub type Tagged = String` that DROPS the tag from the wire on its own standalone API (`to/from_cbor_bytes`
+  are `String`'s) — a silent conformance bug. A Rust `pub type` physically can't carry a custom impl, so
+  the ONLY way to fix the standalone surface is to emit a newtype WRAPPER, which is an **API-breaking
+  change to generated crates** (embed-site fields typed `String` today become the wrapper type — impacts
+  consumers like CML). This commit made the documented opt-in escape hatch actually work in its natural
+  placement — `#6.42(text) ; @newtype` and `(uint) ; @newtype` now emit the tag-writing wrapper (the
+  trailing comment DSL was previously lost through the single-type unwrap in `parse_type`; the
+  `parenthesized` corpus fixture now covers it). What remains a maintainer call is the DEFAULT: (a) keep
+  opt-in and additionally emit a compile-time warning/error when a transparent alias would silently drop
+  a tag (non-breaking); or (b) auto-wrap all tagged/parenthesized primitive aliases (correct-by-default
+  but breaks embed-site APIs across all consumers, and flips a currently-pinned, ✅-documented behavior).
+  Both are defensible; they differ only in who absorbs the break.
 
 ## Explicitly not worth it (decided, not overlooked)
 

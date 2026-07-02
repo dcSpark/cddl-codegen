@@ -17,6 +17,13 @@
 //
 // Appended into a generated crate's `lib.rs`; the crate needs `cddl` as a dep (wired via run_test's
 // test_deps) and its source spec on disk (read relative to the generated crate's manifest dir).
+//
+// NOTE — this fragment keeps a `.rs` extension (unlike the other extensionless append-fragments in
+// tests/), so `cargo test --all-targets` on the ROOT crate auto-discovers it as an integration test
+// binary. That is deliberate: it makes the fragment itself compile-checked in the root build. It is
+// therefore intentionally free of `#[test]` fns and its helpers are `#[cfg(test)] #[allow(dead_code)]`
+// — a `#[test]` here would run in the ROOT crate's manifest-dir context (no generated types, wrong
+// CARGO_MANIFEST_DIR), not the generated-crate context these helpers assume. Keep it test-free.
 
 #[cfg(test)]
 #[allow(dead_code)]
