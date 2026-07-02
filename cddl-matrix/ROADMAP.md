@@ -74,9 +74,11 @@ heavy `verify.ts` oracle probe is run manually and stays manual (CI is frozen).
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 
 Remaining:
-- **Third robustness catalog: expect-reject.** 19 annotation rows are projected into no test at all
-  (non-panic `unsupported` — the parse-rejected control ops, generates-but-doesn't-compile rows like
-  `prelude.any` — plus `out_of_profile`): project them into a `tests/matrix_reject/` fixture dir mirrored
+- **Third robustness catalog: expect-reject.** The annotation rows that are non-panic `unsupported`
+  (the parse-rejected control ops, generates-but-doesn't-compile rows like `prelude.any`) plus the
+  `out_of_profile` rows are projected into no test at all — the exact set is the projection predicate
+  in `project_robustness.ts` (don't pin a count here; it drifts every time a verdict refresh moves a
+  row into the panic catalog): project them into a `tests/matrix_reject/` fixture dir mirrored
   by a third generation-outcome catalog (expect graceful error), so a parser change that silently makes
   one of them parse (the exact thing the cddl-fork bump did to 14 control ops) is caught by the existing
   test suite instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
@@ -171,7 +173,6 @@ from a degenerate example.**
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
 - Single-field **struct** maps panic: `{ a: uint }` → `unsupported table map key`. Mixed struct+table maps
   (`{ a: uint, * k => v }`) unsupported. Inline anonymous nested composites need a name.
-- `bool` in a type choice → `E0282` (`bool / tstr`, `uint / bool` fail; `int / tstr` compiles).
 - A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
@@ -193,8 +194,10 @@ from a degenerate example.**
 - **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
   with no range check at all (bounds lost).
 - **Quoted text member keys emit invalid Rust.** `{ "a": uint }` generates the field `pub key_"a": u64` —
-  the quoted key takes the value-key naming path instead of the bareword-text path (`{ a: uint }`, the
-  identical CBOR, works). Caught loudly by the rustfmt fail-loud gate at generation time. Surfaced while
+  the quoted key takes the value-key naming path instead of the bareword-text path (the multi-field
+  bareword form `{ a: uint, b: text }`, the identical CBOR, works — the single-field bareword form
+  `{ a: uint }` independently panics, see the single-field struct-map note above). Caught loudly by
+  the rustfmt fail-loud gate at generation time. Surfaced while
   authoring the canonical `mixed_len_keys` ordering fixture; related member-key notes:
   `draft/cddl-bareword-member-key-bug.md`.
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
