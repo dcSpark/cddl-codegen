@@ -22,8 +22,8 @@ use cbor_encodings::{
     EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding,
     MapWithDefaultsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
     SignedIntsEncoding, String1632Encoding, String64Encoding,
-    StructWithCustomSerializationEncoding, TableArrMembersEncoding, ThreeEncoding,
-    WrapperListEncoding, WrapperTableEncoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
+    TaggedTextEncoding, ThreeEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -549,6 +549,12 @@ impl Foo {
             index_2,
             encodings: None,
         }
+    }
+}
+
+impl From<TaggedFooBytes> for Foo {
+    fn from(wrapper: TaggedFooBytes) -> Self {
+        wrapper.inner
     }
 }
 
@@ -1170,6 +1176,12 @@ impl From<String64> for String {
     }
 }
 
+impl From<TaggedText> for String {
+    fn from(wrapper: TaggedText) -> Self {
+        wrapper.inner
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct String1632 {
     pub inner: String,
@@ -1286,9 +1298,47 @@ impl TableArrMembers {
     }
 }
 
-pub type TaggedFooBytes = Foo;
+#[derive(Clone, Debug)]
+pub struct TaggedFooBytes {
+    pub inner: Foo,
+    pub encodings: Option<TaggedFooBytesEncoding>,
+}
 
-pub type TaggedText = String;
+impl TaggedFooBytes {
+    pub fn new(inner: Foo) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Foo> for TaggedFooBytes {
+    fn from(inner: Foo) -> Self {
+        TaggedFooBytes::new(inner.clone().into())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedText {
+    pub inner: String,
+    pub encodings: Option<TaggedTextEncoding>,
+}
+
+impl TaggedText {
+    pub fn new(inner: String) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<String> for TaggedText {
+    fn from(inner: String) -> Self {
+        TaggedText::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Three {

@@ -1,12 +1,16 @@
 ; Tagged types (`#6.n(...)`).
-; - A bare top-level `tagged = #6.42(text)` is a single-type tag wrapper of a primitive; it emits a
-;   transparent `pub type Tagged = String` that DROPS the tag from the standalone API. That
-;   transparent-alias behavior is deliberately pinned pending a maintainer decision (see
-;   TESTING_ROADMAP "Pending decisions": auto-wrap vs opt-in).
-; - `tagged_newtype = #6.42(text) ; @newtype` opts into the tag-writing wrapper via the comment DSL.
-;   The trailing directive is threaded through the single-type unwrap in `parse_type` rather than
-;   silently lost, so this emits a real newtype whose serialize writes tag 42 and whose deserialize
-;   rejects a wrong tag. (`holder` references it so the embed role compiles.)
+; - A bare top-level `tagged = #6.42(text)` is a single-type tag wrapper of a primitive. It AUTO-WRAPS
+;   into a tag-writing/tag-checking newtype: serialize writes `write_tag(42)` then the inner value, and
+;   deserialize rejects a wrong tag with `DeserializeFailure::TagMismatch`. A transparent `pub type` can
+;   physically not carry a custom impl, so the only way its OWN standalone `to/from_cbor_bytes` API can
+;   honor the tag is to emit a real newtype wrapper — hence auto-wrap is the default (a deliberate
+;   breaking change from the earlier `pub type Tagged = String`, which silently dropped the tag from the
+;   standalone wire API — a CBOR conformance bug).
+; - `tagged_newtype = #6.42(text) ; @newtype` requests the same wrapper via the comment DSL. Auto-wrap
+;   makes `@newtype` REDUNDANT on a tag rule (not a double wrapper): `tagged` and `tagged_newtype`
+;   generate byte-identical wrapper shapes — the snapshots pin that equivalence.
+; - `holder` references `tagged_newtype` so the embed role compiles; embedded and standalone both write
+;   the tag.
 tagged = #6.42(text)
 tagged_newtype = #6.42(text) ; @newtype
 holder = [payload: tagged_newtype]

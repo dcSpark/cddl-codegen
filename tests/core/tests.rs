@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn cbor_in_cbor() {
         let foo = Foo::new(0, String::new(), vec![]);
-        deser_test(&CborInCbor::new(foo.clone(), 9, foo))
+        deser_test(&CborInCbor::new(foo.clone(), 9, foo.into()))
     }
 
     #[test]

@@ -149,20 +149,20 @@ impl Prelude {
     }
 
     pub fn new(
-        big_u: PreludeBiguint,
-        uri: PreludeUri,
+        big_u: &PreludeBiguint,
+        uri: &PreludeUri,
         big_i: &PreludeBigint,
         unsigned: &PreludeUnsigned,
         t: String,
         b: Vec<u8>,
         intg: &PreludeInteger,
-        big_n: PreludeBignint,
-        date: PreludeTdate,
-        b64u: PreludeB64url,
-        b64l: PreludeB64legacy,
-        re: PreludeRegexp,
-        mime: PreludeMimeMessage,
-        ec: PreludeEncodedCbor,
+        big_n: &PreludeBignint,
+        date: &PreludeTdate,
+        b64u: &PreludeB64url,
+        b64l: &PreludeB64legacy,
+        re: &PreludeRegexp,
+        mime: &PreludeMimeMessage,
+        ec: &PreludeEncodedCbor,
         df: &PreludeDecfrac,
         bf: &PreludeBigfloat,
     ) -> Self {
@@ -205,9 +205,75 @@ impl AsRef<cddl_lib::Prelude> for Prelude {
     }
 }
 
-pub type PreludeB64legacy = String;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeB64legacy(cddl_lib::PreludeB64legacy);
 
-pub type PreludeB64url = String;
+#[wasm_bindgen]
+impl PreludeB64legacy {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeB64legacy, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeB64legacy> for PreludeB64legacy {
+    fn from(native: cddl_lib::PreludeB64legacy) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeB64legacy> for cddl_lib::PreludeB64legacy {
+    fn from(wasm: PreludeB64legacy) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeB64legacy> for PreludeB64legacy {
+    fn as_ref(&self) -> &cddl_lib::PreludeB64legacy {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeB64url(cddl_lib::PreludeB64url);
+
+#[wasm_bindgen]
+impl PreludeB64url {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeB64url, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeB64url> for PreludeB64url {
+    fn from(native: cddl_lib::PreludeB64url) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeB64url> for cddl_lib::PreludeB64url {
+    fn from(wasm: PreludeB64url) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeB64url> for PreludeB64url {
+    fn as_ref(&self) -> &cddl_lib::PreludeB64url {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -275,13 +341,13 @@ impl PreludeBigint {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+    pub fn new_prelude_biguint(prelude_biguint: &PreludeBiguint) -> Self {
         Self(cddl_lib::PreludeBigint::new_prelude_biguint(
             prelude_biguint.clone().into(),
         ))
     }
 
-    pub fn new_prelude_bignint(prelude_bignint: PreludeBignint) -> Self {
+    pub fn new_prelude_bignint(prelude_bignint: &PreludeBignint) -> Self {
         Self(cddl_lib::PreludeBigint::new_prelude_bignint(
             prelude_bignint.clone().into(),
         ))
@@ -289,25 +355,25 @@ impl PreludeBigint {
 
     pub fn kind(&self) -> PreludeBigintKind {
         match &self.0 {
-            cddl_lib::PreludeBigint::PreludeBiguint { .. } => PreludeBigintKind::PreludeBiguint,
-            cddl_lib::PreludeBigint::PreludeBignint { .. } => PreludeBigintKind::PreludeBignint,
+            cddl_lib::PreludeBigint::PreludeBiguint(_) => PreludeBigintKind::PreludeBiguint,
+            cddl_lib::PreludeBigint::PreludeBignint(_) => PreludeBigintKind::PreludeBignint,
         }
     }
 
     pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
         match &self.0 {
-            cddl_lib::PreludeBigint::PreludeBiguint {
-                prelude_biguint, ..
-            } => Some(prelude_biguint.clone().into()),
+            cddl_lib::PreludeBigint::PreludeBiguint(prelude_biguint) => {
+                Some(prelude_biguint.clone().into())
+            }
             _ => None,
         }
     }
 
     pub fn as_prelude_bignint(&self) -> Option<PreludeBignint> {
         match &self.0 {
-            cddl_lib::PreludeBigint::PreludeBignint {
-                prelude_bignint, ..
-            } => Some(prelude_bignint.clone().into()),
+            cddl_lib::PreludeBigint::PreludeBignint(prelude_bignint) => {
+                Some(prelude_bignint.clone().into())
+            }
             _ => None,
         }
     }
@@ -337,9 +403,75 @@ pub enum PreludeBigintKind {
     PreludeBignint,
 }
 
-pub type PreludeBignint = Vec<u8>;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeBignint(cddl_lib::PreludeBignint);
 
-pub type PreludeBiguint = Vec<u8>;
+#[wasm_bindgen]
+impl PreludeBignint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeBignint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeBignint> for PreludeBignint {
+    fn from(native: cddl_lib::PreludeBignint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeBignint> for cddl_lib::PreludeBignint {
+    fn from(wasm: PreludeBignint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeBignint> for PreludeBignint {
+    fn as_ref(&self) -> &cddl_lib::PreludeBignint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeBiguint(cddl_lib::PreludeBiguint);
+
+#[wasm_bindgen]
+impl PreludeBiguint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeBiguint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeBiguint> for PreludeBiguint {
+    fn from(native: cddl_lib::PreludeBiguint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeBiguint> for cddl_lib::PreludeBiguint {
+    fn from(wasm: PreludeBiguint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeBiguint> for PreludeBiguint {
+    fn as_ref(&self) -> &cddl_lib::PreludeBiguint {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -391,7 +523,40 @@ impl AsRef<cddl_lib::PreludeDecfrac> for PreludeDecfrac {
     }
 }
 
-pub type PreludeEncodedCbor = Vec<u8>;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeEncodedCbor(cddl_lib::PreludeEncodedCbor);
+
+#[wasm_bindgen]
+impl PreludeEncodedCbor {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeEncodedCbor, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeEncodedCbor> for PreludeEncodedCbor {
+    fn from(native: cddl_lib::PreludeEncodedCbor) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeEncodedCbor> for cddl_lib::PreludeEncodedCbor {
+    fn from(wasm: PreludeEncodedCbor) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeEncodedCbor> for PreludeEncodedCbor {
+    fn as_ref(&self) -> &cddl_lib::PreludeEncodedCbor {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -467,11 +632,110 @@ pub enum PreludeIntegerKind {
     PreludeBigint,
 }
 
-pub type PreludeMimeMessage = String;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeMimeMessage(cddl_lib::PreludeMimeMessage);
 
-pub type PreludeRegexp = String;
+#[wasm_bindgen]
+impl PreludeMimeMessage {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
 
-pub type PreludeTdate = String;
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeMimeMessage, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeMimeMessage> for PreludeMimeMessage {
+    fn from(native: cddl_lib::PreludeMimeMessage) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeMimeMessage> for cddl_lib::PreludeMimeMessage {
+    fn from(wasm: PreludeMimeMessage) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeMimeMessage> for PreludeMimeMessage {
+    fn as_ref(&self) -> &cddl_lib::PreludeMimeMessage {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeRegexp(cddl_lib::PreludeRegexp);
+
+#[wasm_bindgen]
+impl PreludeRegexp {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeRegexp, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeRegexp> for PreludeRegexp {
+    fn from(native: cddl_lib::PreludeRegexp) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeRegexp> for cddl_lib::PreludeRegexp {
+    fn from(wasm: PreludeRegexp) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeRegexp> for PreludeRegexp {
+    fn as_ref(&self) -> &cddl_lib::PreludeRegexp {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeTdate(cddl_lib::PreludeTdate);
+
+#[wasm_bindgen]
+impl PreludeTdate {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeTdate, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeTdate> for PreludeTdate {
+    fn from(native: cddl_lib::PreludeTdate) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeTdate> for cddl_lib::PreludeTdate {
+    fn from(wasm: PreludeTdate) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeTdate> for PreludeTdate {
+    fn as_ref(&self) -> &cddl_lib::PreludeTdate {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -493,7 +757,7 @@ impl PreludeUnsigned {
         Self(cddl_lib::PreludeUnsigned::new_uint(uint))
     }
 
-    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+    pub fn new_prelude_biguint(prelude_biguint: &PreludeBiguint) -> Self {
         Self(cddl_lib::PreludeUnsigned::new_prelude_biguint(
             prelude_biguint.clone().into(),
         ))
@@ -502,7 +766,7 @@ impl PreludeUnsigned {
     pub fn kind(&self) -> PreludeUnsignedKind {
         match &self.0 {
             cddl_lib::PreludeUnsigned::U64 { .. } => PreludeUnsignedKind::U64,
-            cddl_lib::PreludeUnsigned::PreludeBiguint { .. } => PreludeUnsignedKind::PreludeBiguint,
+            cddl_lib::PreludeUnsigned::PreludeBiguint(_) => PreludeUnsignedKind::PreludeBiguint,
         }
     }
 
@@ -515,9 +779,9 @@ impl PreludeUnsigned {
 
     pub fn as_prelude_biguint(&self) -> Option<PreludeBiguint> {
         match &self.0 {
-            cddl_lib::PreludeUnsigned::PreludeBiguint {
-                prelude_biguint, ..
-            } => Some(prelude_biguint.clone().into()),
+            cddl_lib::PreludeUnsigned::PreludeBiguint(prelude_biguint) => {
+                Some(prelude_biguint.clone().into())
+            }
             _ => None,
         }
     }
@@ -547,4 +811,37 @@ pub enum PreludeUnsignedKind {
     PreludeBiguint,
 }
 
-pub type PreludeUri = String;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeUri(cddl_lib::PreludeUri);
+
+#[wasm_bindgen]
+impl PreludeUri {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeUri, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::PreludeUri> for PreludeUri {
+    fn from(native: cddl_lib::PreludeUri) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeUri> for cddl_lib::PreludeUri {
+    fn from(wasm: PreludeUri) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeUri> for PreludeUri {
+    fn as_ref(&self) -> &cddl_lib::PreludeUri {
+        &self.0
+    }
+}

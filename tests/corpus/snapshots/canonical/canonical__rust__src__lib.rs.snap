@@ -18,7 +18,7 @@ use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     BarEncoding, CborInCborEncoding, DeeplyNestedEncoding, FooEncoding, MixedLenKeysEncoding,
-    PlainEncoding, String32Encoding, String64Encoding, TableArrMembersEncoding,
+    PlainEncoding, String32Encoding, String64Encoding, TableArrMembersEncoding, TaggedTextEncoding,
 };
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -208,6 +208,12 @@ impl From<String64> for String {
     }
 }
 
+impl From<TaggedText> for String {
+    fn from(wrapper: TaggedText) -> Self {
+        wrapper.inner
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct String32 {
     pub inner: String,
@@ -293,7 +299,26 @@ impl TableArrMembers {
     }
 }
 
-pub type TaggedText = String;
+#[derive(Clone, Debug)]
+pub struct TaggedText {
+    pub inner: String,
+    pub encodings: Option<TaggedTextEncoding>,
+}
+
+impl TaggedText {
+    pub fn new(inner: String) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<String> for TaggedText {
+    fn from(inner: String) -> Self {
+        TaggedText::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum TypeChoice {

@@ -205,13 +205,13 @@ mod golden_hex {
     kat!(
         bignum_unsigned,
         BigUint,
-        BigUint::new(vec![0x01, 0, 0, 0, 0, 0, 0, 0, 0]),
+        BigUint::new(vec![0x01, 0, 0, 0, 0, 0, 0, 0, 0].into()),
         &[0x81, 0xc2, 0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
     kat!(
         bignum_negative,
         BigNint,
-        BigNint::new(vec![0x01, 0, 0, 0, 0, 0, 0, 0, 0]),
+        BigNint::new(vec![0x01, 0, 0, 0, 0, 0, 0, 0, 0].into()),
         &[0x81, 0xc3, 0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 

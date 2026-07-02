@@ -1604,28 +1604,7 @@ impl cbor_event::se::Serialize for CborInCbor {
                 .unwrap_or_default()
                 .to_str_len_sz(uint_bytes_bytes.len() as u64),
         )?;
-        serializer.write_tag_sz(
-            20u64,
-            fit_sz(
-                20u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.tagged_foo_bytes_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        let mut tagged_foo_bytes_inner_se = Serializer::new_vec();
-        self.tagged_foo_bytes
-            .serialize(&mut tagged_foo_bytes_inner_se)?;
-        let tagged_foo_bytes_bytes = tagged_foo_bytes_inner_se.finalize();
-        serializer.write_bytes_sz(
-            &tagged_foo_bytes_bytes,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.tagged_foo_bytes_bytes_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(tagged_foo_bytes_bytes.len() as u64),
-        )?;
+        self.tagged_foo_bytes.serialize(serializer)?;
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -1667,29 +1646,8 @@ impl Deserialize for CborInCbor {
                         })
                 })()
                 .map_err(|e| e.annotate("uint_bytes"))?;
-            let (tagged_foo_bytes, tagged_foo_bytes_tag_encoding, tagged_foo_bytes_bytes_encoding) =
-                (|| -> Result<_, DeserializeError> {
-                    match raw.tag_sz()? {
-                        (20, tag_enc) => {
-                            let (tagged_foo_bytes_bytes, tagged_foo_bytes_bytes_encoding) =
-                                raw.bytes_sz()?;
-                            let inner_de = &mut Deserializer::from(std::io::Cursor::new(
-                                tagged_foo_bytes_bytes,
-                            ));
-                            Ok((
-                                Foo::deserialize(inner_de)?,
-                                Some(tag_enc),
-                                StringEncoding::from(tagged_foo_bytes_bytes_encoding),
-                            ))
-                        }
-                        (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                            found: tag,
-                            expected: 20,
-                        }
-                        .into()),
-                    }
-                })()
-                .map_err(|e| e.annotate("tagged_foo_bytes"))?;
+            let tagged_foo_bytes = TaggedFooBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("tagged_foo_bytes"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -1706,8 +1664,6 @@ impl Deserialize for CborInCbor {
                     foo_bytes_bytes_encoding,
                     uint_bytes_bytes_encoding,
                     uint_bytes_encoding,
-                    tagged_foo_bytes_tag_encoding,
-                    tagged_foo_bytes_bytes_encoding,
                 }),
             })
         })()
@@ -4765,24 +4721,7 @@ impl SerializeEmbeddedGroup for Plain {
                     .unwrap_or_default(),
             ),
         )?;
-        serializer.write_tag_sz(
-            9u64,
-            fit_sz(
-                9u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.e_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.e,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.e_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.e.len() as u64),
-        )?;
+        self.e.serialize(serializer)?;
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -4831,20 +4770,7 @@ impl DeserializeEmbeddedGroup for Plain {
                 }
             })()
             .map_err(|e| e.annotate("d"))?;
-            let (e, e_tag_encoding, e_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (9, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 9,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("e"))?;
+            let e = TaggedText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("e"))?;
             Ok(Plain {
                 d,
                 e,
@@ -4852,8 +4778,6 @@ impl DeserializeEmbeddedGroup for Plain {
                     len_encoding,
                     d_tag_encoding,
                     d_encoding,
-                    e_tag_encoding,
-                    e_encoding,
                 }),
             })
         })()
@@ -6011,6 +5935,115 @@ impl Deserialize for TableArrMembers {
             })
         })()
         .map_err(|e| e.annotate("TableArrMembers"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedFooBytes {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            20u64,
+            fit_sz(
+                20u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let mut inner_inner_se = Serializer::new_vec();
+        self.inner.serialize(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &inner_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for TaggedFooBytes {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_bytes_encoding) = match raw.tag_sz()? {
+            (20, tag_enc) => {
+                let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
+                let inner_de = &mut Deserializer::from(std::io::Cursor::new(inner_bytes));
+                (
+                    Foo::deserialize(inner_de)?,
+                    Some(tag_enc),
+                    StringEncoding::from(inner_bytes_encoding),
+                )
+            }
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 20,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(TaggedFooBytesEncoding {
+                inner_tag_encoding,
+                inner_bytes_encoding,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedText {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            9u64,
+            fit_sz(
+                9u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for TaggedText {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (9, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 9,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(TaggedTextEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
     }
 }
 

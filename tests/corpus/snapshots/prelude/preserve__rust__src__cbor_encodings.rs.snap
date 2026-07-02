@@ -9,9 +9,33 @@ use crate::serialization::{LenEncoding, StringEncoding};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
+pub struct PreludeB64legacyEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeB64urlEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PreludeBigfloatEncoding {
     pub len_encoding: LenEncoding,
     pub tag_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeBignintEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeBiguintEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -21,26 +45,38 @@ pub struct PreludeDecfracEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct PreludeEncodedCborEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PreludeEncoding {
     pub len_encoding: LenEncoding,
-    pub big_u_tag_encoding: Option<cbor_event::Sz>,
-    pub big_u_encoding: StringEncoding,
-    pub uri_tag_encoding: Option<cbor_event::Sz>,
-    pub uri_encoding: StringEncoding,
     pub t_encoding: StringEncoding,
     pub b_encoding: StringEncoding,
-    pub big_n_tag_encoding: Option<cbor_event::Sz>,
-    pub big_n_encoding: StringEncoding,
-    pub date_tag_encoding: Option<cbor_event::Sz>,
-    pub date_encoding: StringEncoding,
-    pub b64u_tag_encoding: Option<cbor_event::Sz>,
-    pub b64u_encoding: StringEncoding,
-    pub b64l_tag_encoding: Option<cbor_event::Sz>,
-    pub b64l_encoding: StringEncoding,
-    pub re_tag_encoding: Option<cbor_event::Sz>,
-    pub re_encoding: StringEncoding,
-    pub mime_tag_encoding: Option<cbor_event::Sz>,
-    pub mime_encoding: StringEncoding,
-    pub ec_tag_encoding: Option<cbor_event::Sz>,
-    pub ec_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeMimeMessageEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeRegexpEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeTdateEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PreludeUriEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
 }

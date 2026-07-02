@@ -70,6 +70,39 @@ expression: ir
         variant: Extern,
     },
     RustIdent(
+        "Tagged",
+    ): RustStruct {
+        ident: RustIdent(
+            "Tagged",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        42,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
         "TaggedNewtype",
     ): RustStruct {
         ident: RustIdent(

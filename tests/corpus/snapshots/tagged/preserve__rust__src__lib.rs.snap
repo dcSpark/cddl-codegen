@@ -16,7 +16,7 @@ pub mod serialization;
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
-use cbor_encodings::{HolderEncoding, TaggedNewtypeEncoding};
+use cbor_encodings::{HolderEncoding, TaggedEncoding, TaggedNewtypeEncoding};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -35,13 +35,38 @@ impl Holder {
     }
 }
 
+impl From<Tagged> for String {
+    fn from(wrapper: Tagged) -> Self {
+        wrapper.inner
+    }
+}
+
 impl From<TaggedNewtype> for String {
     fn from(wrapper: TaggedNewtype) -> Self {
         wrapper.inner
     }
 }
 
-pub type Tagged = String;
+#[derive(Clone, Debug)]
+pub struct Tagged {
+    pub inner: String,
+    pub encodings: Option<TaggedEncoding>,
+}
+
+impl Tagged {
+    pub fn new(inner: String) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<String> for Tagged {
+    fn from(inner: String) -> Self {
+        Tagged::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TaggedNewtype {

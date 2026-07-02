@@ -21,9 +21,18 @@ pub fn export_schemas() {
     }
     gen_json_schema!(cddl_lib::Int);
     gen_json_schema!(cddl_lib::Prelude);
+    gen_json_schema!(cddl_lib::PreludeB64legacy);
+    gen_json_schema!(cddl_lib::PreludeB64url);
     gen_json_schema!(cddl_lib::PreludeBigfloat);
     gen_json_schema!(cddl_lib::PreludeBigint);
+    gen_json_schema!(cddl_lib::PreludeBignint);
+    gen_json_schema!(cddl_lib::PreludeBiguint);
     gen_json_schema!(cddl_lib::PreludeDecfrac);
+    gen_json_schema!(cddl_lib::PreludeEncodedCbor);
     gen_json_schema!(cddl_lib::PreludeInteger);
+    gen_json_schema!(cddl_lib::PreludeMimeMessage);
+    gen_json_schema!(cddl_lib::PreludeRegexp);
+    gen_json_schema!(cddl_lib::PreludeTdate);
     gen_json_schema!(cddl_lib::PreludeUnsigned);
+    gen_json_schema!(cddl_lib::PreludeUri);
 }

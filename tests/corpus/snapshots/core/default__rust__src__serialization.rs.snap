@@ -1,6 +1,5 @@
 ---
 source: src/snapshot_tests.rs
-assertion_line: 105
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -1226,12 +1225,7 @@ impl cbor_event::se::Serialize for CborInCbor {
         uint_bytes_inner_se.write_unsigned_integer(self.uint_bytes)?;
         let uint_bytes_bytes = uint_bytes_inner_se.finalize();
         serializer.write_bytes(&uint_bytes_bytes)?;
-        serializer.write_tag(20u64)?;
-        let mut tagged_foo_bytes_inner_se = Serializer::new_vec();
-        self.tagged_foo_bytes
-            .serialize(&mut tagged_foo_bytes_inner_se)?;
-        let tagged_foo_bytes_bytes = tagged_foo_bytes_inner_se.finalize();
-        serializer.write_bytes(&tagged_foo_bytes_bytes)?;
+        self.tagged_foo_bytes.serialize(serializer)?;
         Ok(serializer)
     }
 }
@@ -1255,22 +1249,8 @@ impl Deserialize for CborInCbor {
                 Ok(inner_de.unsigned_integer()? as u64)
             })()
             .map_err(|e| e.annotate("uint_bytes"))?;
-            let tagged_foo_bytes = (|| -> Result<_, DeserializeError> {
-                match raw.tag()? {
-                    20 => {
-                        let tagged_foo_bytes_bytes = raw.bytes()?;
-                        let inner_de =
-                            &mut Deserializer::from(std::io::Cursor::new(tagged_foo_bytes_bytes));
-                        Foo::deserialize(inner_de)
-                    }
-                    tag => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 20,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("tagged_foo_bytes"))?;
+            let tagged_foo_bytes = TaggedFooBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("tagged_foo_bytes"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -2305,8 +2285,7 @@ impl cbor_event::se::Serialize for Foo2 {
         serializer.write_unsigned_integer(self.index_0)?;
         match &self.opt_text {
             Some(x) => {
-                serializer.write_tag(42u64)?;
-                serializer.write_text(&x)?;
+                x.serialize(serializer)?;
             }
             None => {
                 serializer.write_special(cbor_event::Special::Null)?;
@@ -2337,16 +2316,7 @@ impl Deserialize for Foo2 {
                 .map_err(|e: DeserializeError| e.annotate("index_0"))?;
             let opt_text = (|| -> Result<_, DeserializeError> {
                 Ok(match raw.cbor_type()? != cbor_event::Type::Special {
-                    true => Some(match raw.tag()? {
-                        42 => raw.text()? as String,
-                        tag => {
-                            return Err(DeserializeFailure::TagMismatch {
-                                found: tag,
-                                expected: 42,
-                            }
-                            .into())
-                        }
-                    }),
+                    true => Some(TaggedText::deserialize(raw)?),
                     false => {
                         if raw.special()? != cbor_event::Special::Null {
                             return Err(DeserializeFailure::ExpectedNull.into());
@@ -3852,8 +3822,7 @@ impl SerializeEmbeddedGroup for Plain {
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_tag(23u64)?;
         serializer.write_unsigned_integer(self.d)?;
-        serializer.write_tag(42u64)?;
-        serializer.write_text(&self.e)?;
+        self.e.serialize(serializer)?;
         Ok(serializer)
     }
 }
@@ -3894,17 +3863,7 @@ impl DeserializeEmbeddedGroup for Plain {
                 }
             })()
             .map_err(|e| e.annotate("d"))?;
-            let e = (|| -> Result<_, DeserializeError> {
-                match raw.tag()? {
-                    42 => Ok(raw.text()? as String),
-                    tag => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 42,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("e"))?;
+            let e = TaggedText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("e"))?;
             Ok(Plain { d, e })
         })()
         .map_err(|e| e.annotate("Plain"))
@@ -4622,6 +4581,63 @@ impl Deserialize for TableMapWrapper {
             Ok(Self { key_721 })
         })()
         .map_err(|e| e.annotate("TableMapWrapper"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedFooBytes {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(20u64)?;
+        let mut inner_inner_se = Serializer::new_vec();
+        self.0.serialize(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for TaggedFooBytes {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        Ok(Self(match raw.tag()? {
+            20 => {
+                let inner_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(std::io::Cursor::new(inner_bytes));
+                Foo::deserialize(inner_de)?
+            }
+            tag => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 20,
+                }
+                .into())
+            }
+        }))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedText {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(42u64)?;
+        serializer.write_text(&self.0)
+    }
+}
+
+impl Deserialize for TaggedText {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        Ok(Self(match raw.tag()? {
+            42 => raw.text()? as String,
+            tag => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 42,
+                }
+                .into())
+            }
+        }))
     }
 }
 

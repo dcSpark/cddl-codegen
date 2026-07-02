@@ -40,21 +40,12 @@ expression: ir
                     RustField {
                         name: "big_u",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeBiguint",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeBiguint",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    2,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -77,21 +68,12 @@ expression: ir
                     RustField {
                         name: "uri",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeUri",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeUri",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    32,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -250,21 +232,12 @@ expression: ir
                     RustField {
                         name: "big_n",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeBignint",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeBignint",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    3,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -287,21 +260,12 @@ expression: ir
                     RustField {
                         name: "date",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeTdate",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeTdate",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    0,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -324,21 +288,12 @@ expression: ir
                     RustField {
                         name: "b64u",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeB64url",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeB64url",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    33,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -361,21 +316,12 @@ expression: ir
                     RustField {
                         name: "b64l",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeB64legacy",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeB64legacy",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    34,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -398,21 +344,12 @@ expression: ir
                     RustField {
                         name: "re",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeRegexp",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeRegexp",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    35,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -435,21 +372,12 @@ expression: ir
                     RustField {
                         name: "mime",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeMimeMessage",
-                                    ),
-                                ),
-                                Primitive(
-                                    Str,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeMimeMessage",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    36,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -472,21 +400,12 @@ expression: ir
                     RustField {
                         name: "ec",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeEncodedCbor",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeEncodedCbor",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    24,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -565,6 +484,72 @@ expression: ir
                 ],
             },
         ),
+    },
+    RustIdent(
+        "PreludeB64legacy",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeB64legacy",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        34,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
+        "PreludeB64url",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeB64url",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        33,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
     },
     RustIdent(
         "PreludeBigfloat",
@@ -668,21 +653,12 @@ expression: ir
                     ),
                     data: RustType(
                         RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeBiguint",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeBiguint",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    2,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -699,21 +675,12 @@ expression: ir
                     ),
                     data: RustType(
                         RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeBignint",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeBignint",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    3,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -725,6 +692,72 @@ expression: ir
                     doc: None,
                 },
             ],
+        },
+    },
+    RustIdent(
+        "PreludeBignint",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeBignint",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Bytes,
+                ),
+                encodings: [
+                    Tagged(
+                        3,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
+        "PreludeBiguint",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeBiguint",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Bytes,
+                ),
+                encodings: [
+                    Tagged(
+                        2,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
         },
     },
     RustIdent(
@@ -808,6 +841,39 @@ expression: ir
         ),
     },
     RustIdent(
+        "PreludeEncodedCbor",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeEncodedCbor",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Bytes,
+                ),
+                encodings: [
+                    Tagged(
+                        24,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
         "PreludeInteger",
     ): RustStruct {
         ident: RustIdent(
@@ -871,6 +937,105 @@ expression: ir
         },
     },
     RustIdent(
+        "PreludeMimeMessage",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeMimeMessage",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        36,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
+        "PreludeRegexp",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeRegexp",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        35,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
+        "PreludeTdate",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeTdate",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        0,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+    RustIdent(
         "PreludeUnsigned",
     ): RustStruct {
         ident: RustIdent(
@@ -912,21 +1077,12 @@ expression: ir
                     ),
                     data: RustType(
                         RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "PreludeBiguint",
-                                    ),
-                                ),
-                                Primitive(
-                                    Bytes,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "PreludeBiguint",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    2,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -938,6 +1094,39 @@ expression: ir
                     doc: None,
                 },
             ],
+        },
+    },
+    RustIdent(
+        "PreludeUri",
+    ): RustStruct {
+        ident: RustIdent(
+            "PreludeUri",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        32,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
         },
     },
 }

@@ -14,6 +14,12 @@ pub struct HolderEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct TaggedEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct TaggedNewtypeEncoding {
     pub inner_tag_encoding: Option<cbor_event::Sz>,
     pub inner_encoding: StringEncoding,
