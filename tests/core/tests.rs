@@ -1,3 +1,11 @@
+// CORE_TESTS_TRUNCATION_ANCHOR — do NOT remove.
+// This file is appended to the generated crate's lib.rs. The `no_alias` and `docs` tests below read
+// that lib.rs and inspect the *production* source, so they must strip everything from this line down
+// (their own asserted literals live below it). They truncate at this unique anchor rather than at the
+// first `#[cfg(test)]`, which is brittle: an emitted `#[cfg(test)]` module (e.g. --emit-tests) or any
+// earlier literal can move that boundary. The tests build the anchor via `concat!` of split fragments
+// so the contiguous marker text appears ONLY here (nowhere in generated production output, and not in
+// the tests' own source), making this the sole match and the "anchor missing" failure path real.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,8 +447,13 @@ mod tests {
         // but we need to read the actual code to test that we're NOT using an alias somewhere and are indeed
         // using a raw rust primitive instead
         let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
-        // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
-        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        // lib.rs includes this very test (and thus those strings we're searching for), so strip from the
+        // unique anchor at the top of tests/core/tests.rs down. Robust vs the first `#[cfg(test)]` (an emitted
+        // test module could shift it). The marker is split so it's contiguous only at the anchor, not here.
+        let anchor = concat!("// CORE_TESTS", "_TRUNCATION_ANCHOR");
+        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests
+            .find(anchor)
+            .expect("truncation anchor missing from lib.rs — tests/core/tests.rs must open with it so the source-inspection tests can strip their own literals")];
         // these don't have @no_alias
         assert!(lib_rs.contains("pub type I8 = i8;"));
         assert!(lib_rs.contains("pub type I64 = i64;"));
@@ -876,8 +889,13 @@ mod tests {
         use std::str::FromStr;
         // reading the file is the only way to test for comments being generated
         let lib_rs_with_tests = std::fs::read_to_string(std::path::PathBuf::from_str("src").unwrap().join("lib.rs")).unwrap();
-        // lib.rs includes this very test (and thus those strings we're searching for) so we need to strip that part
-        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests.find("#[cfg(test)]").unwrap()];
+        // lib.rs includes this very test (and thus those strings we're searching for), so strip from the
+        // unique anchor at the top of tests/core/tests.rs down. Robust vs the first `#[cfg(test)]` (an emitted
+        // test module could shift it). The marker is split so it's contiguous only at the anchor, not here.
+        let anchor = concat!("// CORE_TESTS", "_TRUNCATION_ANCHOR");
+        let lib_rs = &lib_rs_with_tests[..lib_rs_with_tests
+            .find(anchor)
+            .expect("truncation anchor missing from lib.rs — tests/core/tests.rs must open with it so the source-inspection tests can strip their own literals")];
         assert!(lib_rs.contains("this is a field-level comment"));
         assert!(lib_rs.contains("bar is a u64"));
         assert!(lib_rs.contains("struct documentation here"));
