@@ -159,8 +159,10 @@ parse time) are the spec-anchored oracles' job (`tests/golden_hex/`).
 
 The corpus gate `feature_corpus_compiles` `cargo check`s every `tests/corpus/*.cddl` crate (rust +
 wasm + json-gen) under all three profiles, and under the **default profile** additionally
-generates with `--emit-tests` and `cargo test`s the rust crate — so a corpus construct must
-round-trip, not just compile.
+generates with `--emit-tests` and `cargo test`s **both** the rust and the wasm crate — so a corpus
+construct must round-trip, not just compile, on both the rust and the wasm side. (`cargo check`
+never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
+`cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
 
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.

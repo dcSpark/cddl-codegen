@@ -39,7 +39,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
   cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
   (`src/emit_tests_wasm.rs`, a cross-crate byte differential + accessor read-back) that runs via
   `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual). See item 2.
-  The residue there is the fidelity stubs + deferred minter shapes + two pending flip decisions.
+  The residue there is the fidelity stubs + the deferred block-expr collection minter shapes.
 - **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
   emission can never again pass as supported (item 7).
 
@@ -141,19 +141,11 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
        build (`{ let mut l = FooList::new(); l.add(&e); l }`) and a `@newtype`/tag wrapper ctor arg has no
        wasm `new`; both are currently `eprintln!` skips, so a cell built only from them mints no wasm surface
        and falls back to the compile verdict. A block-expr collection minter is the highest-leverage
-       extension.
-     - **`feature_corpus_compiles` wasm check→test flip (pending maintainer decision).** Flipping the corpus
-       wasm crate from `cargo check` to `cargo test` under the default profile would give corpus-breadth wasm
-       *round-trip* coverage, but adds a `cargo test` per corpus fixture to an always-on gate. The one-line
-       seam is `integration_tests.rs`'s corpus loop; deferred, not silently chosen.
-     - **`verify.ts --wasm` default-on (pending timing decision).** The `verify.ts` probe grew an opt-in
-       `--wasm` flag (argv / `VERIFY_WASM=1`) that additionally generates `--wasm=true`, `cargo test`s the
-       wasm crate, and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell evidence.
-       Measured cost: a full run went 1:38 → 3:11 (~+95s, roughly 2× per-probe cargo work) — so it is opt-in
-       for now; default it on once that is deemed acceptable for the manual gate. (First full run surfaced no
-       wasm-specific finding: every wasm failure coincided with a spec that already fails rust generation or
-       a compile-exempt user-code feature — the matrix cells are minimal, and the real wasm bug was the one
-       `wasm_matrix_roundtrips` caught above.)
+       extension — it would give the corpus- and matrix-breadth wasm round-trip gates (below) a mint
+       surface for the collection/wrapper cells they currently fall back to compile on.
+       Corpus- and matrix-breadth wasm round-trip coverage is otherwise wired: `feature_corpus_compiles`
+       `cargo test`s the wasm crate under the default profile (not just `cargo check`), and `verify.ts`
+       runs the wasm oracle by default (opt out with `--no-wasm` / `VERIFY_WASM=0`).
      - **Two pre-existing `core`-fixture findings the wasm gate has to route around** (surfaced building the
        wasm execution gate; neither is a wasm bug, both are latent rust-side sharp edges). (1) `core`'s
        hand-written `tests::docs` / `tests::no_alias` source-inspection tests read `lib.rs` and truncate at
