@@ -1,1 +1,12 @@
+; Tagged types (`#6.n(...)`).
+; - A bare top-level `tagged = #6.42(text)` is a single-type tag wrapper of a primitive; it emits a
+;   transparent `pub type Tagged = String` that DROPS the tag from the standalone API. That
+;   transparent-alias behavior is deliberately pinned pending a maintainer decision (see
+;   TESTING_ROADMAP "Pending decisions": auto-wrap vs opt-in).
+; - `tagged_newtype = #6.42(text) ; @newtype` opts into the tag-writing wrapper via the comment DSL.
+;   The trailing directive is threaded through the single-type unwrap in `parse_type` rather than
+;   silently lost, so this emits a real newtype whose serialize writes tag 42 and whose deserialize
+;   rejects a wrong tag. (`holder` references it so the embed role compiles.)
 tagged = #6.42(text)
+tagged_newtype = #6.42(text) ; @newtype
+holder = [payload: tagged_newtype]

@@ -4,6 +4,56 @@ expression: ir
 ---
 {
     RustIdent(
+        "Holder",
+    ): RustStruct {
+        ident: RustIdent(
+            "Holder",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "payload",
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "TaggedNewtype",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(
@@ -18,5 +68,40 @@ expression: ir
             newtype_getter: None,
         },
         variant: Extern,
+    },
+    RustIdent(
+        "TaggedNewtype",
+    ): RustStruct {
+        ident: RustIdent(
+            "TaggedNewtype",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: Some(
+                None,
+            ),
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Str,
+                ),
+                encodings: [
+                    Tagged(
+                        42,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
     },
 }

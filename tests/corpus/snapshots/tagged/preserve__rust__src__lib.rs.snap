@@ -10,12 +10,56 @@ extern crate derivative;
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{HolderEncoding, TaggedNewtypeEncoding};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub payload: TaggedNewtype,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(payload: TaggedNewtype) -> Self {
+        Self {
+            payload,
+            encodings: None,
+        }
+    }
+}
+
+impl From<TaggedNewtype> for String {
+    fn from(wrapper: TaggedNewtype) -> Self {
+        wrapper.inner
+    }
+}
+
 pub type Tagged = String;
+
+#[derive(Clone, Debug)]
+pub struct TaggedNewtype {
+    pub inner: String,
+    pub encodings: Option<TaggedNewtypeEncoding>,
+}
+
+impl TaggedNewtype {
+    pub fn new(inner: String) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<String> for TaggedNewtype {
+    fn from(inner: String) -> Self {
+        TaggedNewtype::new(inner)
+    }
+}
