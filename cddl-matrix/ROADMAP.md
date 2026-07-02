@@ -195,17 +195,27 @@ from a degenerate example.**
   identical CBOR, works). Caught loudly by the rustfmt fail-loud gate at generation time. Surfaced while
   authoring the canonical `mixed_len_keys` ordering fixture; related member-key notes:
   `draft/cddl-bareword-member-key-bug.md`.
-- **Untrusted length-prefix over-allocation (DoS, unfixed).** An ~11-byte input claiming a huge
-  string/bytes/array length (e.g. `0x7b` text + `00 00 00 00 80 00 e8 00` ≈ 2 GB) makes `from_cbor_bytes`
-  attempt a ~2 GB `Vec::with_capacity` before reading any payload — an OOM abort in every consumer parsing
-  untrusted chain data. The allocation is inside the `cbor_event` dependency's length-prefixed readers
-  (`text_sz`/`bytes_sz`/array pre-size), not this generator's emitted code, so the fix is dependency-level
-  (reserve incrementally, or cap the pre-allocation against remaining input) rather than a codegen change —
-  hence unfixed here. Surfaced by `fuzz/` (the adversarial-CBOR target); it has no cargo-test crash-replay
-  because an OOM/stack-overflow kills the test process — the fuzz process boundary is the only oracle for
-  this class (same reason deep-nesting recursion isn't a normal test). Sibling panic in the same fuzz
-  session — the collection-loop `assert_eq!(special, Break)` abort on `0x81 0xf6` — **was** codegen-owned
-  and is fixed (graceful `Err`; regression in `tests/core` `structural_rejects`).
+- **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
+  *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
+  length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any
+  payload byte is read**, an OOM abort in every consumer parsing untrusted chain data. Reproduced
+  standalone (allocation-recording global allocator, no libfuzzer): the largest single `alloc` equals the
+  claimed length exactly. *Root cause:* `cbor_event` 2.4.0 `src/de.rs` definite-length string branches
+  pre-size from the untrusted length — `let mut bytes = vec![0; len as usize]; read_exact(..)` at
+  `bytes_sz` (~486), `text_sz` definite (~545), and `text_sz` indefinite-chunk (~534). The **indefinite
+  `bytes_sz`** branch is already safe (`by_ref().take(len).read_to_end`, which grows with available input);
+  the fix ports that pattern to the three unsafe sites (+ an `Error::NotEnough` on short read). *Why not
+  fixed here:* generated crates are standalone and depend on crates.io `cbor_event` directly
+  (`static/Cargo_rust.toml`), so the fix needs a published/forked `cbor_event`, not a codegen change — and
+  reimplementing bounded string reads in `static/` (all `Sz` variants + indefinite chunks + preserve-mode
+  encoding capture, across 8+ emit sites) is heavy and risky for a serialization runtime. *Disposition
+  (maintainer call):* ledger + upstream report; the exact 3-hunk patch, standalone repro, and repoint steps
+  are in `draft/cbor-event-overallocation-fix.md`, and the ready-to-submit upstream PR text is in
+  `draft/cbor-event-upstream-pr.md`. Surfaced by `fuzz/`; it has no cargo-test crash-replay because an
+  OOM/stack-overflow kills the test process — the fuzz process boundary is the only oracle for this class.
+  Sibling panic in the same fuzz session — the collection-loop `assert_eq!(special, Break)` abort on
+  `0x81 0xf6` — **was** codegen-owned and is fixed (graceful `Err`; regression in `tests/core`
+  `structural_rejects`).
 
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
