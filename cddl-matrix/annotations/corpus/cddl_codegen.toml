@@ -44,8 +44,15 @@ fixture = "primitives.cddl"
 id = "prelude.bool"
 fixture = "bool.cddl"
 
-# float64 elements are now exercised (a `[* float64]` collection round-trips): the element-loop
-# break-check must let a major-type-7 element through instead of rejecting it as a terminator.
+# `prelude.float64`'s canonical fixture is `homogeneous_array.cddl`, where it appears as the top-level
+# `floats = [* float64]` transparent `Vec<f64>` alias — generated and compiled under all three
+# profiles. It is NOT round-tripped as its own emit-tests subject: a float in a struct field aborts
+# generation under `--preserve-encodings` (see the `prelude.float*` "partial" notes), and the corpus
+# runs every fixture under preserve, so no float-bearing record can be a corpus entry. The `[* float64]`
+# runtime regression that once rejected every non-empty Special-class (major-type-7) element collection
+# lived in the type-agnostic `make_deser_loop_break_check`; it is locked by `bool_holder`'s
+# default-profile emit-tests round-trip, whose emitted break-check is byte-identical to a float
+# element's (`bool` is the same major type 7).
 [[cover]]
 id = "prelude.float64"
 fixture = "homogeneous_array.cddl"
