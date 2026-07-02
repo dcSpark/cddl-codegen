@@ -88,13 +88,13 @@ cddl-codegen --input=example --output=export --preserve-encodings true
 
 
 :::info `--canonical-form` 
-Used primarily with `--preserve-encodings` to provide a way to override the specific deserialization format and to instead output canonical CBOR. This will have `Serialize`'s trait have an extra `to_canonical_cbor_bytes()` method. Likewise the wasm wrappers (with `--to-from-bytes-methods`) will contain one too.
+Requires `--preserve-encodings` (the canonical toggle is emitted on the preserve-encodings serialize signatures; on its own the generated crate does not compile, so the combination is rejected). Provides a way to override the specific deserialization format and to instead output canonical CBOR. This will have `Serialize`'s trait have an extra `to_canonical_cbor_bytes()` method. Likewise the wasm wrappers (with `--to-from-bytes-methods`) will contain one too.
 
 Canonical form follows RFC 7049 §3.9 "Canonical CBOR": definite, minimal-length encodings, and map keys sorted length-first, then bytewise. Note this key ordering differs from RFC 8949 §4.2.1 "deterministic encoding" (pure bytewise-lexicographic) whenever a longer-encoded key is bytewise smaller — e.g. the uint key `256` sorts *after* the text key `"a"` under RFC 7049 but *before* it under RFC 8949.
 
 Possible values: true, false
 ```bash
-cddl-codegen --input=example --output=export --canonical-form true
+cddl-codegen --input=example --output=export --preserve-encodings true --canonical-form true
 ```
 :::
 

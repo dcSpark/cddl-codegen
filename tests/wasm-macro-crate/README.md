@@ -1,8 +1,10 @@
 # wasm-macro-crate
 
-Real macro definitions backing the `--wasm-list-macro` / `--wasm-conversions-macro` compile gate
-(`integration_tests::wasm_list_macro_compiles`), mirroring how `tests/extern-dep-crate` supplies a
-real dependency for the extern-deps test. It is not a test itself but is used by one.
+Real macro definitions backing the wasm external-macro compile gates — `--wasm-list-macro` /
+`--wasm-conversions-macro` (`integration_tests::wasm_list_macro_compiles`) and
+`--wasm-cbor-json-api-macro` (`integration_tests::wasm_cbor_json_api_macro_compiles`) — mirroring how
+`tests/extern-dep-crate` supplies a real dependency for the extern-deps test. It is not a test itself
+but is used by them.
 
 The macros expand to the same shape the generator would emit inline with the flags off (wrapper
 struct + `new`/`len`/`get`/`add` accessors + `From`/`AsRef` conversions), and are written so that a
@@ -20,3 +22,6 @@ malformed emission — the exact bug class a source snapshot cannot judge — fa
 - `impl_wasm_conversions!` takes the wasm side as a bare `:ident` and builds `Self(native)` /
   `wasm.0`, so swapped arguments (a path where the ident belongs, or a non-newtype wasm side)
   fail.
+- `cbor_json_api!(WasmName)` takes a single `:ident` and its bodies mirror the inline CBOR API
+  verbatim (`ToCBORBytes::to_cbor_bytes(&self.0)`, `Deserialize::from_cbor_bytes(..).map(Self)`), so
+  a wrong arity or a wrapper that stopped being a newtype over `cddl_lib::T` fails to compile.

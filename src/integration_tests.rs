@@ -645,6 +645,167 @@ fn wasm_list_macro_compiles() {
     }
 }
 
+/// Smoke gate for documented flag *values* that no other test or profile exercises (closes the
+/// TESTING_ROADMAP "five documented flag values with zero coverage" pending decision for the
+/// rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
+/// different deserialization / error-emission mode — 13+ branch sites in generation.rs),
+/// `--to-from-bytes-methods=false` (drops the `to_bytes`/`from_bytes` API), and
+/// `--binary-wrappers=true` (byte strings as new rust types). Before this, a generation regression
+/// under any of them compiled nothing anywhere. Cheapest acceptance per the roadmap: generate a
+/// rich, extern-free, custom-serialize-free input (tests/canonical — so no default-flag-assuming
+/// appends are needed) under each value and `cargo check` the rust crate. Rust-side only
+/// (`--wasm=false`).
+///
+/// The fifth documented value — `--canonical-form=true` *without* `--preserve-encodings` — turned
+/// out to emit a crate that doesn't compile (the canonical toggle rides on preserve's serialize
+/// signatures, leaving an unbound `force_canonical`). Per the roadmap's own resolution ("a CLI
+/// rejection or a ledgered gap"), that combination is now rejected up front (`api::with_types`);
+/// `flag_value_rejects_canonical_without_preserve` pins the rejection. The remaining fifth value,
+/// `--wasm-cbor-json-api-macro`, is a wasm+macro concern gated by
+/// `wasm_cbor_json_api_macro_compiles` below.
+#[test]
+fn flag_value_smoke() {
+    use std::str::FromStr;
+    let input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
+    let cases: &[(&str, &[&str])] = &[
+        ("annotate_fields_false", &["--annotate-fields=false"][..]),
+        (
+            "to_from_bytes_methods_false",
+            &["--to-from-bytes-methods=false"][..],
+        ),
+        ("binary_wrappers_true", &["--binary-wrappers=true"][..]),
+    ];
+    // shared scratch + target under temp_dir (per-checkout, like the other generate+check gates)
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_flag_smoke_{:016x}", checkout_hash()));
+    let target_dir = scratch.join("target");
+    let mut failures = Vec::new();
+    for (label, options) in cases {
+        let out = scratch.join(label);
+        let _ = std::fs::remove_dir_all(&out);
+        let gen_out = std::process::Command::new("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .args(*options)
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            failures.push(format!(
+                "{label}: generation failed\n{}",
+                String::from_utf8_lossy(&gen_out.stderr)
+            ));
+            continue;
+        }
+        let check = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        if !check.status.success() {
+            failures.push(format!(
+                "{label}: cargo check failed\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
+/// `--canonical-form=true` without `--preserve-encodings` must be rejected (it otherwise emits a
+/// non-compiling crate — see `api::with_types`). Pins the rejection *and* its message so the guard
+/// can't silently become a no-op, and confirms the same input with both flags is accepted — so the
+/// rejection is specific to the missing `--preserve-encodings`, not the input.
+#[test]
+fn flag_value_rejects_canonical_without_preserve() {
+    let mut cli = crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/canonical/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        canonical_form: true,
+        preserve_encodings: false,
+        ..Default::default()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--canonical-form without --preserve-encodings should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--canonical-form") && msg.contains("--preserve-encodings"),
+        "rejection message should name both flags, got: {msg}"
+    );
+    // baseline: with preserve-encodings the same input is accepted (so it's the combination, not
+    // the input, that's rejected)
+    cli.preserve_encodings = true;
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "--canonical-form with --preserve-encodings should be accepted"
+    );
+}
+
+/// Compile gate for `--wasm-cbor-json-api-macro` — the third external-macro flag and, unlike its two
+/// snapshot+compile-gated siblings (`wasm_list_macro_compiles`), previously had zero coverage
+/// anywhere (it is the documented CML invocation path). The flag replaces each wasm wrapper's inline
+/// CBOR/JSON API with a `cbor_json_api!(WasmName);` invocation referencing a user-supplied macro, so
+/// it can't compile standalone. Wire in `tests/wasm-macro-crate`'s real `cbor_json_api!` definition
+/// (whose bodies mirror the inline emission, so a divergent invocation fails to compile) and
+/// `cargo check` the generated wasm crate — same pattern as `wasm_list_macro_compiles`.
+#[test]
+fn wasm_cbor_json_api_macro_compiles() {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests/canonical").unwrap();
+    let out = test_path.join("export_cbor_json_api_macro");
+    let _ = std::fs::remove_dir_all(&out);
+    let gen_out = std::process::Command::new("cargo")
+        .args(["run", "--"])
+        .arg(format!(
+            "--input={}",
+            test_path.join("input.cddl").to_str().unwrap()
+        ))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--wasm-cbor-json-api-macro=wasm_macro_crate::cbor_json_api")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    // vacuous-pass guard: only gates the macro path if the flag actually collapsed the inline API
+    // into invocations (11 at landing over tests/canonical).
+    let lib = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+    let n_invocations = lib.matches("cbor_json_api!(").count();
+    assert!(
+        n_invocations >= 8,
+        "only {n_invocations} cbor_json_api! invocations emitted (expected >= 8) — the flag stopped \
+         collapsing the inline API, so this gate no longer gates the macro path"
+    );
+    let mut cargo_toml = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out.join("wasm/Cargo.toml"))
+        .unwrap();
+    cargo_toml
+        .write_all(b"wasm-macro-crate = { path = \"../../../wasm-macro-crate\" }\n")
+        .unwrap();
+    std::mem::drop(cargo_toml);
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_cbor_json_api_macro_{:016x}",
+        checkout_hash()
+    ));
+    let check = std::process::Command::new("cargo")
+        .arg("check")
+        .current_dir(out.join("wasm"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "cargo check failed\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Tracked wasm-ABI SEMANTIC gaps (compile-green but not ideal).
 //
@@ -842,8 +1003,7 @@ fn comment_dsl() {
 /// The dcSpark `cddl` fork (already this crate's parser dep) as a test dependency of a *generated*
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml so the two never diverge.
-const CDDL_ORACLE_DEP: &str =
-    "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"d6cad9ee99f732e2ecb330a373c6a68f4e2860b7\" }\n";
+const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"d6cad9ee99f732e2ecb330a373c6a68f4e2860b7\" }\n";
 
 #[test]
 fn preserve_encodings() {

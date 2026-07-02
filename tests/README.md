@@ -77,13 +77,21 @@ so no node/wasm-pack is needed). `tests/core/tests_wasm.rs` (default profile) an
 compiles green. The rust-side value round-trips are `--emit-tests`' job; these files own the
 boundary.
 
-The `--wasm-list-macro`/`--wasm-conversions-macro` output references a *user-supplied* macro, so it
-can't compile standalone and its snapshot (`snapshot_tests::wasm_list_macro`) can't judge invocation
-semantics; `wasm_list_macro_compiles` compile-gates it against the real macro definitions in
+The three external-macro flags (`--wasm-list-macro`/`--wasm-conversions-macro` and
+`--wasm-cbor-json-api-macro`) emit invocations of a *user-supplied* macro, so the output can't
+compile standalone and a source snapshot can't judge invocation semantics; `wasm_list_macro_compiles`
+and `wasm_cbor_json_api_macro_compiles` compile-gate them against the real macro definitions in
 [`tests/wasm-macro-crate`](wasm-macro-crate) (wired in as a path dependency, the same way
-extern-deps wires `tests/extern-dep-crate`). Those macros' arms are written so the wrong-emission
-classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an unreachable
-combination — fail to compile (see the crate's README).
+extern-deps wires `tests/extern-dep-crate`). Those macros' arms mirror the inline emission, so the
+wrong-emission classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an
+unreachable combination, a wrong arity — fail to compile (see the crate's README).
+
+`flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
+documented flag *value* that no named profile exercises (`--annotate-fields=false`,
+`--to-from-bytes-methods=false`, `--binary-wrappers=true`) — each selects a whole alternative emit
+path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emits a non-compiling
+crate); that combination is rejected in `api::with_types` and pinned by
+`flag_value_rejects_canonical_without_preserve`.
 
 ### Independent conformance oracle (`tests/deser_test_conformance.rs`)
 

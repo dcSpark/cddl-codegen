@@ -133,6 +133,32 @@ macro_rules! impl_wasm_list {
     };
 }
 
+/// Expands to the CBOR (and, with `--json-serde-derives`, JSON) API `--wasm-cbor-json-api-macro`
+/// would otherwise emit inline on each wasm wrapper. Invocation shape (emitted by the wasm CBOR/JSON
+/// API codegen): `cbor_json_api!(WasmName);` — a single `:ident`, so a wrong arity fails to expand.
+///
+/// The bodies mirror the inline emission verbatim (newtype `self.0` / `.map(Self)`), so if that
+/// contract diverges — the wrapper stops being a newtype over `cddl_lib::T`, or the trait paths
+/// change — this fails to compile rather than silently blessing a broken invocation. The fixture is
+/// generated with the default lib name, so `cddl_lib` is the rust crate here.
+#[macro_export]
+macro_rules! cbor_json_api {
+    ($wasm_name:ident) => {
+        #[wasm_bindgen::prelude::wasm_bindgen]
+        impl $wasm_name {
+            pub fn to_cbor_bytes(&self) -> Vec<u8> {
+                cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+            }
+
+            pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<$wasm_name, wasm_bindgen::JsError> {
+                cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+                    .map(Self)
+                    .map_err(|e| wasm_bindgen::JsError::new(&format!("from_bytes: {}", e)))
+            }
+        }
+    };
+}
+
 /// Expands to the `From`/`AsRef` conversion impls the generator would otherwise emit inline.
 /// Invocation shape (emitted by `add_conversion_methods`):
 ///
