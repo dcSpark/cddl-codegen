@@ -214,6 +214,8 @@ Emits a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate, w
 
 Requires `--to-from-bytes-methods`. Values are minted deterministically from the type structure (no `proptest`/`Arbitrary` dependency is added to the generated crate). Shapes that can't be cheaply constructed — bounded `nint` fields, transparent table/array aliases at top level, types referencing user-supplied code — are skipped with a logged notice, never silently.
 
+When `--wasm=true` is also set, a matching `#[cfg(test)] mod cddl_generated_wasm_tests` is emitted into the generated **wasm** crate. It renders each minted value twice — through the wasm wrapper API and through the `cddl_lib::` rust API the wasm crate path-depends on — and asserts a **cross-crate byte differential** (both `to_cbor_bytes()` byte-equal, catching a wrong wasm-boundary conversion the rust half can't see), a wire round-trip, accessor read-back against the minted literals, and boundary *acceptance*. It shares the same `--to-from-bytes-methods` requirement (the wasm CBOR methods it drives), and is additionally skipped when a `--wasm-*-macro` flag is set (those macros replace the per-type wrapper method surface it targets). Shapes with no faithful wasm build — wrapper/collection ctor args, `@newtype`/tag wrappers, flatten points — are loud-skipped the same way. `cargo check` never compiles `#[cfg(test)]` code, so the emitted module only runs under a `cargo test` of the wasm crate.
+
 **Possible values:** true, false<br></br>
 **Default:** false
 ```bash

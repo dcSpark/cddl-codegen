@@ -165,6 +165,54 @@ round-trip, not just compile.
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
+### wasm-crate test module (`--emit-tests` + `--wasm=true`, `src/emit_tests_wasm.rs`)
+
+With `--wasm=true`, `--emit-tests` also emits a `#[cfg(test)] mod cddl_generated_wasm_tests` into the
+generated **wasm** crate. It's a *second renderer* over the same `emit_tests::MintValue` derivation
+surface the rust harness uses (the derivation is the single maintained thing; the two renderers —
+rust-API strings vs wasm-wrapper-API strings — read from it). The teeth, per mintable type:
+
+1. **Cross-crate byte differential** — build the value through the wasm wrapper ctor/`new_*` AND,
+   independently, through the `cddl_lib::` rust ctor (the wasm crate path-depends on it), then assert
+   `to_cbor_bytes()` is byte-equal. A wrong conversion in a wasm `new`/`new_<variant>`/`set_*` can't
+   cancel here (the rust build is independent), so this catches the identity-`.into()`-where-a-transform-
+   was-needed class — the exact wasm-boundary bug the compile gate can't see.
+2. **Wire round-trip** — `from_cbor_bytes(bytes)` then `to_cbor_bytes()` byte-identical.
+3. **Accessor read-back against emit-time literals** — primitive getters compared to the exact minted
+   literal (not original-vs-back, which lets a wrong getter conversion cancel); enum `kind()`/`as_<var>()`
+   pinned to the minted variant. Read on the freshly-*built* wasm value, not the post-wire one, so a
+   wire-ambiguous choice (core's uint-`0` vs a fixed `i0` variant) can't false-fail.
+4. **Boundary acceptance only** (`wasm_bounds_<type>`) — the accepted boundary value constructs
+   (`.ok().is_some()`). The beyond-boundary REJECT direction is deliberately **not** emitted: a wasm
+   ctor's error path builds a `JsError` through a wasm-bindgen import that panics under host `cargo
+   test`; rejection is already pinned as `RangeCheck` on the wire by the rust `--emit-tests` module, so
+   this half only confirms the acceptance plumbing.
+
+wasm-API idioms baked in: `JsError: !Debug`, so a wasm `Result` is unwrapped `.ok().expect(..)`, never
+`.unwrap()`; composite ctor params cross as `&Wrapper`; c-style enums cross by value; `@newtype`/tag
+wrappers expose no wasm `new` (built by decoding the rust twin's bytes). **Loud skips (never silent):**
+wrapper/collection ctor args (block-expr build deferred), flatten points, and the whole module under any
+`--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. Mutation-verified
+red-first (three `generation.rs` wasm-boundary mutations each turned exactly the intended assertion class
+red; see the `src/emit_tests_wasm.rs` header).
+
+Two consumers run it:
+- **`integration_tests::emit_wasm_tests_execute`** (default suite, ~10s) — generates the rich `core`
+  fixture `--wasm=true --emit-tests=true` and `cargo test`s the **wasm** crate (alongside the
+  hand-written `tests_wasm.rs` as a plausibility cross-check), with emitted-test count floors. It
+  `cargo test`s only the wasm crate: `core` is not `--emit-tests`-clean on the *rust* side (two
+  hand-written source-inspection tests truncate `lib.rs` at the first `#[cfg(test)]`, and its
+  wire-ambiguous `TypeChoice` trips the rust value-equality oracle), but the wasm crate builds the rust
+  crate as a *non-test* dependency, so none of that compiles here.
+- **`integration_tests::wasm_matrix_roundtrips`** (`#[ignore]`d, manual — the round-trip upgrade of the
+  wasm-ABI matrix compile gate; see that section below).
+
+Run the manual gate with:
+
+```sh
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~1.5 min
+```
+
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
 
 The round-trip harness mints its values from the **same IR** as the code under test, so an IR-level
@@ -274,9 +322,14 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
   tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
   compile green while emitting *semantically* wrong bindings (e.g. an identity `.into()` where a transform
-  was needed), so catching those needs the verdict upgraded to *round-trip* once the property round-trip
-  harness lands (see [`TESTING_ROADMAP.md`](TESTING_ROADMAP.md) item 1; the wasm-verdict upgrade is the
-  item-2 follow-on that depends on it).
+  was needed). Catching those is the job of the **round-trip** upgrade — `integration_tests::wasm_matrix_roundtrips`
+  (`#[ignore]`d, manual): same cell enumeration, but each cell is generated `--emit-tests=true` and
+  `cargo test`ed so the emitted `cddl_generated_wasm_tests` module (see § "wasm-crate test module" above)
+  RUNS its cross-crate byte differential + accessor read-back. It has its own scratch dir
+  (`cddl_codegen_wasm_matrix_rt`) and `SKIP` list so it runs beside this always-on compile floor, which
+  stays untouched. Run it with `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`; a cell
+  whose shape mints no wasm surface (loud emitter skip) passes with zero emitted tests, which is a
+  legitimate green (the compile gate already pins its ABI compiles).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `SKIP` list, each with a comment + a ledger entry in

@@ -34,10 +34,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
   `--emit-tests` + `cargo test`), and across the matrix (`verify.ts` is execution-gated, so the
   matrix "supported" verdict itself means "round-trips" for every minting shape). The remaining
   breadth frontier is the preserve/json profiles and the unminted shapes (minter coverage, item 1).
-- **Coverage (compile)** ✅ — the generated **wasm** crate is now compiled by systematic gates:
-  `feature_corpus_compiles` (`--wasm=true`, checks both crates) and the **wasm-ABI matrix**
-  (`wasm_matrix_compiles`, 80 enumerated cells). See item 2. The remaining coverage frontier is
-  *behavioural* (compile → round-trip), which depends on item 1.
+- **Coverage (compile + round-trip)** ✅ — the generated **wasm** crate is compiled by systematic gates
+  (`feature_corpus_compiles` `--wasm=true`; the **wasm-ABI matrix** `wasm_matrix_compiles`, 80 enumerated
+  cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
+  (`src/emit_tests_wasm.rs`, a cross-crate byte differential + accessor read-back) that runs via
+  `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual). See item 2.
+  The residue there is the fidelity stubs + deferred minter shapes + two pending flip decisions.
 - **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
   emission can never again pass as supported (item 7).
 
@@ -123,14 +125,44 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      ships a `tests_wasm.rs` — the raw-bytes wasm boundary is compile-only via `external_wasm_raw_bytes_def`
      (a `rawbytes` shape would gate the compile half systematically; a `tests_wasm.rs` in `tests/raw-bytes/`
      the behavioral half).
-   - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
-     while emitting a semantically wrong same-type conversion (an identity `.into()` where a transform was
-     needed). A representative sample of the shape axis is now executed at the wasm boundary via the
-     `tests_wasm.rs` hook (`tests/core/tests_wasm.rs`, `tests/canonical/tests_wasm.rs`: construct through the
-     wrapper API, round-trip CBOR, read every accessor back); the remaining frontier is upgrading the
-     *per-cell grid verdict* compile → round-trip. Item 1's `--emit-tests` harness mints into the *rust*
-     crate only, which doesn't exercise this bug class (it lives in the wasm wrapper API) — the upgrade
-     needs a wasm-side minted surface (an emitted `tests_wasm.rs`-style module per cell).
+   - **Behavioural frontier (compile → round-trip) — landed; residue below.** The compile gate can be
+     green while a cell emits a semantically wrong same-type conversion at the wasm boundary (an identity
+     `.into()` where a transform was needed). That is now caught: `--emit-tests --wasm=true` emits a
+     `cddl_generated_wasm_tests` module (`src/emit_tests_wasm.rs`) that renders each minted value through
+     BOTH the wasm wrapper API and the `cddl_lib::` rust API and asserts a cross-crate byte differential +
+     accessor read-back — a second renderer over the same `emit_tests::MintValue` derivation surface (no
+     duplicate minter). It runs in the default suite (`integration_tests::emit_wasm_tests_execute`, the
+     `core` fixture) and per grid cell via `integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d
+     under the CI freeze). The first per-cell run paid off immediately: it caught `coll__struct-field`
+     (a `[* uint]` wrapper list used as a struct field) minting a bare `vec![..]` against a `&Nums` wasm
+     ctor — the emitter shallow-resolved the alias past its wrapper — fixed in `emit_tests_wasm::wasm_arg`
+     to loud-skip via the UNRESOLVED type's `directly_wasm_exposable`. Residue:
+     - **Deferred wasm minter shapes (loud skips today).** A wrapper/collection ctor arg needs a block-expr
+       build (`{ let mut l = FooList::new(); l.add(&e); l }`) and a `@newtype`/tag wrapper ctor arg has no
+       wasm `new`; both are currently `eprintln!` skips, so a cell built only from them mints no wasm surface
+       and falls back to the compile verdict. A block-expr collection minter is the highest-leverage
+       extension.
+     - **`feature_corpus_compiles` wasm check→test flip (pending maintainer decision).** Flipping the corpus
+       wasm crate from `cargo check` to `cargo test` under the default profile would give corpus-breadth wasm
+       *round-trip* coverage, but adds a `cargo test` per corpus fixture to an always-on gate. The one-line
+       seam is `integration_tests.rs`'s corpus loop; deferred, not silently chosen.
+     - **`verify.ts --wasm` default-on (pending timing decision).** The `verify.ts` probe grew an opt-in
+       `--wasm` flag (argv / `VERIFY_WASM=1`) that additionally generates `--wasm=true`, `cargo test`s the
+       wasm crate, and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell evidence.
+       Measured cost: a full run went 1:38 → 3:11 (~+95s, roughly 2× per-probe cargo work) — so it is opt-in
+       for now; default it on once that is deemed acceptable for the manual gate. (First full run surfaced no
+       wasm-specific finding: every wasm failure coincided with a spec that already fails rust generation or
+       a compile-exempt user-code feature — the matrix cells are minimal, and the real wasm bug was the one
+       `wasm_matrix_roundtrips` caught above.)
+     - **Two pre-existing `core`-fixture findings the wasm gate has to route around** (surfaced building the
+       wasm execution gate; neither is a wasm bug, both are latent rust-side sharp edges). (1) `core`'s
+       hand-written `tests::docs` / `tests::no_alias` source-inspection tests read `lib.rs` and truncate at
+       the FIRST `#[cfg(test)]` — brittle now that an emitted module can precede them; a delimiter that
+       anchors on the specific hand-written module would be robust. (2) `core`'s `TypeChoice` is wire-ambiguous
+       (uint `0` collides with the fixed `i0` variant), so the rust `--emit-tests` value-equality oracle
+       false-fails on it. Both are why `emit_wasm_tests_execute` `cargo test`s only the *wasm* crate (which
+       builds the rust crate as a non-test dep). The wasm oracle sidesteps (2) by reading accessors on the
+       freshly-built value, not the post-wire one.
      - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
        remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
        can't represent nested `Option<Option<T>>`, so a nullable value (`T / null` → `Option<T>`) at a
