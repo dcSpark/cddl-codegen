@@ -1,0 +1,22 @@
+[package]
+name = "cddl-codegen-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# The crate under test is GENERATED (gitignored): run ./generate.sh first.
+cddl-lib = { path = "generated/rust" }
+
+[[bin]]
+name = "from_cbor_bytes"
+path = "fuzz_targets/from_cbor_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
