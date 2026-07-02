@@ -365,6 +365,12 @@ reason = "an inline parenthesized group spliced as an array entry drops all but 
 code_anchor = "GroupEntry::InlineGroup { .. } => None"
 
 [[note]]
+id = "type2.tag"
+status = "partial"
+reason = "tagged CONTENT round-trips correctly when the tag is embedded (a `#6.n(...)` struct member/array element writes+checks the tag) or opted into a wrapper via the `@newtype` comment DSL (`tagged_newtype = #6.42(text) ; @newtype` in tagged.cddl emits a real newtype whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag). But a top-level single-type tag rule of a primitive (`tagged = #6.42(text)`) emits a transparent `pub type Tagged = String`: the alias is stripped for serialization so its OWN standalone API (`to/from_cbor_bytes` = `String`'s) DROPS the tag from the wire — a silent conformance bug (tagged.cddl snapshot). It parses + compiles (matrix probe = supported). The default (auto-wrap vs keep opt-in) is a pending maintainer decision — see TESTING_ROADMAP \"Pending decisions\"."
+code_anchor = "Stripping the alias inlines the type for serialization"
+
+[[note]]
 id = "rangeop.exclusive"
 status = "partial"
 reason = "the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`)."
