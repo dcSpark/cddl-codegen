@@ -414,9 +414,15 @@ fn feature_corpus_compiles() {
                     ));
                     continue;
                 }
-                // the default-profile rust crate EXECUTES its emitted tests (strictly stronger
-                // than check: `cargo test` compiles the lib and runs the round-trip/reject module)
-                let cargo_cmd = if emit_tests && crate_sub == "rust" {
+                // Under the default profile (where `--emit-tests` is passed) both the rust AND the
+                // wasm crate EXECUTE their emitted tests (strictly stronger than check: `cargo test`
+                // compiles the lib and runs the round-trip/reject module). `cargo check` never
+                // compiles `#[cfg(test)]` code, so the wasm crate's emitted `cddl_generated_wasm_tests`
+                // module (cross-crate byte differential + wire round-trip + accessor read-back) is only
+                // type-checked and executed under `cargo test` — giving the corpus its wasm ROUND-TRIP
+                // coverage, not just wasm compile coverage. json-gen stays check-only (json profile,
+                // no --emit-tests). preserve/json profiles stay check-only throughout.
+                let cargo_cmd = if emit_tests && (crate_sub == "rust" || crate_sub == "wasm") {
                     "test"
                 } else {
                     "check"
