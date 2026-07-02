@@ -87,8 +87,6 @@ pub struct CborInCborEncoding {
     pub foo_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_encoding: Option<cbor_event::Sz>,
-    pub tagged_foo_bytes_tag_encoding: Option<cbor_event::Sz>,
-    pub tagged_foo_bytes_bytes_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -186,8 +184,6 @@ pub struct PlainEncoding {
     pub len_encoding: LenEncoding,
     pub d_tag_encoding: Option<cbor_event::Sz>,
     pub d_encoding: Option<cbor_event::Sz>,
-    pub e_tag_encoding: Option<cbor_event::Sz>,
-    pub e_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -249,6 +245,18 @@ pub struct TableArrMembersEncoding {
     pub table_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
     pub table_value_encodings: BTreeMap<u64, StringEncoding>,
     pub table_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedFooBytesEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_bytes_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedTextEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]

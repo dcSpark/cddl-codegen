@@ -178,41 +178,50 @@ fn wasm_group_choice_enum_boundary() {
     assert!(matches!(back.kind(), GroupChoiceKind::GroupChoice1));
     assert_eq!(back.as_group_choice1(), Some(11));
 
-    let back = GroupChoice::from_cbor_bytes(
-        &GroupChoice::new_plain(2, String::from("tagged")).to_cbor_bytes(),
-    )
-    .ok()
-    .expect("GroupChoice::Plain round-trip");
+    // `e` (tagged_text = #6.42(text)) auto-wraps into the TaggedText tag wrapper, so it crosses the
+    // boundary as an opaque wrapper (from_cbor_bytes/to_cbor_bytes only). Build it from the native
+    // type via `.into()` and assert its wire form (tag 42 + text) survives losslessly.
+    let e: TaggedText = cddl_lib::TaggedText::from(String::from("tagged")).into();
+    let expected_e = e.to_cbor_bytes();
+    let back = GroupChoice::from_cbor_bytes(&GroupChoice::new_plain(2, &e).to_cbor_bytes())
+        .ok()
+        .expect("GroupChoice::Plain round-trip");
     assert!(matches!(back.kind(), GroupChoiceKind::Plain));
     let plain = back.as_plain().expect("as_plain on the Plain variant");
     assert_eq!(plain.d(), 2);
-    assert_eq!(plain.e(), "tagged");
+    assert_eq!(plain.e().to_cbor_bytes(), expected_e);
 }
 
 // shape: nullable (`T / null` -> Option<T>) in a REQUIRED field — both states survive the wire
-// unambiguously. opt_text is also a talias boundary (TaggedText = String transparent alias).
+// unambiguously. opt_text is also a talias boundary: tagged_text auto-wraps into the opaque
+// TaggedText tag wrapper, so the field crosses as `Option<TaggedText>`.
 #[test]
 fn wasm_nullable_field_both_states() {
-    let back = Foo2::from_cbor_bytes(&Foo2::new(1, Some(String::from("x"))).to_cbor_bytes())
+    let x: TaggedText = cddl_lib::TaggedText::from(String::from("x")).into();
+    let expected_x = x.to_cbor_bytes();
+    let back = Foo2::from_cbor_bytes(&Foo2::new(1, Some(x)).to_cbor_bytes())
         .ok()
         .expect("Foo2 round-trip (present)");
     assert_eq!(back.index_0(), 1);
-    assert_eq!(back.opt_text(), Some(String::from("x")));
+    assert_eq!(back.opt_text().map(|t| t.to_cbor_bytes()), Some(expected_x));
 
     let back = Foo2::from_cbor_bytes(&Foo2::new(2, None).to_cbor_bytes())
         .ok()
         .expect("Foo2 round-trip (null)");
     assert_eq!(back.index_0(), 2);
-    assert_eq!(back.opt_text(), None);
+    assert!(back.opt_text().is_none());
 }
 
-// shape: cborwrap (`bytes .cbor foo`) — crosses the boundary as the *inner* wrapper through the
-// transparent aliases FooBytes = Foo / TaggedFooBytes = Foo (the passthru mechanics: a `pub type`
-// alias to a wrapper struct), so the nested-CBOR re-encoding must be lossless.
+// shapes: cborwrap (`bytes .cbor foo`) — `foo_bytes` (FooBytes = Foo) stays a transparent passthru
+// alias, so it crosses as the inner Foo wrapper; `tagged_foo_bytes` (#6.20(bytes .cbor foo)) now
+// auto-wraps into the opaque TaggedFooBytes tag wrapper. Both nested-CBOR re-encodings must be
+// lossless.
 #[test]
 fn wasm_cbor_in_cbor_boundary() {
     let inner = Foo::new(5, String::from("in"), vec![9]);
-    let tagged = Foo::new(6, String::from("tag"), vec![]);
+    let tagged: TaggedFooBytes =
+        cddl_lib::TaggedFooBytes::from(cddl_lib::Foo::new(6, String::from("tag"), vec![])).into();
+    let expected_tagged = tagged.to_cbor_bytes();
     let back = CborInCbor::from_cbor_bytes(&CborInCbor::new(&inner, 42, &tagged).to_cbor_bytes())
         .ok()
         .expect("CborInCbor round-trip");
@@ -220,9 +229,7 @@ fn wasm_cbor_in_cbor_boundary() {
     assert_eq!(back.foo_bytes().index_1(), "in");
     assert_eq!(back.foo_bytes().index_2(), vec![9]);
     assert_eq!(back.uint_bytes(), 42);
-    assert_eq!(back.tagged_foo_bytes().index_0(), 6);
-    assert_eq!(back.tagged_foo_bytes().index_1(), "tag");
-    assert_eq!(back.tagged_foo_bytes().index_2(), Vec::<u8>::new());
+    assert_eq!(back.tagged_foo_bytes().to_cbor_bytes(), expected_tagged);
 }
 
 // shape: newtype-inner (@newtype). The wasm wrapper exposes NO constructor (a boundary gap: only

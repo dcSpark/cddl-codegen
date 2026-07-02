@@ -42,6 +42,12 @@ Any field that is `T / null` is transformed as a special case into `Option<T>` r
 
 A special case for this is when all types are fixed values e.g. `foo = 0 / 1 / "hello"`, in which case we generate a special c-style enum in the rust. This will have wasm_bindgen tags so it can be directly used in the wasm crate. Encoding variables (for `--preserve-encodings=true`) are stored where the enum is used like with other primitives.
 
+## Type aliases and tagged rules
+
+A rule that is a plain reference to another type (`foo = bar`) or a wire-transparent wrapper (`basic = (uint)`, where parentheses have no CBOR effect) generates a transparent `pub type Foo = ...` alias. Use `; @newtype` to opt into a `pub struct` wrapper instead (see [comment DSL](comment_dsl#newtype)).
+
+A top-level single-type **tag** rule of a primitive or named type (`tagged = #6.42(text)`, `uri = #6.32(tstr)`, `foo_bytes = #6.20(bytes .cbor foo)`) is the exception: it always generates the tag-writing/tag-checking newtype wrapper (`pub struct Tagged(String)` whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag with `TagMismatch`). A transparent `pub type` alias cannot carry a custom serialize impl, so an alias would silently drop the tag from that type's own standalone `to/from_cbor_bytes` API — a CBOR conformance bug. `@newtype` is therefore redundant (though harmless) on a tag rule. Tag rules whose body is a group (`rational = #6.30([...])`) already generate a struct that writes the tag and are unaffected.
+
 ## Recursive types
 
 Terminable recursive types are supported — a rule may reference itself through an occurrence that can terminate, e.g. `tree = [value: uint, children: [* tree]]` (an empty `children` ends the recursion). These generate and round-trip normally.

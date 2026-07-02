@@ -64,42 +64,8 @@ impl cbor_event::se::Serialize for Prelude {
                 .unwrap_or_default()
                 .to_len_sz(16),
         )?;
-        serializer.write_tag_sz(
-            2u64,
-            fit_sz(
-                2u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.big_u_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_bytes_sz(
-            &self.big_u,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.big_u_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.big_u.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            32u64,
-            fit_sz(
-                32u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.uri_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.uri,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.uri_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.uri.len() as u64),
-        )?;
+        self.big_u.serialize(serializer)?;
+        self.uri.serialize(serializer)?;
         self.big_i.serialize(serializer)?;
         self.unsigned.serialize(serializer)?;
         serializer.write_text_sz(
@@ -119,132 +85,13 @@ impl cbor_event::se::Serialize for Prelude {
                 .to_str_len_sz(self.b.len() as u64),
         )?;
         self.intg.serialize(serializer)?;
-        serializer.write_tag_sz(
-            3u64,
-            fit_sz(
-                3u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.big_n_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_bytes_sz(
-            &self.big_n,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.big_n_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.big_n.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            0u64,
-            fit_sz(
-                0u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.date_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.date,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.date_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.date.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            33u64,
-            fit_sz(
-                33u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.b64u_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.b64u,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.b64u_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.b64u.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            34u64,
-            fit_sz(
-                34u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.b64l_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.b64l,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.b64l_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.b64l.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            35u64,
-            fit_sz(
-                35u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.re_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.re,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.re_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.re.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            36u64,
-            fit_sz(
-                36u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.mime_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_text_sz(
-            &self.mime,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.mime_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.mime.len() as u64),
-        )?;
-        serializer.write_tag_sz(
-            24u64,
-            fit_sz(
-                24u64,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.ec_tag_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
-        serializer.write_bytes_sz(
-            &self.ec,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.ec_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(self.ec.len() as u64),
-        )?;
+        self.big_n.serialize(serializer)?;
+        self.date.serialize(serializer)?;
+        self.b64u.serialize(serializer)?;
+        self.b64l.serialize(serializer)?;
+        self.re.serialize(serializer)?;
+        self.mime.serialize(serializer)?;
+        self.ec.serialize(serializer)?;
         self.df.serialize(serializer)?;
         self.bf.serialize(serializer)?;
         self.encodings
@@ -263,35 +110,10 @@ impl Deserialize for Prelude {
         read_len.read_elems(16)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
-            let (big_u, big_u_tag_encoding, big_u_encoding) =
-                (|| -> Result<_, DeserializeError> {
-                    match raw.tag_sz()? {
-                        (2, tag_enc) => raw
-                            .bytes_sz()
-                            .map_err(Into::<DeserializeError>::into)
-                            .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc))),
-                        (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                            found: tag,
-                            expected: 2,
-                        }
-                        .into()),
-                    }
-                })()
-                .map_err(|e| e.annotate("big_u"))?;
-            let (uri, uri_tag_encoding, uri_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (32, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 32,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("uri"))?;
+            let big_u = PreludeBiguint::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("big_u"))?;
+            let uri =
+                PreludeUri::deserialize(raw).map_err(|e: DeserializeError| e.annotate("uri"))?;
             let big_i = PreludeBigint::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("big_i"))?;
             let unsigned = PreludeUnsigned::deserialize(raw)
@@ -308,105 +130,20 @@ impl Deserialize for Prelude {
                 .map_err(|e: DeserializeError| e.annotate("b"))?;
             let intg = PreludeInteger::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("intg"))?;
-            let (big_n, big_n_tag_encoding, big_n_encoding) =
-                (|| -> Result<_, DeserializeError> {
-                    match raw.tag_sz()? {
-                        (3, tag_enc) => raw
-                            .bytes_sz()
-                            .map_err(Into::<DeserializeError>::into)
-                            .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc))),
-                        (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                            found: tag,
-                            expected: 3,
-                        }
-                        .into()),
-                    }
-                })()
-                .map_err(|e| e.annotate("big_n"))?;
-            let (date, date_tag_encoding, date_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (0, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 0,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("date"))?;
-            let (b64u, b64u_tag_encoding, b64u_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (33, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 33,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("b64u"))?;
-            let (b64l, b64l_tag_encoding, b64l_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (34, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 34,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("b64l"))?;
-            let (re, re_tag_encoding, re_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (35, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 35,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("re"))?;
-            let (mime, mime_tag_encoding, mime_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (36, tag_enc) => raw
-                        .text_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 36,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("mime"))?;
-            let (ec, ec_tag_encoding, ec_encoding) = (|| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (24, tag_enc) => raw
-                        .bytes_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 24,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("ec"))?;
+            let big_n = PreludeBignint::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("big_n"))?;
+            let date =
+                PreludeTdate::deserialize(raw).map_err(|e: DeserializeError| e.annotate("date"))?;
+            let b64u = PreludeB64url::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("b64u"))?;
+            let b64l = PreludeB64legacy::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("b64l"))?;
+            let re =
+                PreludeRegexp::deserialize(raw).map_err(|e: DeserializeError| e.annotate("re"))?;
+            let mime = PreludeMimeMessage::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("mime"))?;
+            let ec = PreludeEncodedCbor::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("ec"))?;
             let df =
                 PreludeDecfrac::deserialize(raw).map_err(|e: DeserializeError| e.annotate("df"))?;
             let bf = PreludeBigfloat::deserialize(raw)
@@ -437,30 +174,112 @@ impl Deserialize for Prelude {
                 bf,
                 encodings: Some(PreludeEncoding {
                     len_encoding,
-                    big_u_tag_encoding,
-                    big_u_encoding,
-                    uri_tag_encoding,
-                    uri_encoding,
                     t_encoding,
                     b_encoding,
-                    big_n_tag_encoding,
-                    big_n_encoding,
-                    date_tag_encoding,
-                    date_encoding,
-                    b64u_tag_encoding,
-                    b64u_encoding,
-                    b64l_tag_encoding,
-                    b64l_encoding,
-                    re_tag_encoding,
-                    re_encoding,
-                    mime_tag_encoding,
-                    mime_encoding,
-                    ec_tag_encoding,
-                    ec_encoding,
                 }),
             })
         })()
         .map_err(|e| e.annotate("Prelude"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeB64legacy {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            34u64,
+            fit_sz(
+                34u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeB64legacy {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (34, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 34,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeB64legacyEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeB64url {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            33u64,
+            fit_sz(
+                33u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeB64url {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (33, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 33,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeB64urlEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
     }
 }
 
@@ -543,28 +362,8 @@ impl cbor_event::se::Serialize for PreludeBigint {
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         match self {
-            PreludeBigint::PreludeBiguint {
-                prelude_biguint,
-                prelude_biguint_tag_encoding,
-                prelude_biguint_encoding,
-            } => {
-                serializer.write_tag_sz(2u64, fit_sz(2u64, *prelude_biguint_tag_encoding))?;
-                serializer.write_bytes_sz(
-                    &prelude_biguint,
-                    prelude_biguint_encoding.to_str_len_sz(prelude_biguint.len() as u64),
-                )
-            }
-            PreludeBigint::PreludeBignint {
-                prelude_bignint,
-                prelude_bignint_tag_encoding,
-                prelude_bignint_encoding,
-            } => {
-                serializer.write_tag_sz(3u64, fit_sz(3u64, *prelude_bignint_tag_encoding))?;
-                serializer.write_bytes_sz(
-                    &prelude_bignint,
-                    prelude_bignint_encoding.to_str_len_sz(prelude_bignint.len() as u64),
-                )
-            }
+            PreludeBigint::PreludeBiguint(prelude_biguint) => prelude_biguint.serialize(serializer),
+            PreludeBigint::PreludeBignint(prelude_bignint) => prelude_bignint.serialize(serializer),
         }
     }
 }
@@ -574,27 +373,9 @@ impl Deserialize for PreludeBigint {
         (|| -> Result<_, DeserializeError> {
             let initial_position = raw.as_mut_ref().stream_position().unwrap();
             let mut errs = Vec::new();
-            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (2, tag_enc) => raw
-                        .bytes_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 2,
-                    }
-                    .into()),
-                }
-            })(raw);
+            let deser_variant: Result<_, DeserializeError> = PreludeBiguint::deserialize(raw);
             match deser_variant {
-                Ok((prelude_biguint, prelude_biguint_tag_encoding, prelude_biguint_encoding)) => {
-                    return Ok(Self::PreludeBiguint {
-                        prelude_biguint,
-                        prelude_biguint_tag_encoding,
-                        prelude_biguint_encoding,
-                    })
-                }
+                Ok(prelude_biguint) => return Ok(Self::PreludeBiguint(prelude_biguint)),
                 Err(e) => {
                     errs.push(e.annotate("PreludeBiguint"));
                     raw.as_mut_ref()
@@ -602,27 +383,9 @@ impl Deserialize for PreludeBigint {
                         .unwrap();
                 }
             };
-            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                match raw.tag_sz()? {
-                    (3, tag_enc) => raw
-                        .bytes_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc))),
-                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 3,
-                    }
-                    .into()),
-                }
-            })(raw);
+            let deser_variant: Result<_, DeserializeError> = PreludeBignint::deserialize(raw);
             match deser_variant {
-                Ok((prelude_bignint, prelude_bignint_tag_encoding, prelude_bignint_encoding)) => {
-                    return Ok(Self::PreludeBignint {
-                        prelude_bignint,
-                        prelude_bignint_tag_encoding,
-                        prelude_bignint_encoding,
-                    })
-                }
+                Ok(prelude_bignint) => return Ok(Self::PreludeBignint(prelude_bignint)),
                 Err(e) => {
                     errs.push(e.annotate("PreludeBignint"));
                     raw.as_mut_ref()
@@ -636,6 +399,106 @@ impl Deserialize for PreludeBigint {
             ))
         })()
         .map_err(|e| e.annotate("PreludeBigint"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeBignint {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            3u64,
+            fit_sz(
+                3u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_bytes_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeBignint {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (3, tag_enc) => raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 3,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeBignintEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeBiguint {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            2u64,
+            fit_sz(
+                2u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_bytes_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeBiguint {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (2, tag_enc) => raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 2,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeBiguintEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
     }
 }
 
@@ -712,6 +575,56 @@ impl Deserialize for PreludeDecfrac {
     }
 }
 
+impl cbor_event::se::Serialize for PreludeEncodedCbor {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            24u64,
+            fit_sz(
+                24u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_bytes_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeEncodedCbor {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (24, tag_enc) => raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 24,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeEncodedCborEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
 impl cbor_event::se::Serialize for PreludeInteger {
     fn serialize<'se, W: Write>(
         &self,
@@ -744,6 +657,156 @@ impl Deserialize for PreludeInteger {
     }
 }
 
+impl cbor_event::se::Serialize for PreludeMimeMessage {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            36u64,
+            fit_sz(
+                36u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeMimeMessage {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (36, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 36,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeMimeMessageEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeRegexp {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            35u64,
+            fit_sz(
+                35u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeRegexp {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (35, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 35,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeRegexpEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeTdate {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            0u64,
+            fit_sz(
+                0u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeTdate {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (0, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 0,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeTdateEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}
+
 impl cbor_event::se::Serialize for PreludeUnsigned {
     fn serialize<'se, W: Write>(
         &self,
@@ -754,16 +817,8 @@ impl cbor_event::se::Serialize for PreludeUnsigned {
                 uint,
                 uint_encoding,
             } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
-            PreludeUnsigned::PreludeBiguint {
-                prelude_biguint,
-                prelude_biguint_tag_encoding,
-                prelude_biguint_encoding,
-            } => {
-                serializer.write_tag_sz(2u64, fit_sz(2u64, *prelude_biguint_tag_encoding))?;
-                serializer.write_bytes_sz(
-                    &prelude_biguint,
-                    prelude_biguint_encoding.to_str_len_sz(prelude_biguint.len() as u64),
-                )
+            PreludeUnsigned::PreludeBiguint(prelude_biguint) => {
+                prelude_biguint.serialize(serializer)
             }
         }
     }
@@ -781,26 +836,9 @@ impl Deserialize for PreludeUnsigned {
                         uint_encoding,
                     })
                 }
-                cbor_event::Type::Tag => {
-                    let (prelude_biguint, prelude_biguint_tag_encoding, prelude_biguint_encoding) =
-                        match raw.tag_sz()? {
-                            (2, tag_enc) => raw.bytes_sz().map(|(bytes, enc)| {
-                                (bytes, Some(tag_enc), StringEncoding::from(enc))
-                            })?,
-                            (tag, _enc) => {
-                                return Err(DeserializeFailure::TagMismatch {
-                                    found: tag,
-                                    expected: 2,
-                                }
-                                .into())
-                            }
-                        };
-                    Ok(Self::PreludeBiguint {
-                        prelude_biguint,
-                        prelude_biguint_tag_encoding,
-                        prelude_biguint_encoding,
-                    })
-                }
+                cbor_event::Type::Tag => Ok(PreludeUnsigned::PreludeBiguint(
+                    PreludeBiguint::deserialize(raw)?,
+                )),
                 _ => Err(DeserializeError::new(
                     "PreludeUnsigned",
                     DeserializeFailure::NoVariantMatched,
@@ -808,5 +846,55 @@ impl Deserialize for PreludeUnsigned {
             }
         })()
         .map_err(|e| e.annotate("PreludeUnsigned"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeUri {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            32u64,
+            fit_sz(
+                32u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for PreludeUri {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (32, tag_enc) => raw
+                .text_sz()
+                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 32,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(PreludeUriEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
     }
 }

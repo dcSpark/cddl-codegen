@@ -567,13 +567,33 @@ fn parse_type(
                             }
                             ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
                                 Some(Primitive::Bytes) => {
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new_from_metadata(
-                                            ty.as_bytes().tag_if(outer_tag),
-                                            rule_metadata,
-                                        ),
-                                    );
+                                    let cbor_bytes_type = ty.as_bytes().tag_if(outer_tag);
+                                    // Same reasoning as the primitive tag rule below: a top-level
+                                    // `x = #6.n(bytes .cbor T)` must wrap so its standalone
+                                    // `to/from_cbor_bytes` writes/checks the tag (a transparent
+                                    // `pub type X = T` alias drops it from the wire). The tag rides on
+                                    // `cbor_bytes_type` (`.tag_if(outer_tag)`), so the wrapper emits it.
+                                    if rule_metadata.newtype.is_some() || outer_tag.is_some() {
+                                        types.register_rust_struct(
+                                            parent_visitor,
+                                            RustStruct::new_wrapper(
+                                                type_name.clone(),
+                                                None,
+                                                Some(&rule_metadata),
+                                                cbor_bytes_type,
+                                                None,
+                                            ),
+                                            cli,
+                                        );
+                                    } else {
+                                        types.register_type_alias(
+                                            type_name.clone(),
+                                            AliasInfo::new_from_metadata(
+                                                cbor_bytes_type,
+                                                rule_metadata,
+                                            ),
+                                        );
+                                    }
                                 }
                                 _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
                             },
@@ -637,7 +657,15 @@ fn parse_type(
                                         ))
                                     }
                                     None => {
-                                        if rule_metadata.newtype.is_some() {
+                                        // A top-level single-type tag rule (`x = #6.n(<primitive|named>)`)
+                                        // must emit the tag-writing/tag-checking wrapper, not a transparent
+                                        // `pub type` alias whose standalone `to/from_cbor_bytes` would drop
+                                        // the tag from the wire (a CBOR conformance bug). `outer_tag` is set
+                                        // exactly when we descended through a tag head, so it forces the same
+                                        // wrapper `@newtype` opts into — making `@newtype` redundant (not a
+                                        // double wrapper) on a tag rule. The tag rides on `concrete_type`
+                                        // (`.tag_if(outer_tag)` above), so the wrapper writes it.
+                                        if rule_metadata.newtype.is_some() || outer_tag.is_some() {
                                             types.register_rust_struct(
                                                 parent_visitor,
                                                 RustStruct::new_wrapper(

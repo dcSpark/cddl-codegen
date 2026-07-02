@@ -426,7 +426,7 @@ impl GroupChoice {
         Self(cddl_lib::GroupChoice::new_group_choice3(x))
     }
 
-    pub fn new_plain(d: u64, e: TaggedText) -> Self {
+    pub fn new_plain(d: u64, e: &TaggedText) -> Self {
         Self(cddl_lib::GroupChoice::new_plain(d, e.clone().into()))
     }
 
@@ -701,7 +701,7 @@ impl Plain {
         self.0.e.clone().into()
     }
 
-    pub fn new(d: u64, e: TaggedText) -> Self {
+    pub fn new(d: u64, e: &TaggedText) -> Self {
         Self(cddl_lib::Plain::new(d, e.clone().into()))
     }
 }
@@ -849,7 +849,40 @@ impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
     }
 }
 
-pub type TaggedText = String;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedText(cddl_lib::TaggedText);
+
+#[wasm_bindgen]
+impl TaggedText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::TaggedText> for TaggedText {
+    fn from(native: cddl_lib::TaggedText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedText> for cddl_lib::TaggedText {
+    fn from(wasm: TaggedText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedText> for TaggedText {
+    fn as_ref(&self) -> &cddl_lib::TaggedText {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

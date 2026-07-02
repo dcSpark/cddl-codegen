@@ -21,7 +21,7 @@ mod tests {
 
     #[test]
     fn foo2_some() {
-        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe"))));
+        deser_test(&Foo2::new(143546, Some(String::from("afdjfkjsiefefe").into())));
     }
 
     #[test]
@@ -36,12 +36,12 @@ mod tests {
 
     #[test]
     fn plain() {
-        deser_test(&Plain::new(7576, String::from("wiorurri34h")));
+        deser_test(&Plain::new(7576, String::from("wiorurri34h").into()));
     }
 
     #[test]
     fn outer() {
-        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h"))));
+        deser_test(&Outer::new(2143254, Plain::new(7576, String::from("wiorurri34h").into())));
     }
 
     #[test]
@@ -86,6 +86,6 @@ mod tests {
 
     #[test]
     fn group_choice_plain() {
-        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg"))));
+        deser_test(&GroupChoice::Plain(Plain::new(354545, String::from("fdsfdsfdg").into())));
     }
 }

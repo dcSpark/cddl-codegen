@@ -25,13 +25,32 @@ impl Holder {
     }
 }
 
+impl From<Tagged> for String {
+    fn from(wrapper: Tagged) -> Self {
+        wrapper.0
+    }
+}
+
 impl From<TaggedNewtype> for String {
     fn from(wrapper: TaggedNewtype) -> Self {
         wrapper.0
     }
 }
 
-pub type Tagged = String;
+#[derive(Clone, Debug)]
+pub struct Tagged(String);
+
+impl Tagged {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for Tagged {
+    fn from(inner: String) -> Self {
+        Tagged::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TaggedNewtype(String);

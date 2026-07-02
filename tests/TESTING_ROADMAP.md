@@ -256,20 +256,18 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
   preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
   expected-fail list; longer-term, a profile axis on the matrix annotation schema.
-- **Top-level tagged / parenthesized *primitive* alias: auto-wrap vs opt-in (API-policy decision).**
-  `tagged = #6.42(text)` (and any single-type tag/parens wrapper of a primitive) emits
-  `pub type Tagged = String` that DROPS the tag from the wire on its own standalone API (`to/from_cbor_bytes`
-  are `String`'s) — a silent conformance bug. A Rust `pub type` physically can't carry a custom impl, so
-  the ONLY way to fix the standalone surface is to emit a newtype WRAPPER, which is an **API-breaking
-  change to generated crates** (embed-site fields typed `String` today become the wrapper type — impacts
-  consumers like CML). This commit made the documented opt-in escape hatch actually work in its natural
-  placement — `#6.42(text) ; @newtype` and `(uint) ; @newtype` now emit the tag-writing wrapper (the
-  trailing comment DSL was previously lost through the single-type unwrap in `parse_type`; the
-  `parenthesized` corpus fixture now covers it). What remains a maintainer call is the DEFAULT: (a) keep
-  opt-in and additionally emit a compile-time warning/error when a transparent alias would silently drop
-  a tag (non-breaking); or (b) auto-wrap all tagged/parenthesized primitive aliases (correct-by-default
-  but breaks embed-site APIs across all consumers, and flips a currently-pinned, ✅-documented behavior).
-  Both are defensible; they differ only in who absorbs the break.
+- **Tag-drop residue for exotic single-type tag inners (auto-wrap coverage gap).** Top-level tag rules
+  auto-wrap into a tag-writing/tag-checking newtype whenever the inner is a primitive/named type
+  (`tagged = #6.42(text)`) or a `bytes .cbor T` wrapper (`#6.20(bytes .cbor foo)`) — closing the
+  standalone-API tag-drop for every shape the corpus and standard prelude exercise. Three untested,
+  exotic inner shapes still fall through to a tag-carrying `pub type` alias whose standalone
+  `to/from_cbor_bytes` drops the tag: a `.default`-carrying inner (`#6.n(uint .default 5)`), a range that
+  collapses exactly onto a Rust primitive with no residual bound (a ranged inner that *does* carry a bound
+  already wraps), and a bare literal inner (`#6.n(5)` — and top-level fixed-value types are a separate
+  documented limitation anyway). None appear in any fixture; the cheapest close is to add a corpus fixture
+  isolating each and route its `parse_type` arm through `new_wrapper` (mirroring the primitive/`.cbor`
+  arms). Parenthesized *non-tag* aliases (`basic = (uint)`) are intentionally left transparent — parens
+  have no CBOR effect, so `@newtype` stays the opt-in there.
 
 ## Explicitly not worth it (decided, not overlooked)
 

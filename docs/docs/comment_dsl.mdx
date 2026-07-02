@@ -63,6 +63,8 @@ impl Foo {
 }
 ```
 
+`@newtype` is **redundant on a top-level single-type tag rule** (`foo = #6.42(text)`): those already auto-wrap into the tag-writing wrapper so their standalone `to/from_cbor_bytes` API does not drop the tag (see [current capacities](current_capacities#type-aliases-and-tagged-rules)). Adding `; @newtype` there produces the same wrapper, not a double wrapper — its only remaining use on such a rule is to attach a custom getter.
+
 ## @no_alias
 
 ```cddl

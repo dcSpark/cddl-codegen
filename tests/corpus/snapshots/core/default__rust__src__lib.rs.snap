@@ -475,6 +475,12 @@ impl Foo {
     }
 }
 
+impl From<TaggedFooBytes> for Foo {
+    fn from(wrapper: TaggedFooBytes) -> Self {
+        wrapper.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Foo2 {
     pub index_0: u64,
@@ -1011,6 +1017,12 @@ pub type StandaloneTable = BTreeMap<u64, String>;
 
 pub type StandaloneText = BTreeMap<String, String>;
 
+impl From<TaggedText> for String {
+    fn from(wrapper: TaggedText) -> Self {
+        wrapper.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StructWithCustomSerialization {
     pub custom_bytes: CustomBytes,
@@ -1075,9 +1087,35 @@ impl TableMapWrapper {
     }
 }
 
-pub type TaggedFooBytes = Foo;
+#[derive(Clone, Debug)]
+pub struct TaggedFooBytes(Foo);
 
-pub type TaggedText = String;
+impl TaggedFooBytes {
+    pub fn new(inner: Foo) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Foo> for TaggedFooBytes {
+    fn from(inner: Foo) -> Self {
+        TaggedFooBytes::new(inner.clone().into())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TaggedText(String);
+
+impl TaggedText {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for TaggedText {
+    fn from(inner: String) -> Self {
+        TaggedText::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TextArrayWrapper {
