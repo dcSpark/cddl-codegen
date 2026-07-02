@@ -3572,46 +3572,62 @@ impl cbor_event::se::Serialize for MapWithDefaults {
         for field_index in deser_order {
             match field_index {
                 0 => {
-                    serializer.write_unsigned_integer_sz(
-                        1u64,
-                        fit_sz(
+                    if self.key_1 != 1337
+                        || self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.key_1_default_present)
+                            .unwrap_or(false)
+                    {
+                        serializer.write_unsigned_integer_sz(
                             1u64,
-                            self.encodings
-                                .as_ref()
-                                .map(|encs| encs.key_1_key_encoding)
-                                .unwrap_or_default(),
-                        ),
-                    )?;
-                    serializer.write_unsigned_integer_sz(
-                        self.key_1,
-                        fit_sz(
+                            fit_sz(
+                                1u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.key_1_key_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                        serializer.write_unsigned_integer_sz(
                             self.key_1,
-                            self.encodings
-                                .as_ref()
-                                .map(|encs| encs.key_1_encoding)
-                                .unwrap_or_default(),
-                        ),
-                    )?;
+                            fit_sz(
+                                self.key_1,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.key_1_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
                 }
                 1 => {
-                    serializer.write_unsigned_integer_sz(
-                        2u64,
-                        fit_sz(
+                    if self.key_2 != "two"
+                        || self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.key_2_default_present)
+                            .unwrap_or(false)
+                    {
+                        serializer.write_unsigned_integer_sz(
                             2u64,
+                            fit_sz(
+                                2u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.key_2_key_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                        serializer.write_text_sz(
+                            &self.key_2,
                             self.encodings
                                 .as_ref()
-                                .map(|encs| encs.key_2_key_encoding)
-                                .unwrap_or_default(),
-                        ),
-                    )?;
-                    serializer.write_text_sz(
-                        &self.key_2,
-                        self.encodings
-                            .as_ref()
-                            .map(|encs| encs.key_2_encoding.clone())
-                            .unwrap_or_default()
-                            .to_str_len_sz(self.key_2.len() as u64),
-                    )?;
+                                .map(|encs| encs.key_2_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz(self.key_2.len() as u64),
+                        )?;
+                    }
                 }
                 _ => unreachable!(),
             };

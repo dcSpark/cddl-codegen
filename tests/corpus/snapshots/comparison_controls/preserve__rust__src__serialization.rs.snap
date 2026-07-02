@@ -112,7 +112,7 @@ impl Deserialize for ComparisonControls {
                 .map_err(Into::<DeserializeError>::into)
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
-                    if x < 6 || x > 4 {
+                    if x == 5 {
                         Err(DeserializeFailure::RangeCheck {
                             found: x as isize,
                             min: Some(6),

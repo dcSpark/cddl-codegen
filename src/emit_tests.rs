@@ -1,8 +1,13 @@
-//! `--emit-tests` reject-half generator.
+//! `--emit-tests` generated-test emitter: the REJECT half and the ROUND-TRIP half.
 //!
-//! For every type that carries a bounded (`RangeCheck`) field, emit a `#[test]` that pushes a
-//! field out of bounds and asserts the generated code rejects it. Two shapes, mirroring the
-//! hand-written `tests/core/tests.rs::bounds()` precedent:
+//! Everything here is derived from each type's IR at generation time — there are no hand-authored
+//! value lists. The per-IR-shape derivation rules below are the single maintained surface, and any
+//! type/field/variant they can't mint is skipped with an `eprintln!`, never a silently-weakened
+//! test.
+//!
+//! **Reject half** — for every type carrying a bounded (`RangeCheck`) field, a `#[test]` that
+//! pushes a field out of bounds and asserts the generated code rejects it. Two shapes, mirroring
+//! the hand-written `tests/core/tests.rs::bounds()` precedent:
 //!
 //! * **deser-reject** (structs / `Record`): mint a valid baseline via `new(..)`, mutate one `pub`
 //!   field out of bounds, serialize, and assert `from_cbor_bytes` rejects the wire bytes as
@@ -13,10 +18,19 @@
 //!   Type and group choices share the same deserialization code, so we only check the constructor
 //!   API here.
 //!
+//! **Round-trip half** — for every type we can mint, a `#[test]` that constructs IR-derived value
+//! cases and asserts the full wire cycle is byte-identical (`value → to_cbor_bytes →
+//! from_cbor_bytes → to_cbor_bytes == bytes`). Cases per shape: a valid baseline; each optional
+//! field additionally present (records); one case per choice/c-enum variant. This is the
+//! "output is right, not just unchanged" oracle (TESTING_ROADMAP item 1): a serialize/deserialize
+//! disagreement fails here even when snapshots and compile gates stay green. It deliberately
+//! shares the generator's IR, so it cannot catch IR-level bugs (wrong bounds computed at parse
+//! time) — that is the spec-anchored oracles' job (golden hex / conformance validation).
+//!
 //! Deliberately scoped to the cheap cases (the first slice — see `tests/TESTING_ROADMAP.md` c6):
-//! the valid baseline is minted from compile-time literals, so any field that can't be cheaply
+//! valid values are minted from compile-time literals, so any field that can't be cheaply
 //! minted (nested rust structs/tags, bounded `nint`s — whose stored/wire direction is inverted)
-//! causes that one type to be skipped with an `eprintln!`, never a silently-weakened test.
+//! causes that one type/case to be skipped with an `eprintln!`.
 
 use crate::cli::Cli;
 use crate::intermediate::{
@@ -27,10 +41,11 @@ use crate::utils::convert_to_snake_case;
 
 type Bounds = (Option<i128>, Option<i128>);
 
-/// Emit the `#[cfg(test)]` reject-test module, or `None` if there's nothing bounded to test.
-pub fn emit_reject_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String> {
+/// Emit the `#[cfg(test)]` generated-test module (reject + round-trip halves), or `None` if
+/// nothing at all could be minted.
+pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String> {
     if !cli.to_from_bytes_methods {
-        // deser-reject needs to_cbor_bytes/from_cbor_bytes
+        // both halves need to_cbor_bytes/from_cbor_bytes
         eprintln!(
             "cddl-codegen --emit-tests: skipped (requires --to-from-bytes-methods, which is off)"
         );
@@ -40,7 +55,7 @@ pub fn emit_reject_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String>
     let mut fns: Vec<String> = Vec::new();
     for (ident, rust_struct) in types.rust_structs() {
         let name = ident.to_string();
-        let body = match rust_struct.variant() {
+        let reject = match rust_struct.variant() {
             RustStructType::Record(record) => record_deser_reject(types, &name, record),
             RustStructType::TypeChoice { variants }
             | RustStructType::GroupChoice { variants, .. } => {
@@ -51,11 +66,44 @@ pub fn emit_reject_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String>
             }
             _ => None,
         };
-        if let Some(lines) = body
+        if let Some(lines) = reject
             && !lines.is_empty()
         {
             fns.push(format!(
                 "#[test]\nfn reject_{}() {{\n{}\n}}\n",
+                convert_to_snake_case(&name),
+                lines
+            ));
+        }
+
+        let roundtrip = match rust_struct.variant() {
+            RustStructType::Record(record) => record_roundtrip(types, &name, record),
+            RustStructType::TypeChoice { variants }
+            | RustStructType::GroupChoice { variants, .. } => {
+                choice_roundtrip(types, &name, variants)
+            }
+            RustStructType::Wrapper { wrapped, min_max } => {
+                wrapper_roundtrip(types, &name, wrapped, *min_max)
+            }
+            // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
+            // in their containing types) — they're exercised wherever a record embeds them
+            RustStructType::CStyleEnum { .. } => None,
+            // Rust-side tables/arrays are transparent `pub type` aliases — no ctor surface to
+            // mint through. First-slice skip, loud so the gap is visible per generation:
+            RustStructType::Table { .. } | RustStructType::Array { .. } => {
+                eprintln!(
+                    "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no round-trip emitted (first slice)"
+                );
+                None
+            }
+            // reference user-supplied code; the generated crate can't exercise them standalone
+            RustStructType::Extern | RustStructType::RawBytesType => None,
+        };
+        if let Some(lines) = roundtrip
+            && !lines.is_empty()
+        {
+            fns.push(format!(
+                "#[test]\nfn roundtrip_{}() {{\n{}\n}}\n",
                 convert_to_snake_case(&name),
                 lines
             ));
@@ -65,10 +113,186 @@ pub fn emit_reject_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String>
     if fns.is_empty() {
         return None;
     }
+    // `to_cbor_bytes`/`from_cbor_bytes` are trait methods (serialization::{ToCBORBytes,
+    // Deserialize}); `use super::*` alone doesn't bring traits into scope in a standalone crate
+    // (the integration harness happens to append `use serialization::*;` to lib.rs, which masked
+    // this), so import the serialization surface explicitly.
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{}\n}}\n",
         fns.join("\n")
     ))
+}
+
+// ============================================================================================
+// ROUND-TRIP half. Each fn returns the body of one `roundtrip_<type>` test: a set of IR-derived
+// value cases, each pushed through the full wire cycle and asserted byte-identical.
+// ============================================================================================
+
+/// The shared wire-cycle emission for a list of `(value_expr, label)` cases.
+fn roundtrip_body(name: &str, cases: Vec<(String, String)>) -> Option<String> {
+    if cases.is_empty() {
+        return None;
+    }
+    let blocks: Vec<String> = cases
+        .into_iter()
+        .map(|(expr, label)| {
+            format!(
+                "    {{
+        let v = {expr};
+        let bytes = v.to_cbor_bytes();
+        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");
+        assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");
+    }}"
+            )
+        })
+        .collect();
+    Some(blocks.join("\n"))
+}
+
+/// Mirrors the record constructor's fallibility rule (`generation.rs` `new_can_fail`): `new()`
+/// returns `Result` iff any non-optional field is bounded.
+fn record_ctor_can_fail(record: &RustRecord) -> bool {
+    record
+        .fields
+        .iter()
+        .any(|f| !f.optional && f.rust_type.config.bounds.is_some())
+}
+
+/// Record round-trip: a valid baseline, plus one case per optional field with that field present.
+fn record_roundtrip(types: &IntermediateTypes, name: &str, record: &RustRecord) -> Option<String> {
+    let ctor_fields: Vec<&RustField> = record
+        .fields
+        .iter()
+        .filter(|f| {
+            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+        })
+        .collect();
+    let mut valid_args: Vec<String> = Vec::new();
+    for f in &ctor_fields {
+        match valid_value(types, &f.rust_type) {
+            Some(v) => valid_args.push(v),
+            None => {
+                eprintln!(
+                    "cddl-codegen --emit-tests: no round-trip for {name} (field {} not cheaply mintable)",
+                    f.name
+                );
+                return None;
+            }
+        }
+    }
+    let unwrap = if record_ctor_can_fail(record) {
+        ".unwrap()"
+    } else {
+        ""
+    };
+    let base = format!("{name}::new({}){unwrap}", valid_args.join(", "));
+    let mut cases = vec![(base.clone(), "baseline".to_owned())];
+    for f in record.fields.iter().filter(|f| f.optional) {
+        match valid_value(types, &f.rust_type) {
+            Some(x) => {
+                // a defaulted optional is stored as a PLAIN field (absent on the wire = default);
+                // only non-defaulted optionals are Option<T> in the struct
+                let assign = if f.rust_type.config.default.is_some() {
+                    x
+                } else {
+                    format!("Some({x})")
+                };
+                cases.push((
+                    format!("{{ let mut v = {base}; v.{} = {assign}; v }}", f.name),
+                    format!("optional `{}` present", f.name),
+                ));
+            }
+            None => eprintln!(
+                "cddl-codegen --emit-tests: {name}.{} optional-present case not cheaply mintable — skipped",
+                f.name
+            ),
+        }
+    }
+    roundtrip_body(name, cases)
+}
+
+/// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
+/// serializes, so this is the variants' first trip through the actual encode/decode path).
+fn choice_roundtrip(
+    types: &IntermediateTypes,
+    name: &str,
+    variants: &[EnumVariant],
+) -> Option<String> {
+    let mut cases = Vec::new();
+    for variant in variants {
+        let ctor = format!("new_{}", variant.name_as_var());
+        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+            eprintln!(
+                "cddl-codegen --emit-tests: {name}::{ctor} not cheaply constructible — no round-trip case"
+            );
+            continue;
+        };
+        let mut args: Vec<String> = Vec::new();
+        let mut ok = true;
+        for (ty, field) in &arg_fields {
+            match valid_value(types, ty) {
+                Some(v) => args.push(v),
+                None => {
+                    eprintln!(
+                        "cddl-codegen --emit-tests: {name}::{ctor} arg {field} not cheaply mintable — no round-trip case"
+                    );
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok {
+            continue;
+        }
+        let unwrap = if arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)) {
+            ".unwrap()"
+        } else {
+            ""
+        };
+        cases.push((
+            format!("{name}::{ctor}({}){unwrap}", args.join(", ")),
+            format!("variant {}", variant.name),
+        ));
+    }
+    roundtrip_body(name, cases)
+}
+
+/// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
+/// is present — the wrapper checks the raw measure, no nint transform).
+fn wrapper_roundtrip(
+    types: &IntermediateTypes,
+    name: &str,
+    wrapped: &RustType,
+    min_max: Option<Bounds>,
+) -> Option<String> {
+    let inner = match min_max {
+        Some(mm) => materialize(types, wrapped, valid_measure(mm)),
+        None => valid_value(types, wrapped),
+    };
+    let Some(inner) = inner else {
+        eprintln!(
+            "cddl-codegen --emit-tests: no round-trip for {name} (inner value not cheaply mintable)"
+        );
+        return None;
+    };
+    // mirrors the wrapper ctor's fallibility rule: `new()` returns Result iff a min_max check exists
+    let unwrap = if min_max.is_some() { ".unwrap()" } else { "" };
+    roundtrip_body(
+        name,
+        vec![(
+            format!("{name}::new({inner}){unwrap}"),
+            "baseline".to_owned(),
+        )],
+    )
+}
+
+/// Mirrors a choice-variant ctor's per-arg fallibility (`generation.rs` per-variant `can_fail`):
+/// an arg makes `new_<variant>` return `Result` only when it needs an inlined bounds check AND a
+/// check expression exists for its shape (a bounded named wrapper like `Hash` checks at ITS OWN
+/// construction, so passing one in stays infallible).
+fn arg_can_fail(types: &IntermediateTypes, ty: &RustType) -> bool {
+    ty.needs_bounds_check_if_inlined(types)
+        && crate::generation::bounds_check_expr_rust_type(ty, "x").is_some()
 }
 
 /// deser-reject for a struct: for each cheaply-mutatable bounded field, mint a valid baseline,
@@ -179,36 +403,8 @@ fn choice_construct_reject(
     let mut lines = Vec::new();
     for variant in variants {
         let ctor = format!("new_{}", variant.name_as_var());
-        // figure out the constructor arg list (mirrors generate_enum's new_<variant>)
-        let arg_fields: Vec<(&RustType, String)> = match &variant.data {
-            EnumVariantData::RustType(ty) => {
-                if let Some(record) = ty_as_record(types, ty) {
-                    // group-choice variant backed by a multi-field record: ctor flattens its fields
-                    record
-                        .fields
-                        .iter()
-                        .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
-                        .map(|f| (&f.rust_type, f.name.clone()))
-                        .collect()
-                } else if ty.is_fixed_value() {
-                    vec![]
-                } else {
-                    // single value passed straight in
-                    vec![(ty, variant.name_as_var())]
-                }
-            }
-            EnumVariantData::Inlined(record) => {
-                if record.fields.iter().any(|f| f.optional) {
-                    // optional args complicate the baseline — defer
-                    continue;
-                }
-                record
-                    .fields
-                    .iter()
-                    .filter(|f| !f.rust_type.is_fixed_value())
-                    .map(|f| (&f.rust_type, f.name.clone()))
-                    .collect()
-            }
+        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+            continue;
         };
 
         // which arg (if any) carries a cheaply-testable bound?
@@ -381,8 +577,16 @@ fn bound_cases(
     out
 }
 
+/// Named-struct minting recursion cap: deep enough for realistic nesting (e.g. a record holding a
+/// tagged wrapper holding a record), finite for self-recursive types (which get a loud skip).
+const MAX_MINT_DEPTH: u8 = 4;
+
 /// A valid in-range Rust value expression for `ty`, or `None` if it can't be cheaply minted.
 fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
+    valid_value_at(types, ty, 0)
+}
+
+fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option<String> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Optional(_) => Some("None".to_owned()),
         ConceptualRustType::Primitive(Primitive::Bool) => Some("false".to_owned()),
@@ -398,17 +602,106 @@ fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
                 .unwrap_or((None, None));
             Some(format!("{}", valid_measure(b)))
         }
-        _ => materialize(
+        // a field nesting a NAMED generated type: mint an instance of that type recursively
+        ConceptualRustType::Rust(ident) => mint_struct(types, ident, depth),
+        _ => materialize_at(
             types,
             ty,
             valid_measure(ty.config.bounds.unwrap_or((None, None))),
+            depth,
         ),
+    }
+}
+
+/// Mint a valid instance of a NAMED generated struct, recursing into its fields (depth-capped so
+/// self-recursive types return `None` and get the caller's loud skip instead of infinite mint).
+fn mint_struct(
+    types: &IntermediateTypes,
+    ident: &crate::intermediate::RustIdent,
+    depth: u8,
+) -> Option<String> {
+    if depth >= MAX_MINT_DEPTH {
+        return None;
+    }
+    let rust_struct = types.rust_struct(ident)?;
+    let name = ident.to_string();
+    match rust_struct.variant() {
+        RustStructType::Record(record) => {
+            let ctor_fields: Vec<&RustField> = record
+                .fields
+                .iter()
+                .filter(|f| {
+                    !f.optional
+                        && !f.rust_type.is_fixed_value()
+                        && f.rust_type.config.default.is_none()
+                })
+                .collect();
+            let args: Option<Vec<String>> = ctor_fields
+                .iter()
+                .map(|f| valid_value_at(types, &f.rust_type, depth + 1))
+                .collect();
+            let unwrap = if record_ctor_can_fail(record) {
+                ".unwrap()"
+            } else {
+                ""
+            };
+            Some(format!("{name}::new({}){unwrap}", args?.join(", ")))
+        }
+        RustStructType::Wrapper { wrapped, min_max } => {
+            let inner = match min_max {
+                Some(mm) => materialize_at(types, wrapped, valid_measure(*mm), depth + 1)?,
+                None => valid_value_at(types, wrapped, depth + 1)?,
+            };
+            let unwrap = if min_max.is_some() { ".unwrap()" } else { "" };
+            Some(format!("{name}::new({inner}){unwrap}"))
+        }
+        RustStructType::CStyleEnum { variants } => {
+            variants.first().map(|v| format!("{name}::{}", v.name))
+        }
+        RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
+            // first constructible variant wins (deterministic: variant order is IR order)
+            for variant in variants {
+                let Some(arg_fields) = variant_arg_fields(types, variant) else {
+                    continue;
+                };
+                let args: Option<Vec<String>> = arg_fields
+                    .iter()
+                    .map(|(ty, _)| valid_value_at(types, ty, depth + 1))
+                    .collect();
+                let Some(args) = args else { continue };
+                let unwrap = if arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)) {
+                    ".unwrap()"
+                } else {
+                    ""
+                };
+                return Some(format!(
+                    "{name}::new_{}({}){unwrap}",
+                    variant.name_as_var(),
+                    args.join(", ")
+                ));
+            }
+            None
+        }
+        // transparent aliases: an empty map/vec is valid for `*`-occurrence tables/arrays, and the
+        // alias's associated `new()` resolves to the underlying map type's constructor
+        RustStructType::Table { .. } => Some(format!("{name}::new()")),
+        RustStructType::Array { .. } => Some("vec![]".to_owned()),
+        RustStructType::Extern | RustStructType::RawBytesType => None,
     }
 }
 
 /// Build a Rust value expression for `ty` whose bound-relevant measure equals `measure`
 /// (the value itself for integers, the length for text/bytes/array/map).
 fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Option<String> {
+    materialize_at(types, ty, measure, 0)
+}
+
+fn materialize_at(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    measure: i128,
+    depth: u8,
+) -> Option<String> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => match p {
             Primitive::U8
@@ -433,7 +726,7 @@ fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Optio
             Primitive::F32 | Primitive::F64 => Some("0.0".to_owned()),
         },
         ConceptualRustType::Array(elem) => {
-            let e = valid_value(types, elem)?;
+            let e = valid_value_at(types, elem, depth)?;
             Some(format!("vec![{e}; {measure}]"))
         }
         ConceptualRustType::Map(k, v) => {
@@ -452,13 +745,55 @@ fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Optio
                 ConceptualRustType::Primitive(Primitive::Str) => "__i.to_string()".to_owned(),
                 _ => return None, // non-trivial keys aren't cheaply mintable
             };
-            let val = valid_value(types, v)?;
+            let val = valid_value_at(types, v, depth)?;
             // distinct keys 0..measure; collect() infers the map type from the target position
             Some(format!(
                 "(0u64..{measure}).map(|__i| ({key}, {val})).collect()"
             ))
         }
         _ => None,
+    }
+}
+
+/// The constructor arg list of a choice variant's `new_<variant>` (mirrors `generate_enum`), or
+/// `None` when it isn't cheaply constructible (inlined records with optional fields — deferred).
+fn variant_arg_fields<'a>(
+    types: &'a IntermediateTypes,
+    variant: &'a EnumVariant,
+) -> Option<Vec<(&'a RustType, String)>> {
+    match &variant.data {
+        EnumVariantData::RustType(ty) => {
+            if let Some(record) = ty_as_record(types, ty) {
+                // group-choice variant backed by a multi-field record: ctor flattens its fields
+                Some(
+                    record
+                        .fields
+                        .iter()
+                        .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                        .map(|f| (&f.rust_type, f.name.clone()))
+                        .collect(),
+                )
+            } else if ty.is_fixed_value() {
+                Some(vec![])
+            } else {
+                // single value passed straight in
+                Some(vec![(ty, variant.name_as_var())])
+            }
+        }
+        EnumVariantData::Inlined(record) => {
+            if record.fields.iter().any(|f| f.optional) {
+                // optional args complicate the baseline — defer
+                return None;
+            }
+            Some(
+                record
+                    .fields
+                    .iter()
+                    .filter(|f| !f.rust_type.is_fixed_value())
+                    .map(|f| (&f.rust_type, f.name.clone()))
+                    .collect(),
+            )
+        }
     }
 }
 
