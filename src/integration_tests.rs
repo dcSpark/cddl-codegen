@@ -718,20 +718,29 @@ fn comment_dsl() {
     );
 }
 
+/// The dcSpark `cddl` fork (already this crate's parser dep) as a test dependency of a *generated*
+/// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
+/// Pinned to the same rev as Cargo.toml so the two never diverge.
+const CDDL_ORACLE_DEP: &str =
+    "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"d6cad9ee99f732e2ecb330a373c6a68f4e2860b7\" }\n";
+
 #[test]
 fn preserve_encodings() {
     use std::str::FromStr;
     let custom_ser_path = std::path::PathBuf::from_str("tests")
         .unwrap()
         .join("custom_serialization_preserve");
+    let conformance_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("deser_test_conformance.rs");
     run_test(
         "preserve-encodings",
         &["--preserve-encodings=true"],
         None,
-        &[custom_ser_path],
+        &[custom_ser_path, conformance_path],
         &[],
         false,
-        &[],
+        &[CDDL_ORACLE_DEP],
     );
 }
 
@@ -747,14 +756,17 @@ fn emit_tests_execute() {
     let custom_ser_path = std::path::PathBuf::from_str("tests")
         .unwrap()
         .join("custom_serialization_preserve");
+    let conformance_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("deser_test_conformance.rs");
     run_test(
         "preserve-encodings",
         &["--preserve-encodings=true", "--emit-tests=true"],
         Some("emit_tests"),
-        &[custom_ser_path],
+        &[custom_ser_path, conformance_path],
         &[],
         false,
-        &[],
+        &[CDDL_ORACLE_DEP],
     );
     let lib = std::fs::read_to_string("tests/preserve-encodings/export_emit_tests/rust/src/lib.rs")
         .unwrap();

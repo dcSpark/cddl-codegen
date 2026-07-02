@@ -14,6 +14,50 @@ mod tests {
         assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
     }
 
+    // Second, independent oracle: validate our *encoder output* against the source .cddl via the
+    // `cddl` crate (see tests/deser_test_conformance.rs). Round-trips only prove our encoder and
+    // decoder agree with each other; this proves the bytes actually match the spec — catching an
+    // encoder that emits spec-non-conformant bytes a symmetrically-buggy decoder would accept. The
+    // preserve fixture is the richest hand-written round-trip surface (tags, nested tables,
+    // type-choices, and — the point of the flag — irregular definite/indefinite encodings), and is
+    // wired for the oracle (cddl dep + spec on disk); broadening to other fixtures is a compile-cost
+    // trade-off, not a limitation of the helper.
+    #[test]
+    fn cddl_crate_conformance() {
+        let spec = cddl_oracle_load_spec("/../../input.cddl");
+        let check = |rule: &str, bytes: &[u8]| assert_cddl_conforms(&spec, rule, bytes);
+
+        // foo = #6.11([uint, text, bytes]) — both the regular (definite/minimal) and an irregular
+        // (indefinite array) encoding must conform: the whole point of --preserve-encodings is that
+        // both are valid CBOR for the same value, and the independent validator agrees.
+        let mut foo = Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);
+        check("foo", &foo.to_cbor_bytes());
+        let mut foo_enc = FooEncoding::default();
+        foo_enc.len_encoding = LenEncoding::Indefinite;
+        foo.encodings = Some(foo_enc);
+        check("foo", &foo.to_cbor_bytes());
+
+        // bar = { ... } (struct-map).
+        check("bar", &Bar::new(Foo::new(9, String::from("abc"), vec![6, 4]), None).to_cbor_bytes());
+
+        // @newtype wrappers serialize as their inner shape: wrapper_list = [* uint], wrapper_table = { * uint => uint }.
+        check("wrapper_list", &WrapperList::new(vec![5, 4, 3, 2, 1]).to_cbor_bytes());
+        let mut wt = OrderedHashMap::new();
+        wt.insert(1, 0);
+        check("wrapper_table", &WrapperTable::new(wt).to_cbor_bytes());
+
+        // NOTE: types whose array/map elements are a `.size`-aliased type (e.g. table_arr_members's
+        // `arr: [*u32]` where `u32 = uint .size 4`) are deliberately NOT checked here — the `cddl`
+        // validator mishandles that construct (rejects a valid `[1,3,6]` as "expected uint, got
+        // Array"). That is a validator gap, not an encoder bug, and is exactly why a pass is a weak
+        // signal and this oracle is a *second* one, never the sole one.
+
+        // Teeth for the oracle itself: a bare int is not a #6.11(...) tagged array, so the validator
+        // must reject it — proving assert_cddl_conforms above isn't passing against a no-op validator
+        // or a mis-named root rule.
+        assert_cddl_rejects(&spec, "foo", &[0x00]);
+    }
+
     #[test]
     fn struct_array() {
         let mut foo = Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);

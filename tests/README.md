@@ -69,6 +69,23 @@ raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't r
 A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
 *wasm* crate and `cargo test`ed there (`tests/core/tests_wasm.rs` keeps the hook itself exercised).
 
+### Independent conformance oracle (`tests/deser_test_conformance.rs`)
+
+A round-trip only proves our encoder and decoder agree with *each other* — a symmetric bug passes.
+For a second oracle that shares neither code nor assumptions with ours, `deser_test_conformance.rs`
+validates our serialized bytes against the source `.cddl` using the `cddl` crate's validator
+(`validate_cbor_from_slice`). A **failure is a strong signal** (our bytes don't match the spec the
+generator was built from); a **pass is weak** — the validator has known gaps (it does not enforce
+`uint .size`, and mishandles `.size`-aliased element types inside arrays), so it is a *second* oracle,
+never the sole one. Because the validator validates against a spec's first type rule only, the helper
+prepends a synthetic root aliasing the rule under test.
+
+It's wired into the `preserve-encodings` fixture (the richest hand-written round-trip surface, and the
+one whose whole point — irregular definite/indefinite encodings — most needs an independent structural
+check): `run_test` appends the helper and adds the `cddl` git dep to that generated crate. Broadening
+to more fixtures is a compile-cost trade-off (the `cddl` dep is heavy), not a limitation of the helper.
+See `tests::cddl_crate_conformance` in `tests/preserve-encodings/tests.rs`.
+
 ## Generated-test harness (`--emit-tests`, `src/emit_tests.rs`)
 
 The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
