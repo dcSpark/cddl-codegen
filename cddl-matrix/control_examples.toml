@@ -7,7 +7,9 @@
 #
 # Each example ISOLATES the operator in `target .op controller` form. The 9 cddl-codegen implements
 # (.size .cbor .default .eq .ne .le .lt .ge .gt) must COMPILE; the rest reach the op dispatch and
-# panic/parse-reject (-> unsupported), which is the correct verdict. Forms verified against the oracles.
+# panic/parse-reject (-> unsupported), which is the correct verdict. Forms follow each op's DEFINING
+# RFC; the oracles can only corroborate ops they implement (ruby's generate mode exits 65 for any op
+# it postdates, valid or not — verify.ts surfaces those ids as an uncorroborated-REVIEW list).
 
 # --- RFC 8610 (the 9 supported + the 5 it parses-but-rejects) ---
 [[example]]
@@ -56,7 +58,9 @@ example = 'x = tstr .regexp "[0-9]+"'
 
 [[example]]
 id = "ctl.cborseq"
-example = "x = bytes .cborseq uint"
+# RFC 8610 §3.8.4: the decoded data items are taken as an ARRAY, so the controller must be an
+# array type (a scalar like `uint` is unsatisfiable and made the probe verdict vacuous)
+example = "x = bytes .cborseq [+ uint]"
 
 [[example]]
 id = "ctl.within"
@@ -67,17 +71,21 @@ id = "ctl.and"
 example = "x = uint .and (0..9)"
 
 # --- RFC 9090 ---
+# `.oid` takes an array-of-arcs controller (bare `bytes .oid` is GRAMMAR-invalid: `type1` requires
+# a controller after a ctlop); `.sdnv`/`.sdnvseq` apply to byte strings, with a uint /
+# array-of-uints controller respectively. The previous forms were rejected by the reference oracle
+# at parse (ruby exit 65), so their "unsupported" verdicts only proved rejection of malformed input.
 [[example]]
 id = "ctl.oid"
-example = "x = bytes .oid"
+example = "x = bytes .oid [2, 5, 4, 6]"
 
 [[example]]
 id = "ctl.sdnv"
-example = "x = uint .sdnv"
+example = "x = bytes .sdnv 6"
 
 [[example]]
 id = "ctl.sdnvseq"
-example = "x = bytes .sdnvseq uint"
+example = "x = bytes .sdnvseq [85, 4, 6]"
 
 # --- RFC 9165 ---
 [[example]]
@@ -155,7 +163,9 @@ example = "x = tstr .json int"
 
 [[example]]
 id = "ctl.printf"
-example = 'x = tstr .printf "abc"'
+# RFC 9741: the .printf controller is an ARRAY of one format string plus data items (a bare string
+# controller is not a valid form)
+example = 'x = tstr .printf ["%04x", 20]'
 
 [[example]]
 id = "ctl.join"
