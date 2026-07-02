@@ -82,17 +82,14 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      anchors, nint vectors, the runtime table-sort pins, and the cross-major `-1`/`256`
      length-first-vs-bytewise discriminator all live in the sibling suites, each
      mutation-verified red.)
-   - **Minter coverage:** the reserved `Int` extern (a `primitives.cddl` `int` resolves to
-     `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a real record
-     surface — special-case the constructible `Int` enum in the minter); non-primitive map keys;
-     optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it targeted is
-     fixed; a construct-reject would guard regression + still fails on the *standalone*
-     bounded-`nint`-newtype bug — see the ledger). Scale note from the verify.ts flip: ~30 of the
-     ~70 supported matrix probes mint nothing (transparent aliases — `x = uint`, `x = [* uint]`,
-     tables, bounded aliases like `g = [2*5 uint]` — plus pure c-enums and the `Int` gap), so their
-     execution verdict falls back to compile; a standalone mint surface for transparent
-     bounded/newtype-able aliases is the highest-leverage minter extension (it would also execute
-     the standalone bounds class the `nint` ledger entry tracks).
+   - **Minter coverage:** a standalone mint surface for transparent bounded/newtype-able aliases is
+     the highest-leverage remaining minter extension. From the verify.ts flip, a large slice of the
+     ~70 supported matrix probes mint nothing standalone — transparent aliases (`x = uint`,
+     `x = [* uint]`, tables, bounded aliases like `g = [2*5 uint]`) plus pure c-enums — so their
+     execution verdict falls back to compile. A standalone mint would also execute the standalone
+     bounds class the `nint` ledger entry tracks (the construct-reject on named bounded-`nint`
+     newtypes is already emitted; the residual is the *transparent-alias* bounded surface, which has
+     no named struct to hang a `new()`/round-trip on).
    - **Decorrelated conformance parser.** The IR-bug conformance oracle (`--emit-tests-conformance`)
      shares the dcSpark `cddl` fork's *parser* with the generator, so a fork-level misparse escapes it
      (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.

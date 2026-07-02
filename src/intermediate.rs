@@ -1468,7 +1468,15 @@ impl RustType {
                     } else {
                         match rust_struct.variant() {
                             RustStructType::Wrapper { wrapped, .. } => wrapped.cbor_types(types),
-                            // we can't know this unless there's a way to provide this info
+                            // the reserved `int` prelude extern (static prelude `Int`) encodes as a
+                            // CBOR uint OR nint — so a type-choice variant dispatch (e.g. `int /
+                            // bigint`) must branch on those major types, not the generic-extern
+                            // fallback below. Without this a bare `int` variant is dispatched on
+                            // Array|Map and never matches its own wire bytes.
+                            RustStructType::Extern if ident.to_string() == "Int" => {
+                                vec![CBORType::UnsignedInteger, CBORType::NegativeInteger]
+                            }
+                            // any other extern references user code whose wire shape we can't know
                             RustStructType::Extern => vec![CBORType::Array, CBORType::Map],
                             RustStructType::Record(record) => match record.rep {
                                 Representation::Array => vec![CBORType::Array],

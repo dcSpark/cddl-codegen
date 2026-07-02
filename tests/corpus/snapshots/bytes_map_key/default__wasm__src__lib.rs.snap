@@ -1,0 +1,195 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bkeys(cddl_lib::Bkeys);
+
+#[wasm_bindgen]
+impl Bkeys {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Vec<u8>, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: Vec<u8>) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> BytesList {
+        BytesList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+impl From<cddl_lib::Bkeys> for Bkeys {
+    fn from(native: cddl_lib::Bkeys) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bkeys> for cddl_lib::Bkeys {
+    fn from(wasm: Bkeys) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Bkeys> for Bkeys {
+    fn as_ref(&self) -> &cddl_lib::Bkeys {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesKeyHolder(cddl_lib::BytesKeyHolder);
+
+#[wasm_bindgen]
+impl BytesKeyHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesKeyHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn named(&self) -> Bkeys {
+        self.0.named.clone().into()
+    }
+
+    pub fn inline(&self) -> MapBytesToU64 {
+        self.0.inline.clone().into()
+    }
+
+    pub fn new(named: &Bkeys, inline: &MapBytesToU64) -> Self {
+        Self(cddl_lib::BytesKeyHolder::new(
+            named.clone().into(),
+            inline.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::BytesKeyHolder> for BytesKeyHolder {
+    fn from(native: cddl_lib::BytesKeyHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesKeyHolder> for cddl_lib::BytesKeyHolder {
+    fn from(wasm: BytesKeyHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesKeyHolder> for BytesKeyHolder {
+    fn as_ref(&self) -> &cddl_lib::BytesKeyHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesList(Vec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl BytesList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u8>>> for BytesList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesList> for Vec<Vec<u8>> {
+    fn from(wasm: BytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u8>>> for BytesList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapBytesToU64(BTreeMap<Vec<u8>, u64>);
+
+#[wasm_bindgen]
+impl MapBytesToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Vec<u8>, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: Vec<u8>) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> BytesList {
+        BytesList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<Vec<u8>, u64>> for MapBytesToU64 {
+    fn from(native: BTreeMap<Vec<u8>, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapBytesToU64> for BTreeMap<Vec<u8>, u64> {
+    fn from(wasm: MapBytesToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<Vec<u8>, u64>> for MapBytesToU64 {
+    fn as_ref(&self) -> &BTreeMap<Vec<u8>, u64> {
+        &self.0
+    }
+}
