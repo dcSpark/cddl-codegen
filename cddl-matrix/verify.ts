@@ -426,9 +426,17 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
 interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; example: string }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
+// ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
+// simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
+// the rust crate parses, still exits 65). Neither oracle can separate the two for registry ops it
+// doesn't implement, so this CANNOT be a hard gate — it is surfaced as a review list instead: an
+// example appearing here is uncorroborated by the reference, so check it against the defining RFC
+// by hand before trusting its "unsupported" verdict.
+const controlop_uncorroborated: string[] = [];
 const controlop_support: ControlOpSupport[] = [];
 for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
   const [a, b, c, comp] = oracles(co.example!);
+  if (a === 65) controlop_uncorroborated.push(co.id);
   const supported = c === 0 && comp === 0;
   const detail = supported ? "exit 0; compiles"
     : c === 0 ? `generates but does not compile (cargo check exit ${comp})`
@@ -537,6 +545,7 @@ const report = {
   probe_results,
   controlop_support,
   controlop_missing_example,
+  controlop_uncorroborated,
   containment_corroboration,
   containment_contradictions: containment_contradictions.map(c => c.id),
   containment_parser_limitations: [...containment_parser_limitations].sort(),
@@ -551,6 +560,7 @@ const report = {
     controlop_supported: controlop_support.filter(c => c.support === "supported").length,
     controlop_unsupported: controlop_support.filter(c => c.support === "unsupported").length,
     controlop_missing_example: controlop_missing_example.length,
+    controlop_uncorroborated: controlop_uncorroborated.length,
     abnf_productions: abnf_productions.size,
     prelude_names: prelude_names.length,
     supported: probe_results.filter(pr => pr.status === "supported").length,
@@ -639,6 +649,10 @@ if (controlop_missing_example.length) {
 if (containment_missing_example.length) {
   console.log("\nCONTAINMENT CELLS MISSING AN EXAMPLE (unprobed, uncorroborated — add to containment/*.toml):");
   for (const id of containment_missing_example) console.log(`  - ${id}`);
+}
+if (controlop_uncorroborated.length) {
+  console.log("\nCONTROL-OP EXAMPLES UNCORROBORATED BY THE REFERENCE (ruby exit 65 — either the example is malformed OR ruby postdates the op; REVIEW against the defining RFC):");
+  for (const id of controlop_uncorroborated) console.log(`  - ${id}`);
 }
 if (harness_timeouts_retried)
   console.log(`\nNOTE: ${harness_timeouts_retried} probe(s) timed out / were killed and succeeded on retry.`);

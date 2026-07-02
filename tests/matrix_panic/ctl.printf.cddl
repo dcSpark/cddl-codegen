@@ -1,1 +1,1 @@
-x = tstr .printf "abc"
+x = tstr .printf ["%04x", 20]

@@ -1138,7 +1138,7 @@
       "rfc": "RFC8610"
     },
     {
-      "example": "x = bytes .cborseq uint",
+      "example": "x = bytes .cborseq [+ uint]",
       "id": "ctl.cborseq",
       "name": ".cborseq",
       "profile": "RFC8610",
@@ -1208,21 +1208,21 @@
       "rfc": "RFC8610"
     },
     {
-      "example": "x = uint .sdnv",
+      "example": "x = bytes .sdnv 6",
       "id": "ctl.sdnv",
       "name": ".sdnv",
       "profile": "RFC9090",
       "rfc": "RFC9090"
     },
     {
-      "example": "x = bytes .sdnvseq uint",
+      "example": "x = bytes .sdnvseq [85, 4, 6]",
       "id": "ctl.sdnvseq",
       "name": ".sdnvseq",
       "profile": "RFC9090",
       "rfc": "RFC9090"
     },
     {
-      "example": "x = bytes .oid",
+      "example": "x = bytes .oid [2, 5, 4, 6]",
       "id": "ctl.oid",
       "name": ".oid",
       "profile": "RFC9090",
@@ -1348,7 +1348,7 @@
       "rfc": "RFC9741"
     },
     {
-      "example": "x = tstr .printf \"abc\"",
+      "example": "x = tstr .printf [\"%04x\", 20]",
       "id": "ctl.printf",
       "name": ".printf",
       "profile": "RFC9741",
