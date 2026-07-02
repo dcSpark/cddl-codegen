@@ -33,11 +33,16 @@ primitive encoding regardless of the `0x81` framing.
 - Legal **leaf** cells: **45** — 18 covered, 27 unexercised:
   - 8 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 39
+- Golden tests: 39 default-flags · sibling sets: 20 preserve + 8 canonical (below)
 
-**Next frontier:** the only never-emitted family worth a dedicated golden set is **indefinite-length**
-(the `.indef` cells) — exercised under `--preserve-encodings`, which can round-trip indefinite inputs.
-Everything else uncovered is either redundant or has no canonical RFC vector.
+**Sibling golden sets (not in this grid):** the encodings the default-flags set can never
+exercise — the ➖ `.indef` cells and non-minimal header arguments — have their own spec-anchored
+KATs: `tests/golden_hex_preserve/tests.rs` (irregular RFC 8949 §3 encodings must re-encode
+byte-identically under `--preserve-encodings`) and `tests/golden_hex_canonical/tests.rs` (the
+same irregular inputs must re-encode to hand-derived §4.2 minimal bytes under `--canonical-form`).
+This projection validates their byte-literal/well-formedness contract and counts them, but the
+Appendix A join above stays default-flags-only by design. Everything else uncovered is either
+redundant or has no canonical RFC vector.
 
 ### Major type 0 — unsigned integer
 
@@ -71,7 +76,7 @@ Everything else uncovered is either redundant or has no canonical RFC vector.
 |-----------|---------|---|-------------|
 | `40` | h'' | ✅ | `bytes_empty` |
 | `4401020304` | h'01020304' | ✅ | `bytes_four` |
-| `5f42010243030405ff` | (_ h'0102', h'030405') | ➖ | generator emits definite-length byte strings under default flags; indefinite belongs to a future --preserve-encodings vector set |
+| `5f42010243030405ff` | (_ h'0102', h'030405') | ➖ | generator emits definite-length byte strings under default flags; indefinite is covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve, tests/golden_hex_canonical) |
 
 ### Major type 3 — text string
 
@@ -84,7 +89,7 @@ Everything else uncovered is either redundant or has no canonical RFC vector.
 | `63e6b0b4` | 水 | ✅ | `text_utf8_3byte` |
 | `6449455446` | IETF | ✅ | `text_ietf` |
 | `64f0908591` | 𐅑 | ✅ | `text_utf8_4byte` |
-| `7f657374726561646d696e67ff` | streaming | ➖ | generator emits definite-length text strings under default flags; indefinite is the --preserve-encodings frontier |
+| `7f657374726561646d696e67ff` | streaming | ➖ | generator emits definite-length text strings under default flags; indefinite is covered by the sibling preserve/canonical KATs |
 
 ### Major type 4 — array
 
@@ -98,10 +103,10 @@ Everything else uncovered is either redundant or has no canonical RFC vector.
 | `83018202039f0405ff` | [1, [2, 3], [4, 5]] | ✅* | outer definite array covered by nested_arrays; embeds an indefinite inner array (see enc.major4.indef, never emitted) |
 | `83019f0203ff820405` | [1, [2, 3], [4, 5]] | ✅* | outer definite array covered by nested_arrays; embeds an indefinite inner array (see enc.major4.indef) |
 | `98190102030405060708090a0b0c0d0e0f101112131415161718181819` | [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,… | ✅ | `array_25_count_header` |
-| `9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff` | [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,… | ➖ | generator emits definite-length arrays under default flags; indefinite is the --preserve-encodings frontier |
-| `9f01820203820405ff` | [1, [2, 3], [4, 5]] | ➖ | generator emits definite-length arrays under default flags; indefinite is the --preserve-encodings frontier |
-| `9f018202039f0405ffff` | [1, [2, 3], [4, 5]] | ➖ | generator emits definite-length arrays under default flags; indefinite is the --preserve-encodings frontier |
-| `9fff` | [] | ➖ | generator emits definite-length arrays under default flags; indefinite is the --preserve-encodings frontier |
+| `9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff` | [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,… | ➖ | generator emits definite-length arrays under default flags; indefinite is covered by the sibling preserve/canonical KATs |
+| `9f01820203820405ff` | [1, [2, 3], [4, 5]] | ➖ | generator emits definite-length arrays under default flags; indefinite is covered by the sibling preserve/canonical KATs |
+| `9f018202039f0405ffff` | [1, [2, 3], [4, 5]] | ➖ | generator emits definite-length arrays under default flags; indefinite is covered by the sibling preserve/canonical KATs |
+| `9fff` | [] | ➖ | generator emits definite-length arrays under default flags; indefinite is covered by the sibling preserve/canonical KATs |
 
 ### Major type 5 — map
 
@@ -111,8 +116,8 @@ Everything else uncovered is either redundant or has no canonical RFC vector.
 | `a201020304` | {1: 2, 3: 4} | ✅ | `map_variable` |
 | `a26161016162820203` | {"a": 1, "b": [2, 3]} | ✅* | text-key map(2) covered by map_text_keys; the array-valued entry is composition of covered paths |
 | `a56161614161626142616361436164614461656145` | {"a": "A", "b": "B", "c": "C", "d": "D"… | ✅* | 5-entry map, same map immediate-count path as map_text_keys |
-| `bf61610161629f0203ffff` | {"a": 1, "b": [2, 3]} | ➖ | generator emits definite-length maps under default flags; indefinite is the --preserve-encodings frontier |
-| `bf6346756ef563416d7421ff` | {"Fun": true, "Amt": -2} | ➖ | generator emits definite-length maps under default flags; indefinite is the --preserve-encodings frontier |
+| `bf61610161629f0203ffff` | {"a": 1, "b": [2, 3]} | ➖ | generator emits definite-length maps under default flags; indefinite is covered by the sibling preserve/canonical KATs |
+| `bf6346756ef563416d7421ff` | {"Fun": true, "Amt": -2} | ➖ | generator emits definite-length maps under default flags; indefinite is covered by the sibling preserve/canonical KATs |
 
 ### Major type 6 — tag
 

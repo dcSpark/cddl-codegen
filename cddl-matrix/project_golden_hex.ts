@@ -12,6 +12,9 @@
  *   matrix.json                              - the legal CBOR major-type x ai-form grid (denominator)
  *   ../tests/golden_hex/tests.rs             - the bytes the golden test actually asserts (numerator)
  *   annotations/golden_hex/cddl_codegen.toml - the non-derivable human rationale (joined in)
+ *   ../tests/golden_hex_{preserve,canonical}/tests.rs - the sibling flag-mode golden sets: NOT
+ *       joined into the Appendix A grid (it documents the default-flags set), but validated to the
+ *       same authoring contract (0x?? literals, well-formed CBOR) and counted into the doc.
  *
  * Run:  bun run project_golden_hex.ts        -> writes ../tests/golden_hex/COVERAGE.md
  * Exit non-zero if any drift (stale/contradicted note) or any UNEXPLAINED uncovered vector is found.
@@ -86,9 +89,9 @@ const toHex = (b: Uint8Array, s: number, e: number) =>
 // Yield (start,end) of EVERY encoded CBOR item, nested included — match whole items, never payload bytes.
 // Bounds-checked: extraction garbage must surface as a named error, never as an infinite loop on an
 // unterminated indefinite head or as phantom out-of-bounds spans that fabricate cell credit.
-function cborItems(b: Uint8Array, name: string): [number, number][] {
+function cborItems(b: Uint8Array, label: string): [number, number][] {
   const spans: [number, number][] = [];
-  const die = (msg: string): never => { throw new Error(`kat!(${name}): ${msg} — the asserted bytes are not one well-formed CBOR item`); };
+  const die = (msg: string): never => { throw new Error(`${label}: ${msg} — the asserted bytes are not one well-formed CBOR item`); };
   const need = (i: number) => { if (i > b.length) die(`truncated item (needs byte ${i}, have ${b.length})`); };
   const beInt = (from: number, to: number) => { let n = 0; for (let k = from; k < to; k++) n = n * 256 + b[k]; return n; };
   function walk(i: number): number {
@@ -117,9 +120,45 @@ function cborItems(b: Uint8Array, name: string): [number, number][] {
   return spans;
 }
 
+// --- sibling spec-anchored sets: the preserve / canonical golden KATs ---
+// Different flags -> different generated crates -> their own fixture dirs (tests/golden_hex_preserve,
+// tests/golden_hex_canonical). They are deliberately NOT joined into the Appendix A grid (the grid
+// documents the DEFAULT-flags set — the siblings exist precisely for encodings that set never
+// emits, so joining them would contradict every `.indef` out_of_scope note), but their byte arrays
+// are held to the same authoring contract: every `&[…]` inside a kat_* invocation must tokenize
+// completely into two-digit 0x?? literals and parse as exactly one well-formed CBOR item. The
+// counts render into the doc, so adding a sibling vector without regenerating trips --check.
+async function validateSiblingKats(dir: string, macroName: string, arity: number): Promise<number> {
+  const file = Bun.file(`${HERE}/../tests/${dir}/tests.rs`);
+  if (!(await file.exists()))
+    throw new Error(`tests/${dir}/tests.rs not found — the sibling golden set moved; update project_golden_hex.ts`);
+  const text = await file.text();
+  const calls = [...text.matchAll(new RegExp(`${macroName}!\\(\\s*(\\w+)\\s*,([\\s\\S]*?)\\)\\s*;`, "g"))];
+  if (!calls.length) throw new Error(`tests/${dir}/tests.rs: no ${macroName}!(…) invocations found — the extraction contract broke`);
+  const seen = new Set<string>();
+  for (const [, name, rawBody] of calls) {
+    const label = `${dir} ${macroName}!(${name})`;
+    if (seen.has(name)) throw new Error(`${label}: duplicate test name — the second would silently shadow the first`);
+    seen.add(name);
+    const body = rawBody.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, ""); // comments are not arguments
+    const arrays = [...body.matchAll(/&\[([^\]]*)\]/g)];
+    if (arrays.length !== arity)
+      throw new Error(`${label}: expected ${arity} byte-array argument(s), found ${arrays.length}`);
+    for (const [, arrText] of arrays) {
+      const residue = arrText.replace(/0x[0-9a-fA-F]{2}/g, "").replace(/[,\s]/g, "");
+      if (residue)
+        throw new Error(`${label}: byte array contains non-\`0xNN\` content (\`${residue}\`) — write two-digit 0x literals only (no decimal, no single-digit)`);
+      cborItems(Uint8Array.from([...arrText.matchAll(/0x([0-9a-fA-F]{2})/g)].map(m => parseInt(m[1], 16))), label);
+    }
+  }
+  return calls.length;
+}
+const preserveKats = await validateSiblingKats("golden_hex_preserve", "kat_preserve", 1);
+const canonicalKats = await validateSiblingKats("golden_hex_canonical", "kat_canonical", 2);
+
 // every distinct item encoding each test asserts, and which test(s) assert it
 const testItems = new Map<string, Set<string>>(
-  [...tests].map(([n, b]) => [n, new Set(cborItems(b, n).map(([s, e]) => toHex(b, s, e)))]),
+  [...tests].map(([n, b]) => [n, new Set(cborItems(b, `kat!(${n})`).map(([s, e]) => toHex(b, s, e)))]),
 );
 const coveringTests = (hexn: string) => [...testItems].filter(([, items]) => items.has(hexn)).map(([n]) => n);
 // a cell is covered if any test asserts an item whose head lands in it (item heads are always real heads)
@@ -243,11 +282,16 @@ w(`- Appendix A vectors: **${vectors.length}** — ✅ ${cov} covered · ✅* ${
 w(`- Legal **leaf** cells: **${cells.size}** — ${cellsCovered.size} covered, ${uncovCells.length} unexercised:`);
 w(`  - ${never.length} **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)`);
 w(`  - ${emittable.length} **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set`);
-w(`- Golden tests: ${tests.size}`);
+w(`- Golden tests: ${tests.size} default-flags · sibling sets: ${preserveKats} preserve + ${canonicalKats} canonical (below)`);
 w();
-w("**Next frontier:** the only never-emitted family worth a dedicated golden set is **indefinite-length**");
-w("(the `.indef` cells) — exercised under `--preserve-encodings`, which can round-trip indefinite inputs.");
-w("Everything else uncovered is either redundant or has no canonical RFC vector.");
+w("**Sibling golden sets (not in this grid):** the encodings the default-flags set can never");
+w("exercise — the ➖ `.indef` cells and non-minimal header arguments — have their own spec-anchored");
+w("KATs: `tests/golden_hex_preserve/tests.rs` (irregular RFC 8949 §3 encodings must re-encode");
+w("byte-identically under `--preserve-encodings`) and `tests/golden_hex_canonical/tests.rs` (the");
+w("same irregular inputs must re-encode to hand-derived §4.2 minimal bytes under `--canonical-form`).");
+w("This projection validates their byte-literal/well-formedness contract and counts them, but the");
+w("Appendix A join above stays default-flags-only by design. Everything else uncovered is either");
+w("redundant or has no canonical RFC vector.");
 w();
 const LABELS = ["unsigned integer", "negative integer", "byte string", "text string", "array", "map", "tag", "simple / float"];
 for (let mt = 0; mt < 8; mt++) {
