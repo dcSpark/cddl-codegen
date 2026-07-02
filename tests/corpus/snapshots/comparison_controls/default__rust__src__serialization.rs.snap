@@ -53,7 +53,7 @@ impl Deserialize for ComparisonControls {
                 .unsigned_integer()
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|x| {
-                    if x < 6 || x > 4 {
+                    if x == 5 {
                         Err(DeserializeFailure::RangeCheck {
                             found: x as isize,
                             min: Some(6),

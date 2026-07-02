@@ -1095,9 +1095,10 @@ impl GenerationScope {
             declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
 
-        // optional reject-test module (off by default; doesn't touch the snapshot suite)
+        // optional generated-test module (reject + round-trip halves; off by default, so it
+        // doesn't touch the snapshot suite)
         if cli.emit_tests
-            && let Some(test_mod) = crate::emit_tests::emit_reject_tests(types, cli)
+            && let Some(test_mod) = crate::emit_tests::emit_generated_tests(types, cli)
         {
             self.rust_lib().raw(&test_mod);
         }
@@ -3754,7 +3755,8 @@ fn bounds_check_expr(p: Primitive, e: &str) -> String {
     }
 }
 
-fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<String> {
+// pub(crate): emit_tests mirrors ctor fallibility as `needs_bounds_check_if_inlined && this is Some`
+pub(crate) fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<String> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => Some(bounds_check_expr(*p, e)),
         ConceptualRustType::Array(_) |
@@ -3791,6 +3793,9 @@ fn bounds_check_if_block(
     format!(
         "if {} {{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
         match bounds {
+            // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
+            // EXCLUSION of the single value between them, not an (unsatisfiable) window
+            (Some(min), Some(max)) if min > max => format!("{e} == {}", min - 1),
             (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
             (None, Some(max)) => format!("{e} > {max}"),
             (Some(min), None) => format!("{e} < {min}"),
@@ -5351,6 +5356,7 @@ fn codegen_struct(
     config: &RustStructConfig,
     cli: &Cli,
 ) {
+    // NOTE: mirrored by emit_tests::record_ctor_can_fail — keep the two in sync
     let new_can_fail = record
         .fields
         .iter()
@@ -6108,15 +6114,30 @@ fn codegen_struct(
                         //    ser_loop_match.line(format!("{} => {},"));
                         //} else {
                         //}
-                        let mut field_ser_block =
-                            if field.optional && field.rust_type.config.default.is_none() {
-                                Block::new(format!(
-                                    "{} => if let Some(field) = &self.{}",
-                                    field_index, field.name
-                                ))
-                            } else {
-                                Block::new(format!("{field_index} =>"))
-                            };
+                        let mut field_ser_block = if field.optional
+                            && field.rust_type.config.default.is_none()
+                        {
+                            Block::new(format!(
+                                "{} => if let Some(field) = &self.{}",
+                                field_index, field.name
+                            ))
+                        } else if field.optional {
+                            // defaulted optional: the map HEADER (definite_info) counts this field
+                            // only when it differs from its default (or was explicitly present on
+                            // deserialize) — the write arm must apply the IDENTICAL condition or a
+                            // freshly-constructed default-valued field serializes a body entry the
+                            // header didn't count (corrupt CBOR: length mismatch / trailing data)
+                            let default_value = field.rust_type.config.default.as_ref().unwrap();
+                            Block::new(format!(
+                                "{} => if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false)",
+                                field_index,
+                                field.name,
+                                default_value.to_primitive_str_compare(),
+                                field.name
+                            ))
+                        } else {
+                            Block::new(format!("{field_index} =>"))
+                        };
                         field_ser_block.push_all(content);
                         ser_loop_match.push_block(field_ser_block);
                     }
@@ -8091,6 +8112,9 @@ fn generate_wrapper_struct(
             (Some(min), Some(max)) => {
                 if min == max {
                     Block::new(format!("if {against} != {min}"))
+                } else if min > max {
+                    // `.ne N` is encoded as Range(N+1, N-1): an exclusion, not a window
+                    Block::new(format!("if {against} == {}", min - 1))
                 } else {
                     let non_negative = field_type.encodings.is_empty()
                         && match &field_type.conceptual_type {

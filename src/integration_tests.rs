@@ -699,6 +699,45 @@ fn preserve_encodings() {
     );
 }
 
+/// Executes the `--emit-tests` generated-test module end-to-end (TESTING_ROADMAP item 1): generate
+/// the rich preserve-encodings fixture with the flag on and `cargo test` the generated crate —
+/// run_test's test step runs the emitted reject_*/roundtrip_* tests alongside the hand-written
+/// suite. This is the emitter's execution gate (it previously had zero CI coverage, and its output
+/// only ever compiled inside harness crates that happened to append `use serialization::*`).
+/// The floor asserts keep the gate from going vacuous if emission silently shrinks.
+#[test]
+fn emit_tests_execute() {
+    use std::str::FromStr;
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization_preserve");
+    run_test(
+        "preserve-encodings",
+        &["--preserve-encodings=true", "--emit-tests=true"],
+        Some("emit_tests"),
+        &[custom_ser_path],
+        &[],
+        false,
+        &[],
+    );
+    let lib = std::fs::read_to_string("tests/preserve-encodings/export_emit_tests/rust/src/lib.rs")
+        .unwrap();
+    assert!(
+        lib.contains("mod cddl_generated_tests"),
+        "--emit-tests emitted no generated-test module"
+    );
+    let n_roundtrip = lib.matches("fn roundtrip_").count();
+    let n_reject = lib.matches("fn reject_").count();
+    assert!(
+        n_roundtrip >= 20,
+        "emitted only {n_roundtrip} roundtrip tests for the preserve fixture — emission silently shrank"
+    );
+    assert!(
+        n_reject >= 3,
+        "emitted only {n_reject} reject tests for the preserve fixture — emission silently shrank"
+    );
+}
+
 #[test]
 fn canonical() {
     run_test(

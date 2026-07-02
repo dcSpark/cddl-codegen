@@ -23,8 +23,10 @@ wasm), and round-trips. The historical verdict meant only "rust generates and ru
 which is why real bugs (inverted `nint` bound, wasm `get`/`add` type mismatch, JSON-schema turbofish)
 shipped green. The Tier-1 items below are the remaining missing pieces of that oracle:
 
-- **Correctness** — the round-trip harness (item 1): turns "output didn't change" into "output is right."
-  **Still open** (the single highest-leverage missing oracle).
+- **Correctness** ✅ (depth) / open (breadth) — the emitted round-trip harness (item 1) turns
+  "output didn't change" into "output is right" for every ctor-mintable type, executed in CI via
+  `integration_tests::emit_tests_execute`. The remaining frontier is breadth: running it across
+  the whole corpus/matrix surface (the c6 flip) so the matrix verdict itself means "round-trips".
 - **Coverage (compile)** ✅ — the generated **wasm** crate is now compiled by systematic gates:
   `feature_corpus_compiles` (`--wasm=true`, checks both crates) and the **wasm-ABI matrix**
   (`wasm_matrix_compiles`, 80 enumerated cells). See item 2. The remaining coverage frontier is
@@ -36,32 +38,33 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 
 ### Tier 1 — the strategic investments
 
-1. **Emit a property round-trip harness into the generated crate.** *(~2–4 days; then free per
-   type)* `proptest` + `arbitrary`, behind the `--emit-tests` flag (the flag itself already exists —
-   added by the c6 reject half; this item adds the `Arbitrary` + proptest dep on top). The generator is
-   the only thing that knows each type's exact fields/bounds/optionality, so it can emit a better
-   `Arbitrary` + round-trip test than any hand-written one, for **every** type automatically. This
-   is the single highest-leverage missing oracle — it turns "output didn't change" into "output is
-   correct." Do this when you want to go deep on correctness.
-   - Follow-on once this exists: **encode-fidelity properties** for `preserve`/`canonical`
-     (`bytes → T → bytes` byte-identical over arbitrary valid encodings) — the only at-scale test
+1. **Grow the emitted round-trip harness toward matrix-driven execution.** The `--emit-tests`
+   module emits both halves per type — IR-derived round-trip cases (baseline, bound boundaries,
+   one per choice variant, each optional field present; every case asserted byte-identical through
+   the full wire cycle) and the bounded reject tests — and is executed in CI by
+   `integration_tests::emit_tests_execute` (which also floor-asserts the emitted-test counts so
+   emission can't silently shrink). Values are minted **deterministically from each type's IR**
+   rather than via emitted `proptest`/`Arbitrary` impls, to keep generated crates dependency-free
+   and runs byte-reproducible: the repo's determinism ethos would force a fixed seed anyway, and a
+   fixed-seed sampler is a deterministic enumerator with extra machinery — both designs share the
+   identical per-IR-shape derivation surface (`emit_tests.rs`), which is the single maintained
+   thing; unmintable shapes are skipped with an `eprintln!`, never silently. Validated at landing
+   by a full corpus sweep plus the preserve-profile integration gate, which immediately caught
+   (and led to fixing) two miscompiles that snapshots + compile gates had blessed: the `.ne`
+   unsatisfiable-bound window, and preserve-encodings map records writing default-valued fields
+   the header didn't count (corrupt CBOR on any freshly-constructed defaulted value). Remaining:
+   - **c6 — matrix-driven execution (the F3 frontier).** Flip `feature_corpus_compiles`'
+     `cargo check` → `cargo test` with `--emit-tests` for one profile, then `verify.ts`'s
+     per-schema probe, so a matrix-"supported" verdict means "round-trips", not "compiles".
+     This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm
+     gate — land the two together.
+   - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
+     over irregular encodings) — needs minted *encodings*, not just values; the only at-scale test
      of those high-stakes flags.
-   - **c6 — matrix-driven execution (the F3 frontier).** The end goal: flip `cddl-matrix/verify.ts`'s
-     per-schema `cargo check` → `cargo test` to execute round-trip + reject across the whole feature corpus
-     (~3–4× the breadth of hand fixtures). The matrix is the **driver, not the oracle** — it mints no typed
-     value, so the round-trip half needs a constraint-aware `Arbitrary` (must honor the generator's own
-     `RangeCheck` or it flakes) living in the *generated* crate, plus the proptest dep. The **reject half
-     already landed** (`--emit-tests`; `src/emit_tests.rs` — per-bounded-type accept/reject asserts minted
-     from compile-time literals, off by default, not yet wired into the suite or `verify.ts`). It surfaced a
-     real **generator bug** — the bounded-`nint` constructor bound was inverted, now **fixed** (findings
-     ledger in `cddl-matrix/ROADMAP.md`).
-     - **Still open:** the round-trip/`Arbitrary` half + proptest dep; then the `verify.ts`
-       `cargo check → cargo test` flip; an integration test that runs the emitted module (today the emitter
-       has no CI coverage); optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug
-       it targeted is now fixed directly; a construct-reject would guard against regression + still fails on
-       the *standalone* bounded-`nint`-newtype bug the fix didn't cover — see the ledger).
-       This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm gate — land
-       the two together.
+   - **Minter coverage:** top-level transparent Table/Array alias round-trips; non-primitive map
+     keys; optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it
+     targeted is fixed; a construct-reject would guard regression + still fails on the
+     *standalone* bounded-`nint`-newtype bug — see the ledger).
 
 2. **Compile the generated *wasm* crate in the systematic gates.** *(compile foundation built + CI-wired;
    the remaining frontiers are behavioural (round-trip) coverage and the red-cell backlog below.)* The wasm

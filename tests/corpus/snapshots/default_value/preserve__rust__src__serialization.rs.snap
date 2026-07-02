@@ -78,24 +78,32 @@ impl cbor_event::se::Serialize for Defaulted {
                     )?;
                 }
                 1 => {
-                    serializer.write_text_sz(
-                        "b",
-                        self.encodings
+                    if self.b != 1337
+                        || self
+                            .encodings
                             .as_ref()
-                            .map(|encs| encs.b_key_encoding.clone())
-                            .unwrap_or_default()
-                            .to_str_len_sz("b".len() as u64),
-                    )?;
-                    serializer.write_unsigned_integer_sz(
-                        self.b,
-                        fit_sz(
-                            self.b,
+                            .map(|encs| encs.b_default_present)
+                            .unwrap_or(false)
+                    {
+                        serializer.write_text_sz(
+                            "b",
                             self.encodings
                                 .as_ref()
-                                .map(|encs| encs.b_encoding)
-                                .unwrap_or_default(),
-                        ),
-                    )?;
+                                .map(|encs| encs.b_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("b".len() as u64),
+                        )?;
+                        serializer.write_unsigned_integer_sz(
+                            self.b,
+                            fit_sz(
+                                self.b,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.b_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
                 }
                 _ => unreachable!(),
             };

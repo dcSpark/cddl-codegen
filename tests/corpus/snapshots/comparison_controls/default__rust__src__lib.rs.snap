@@ -33,7 +33,7 @@ impl ComparisonControls {
             }
             .into());
         }
-        if b < 6 || b > 4 {
+        if b == 5 {
             return Err(DeserializeFailure::RangeCheck {
                 found: b as isize,
                 min: Some(6),

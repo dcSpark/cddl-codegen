@@ -207,9 +207,12 @@ cddl-codegen --input=example --output=export --wasm-list-macro=cml_core_wasm::im
 <br/><br/>
 
 :::info `--emit-tests`
-Emits a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate: for every type with a bounded (`RangeCheck`) field, a `#[test]` that asserts the boundary values are accepted (round-trip) and out-of-bounds values are rejected on deserialization. Covers structs (mutate a `pub` field out of bounds, serialize, and confirm `from_cbor_bytes` rejects it) plus type/group choices and bounded `@newtype` wrappers (constructor rejects out-of-bounds input).
+Emits a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate, with two kinds of tests derived from each type's structure:
 
-Requires `--to-from-bytes-methods`. Default-profile oriented; bounded `nint` fields and types whose bound coincides with the backing rust type's range are skipped (logged). This is the deterministic "reject" half — it does not generate `proptest`/`Arbitrary` round-trip tests.
+* **Round-trip tests** (`roundtrip_<type>`): for every constructible type, value cases derived from the type itself — a valid baseline, bound boundaries, one case per choice variant, and each optional field additionally present — each asserted byte-identical through the full wire cycle (`value → to_cbor_bytes → from_cbor_bytes → to_cbor_bytes`).
+* **Reject tests** (`reject_<type>`): for every type with a bounded (`RangeCheck`) field, boundary values are accepted and out-of-bounds values rejected — on deserialization for structs (mutate a `pub` field out of bounds, serialize, confirm `from_cbor_bytes` rejects it), and at the constructor for type/group choices and bounded `@newtype` wrappers.
+
+Requires `--to-from-bytes-methods`. Values are minted deterministically from the type structure (no `proptest`/`Arbitrary` dependency is added to the generated crate). Shapes that can't be cheaply constructed — bounded `nint` fields, transparent table/array aliases at top level, types referencing user-supplied code — are skipped with a logged notice, never silently.
 
 **Possible values:** true, false<br></br>
 **Default:** false
