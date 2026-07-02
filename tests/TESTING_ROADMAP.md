@@ -188,6 +188,22 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   assumptions can't catch. Caveats to weigh: the rust validator has known gaps (a fail is a strong
   signal, a pass is weak), and the ruby `cddl` gem (already an oracle in `cddl-matrix/verify.ts`)
   could serve the same role out-of-process at higher cost.
+- **Five documented flag values with zero coverage at any oracle level** — no test generates with
+  `--annotate-fields=false` (selects a whole different deserialization/error-emission mode, 13+
+  branch sites in generation.rs incl. the code's own acknowledged-tricky preserve-encodings
+  interaction), `--to-from-bytes-methods=false`, `--binary-wrappers=true`,
+  `--wasm-cbor-json-api-macro` (the documented CML invocation path — unlike its two
+  snapshot-tested sibling macro flags), or `--canonical-form=true` without `--preserve-encodings`
+  (CLI-accepted; docs call standalone use legal). Cheapest acceptance: a generate + `cargo check`
+  smoke over `tests/core/input.cddl` per value — if a value doesn't even generate, that answer
+  itself converts it into either a CLI rejection or a ledgered gap. Alternative: deprecate/reject
+  the untestable values so the "profiles cover the flag space" premise (below) becomes true.
+- **"Supported" is silently a default-profile fact.** verify.ts probes default flags only, and the
+  supported-catalog gate (`all_supported_constructs_generate`) runs the default profile — so a
+  supported-construct × preserve/json failure is caught only where a corpus fixture isolates that
+  construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
+  preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
+  expected-fail list; longer-term, a profile axis on the matrix annotation schema.
 - **Adversarial CBOR bytes into generated deserializers** (RECOMMENDATIONS #8 + #5 — accept or
   reject explicitly; currently in neither list). The robustness layer covers malformed CDDL into
   the *generator*; hostile bytes into `from_cbor_bytes` — the untrusted input this library's
@@ -201,8 +217,11 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
 
 ## Explicitly not worth it (decided, not overlooked)
 
-- Full `2^N` flag powerset / PICT pairwise — curated named profiles already cover this; revisit
-  only if a flag-interaction bug actually slips through.
+- Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
+  *combinations* worth testing; revisit only if a flag-interaction bug actually slips through.
+  This holds only while every individual flag *value* appears in some profile or test — five
+  currently appear in none (see the pending decision above), so the combination dismissal must not
+  be read as covering them.
 - `quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass (the corpus `cargo check` is simpler and broader).

@@ -72,6 +72,13 @@ heavy `verify.ts` oracle probe is still run manually (see Remaining).
 Remaining:
 - **Wire `verify.ts` into CI** (the fast drift/snapshot gates already run — see above). `verify.ts` needs
   the three oracle tools present; have the CI lane provide them or skip that probe gracefully when absent.
+- **Third robustness catalog: expect-reject.** 19 annotation rows are projected into no test at all
+  (non-panic `unsupported` — the parse-rejected control ops, generates-but-doesn't-compile rows like
+  `prelude.any` — plus `out_of_profile`): project them into a `tests/matrix_reject/` fixture dir mirrored
+  by a third generation-outcome catalog (expect graceful error), so a parser change that silently makes
+  one of them parse (the exact thing the cddl-fork bump did to 14 control ops) is caught by the existing
+  CI test job instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
+  in-process pattern as the panic catalog.
 - **Typecheck enforcement.** The scripts are strict-typed but nothing runs `tsc`. Add a `tsconfig.json` +
   `@types/bun` (dev-only) and a `tsc --noEmit` step beside the gate (needs an ambient `declare module
   "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is worth it; the
@@ -105,6 +112,15 @@ execution. F3 is the *upgrade path*: it would make those ⚠️ verdicts executi
   declared target profile if it updates its `cddl` dependency.
 - **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
   consumer adopts it.
+- **Representability gaps (features the matrix cannot even mark as uncovered):** the grammar lint is
+  hard-gated only for `type2`'s 12 alternatives; the soft alt-coverage for the other productions is
+  currently too noisy to promote (`normalizeAlt` exact-string matching reports `rule`/`type1`/
+  `genericarg`/`genericparm` as false-uncovered although feature rows exist, and `head-number`'s
+  semantics live under `type2.*` rows so it renders "NOT MODELED"). Separately, some *variations inside*
+  one ABNF alternative have no feature row at all: one-sided occurrence bounds (`n*`/`*m` — prose-only
+  in `occur.bounded`'s desc; only `2*5` is probed anywhere) and the `uint` radix forms `0x`/`0b` +
+  `hexfloat`. Until rows exist, Q5 ("everything the matrix does not model") is authoritative only for
+  `type2` — tighten `normalizeAlt` and add the variation rows before claiming more.
 
 ## Findings & gotchas (durable — read before touching the support seam or probe examples)
 
