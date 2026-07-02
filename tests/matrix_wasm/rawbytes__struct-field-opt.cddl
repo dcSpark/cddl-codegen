@@ -1,0 +1,3 @@
+; cell: rawbytes x struct-field-opt
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+holder = [pre: uint, ? field0: pub_key]

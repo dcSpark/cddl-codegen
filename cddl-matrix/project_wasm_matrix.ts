@@ -81,6 +81,14 @@ const SHAPES: Record<string, Shape> = {
   // extern user-supplied type — can't `cargo check` standalone (gate SKIP; integration-tested in
   // tests/extern-deps). Fails identically in every role, so one representative cell documents the shape.
   extern: { defs: ["ext = _CDDL_CODEGEN_EXTERN_TYPE_"], ty: "ext", roles: ["array-element"] },
+  // raw-bytes user-supplied type -> a `RawBytesEncoding` wrapper (`PubKey`) with From/AsRef but NO
+  // wasm `new`. Named `pub_key` so the emitted type is `PubKey`, matching the in-repo defs
+  // (`tests/external_{rust,wasm}_raw_bytes_def`) the gates append for `rawbytes__*` cells — so unlike
+  // `extern`, these cells compile/round-trip rather than being a permanent SKIP. map-key is pruned: a
+  // raw-bytes map key needs the user type to be `Ord` (`BTreeMap<PubKey, _>`), which a bare
+  // `PubKey([u8; 32])` isn't (E0277) — ill-formed for a user-supplied inner, same shape as nullable's
+  // degenerate map-key prune.
+  rawbytes: { defs: ["pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_"], ty: "pub_key", skipRoles: ["map-key"] },
 };
 
 // --- Axis 2: boundary roles. Each wraps the shape's type `ty` in a distinct accessor-emitting context.
@@ -119,7 +127,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 80; // 13 full shapes × 6 roles − 1 nullable/map-key skip + 3 single-role shapes
+const EXPECTED_CELLS = 85; // 14 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 3 single-role shapes
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
