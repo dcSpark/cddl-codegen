@@ -141,19 +141,19 @@ reason = "break only terminates indefinite-length items, which the generator nev
 [[note]]
 cell = "enc.major2.indef"
 status = "out_of_scope"
-reason = "generator emits definite-length byte strings under default flags; indefinite belongs to a future --preserve-encodings vector set"
+reason = "generator emits definite-length byte strings under default flags; indefinite is covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve, tests/golden_hex_canonical)"
 
 [[note]]
 cell = "enc.major3.indef"
 status = "out_of_scope"
-reason = "generator emits definite-length text strings under default flags; indefinite is the --preserve-encodings frontier"
+reason = "generator emits definite-length text strings under default flags; indefinite is covered by the sibling preserve/canonical KATs"
 
 [[note]]
 cell = "enc.major4.indef"
 status = "out_of_scope"
-reason = "generator emits definite-length arrays under default flags; indefinite is the --preserve-encodings frontier"
+reason = "generator emits definite-length arrays under default flags; indefinite is covered by the sibling preserve/canonical KATs"
 
 [[note]]
 cell = "enc.major5.indef"
 status = "out_of_scope"
-reason = "generator emits definite-length maps under default flags; indefinite is the --preserve-encodings frontier"
+reason = "generator emits definite-length maps under default flags; indefinite is covered by the sibling preserve/canonical KATs"
