@@ -1,0 +1,8 @@
+[package]
+name = "wasm-macro-crate"
+version = "0.1.0"
+edition = "2024"
+
+# macro_rules-only crate: the tokens it emits (wasm_bindgen paths, generated-crate types) resolve
+# at the expansion site, so it needs no dependencies of its own.
+[dependencies]
