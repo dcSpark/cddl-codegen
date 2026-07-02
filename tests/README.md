@@ -12,6 +12,12 @@ Snapshots are the fast inner loop and the primary safety net for refactors; inte
 the correctness gate. A refactor that doesn't intend to change output should leave every snapshot
 untouched — if one moves, you see exactly what changed.
 
+**CI policy — feature-frozen.** The CI workflow (`.github/workflows/build.yml`) is feature-frozen:
+it accepts no new jobs, steps, gates, or expansions of existing runs (CI minutes cost real money —
+see `AGENTS.md`). The only changes accepted are fixes to things that break due to refactoring.
+Verification systems not already wired into CI run manually/locally, and are documented as manual
+runs.
+
 ## Golden snapshots (`snapshot_tests.rs`)
 
 Drives the generator as a library (`crate::api`) and snapshots the post-rustfmt generated source
