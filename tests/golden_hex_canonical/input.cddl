@@ -18,3 +18,12 @@ uint_seq   = [* uint]
 seq_holder = [xs: uint_seq]
 
 tagged_one = #6.11([x: uint])
+
+; negative integers (major type 1): argument minimization mirrored from `pair`.
+npair = [n: nint, m: nint]
+
+; table (`{ * uint => text }`): the RUNTIME canonical key sort (emitted per-table under
+; --canonical-form) — distinct from the codegen-time STRUCT key sort pinned by
+; tests/canonical's mixed_len_keys_ordering_rule. Wrapped in a record.
+uint_table   = { * uint => text }
+table_holder = [t: uint_table]

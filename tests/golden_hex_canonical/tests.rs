@@ -5,7 +5,17 @@
 // from the same write_*_sz/Sz::canonical layer the generated code encodes with, so a symmetric
 // bug there passes every one of those assertions. Raw spec-anchored hex is the independent check.
 //
-// Each vector decodes an IRREGULAR (but valid) encoding and asserts three things:
+// NOTE on map-key ordering: this project's --canonical-form implements RFC 7049 §3.9 "Canonical
+// CBOR" key order (length-first, then bytewise — documented in docs/docs/command_line_flags.mdx),
+// not RFC 8949 §4.2.1's pure bytewise order. For keys of a SINGLE major type in minimal form the
+// two rules coincide (head bytes grow with encoded length), so the table vectors below pin the
+// sort exists, sorts CANONICAL key bytes (not preserved ones), and tie-breaks bytewise — but the
+// cross-major cell that discriminates length-first from bytewise (e.g. -1 vs 256 in one table)
+// is blocked on the int-/enum-keyed-table compile bugs ledgered in cddl-matrix/ROADMAP.md.
+//
+// Each vector decodes an IRREGULAR (but valid) encoding and asserts four things:
+//   * value anchor — a decoded field equals the value hand-read from the input bytes (identity
+//     alone can't catch an exactly-compensating decode+encode bug),
 //   * preserve    — to_cbor_bytes() re-encodes the irregular input byte-identically,
 //   * canonical   — to_canonical_cbor_bytes() equals the hand-derived §4.2 minimal bytes, and
 //   * fixed point — decoding the canonical bytes and re-canonicalizing returns them unchanged.
@@ -21,12 +31,14 @@ mod golden_hex_canonical {
     use serialization::Deserialize;
 
     macro_rules! kat_canonical {
-        ($name:ident, $t:ty, $irregular:expr, $canonical:expr) => {
+        ($name:ident, $t:ty, $irregular:expr, $canonical:expr, $anchor:expr) => {
             #[test]
             fn $name() {
                 let irregular: &[u8] = $irregular;
                 let canonical: &[u8] = $canonical;
                 let decoded = <$t>::from_cbor_bytes(irregular).unwrap();
+                // value anchor: pin the decode half to the hand-read spec value
+                ($anchor)(&decoded);
                 assert_eq!(
                     decoded.to_cbor_bytes(),
                     irregular,
@@ -54,7 +66,10 @@ mod golden_hex_canonical {
         canon_pair_min_args,
         Pair,
         &[0x82, 0x18, 0x17, 0x19, 0x00, 0x18],
-        &[0x82, 0x17, 0x18, 0x18]
+        &[0x82, 0x17, 0x18, 0x18],
+        |d: &Pair| {
+            assert_eq!((d.a, d.b), (23, 24));
+        }
     );
     // Boundary above the 1-byte argument: 255 (4-byte form) shrinks to 0x18 0xff; 256 already
     // needs the 2-byte argument and must stay 0x19 0x01 0x00.
@@ -62,7 +77,10 @@ mod golden_hex_canonical {
         canon_pair_boundary_255_256,
         Pair,
         &[0x82, 0x1a, 0x00, 0x00, 0x00, 0xff, 0x19, 0x01, 0x00],
-        &[0x82, 0x18, 0xff, 0x19, 0x01, 0x00]
+        &[0x82, 0x18, 0xff, 0x19, 0x01, 0x00],
+        |d: &Pair| {
+            assert_eq!((d.a, d.b), (255, 256));
+        }
     );
     // u64::MAX genuinely needs the 8-byte argument — canonical must KEEP it (§A:
     // 18446744073709551615 -> 0x1bffffffffffffffff); the padded 0 shrinks to the immediate 0x00.
@@ -73,7 +91,38 @@ mod golden_hex_canonical {
             0x82, 0x1b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1a, 0x00, 0x00, 0x00,
             0x00
         ],
-        &[0x82, 0x1b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00]
+        &[0x82, 0x1b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00],
+        |d: &Pair| {
+            assert_eq!((d.a, d.b), (u64::MAX, 0));
+        }
+    );
+
+    // ---- §4.2.1 on negative integers (major type 1): argument = -1 - value; the generated
+    // struct stores that argument (see the npair note in tests/golden_hex_preserve/tests.rs) ----
+    // The major-type-1 boundary mirroring 23/24: -24 (1-byte argument form) shrinks to the
+    // immediate head 0x37; -25's argument is 24, so 0x38 0x18 is already minimal and must stay.
+    kat_canonical!(
+        canon_npair_boundary,
+        Npair,
+        &[0x82, 0x38, 0x17, 0x39, 0x00, 0x18],
+        &[0x82, 0x37, 0x38, 0x18],
+        |d: &Npair| {
+            assert_eq!((d.n, d.m), (23, 24)); // wire -24, -25
+        }
+    );
+    // Maximally-padded 8-byte arguments: -24 shrinks all the way to 0x37; -4294967297's argument
+    // is 4294967296 = 2^32, one past the 4-byte maximum, so the 8-byte form IS minimal and stays.
+    kat_canonical!(
+        canon_npair_8byte_pad,
+        Npair,
+        &[
+            0x82, 0x3b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x3b, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x00
+        ],
+        &[0x82, 0x37, 0x3b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        |d: &Npair| {
+            assert_eq!((d.n, d.m), (23, 4294967296)); // wire -24, -4294967297
+        }
     );
 
     // ---- §4.2.2: indefinite-length items re-frame definite ----
@@ -85,7 +134,10 @@ mod golden_hex_canonical {
             0x9f, 0x1a, 0x00, 0x00, 0x00, 0x01, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x02, 0xff
         ],
-        &[0x82, 0x01, 0x02]
+        &[0x82, 0x01, 0x02],
+        |d: &Pair| {
+            assert_eq!((d.a, d.b), (1, 2));
+        }
     );
     // Chunked indefinite strings coalesce to definite: RFC §3.2.3's (_ "strea", "ming") and
     // (_ h'0102', h'030405') become "streaming" (9 bytes, head 0x69) and h'0102030405' (0x45).
@@ -99,7 +151,11 @@ mod golden_hex_canonical {
         &[
             0x82, 0x69, 0x73, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x69, 0x6e, 0x67, 0x45, 0x01, 0x02,
             0x03, 0x04, 0x05
-        ]
+        ],
+        |d: &Strs| {
+            assert_eq!(d.s, "streaming");
+            assert_eq!(d.v, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+        }
     );
     // Indefinite map with entries reordered (b before a) -> definite map(2) with keys in
     // canonical order: "a"/"b" encode to equal-length 0x6161/0x6162, so length-first and bytewise
@@ -109,14 +165,54 @@ mod golden_hex_canonical {
         canon_kv_sorted,
         Kv,
         &[0xbf, 0x61, 0x62, 0x02, 0x61, 0x61, 0x01, 0xff],
-        &[0xa2, 0x61, 0x61, 0x01, 0x61, 0x62, 0x02]
+        &[0xa2, 0x61, 0x61, 0x01, 0x61, 0x62, 0x02],
+        |d: &Kv| {
+            assert_eq!((d.a, d.b), (1, 2));
+        }
     );
+
+    // ---- the RUNTIME table key sort (`{ * uint => text }` in a 1-element record) ----
+    // This is the per-table sort the generated serialize emits under force_canonical — a
+    // different code path from the codegen-time STRUCT key sort above. Insertion order
+    // 256-then-10 (indefinite framing) must re-frame definite AND reorder: key 10 (1-byte
+    // encoding 0x0a) sorts before 256 (3-byte 0x19 0x01 0x00) — length-first, with which
+    // single-major bytewise agrees (see the file header note on the blocked cross-major cell).
+    kat_canonical!(
+        canon_table_sorted,
+        TableHolder,
+        &[0x81, 0xbf, 0x19, 0x01, 0x00, 0x61, 0x61, 0x0a, 0x61, 0x62, 0xff],
+        &[0x81, 0xa2, 0x0a, 0x61, 0x62, 0x19, 0x01, 0x00, 0x61, 0x61],
+        |d: &TableHolder| {
+            assert_eq!(d.t.len(), 2);
+            assert_eq!(d.t.get(&256u64).map(|s| s.as_str()), Some("a"));
+            assert_eq!(d.t.get(&10u64).map(|s| s.as_str()), Some("b"));
+        }
+    );
+    // The sort must compare CANONICAL key bytes, not the preserved input encodings: key 10
+    // arrives PADDED to the 2-byte form (0x19 0x00 0x0a, 3 bytes) after a minimal key 11 (0x0b,
+    // 1 byte). A sort over preserved bytes would order 11 first (1 < 3 length-first); the correct
+    // canonical output re-minimizes 10 to 0x0a and sorts it BEFORE 11 (equal length, bytewise).
+    kat_canonical!(
+        canon_table_sorts_canonical_bytes,
+        TableHolder,
+        &[0x81, 0xa2, 0x0b, 0x61, 0x62, 0x19, 0x00, 0x0a, 0x61, 0x61],
+        &[0x81, 0xa2, 0x0a, 0x61, 0x61, 0x0b, 0x61, 0x62],
+        |d: &TableHolder| {
+            assert_eq!(d.t.len(), 2);
+            assert_eq!(d.t.get(&10u64).map(|s| s.as_str()), Some("a"));
+            assert_eq!(d.t.get(&11u64).map(|s| s.as_str()), Some("b"));
+        }
+    );
+
     // homogeneous array: indefinite framing + non-minimal elements -> definite minimal.
     kat_canonical!(
         canon_seq,
         SeqHolder,
         &[0x81, 0x9f, 0x18, 0x01, 0x19, 0x00, 0x02, 0x03, 0xff],
-        &[0x81, 0x83, 0x01, 0x02, 0x03]
+        &[0x81, 0x83, 0x01, 0x02, 0x03],
+        |d: &SeqHolder| {
+            assert_eq!(d.xs, vec![1, 2, 3]);
+        }
     );
     // tag 11 in a 2-byte argument + indefinite body -> minimal tag head 0xcb + definite array
     // (§4.2.1's smallest-argument rule covers tag heads too).
@@ -124,6 +220,9 @@ mod golden_hex_canonical {
         canon_tagged,
         TaggedOne,
         &[0xd9, 0x00, 0x0b, 0x9f, 0x18, 0x05, 0xff],
-        &[0xcb, 0x81, 0x05]
+        &[0xcb, 0x81, 0x05],
+        |d: &TaggedOne| {
+            assert_eq!(d.x, 5);
+        }
     );
 }

@@ -181,6 +181,15 @@ from a degenerate example.**
 - **Occurrence-count constraints aren't enforced** on homogeneous arrays — `[+ uint]` (≥1) and `[2*5 uint]`
   (2..5) both emit a bare `Vec<u64>` with no length check (bare `*` is faithfully a `Vec`, so only `+`/`n*m`
   drop a constraint). Surfaced by `occurrence.cddl`.
+- **`int`-keyed tables emit uncompilable code.** `t = { * int => text }` (+ any embed) generates with
+  exit 0 but the crate fails `cargo check`: E0425 `cannot find type Int` — the reserved `Int` enum is
+  never emitted when its only reference is a table key — plus an E0034 `.cloned()` ambiguity. Silent at
+  generation time; caught only by compiling.
+- **Type-choice-keyed tables under `--preserve-encodings` emit uncompilable code.** `ikey = uint / nint
+  ; @used_as_key` + `{ * ikey => text }` generates, but `cbor_encodings.rs` references the key enum with
+  no import (E0425 `Ikey` in `BTreeMap<Ikey, StringEncoding>`) and serialization hits the same E0034.
+  Together with the `int`-key bug above, this blocks the cross-major canonical key-order discriminator
+  (see tests/TESTING_ROADMAP.md's golden-hex item — length-first vs bytewise diverge only across majors).
 - **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
   bounds don't reach the field bounds check as `(Some,Some)`.
