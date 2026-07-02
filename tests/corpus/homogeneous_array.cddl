@@ -5,8 +5,11 @@ floats = [* float64]
 bools = [* bool]
 ; ...and referencing such a named special-element collection as a record field must not panic
 ; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite
-; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch:
-; its emit-tests round-trip runs under every profile. A `float_holder` can't join it here because
-; floats don't support --preserve-encodings (a pre-existing generation limitation the corpus
-; exercises for every entry — same reason float prelude types are excluded from prelude.cddl).
+; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on
+; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and
+; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is
+; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the
+; same CBOR major type 7 as a float). A `float_holder` can't join it because floats don't support
+; --preserve-encodings (a pre-existing generation limitation the corpus exercises for every entry —
+; same reason float prelude types are excluded from prelude.cddl).
 bool_holder = [b: bools]
