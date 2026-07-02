@@ -299,12 +299,24 @@ fn wasm_named(
         RustStructType::GroupChoice { variants, .. } => {
             wasm_choice_value(types, &name, variants, true, mv, scoped, cli)
         }
-        // @newtype/tag wrappers have no wasm `new`; a wrapper as a ctor ARG can't be built here
+        // `@newtype`/tag wrappers (and named table/array wrappers) export NO wasm `new`, but every
+        // wasm wrapper carries `From<cddl_lib::Native>` (see `add_conversion_methods`). Build the arg
+        // by converting the SAME mint rendered as a fully-scoped rust value: `Wrapper::from(<rust
+        // twin>)`. This leans on the conversion impl, but the arg's boundary conversion + its
+        // serialization are still exercised by the enclosing byte differential — only the wrapper's
+        // own (absent) `new` goes uncovered here.
         RustStructType::Wrapper { .. }
         | RustStructType::Table { .. }
-        | RustStructType::Array { .. }
-        | RustStructType::Extern
-        | RustStructType::RawBytesType => None,
+        | RustStructType::Array { .. } => {
+            Some(format!("{name}::from({})", rust_scoped(mv, scoped)))
+        }
+        // extern / raw-bytes reference user-supplied types with no generated conversion to lean on
+        RustStructType::Extern | RustStructType::RawBytesType => {
+            eprintln!(
+                "cddl-codegen --emit-tests: no wasm build for {name} ctor arg (extern/raw-bytes — user-supplied type)"
+            );
+            None
+        }
     }
 }
 
