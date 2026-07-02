@@ -16,6 +16,13 @@
  * as `minted`; unmintable shapes — transparent aliases, pure c-enums — fall back to the compile
  * verdict, and their evidence says so instead of claiming a round-trip).
  *
+ * By DEFAULT the cddl-codegen probe ALSO runs a wasm oracle: it regenerates each example with
+ * `--wasm=true --emit-tests=true` and `cargo test`s the generated wasm crate (the emitted
+ * `cddl_generated_wasm_tests` module — cross-crate byte differential + wire round-trip + accessor
+ * read-back), recorded as additional per-probe evidence (`minted_wasm` / `wasm_roundtrips`). The rust
+ * round-trip verdict still gates support; wasm is corroborating evidence. Opt out for a faster run with
+ * `--no-wasm` (or `VERIFY_WASM=0`), which roughly halves per-probe cargo work.
+ *
  * Exit codes: 0 PASS · 1 hard failure (gate) · 2 HARNESS failure (broken environment / oracle paths /
  * repeated timeouts — verdicts were not trustworthy, so no verdict files were (re)written).
  *
@@ -282,15 +289,15 @@ const ccOut = join(probeDir, "cc_out");
 const COMPILE_TARGET = mkdtempSync(join(tmpdir(), "cddl_verify_target_"));
 const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-probe timeout
 
-// OPT-IN wasm probe (`--wasm` argv or VERIFY_WASM=1 env): additionally generate each example with
-// `--wasm=true --emit-tests=true` and `cargo test` the generated WASM crate, so the emitted
-// `cddl_generated_wasm_tests` module (cross-crate byte differential + wire round-trip + accessor
-// read-back + boundary acceptance) RUNS as a second execution oracle. Roughly doubles per-probe cargo
-// work (own crate build + wasm-bindgen deps), so it is NOT default-on — the rust round-trip verdict
-// still gates support; the wasm result is recorded as additional evidence only. Its own out/target dirs
-// keep it from disturbing the rust probe's compile classification.
+// DEFAULT-ON wasm probe (opt out with `--no-wasm` argv or VERIFY_WASM=0 env): additionally generate
+// each example with `--wasm=true --emit-tests=true` and `cargo test` the generated WASM crate, so the
+// emitted `cddl_generated_wasm_tests` module (cross-crate byte differential + wire round-trip + accessor
+// read-back + boundary acceptance) RUNS as a second execution oracle. It roughly doubles per-probe cargo
+// work (own crate build + wasm-bindgen deps); operators who need the faster run opt out. The rust
+// round-trip verdict still gates support — the wasm result is recorded as additional evidence only. Its
+// own out/target dirs keep it from disturbing the rust probe's compile classification.
 const WASM_PROBE =
-  process.argv.includes("--wasm") || ["1", "true"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
+  !process.argv.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
 const ccOutWasm = join(probeDir, "cc_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
 
@@ -352,7 +359,7 @@ function runCodegen(): number {
   return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR);
 }
 
-// WASM oracle (opt-in): generate the SAME example with `--wasm=true` into a separate out dir, then
+// WASM oracle (default-on): generate the SAME example with `--wasm=true` into a separate out dir, then
 // `cargo test` the wasm crate — which builds the rust crate as a (non-test) path dep AND compiles+runs
 // the emitted `cddl_generated_wasm_tests` module. Separate out dir so it never perturbs the rust
 // probe's ccOut; separate target so its wasm-bindgen deps don't invalidate the rust compile cache.
@@ -374,11 +381,12 @@ function runWasmTest(timeoutS = PROBE_TIMEOUT): number {
 // `minted` = the emitted lib actually contains the generated-test module; without it a `cargo test`
 // pass is vacuous (transparent aliases / pure c-enums mint nothing, by design — skipped loudly by the
 // emitter), so the verdict evidence must not claim "round-trips" for those.
-// `minted_wasm` / `wasm_roundtrips` are populated only under the opt-in WASM_PROBE (undefined
-// otherwise, so they're omitted from the JSON report and add no wasm evidence to annotations —
-// a default run's output is byte-identical to before this probe existed). `wasm_roundtrips` is the
-// `cargo test` exit of the generated wasm crate; `minted_wasm` = its lib actually contains the
-// generated wasm-test module (else a green `cargo test` is vacuous, same caveat as `minted`).
+// `minted_wasm` / `wasm_roundtrips` are populated under the WASM_PROBE (default-on; undefined when
+// opted out via --no-wasm / VERIFY_WASM=0, so they're then omitted from the JSON report and add no wasm
+// evidence to annotations — an opted-out run's output is byte-identical to a pre-wasm-probe run).
+// `wasm_roundtrips` is the `cargo test` exit of the generated wasm crate; `minted_wasm` = its lib
+// actually contains the generated wasm-test module (else a green `cargo test` is vacuous, same caveat
+// as `minted`).
 interface CodegenProbe { gen: number; compile: number; test: number; minted: boolean; minted_wasm?: boolean; wasm_roundtrips?: number }
 function probeCodegen(): CodegenProbe {
   const gen = runCodegen();
@@ -393,8 +401,8 @@ function probeCodegen(): CodegenProbe {
   return { gen, compile, test, minted, ...wasmProbe() };
 }
 
-// The opt-in wasm half of a probe: generate `--wasm=true`, cargo test the wasm crate. Returns {} when
-// the flag is off so the fields stay undefined (report/annotation output unchanged from default runs).
+// The wasm half of a probe (default-on): generate `--wasm=true`, cargo test the wasm crate. Returns {}
+// when opted out so the fields stay undefined (report/annotation output matches a pre-wasm-probe run).
 function wasmProbe(): { minted_wasm?: boolean; wasm_roundtrips?: number } {
   if (!WASM_PROBE) return {};
   const gen = runCodegenWasm();
@@ -417,8 +425,8 @@ function codegenVerdict(p: CodegenProbe): { supported: boolean; detail: string }
   return { supported: false, detail: `rejected at parse/lex (exit ${p.gen})` };
 }
 
-// Honest wasm-oracle evidence suffix (opt-in). "" when the wasm probe didn't run (flag off / rust gen
-// failed / fields undefined) so default-run annotations are unchanged. `exempt` features reference
+// Honest wasm-oracle evidence suffix (default-on). "" when the wasm probe didn't run (opted out / rust
+// gen failed / fields undefined) so an opted-out run's annotations are unchanged. `exempt` features reference
 // user-supplied code, so — exactly like the rust standalone-compile exemption — the wasm crate can't be
 // `cargo test`ed standalone; say N/A, not FAILED. Same fallback discipline as `minted`: a green test with
 // nothing minted is "compiles (no minted wasm surface)", NOT a round-trip; a failure is worded by whether
@@ -496,7 +504,7 @@ if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tes
   process.exit(2);
 }
 
-// Warm the WASM target the same way when the opt-in probe is on: the first wasm crate build (wasm-bindgen
+// Warm the WASM target the same way when the wasm probe is on (the default): the first wasm crate build (wasm-bindgen
 // + the libtest harness) can exceed PROBE_TIMEOUT, which would false-fail the first per-probe wasm test.
 // Doubles as the wasm-oracle self-test — a known-good spec that MINTS a wasm module must round-trip green.
 if (WASM_PROBE) {

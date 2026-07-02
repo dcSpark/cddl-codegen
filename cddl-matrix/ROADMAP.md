@@ -63,10 +63,16 @@ heavy `verify.ts` oracle probe is run manually and stays manual (CI is frozen).
 - `bun run verify.ts` — reconcile (bidirectional grammar/prelude/vendor lints) + probe **per-feature,
   per-cell, AND per-control-op** support, **execution-gated** (generate with `--emit-tests=true` +
   `cargo test`; a failing test run pays one extra `cargo check` to classify does-not-compile vs
-  round-trip-fails); rewrites `annotations/cddl_codegen.toml`. Needs the three oracles (ruby `cddl`,
-  rust `cddl` CLI, `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl`
-  (set `RUST_CDDL`), cddl-codegen builds from this repo. Slow (probes ~156 examples ×
-  generate+`cargo test` via `cargo`).
+  round-trip-fails); rewrites `annotations/cddl_codegen.toml`. By **default** it also runs the **wasm
+  oracle** — regenerate each example `--wasm=true --emit-tests=true` and `cargo test` the generated wasm
+  crate (the emitted `cddl_generated_wasm_tests` module: cross-crate byte differential + wire round-trip
+  + accessor read-back), threaded into the per-feature / per-cell evidence as `minted_wasm` /
+  `wasm_roundtrips`. The rust round-trip verdict still gates support; wasm is corroborating evidence, so
+  it never downgrades a verdict. Opt out for a faster run with `--no-wasm` (or `VERIFY_WASM=0`), which
+  roughly halves the per-probe cargo work. Needs the three oracles (ruby `cddl`, rust `cddl` CLI,
+  `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl` (set
+  `RUST_CDDL`), cddl-codegen builds from this repo. Slow (probes ~156 examples × generate + `cargo test`
+  ×2 crates via `cargo`).
 - `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
   (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role
