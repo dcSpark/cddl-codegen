@@ -109,11 +109,16 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
             RustStructType::CStyleEnum { .. } => None,
-            // Rust-side tables/arrays are transparent `pub type` aliases — no ctor surface to
-            // mint through. First-slice skip, loud so the gap is visible per generation:
+            // Rust-side tables/arrays are transparent `pub type` aliases — a PERMANENT skip, not a
+            // TODO: `pub type X = Vec<T>` has no standalone `Serialize` (cbor_event implements it
+            // for `String` but not `Vec`/`BTreeMap`, and the orphan rule forbids adding it here),
+            // and `from_cbor_bytes` on the alias routes through cbor_event's generic impls rather
+            // than the generated element loop — so a standalone round-trip could not exercise
+            // generated code even if it compiled. The generator-emitted wire path exists only at
+            // EMBED sites, which mint via their containing record (e.g. `bool_holder`).
             RustStructType::Table { .. } | RustStructType::Array { .. } => {
                 eprintln!(
-                    "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no round-trip emitted (first slice)"
+                    "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no standalone round-trip exists (embed-site coverage only)"
                 );
                 None
             }
