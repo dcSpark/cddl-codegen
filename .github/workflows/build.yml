@@ -87,6 +87,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      # project_corpus's role-keyed covers are verified against a real cddl-crate AST walk
+      # (`cargo run --example ast_roles` via corpus_detect's rolesIn) — a designed dependency, so
+      # the job needs the pinned toolchain; ubuntu-latest images no longer preinstall Rust. The
+      # action's cargo cache keeps the ast_roles build warm across runs.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       # build_matrix --check: matrix.json matches its authored TOMLs/annotations.
       # project_robustness --check: matrix_{supported,panic}/ fixtures match the support verdict.

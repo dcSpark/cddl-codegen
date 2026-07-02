@@ -142,8 +142,13 @@ export function featuresIn(cddl: string): Detected {
     const defs = [...code.matchAll(new RegExp(`^[ \\t]*${reEsc(n)}\\s*(?:<[^>]*>)?\\s*=`, "gm"))].length;
     if (refs > defs) rfc.add("type2.typename");
   }
-  // CDDL_CODEGEN profile: @-DSL directives (in comments) -> dsl.<name>; sentinel typenames -> ext.<name>
-  for (const m of comments.matchAll(/@([A-Za-z_]\w*)/g)) dsl.add(`dsl.${m[1]}`);
+  // CDDL_CODEGEN profile: @-DSL directives (in comments) -> dsl.<name>; sentinel typenames -> ext.<name>.
+  // Only comments that LEAD with a directive count (comment_ast semantics) — a prose mention like
+  // `; unlike @newtype, this is plain` must not credit the feature (it would false-pass check A).
+  for (const line of comments.split(/\r?\n/)) {
+    if (!/^\s*@/.test(line)) continue;
+    for (const m of line.matchAll(/@([A-Za-z_]\w*)/g)) dsl.add(`dsl.${m[1]}`);
+  }
   if (code.includes("_CDDL_CODEGEN_EXTERN_TYPE_")) dsl.add("ext.extern");
   if (code.includes("_CDDL_CODEGEN_RAW_BYTES_TYPE_")) dsl.add("ext.raw_bytes");
 
@@ -266,6 +271,8 @@ function selfCheck() {
   ] as const)
     if (!featuresIn(src).rfc.has(id)) throw new Error(`selfCheck: ${id} missing in \`${src}\``);
   if (featuresIn("x = 1e+9").rfc.has("occur.one_or_more")) throw new Error("selfCheck: exponent `+` false-credited occur.one_or_more");
+  if (featuresIn("x = uint ; unlike @newtype, this is plain").dsl.has("dsl.newtype")) throw new Error("selfCheck: prose comment mention credited a dsl directive");
+  if (featuresIn("x = uint ; ask user@example about it").dsl.size) throw new Error("selfCheck: mid-prose @word invented a dsl id");
 }
 
 // Role-aware self-check (item 6): the headline case — in `text / null`, `null` is covered as a
