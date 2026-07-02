@@ -127,7 +127,8 @@ note = "canonical = pure struct map; table-style is table.cddl; MIXED struct+tab
 
 [[cover]]
 id = "type2.parenthesized"
-fixture = "nested_group.cddl"
+fixture = "parenthesized.cddl"
+note = "canonical = the fixture isolating `(T)` at type position; nested_group.cddl (the previous cover) contains a parenthesized GROUP RULE, not the type2 production — the old detector conflated the two"
 
 [[cover]]
 id = "type2.typename"
