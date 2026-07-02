@@ -33,6 +33,16 @@ impl cbor_event::se::Serialize for Defaulted {
                         1
                     } else {
                         0
+                    } + if self.c != "he\"llo\\world"
+                        || self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.c_default_present)
+                            .unwrap_or(false)
+                    {
+                        1
+                    } else {
+                        0
                     },
                 ),
         )?;
@@ -51,10 +61,20 @@ impl cbor_event::se::Serialize for Defaulted {
                         1
                     } else {
                         0
+                    } + if self.c != "he\"llo\\world"
+                        || self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.c_default_present)
+                            .unwrap_or(false)
+                    {
+                        1
+                    } else {
+                        0
                     }
             })
             .map(|encs| encs.orig_deser_order.clone())
-            .unwrap_or_else(|| (0..2).collect());
+            .unwrap_or_else(|| (0..3).collect());
         for field_index in deser_order {
             match field_index {
                 0 => {
@@ -105,6 +125,32 @@ impl cbor_event::se::Serialize for Defaulted {
                         )?;
                     }
                 }
+                2 => {
+                    if self.c != "he\"llo\\world"
+                        || self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.c_default_present)
+                            .unwrap_or(false)
+                    {
+                        serializer.write_text_sz(
+                            "c",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.c_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("c".len() as u64),
+                        )?;
+                        serializer.write_text_sz(
+                            &self.c,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.c_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz(self.c.len() as u64),
+                        )?;
+                    }
+                }
                 _ => unreachable!(),
             };
         }
@@ -131,6 +177,10 @@ impl Deserialize for Defaulted {
             let mut b_default_present = false;
             let mut b_key_encoding = StringEncoding::default();
             let mut b = None;
+            let mut c_encoding = StringEncoding::default();
+            let mut c_default_present = false;
+            let mut c_key_encoding = StringEncoding::default();
+            let mut c = None;
             let mut read = 0;
             while match len {
                 cbor_event::LenSz::Len(n, _) => read < n,
@@ -183,6 +233,26 @@ impl Deserialize for Defaulted {
                                 b_key_encoding = StringEncoding::from(key_enc);
                                 orig_deser_order.push(1);
                             }
+                            "c" => {
+                                if c.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "c".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_c, tmp_c_encoding) =
+                                    (|| -> Result<_, DeserializeError> {
+                                        read_len.read_elems(1)?;
+                                        raw.text_sz()
+                                            .map_err(Into::<DeserializeError>::into)
+                                            .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                                    })()
+                                    .map_err(|e| e.annotate("c"))?;
+                                c = Some(tmp_c);
+                                c_encoding = tmp_c_encoding;
+                                c_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(2);
+                            }
                             unknown_key => {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
@@ -219,10 +289,15 @@ impl Deserialize for Defaulted {
                 b_default_present = true;
             }
             let b = b.unwrap_or(1337);
+            if c == Some("he\"llo\\world".to_owned()) {
+                c_default_present = true;
+            }
+            let c = c.unwrap_or_else(|| "he\"llo\\world".to_owned());
             read_len.finish()?;
             Ok(Self {
                 a,
                 b,
+                c,
                 encodings: Some(DefaultedEncoding {
                     len_encoding,
                     orig_deser_order,
@@ -231,6 +306,9 @@ impl Deserialize for Defaulted {
                     b_key_encoding,
                     b_encoding,
                     b_default_present,
+                    c_key_encoding,
+                    c_encoding,
+                    c_default_present,
                 }),
             })
         })()

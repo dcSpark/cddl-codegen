@@ -917,7 +917,7 @@ impl FixedValue {
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
             FixedValue::Float(f) => f.to_string(),
-            FixedValue::Text(s) => format!("\"{s}\".to_owned()"),
+            FixedValue::Text(s) => format!("\"{}\".to_owned()", escape_rust_str(s)),
         }
     }
 
@@ -925,10 +925,17 @@ impl FixedValue {
     /// e.g. Text can be &str to avoid creating a String
     pub fn to_primitive_str_compare(&self) -> String {
         match self {
-            FixedValue::Text(s) => format!("\"{s}\""),
+            FixedValue::Text(s) => format!("\"{}\"", escape_rust_str(s)),
             _ => self.to_primitive_str_assign(),
         }
     }
+}
+
+/// Escape a CDDL fixed text value for safe interpolation into an emitted Rust string literal.
+/// CDDL text literals may legally contain `"` or `\`; without escaping, those emit invalid Rust
+/// (rustfmt then fails on the generated source). Plain values are unchanged.
+pub fn escape_rust_str(s: &str) -> String {
+    s.escape_default().to_string()
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

@@ -56,6 +56,14 @@ impl Defaulted {
         self.0.b
     }
 
+    pub fn set_c(&mut self, c: String) {
+        self.0.c = c
+    }
+
+    pub fn c(&self) -> String {
+        self.0.c.clone()
+    }
+
     pub fn new(a: u64) -> Self {
         Self(cddl_lib::Defaulted::new(a))
     }
