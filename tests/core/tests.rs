@@ -801,6 +801,24 @@ mod tests {
                     cbor_string("1024")
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         assert_eq!(expected_bytes, struct_with_custom_bytes.to_cbor_bytes());
+        // the custom read hook owns the WHOLE tagged2 field ("must include the tag"), so it is
+        // the only place a wrong tag can be rejected — tag 10 on a #6.9(uint) must fail
+        let bad_tag_bytes = vec![
+            arr_def(5),
+                cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                cbor_string("baadd00d"),
+                cbor_tag(9),
+                    cbor_bytes_sz(vec![0xDE, 0xAD, 0xBE, 0xEF], bytes_special_enc.clone()),
+                cbor_tag(10),
+                    cbor_string("1024")
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let err = StructWithCustomSerialization::from_cbor_bytes(&bad_tag_bytes).unwrap_err();
+        assert!(
+            format!("{:?}", err).contains("TagMismatch"),
+            "wrong tag must fail as TagMismatch, got {:?}",
+            err
+        );
     }
 
     #[test]

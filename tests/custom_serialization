@@ -58,7 +58,17 @@ pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
     raw: &mut cbor_event::de::Deserializer<R>,
 ) -> Result<u64, DeserializeError> {
     use std::str::FromStr;
+    // the write half hard-codes tag 9 ("must include the tag" above) — reject anything else,
+    // otherwise a wrong-tag document is silently accepted (generated code delegates the WHOLE
+    // tagged field to this hook, so nothing upstream checks it)
     let tag = raw.tag()?;
+    if tag != 9 {
+        return Err(DeserializeFailure::TagMismatch {
+            found: tag,
+            expected: 9,
+        }
+        .into());
+    }
     let text = raw.text()?;
     u64::from_str(&text).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
 }

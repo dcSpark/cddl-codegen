@@ -41,7 +41,15 @@ pub fn write_hex_string<'se, W: std::io::Write>(
     bytes: &[u8],
     enc: &StringEncoding,
 ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
-    serializer.write_text_sz(hex::encode(bytes), enc.to_str_len_sz(bytes.len() as u64))
+    // the encoding length is the HEX TEXT's (2n), not the raw bytes' (n): a fresh value
+    // (StringEncoding::Canonical) picks the width from the passed length, and canonical(n)
+    // cannot hold 2n whenever they straddle a width boundary (n = 12..=23, 128..=255, ...) —
+    // write_text_sz then fails InvalidLenPassed and to_cbor_bytes unwraps it. A DECODED value's
+    // stored encoding was recorded for the 2n text, so passing 2n is also the fidelity-correct
+    // length there.
+    let hex_text = hex::encode(bytes);
+    let str_len_sz = enc.to_str_len_sz(hex_text.len() as u64);
+    serializer.write_text_sz(hex_text, str_len_sz)
 }
 
 // reads hex text to bytes
@@ -76,6 +84,16 @@ pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
 ) -> Result<(u64, Option<cbor_event::Sz>, Option<cbor_event::Sz>), DeserializeError> {
     use std::str::FromStr;
     let (tag, tag_encoding) = raw.tag_sz()?;
+    // the write half hard-codes tag 9, so accepting any tag here breaks the preserve-fidelity
+    // invariant the fuzz harness asserts over this type (accepted input must re-encode
+    // byte-identically): a tag-10 document would be accepted and re-encode as tag 9
+    if tag != 9 {
+        return Err(DeserializeFailure::TagMismatch {
+            found: tag,
+            expected: 9,
+        }
+        .into());
+    }
     let (text, text_encoding) = raw.text_sz()?;
     match text_encoding {
         cbor_event::StringLenSz::Indefinite(_) => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!("We only support definite encodings in order to use the uint one"))).into()),

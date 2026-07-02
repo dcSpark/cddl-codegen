@@ -105,6 +105,10 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      through it (see `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work").
    - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
      it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
+     One known hole: `_CDDL_CODEGEN_RAW_BYTES_TYPE_` has no SHAPES entry, and neither raw-bytes fixture
+     ships a `tests_wasm.rs` — the raw-bytes wasm boundary is compile-only via `external_wasm_raw_bytes_def`
+     (a `rawbytes` shape would gate the compile half systematically; a `tests_wasm.rs` in `tests/raw-bytes/`
+     the behavioral half).
    - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
      while emitting a semantically wrong same-type conversion (an identity `.into()` where a transform was
      needed). A representative sample of the shape axis is now executed at the wasm boundary via the
