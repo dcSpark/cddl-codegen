@@ -24,3 +24,13 @@ seq_holder = [xs: uint_seq]
 
 ; tag header argument forms (tag 11: minimal head 0xcb, wider heads 0xd8/0xd9 + argument)
 tagged_one = #6.11([x: uint])
+
+; negative integers (major type 1): the argument-form family mirrored from `pair`.
+; The generated struct STORES the CBOR argument (-1 - value) as u64 — see the emitted
+; write_negative_integer_sz(-(n+1)) — so the tests.rs value anchors assert that argument.
+npair = [n: nint, m: nint]
+
+; table (`{ * uint => text }`): key ORDER and per-key/value header arguments are data under
+; preserve. Wrapped in a record (transparent aliases have no standalone Serialize).
+uint_table   = { * uint => text }
+table_holder = [t: uint_table]
