@@ -5,8 +5,8 @@ questions.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
-| **Golden snapshots** | `src/snapshot_tests.rs` | "Did the *generated source* change?" | fast (~5s, in-process) |
-| **Integration** | `src/integration_tests.rs` | "Does the generated code *compile and round-trip*?" | slow (compiles generated crates) |
+| **Golden snapshots** | `src/tests/snapshot_tests.rs` | "Did the *generated source* change?" | fast (~5s, in-process) |
+| **Integration** | `src/tests/integration_tests.rs` | "Does the generated code *compile and round-trip*?" | slow (compiles generated crates) |
 
 Snapshots are the fast inner loop and the primary safety net for refactors; integration tests are
 the correctness gate. A refactor that doesn't intend to change output should leave every snapshot
@@ -351,7 +351,7 @@ review the new fixtures, run the gate. Prune cells whose emission duplicates an 
 projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) to one representative role.
 
 > Sibling system: `tests/matrix_{supported,panic}/` (projected by `cddl-matrix/project_robustness.ts`,
-> driven by `src/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
+> driven by `src/tests/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
 > "does a construct *generate*?" rather than "does its wasm *compile*?".
 
 ## Coverage

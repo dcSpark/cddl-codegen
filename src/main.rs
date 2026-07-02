@@ -21,8 +21,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
-mod integration_tests;
-#[cfg(test)]
-mod robustness_tests;
-#[cfg(test)]
-mod snapshot_tests;
+mod tests;

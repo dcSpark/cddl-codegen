@@ -333,7 +333,7 @@ fn run_test(
 #[test]
 fn feature_corpus_compiles() {
     use std::str::FromStr;
-    let profiles = crate::snapshot_tests::ALL_PROFILES;
+    let profiles = super::ALL_PROFILES;
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
         .unwrap()
@@ -1286,7 +1286,7 @@ const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cdd
 
 #[test]
 fn cddl_oracle_dep_rev_matches_cargo_toml() {
-    let cargo_toml = include_str!("../Cargo.toml");
+    let cargo_toml = include_str!("../../Cargo.toml");
     // the git-dep line (not the `repository = ".../cddl-codegen"` line, which also contains the URL)
     let rev = cargo_toml
         .lines()

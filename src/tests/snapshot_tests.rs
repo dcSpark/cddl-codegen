@@ -29,25 +29,9 @@
 //!
 //! Bless after an intentional change with `INSTA_UPDATE=always cargo test` (or `cargo insta review`).
 
+use super::{ALL_PROFILES, Profile};
 use crate::cli::Cli;
 use clap::Parser;
-
-type Profile = (&'static str, &'static [&'static str]);
-
-/// The flag axes that drive meaningfully different generation paths. (`canonical` is a
-/// serialization sub-mode of `preserve` and differs only where maps/sets exist, so it's covered
-/// once at whole-program scale rather than duplicated per feature.)
-///
-/// Shared with `integration_tests::feature_corpus_compiles` so the snapshot axis and the compile
-/// gate can never silently diverge (dropping a profile from one must drop it from both).
-pub(crate) const ALL_PROFILES: &[Profile] = &[
-    ("default", &[]),
-    ("preserve", &["--preserve-encodings=true"]),
-    (
-        "json",
-        &["--json-serde-derives=true", "--json-schema-export=true"],
-    ),
-];
 
 /// Build a `Cli` for in-process generation. `--output` is unused (`generated_strings` does no disk
 /// I/O) but clap requires it; `--static-dir` defaults to `static/`, read for Cargo.toml/prelude.

@@ -136,7 +136,7 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
   Verify: `cargo test raw_bytes`.
 
 ### Theme: test-infra one-liners / env-dependent (last — heavier or toolchain-bound verify)
-- **cw16 — run, not just build, the json-gen `export_schemas()`** (`src/integration_tests.rs`,
+- **cw16 — run, not just build, the json-gen `export_schemas()`** (`src/tests/integration_tests.rs`,
   the json-gen block ~222-237): change `.arg("build")` → `.arg("run")` (+ rename vars/strings).
   Executes the schema-export `main()` that's currently never run. Affects json / json_preserve /
   multifile_json_preserve. Verify: `cargo test json_preserve`.
@@ -194,7 +194,7 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
   introduces a "snapshot-only corpus" policy the current docs don't have — bless it first.
 
 ### Note — no action (correcting a mistaken premise)
-- **`tests/robustness` is NOT an orphan.** It's wired via `src/robustness_tests.rs`
+- **`tests/robustness` is NOT an orphan.** It's wired via `src/tests/robustness_tests.rs`
   (`input_robustness_catalog`, declared in `src/main.rs`) and gated in CI
   (`.github/workflows/build.yml`, `cargo insta test --unreferenced=reject -- snapshot_tests robustness`).
   Do **not** delete it and do **not** add a `run_test` call (wrong layout; inputs are meant to fail

@@ -28,6 +28,11 @@ Pipeline — `CDDL text → AST → IR → emitted source`:
     2. `comment_ast.rs` (the `@name`/`@doc`/`@newtype` comment DSL)
     3. `dep_graph.rs` (rule ordering)
 
+**Which "tests" are which.** The app's own test suite lives under `src/tests/` (bin-crate-only,
+`#[cfg(test)]`); everything else in `src/` is production — including `emit_tests.rs` /
+`emit_tests_wasm.rs`, which are the shipped `--emit-tests` feature (they generate tests *into*
+output crates, they don't test this app).
+
 **`static/` is not generated code.** It holds the hand-written serialization *runtime* and the
 crate/package templates, which get copied/concatenated into the generated crate. Consequence:
 changing the *runtime behaviour* of generated code usually means editing `static/`; changing the
@@ -46,8 +51,11 @@ changing the *runtime behaviour* of generated code usually means editing `static
   scoped callback in `api.rs` that owns the AST for the duration of the call — use that pattern
   rather than trying to hand the IR back to a caller.
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list, and the
-  tests live in the bin crate. A new module must be added to **both**; test-only library API is
-  `#[cfg(test)]`.
+  test suite (`src/tests/`) is declared from `main.rs` only (bin crate). A new production module
+  must be added to **both**; test-only library API is `#[cfg(test)]`. Test module *names* are
+  load-bearing: CI and documented commands select tests by substring (`cargo insta test --
+  snapshot_tests robustness`, `cargo test --bin cddl-codegen <name>`), so keep
+  `snapshot_tests`/`robustness_tests`/`integration_tests` in the module paths.
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
 
