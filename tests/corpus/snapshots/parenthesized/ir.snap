@@ -144,14 +144,9 @@ expression: ir
                     RustField {
                         name: "ref_newtype",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "NewtypeDropped",
-                                    ),
-                                ),
-                                Primitive(
-                                    U64,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "NewtypeViaParens",
                                 ),
                             ),
                             encodings: [],
@@ -267,5 +262,36 @@ expression: ir
                 ],
             },
         ),
+    },
+    RustIdent(
+        "NewtypeViaParens",
+    ): RustStruct {
+        ident: RustIdent(
+            "NewtypeViaParens",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: Some(
+                None,
+            ),
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
     },
 }

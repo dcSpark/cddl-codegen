@@ -36,11 +36,11 @@ impl Choice {
 pub struct Holder {
     pub ref_basic: Basic,
     pub ref_choice: Choice,
-    pub ref_newtype: NewtypeDropped,
+    pub ref_newtype: NewtypeViaParens,
 }
 
 impl Holder {
-    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeDropped) -> Self {
+    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeViaParens) -> Self {
         Self {
             ref_basic,
             ref_choice,
@@ -61,4 +61,56 @@ impl Nested {
     }
 }
 
-pub type NewtypeDropped = u64;
+#[derive(Clone, Debug, Copy)]
+pub struct NewtypeViaParens(u64);
+
+impl NewtypeViaParens {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for NewtypeViaParens {
+    fn from(inner: u64) -> Self {
+        NewtypeViaParens::new(inner)
+    }
+}
+
+impl serde::Serialize for NewtypeViaParens {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NewtypeViaParens {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for NewtypeViaParens {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("NewtypeViaParens")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<NewtypeViaParens> for u64 {
+    fn from(wrapper: NewtypeViaParens) -> Self {
+        wrapper.0
+    }
+}

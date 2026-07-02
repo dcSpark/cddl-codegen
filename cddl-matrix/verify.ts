@@ -436,13 +436,33 @@ const controlop_uncorroborated: string[] = [];
 const controlop_support: ControlOpSupport[] = [];
 for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
   const [a, b, c, comp] = oracles(co.example!);
-  if (a === 65) controlop_uncorroborated.push(co.id);
+  // ANY nonzero ruby exit means the reference did not confirm the example is valid CDDL — not just
+  // 65 (EX_DATAERR). Keying on 65 alone hid exit-1 cases (malformed controllers, valid examples of
+  // ops ruby rejects with a different code) — 3 of the 5 historical malformed forms among them. The
+  // exit code is recorded per id so a malformed-example regression stays distinguishable from the
+  // unimplemented-op noise this list is expected to carry.
+  if (a !== 0) controlop_uncorroborated.push(`${co.id} (ruby exit ${a})`);
   const supported = c === 0 && comp === 0;
   const detail = supported ? "exit 0; compiles"
     : c === 0 ? `generates but does not compile (cargo check exit ${comp})`
     : c === 101 ? "panic (exit 101)"
     : `rejected at parse/lex (exit ${c})`;
   controlop_support.push({ id: co.id, name: co.name, support: supported ? "supported" : "unsupported", detail, ruby: a, rust: b, codegen: c, compile: comp, example: co.example! });
+}
+
+// Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
+// AFTER it. A mid-run degradation (the cddl-codegen probe binary going missing / crashing) rewrites
+// every per-cell and per-op verdict to "unsupported (panic exit 101)" while the feature-only gate
+// above still passes — the exact "failing looks passing" class this file exists to prevent. A real
+// run always has some supported cells/ops (18/36 and 9/37 at time of writing), so zero is
+// implausible: refuse to write verdicts rather than emit an all-unsupported annotation set.
+if (containment_corroboration.length && !containment_corroboration.some(c => c.support === "supported")) {
+  console.error("HARNESS FAILURE: no containment cell probed 'supported' — implausible verdict shape; refusing to write verdicts.");
+  process.exit(2);
+}
+if (controlop_support.length && !controlop_support.some(c => c.support === "supported")) {
+  console.error("HARNESS FAILURE: no control-op probed 'supported' — implausible verdict shape; refusing to write verdicts.");
+  process.exit(2);
 }
 
 // ==================================================================================================
@@ -651,7 +671,7 @@ if (containment_missing_example.length) {
   for (const id of containment_missing_example) console.log(`  - ${id}`);
 }
 if (controlop_uncorroborated.length) {
-  console.log("\nCONTROL-OP EXAMPLES UNCORROBORATED BY THE REFERENCE (ruby exit 65 — either the example is malformed OR ruby postdates the op; REVIEW against the defining RFC):");
+  console.log("\nCONTROL-OP EXAMPLES UNCORROBORATED BY THE REFERENCE (nonzero ruby exit — either the example is malformed OR ruby postdates/rejects the op; REVIEW against the defining RFC):");
   for (const id of controlop_uncorroborated) console.log(`  - ${id}`);
 }
 if (harness_timeouts_retried)

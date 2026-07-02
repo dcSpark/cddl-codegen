@@ -91,6 +91,7 @@ pub fn parse_rule(
                         choice,
                         None,
                         generic_params,
+                        &RuleMetadata::default(),
                         cli,
                     );
                 } else {
@@ -470,6 +471,7 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -477,11 +479,19 @@ fn parse_type(
     type_choice: &TypeChoice,
     outer_tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
+    // Metadata carried in from an enclosing single-type wrapper of the SAME rule (a `#6.n(...)` tag
+    // head or a parenthesized type). The cddl AST attaches the rule's trailing comment DSL (e.g.
+    // `@newtype`) to the OUTER type1, so recursing into the inner type without threading this would
+    // silently drop it — making `tagged = #6.42(text) ; @newtype` a no-op. Empty at the top level.
+    inherited_metadata: &RuleMetadata,
     cli: &Cli,
 ) {
     let type1 = &type_choice.type1;
     let rule_metadata = merge_metadata(
-        &RuleMetadata::from(type1.comments_after_type.as_ref()),
+        &merge_metadata(
+            inherited_metadata,
+            &RuleMetadata::from(type1.comments_after_type.as_ref()),
+        ),
         &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
     );
     if rule_metadata.used_as_key {
@@ -701,6 +711,8 @@ fn parse_type(
                         inner_type,
                         Some(tag_unwrap),
                         generic_params,
+                        // same rule: carry the outer rule's DSL (e.g. `@newtype`) inward
+                        &rule_metadata,
                         cli,
                     );
                 }
@@ -799,6 +811,8 @@ fn parse_type(
                     pt.type_choices.first().unwrap(),
                     outer_tag,
                     generic_params,
+                    // same rule: carry the outer rule's DSL inward through the parens
+                    &rule_metadata,
                     cli,
                 ),
                 _ => parse_type_choices(

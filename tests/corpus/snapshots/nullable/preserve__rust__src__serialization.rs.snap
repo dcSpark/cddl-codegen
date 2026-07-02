@@ -25,16 +25,20 @@ impl cbor_event::se::Serialize for Holder {
                 .to_len_sz(1),
         )?;
         match &self.val {
-            Some(x) => serializer.write_text_sz(
-                &x,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.val_encoding.clone())
-                    .unwrap_or_default()
-                    .to_str_len_sz(x.len() as u64),
-            ),
-            None => serializer.write_special(cbor_event::Special::Null),
-        }?;
+            Some(x) => {
+                serializer.write_text_sz(
+                    &x,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.val_encoding.clone())
+                        .unwrap_or_default()
+                        .to_str_len_sz(x.len() as u64),
+                )?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)

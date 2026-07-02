@@ -186,12 +186,20 @@ mod tests {
         // parser this library's consumers rely on. It must now be a graceful Err. is_ok() baselines
         // differ only in the offending element, so a reject can't pass for the wrong reason.
         // WrapperList = [ * uint ] ; @newtype
+        // A non-Break major-type-7 value (here `null`) in a definite `[* uint]` element slot is a
+        // graceful *type* rejection at the element (the uint read sees a `Special`), NOT a process
+        // abort (the fuzz-found DoS this guards) and NOT the misleading "Break in definite length"
+        // the previous over-broad `Type::Special` match produced (that same over-match rejected
+        // legitimate `[* float64]`/`[* bool]` too). Definite collections no longer special-case a
+        // break in element position; only indefinite ones look for the terminator. `unwrap_err()`
+        // already proves graceful (no abort); the token pins the received-type so a regression to a
+        // wrong reason is still caught.
         assert!(WrapperList::from_cbor_bytes(&[arr_def(1), cbor_int(1, cbor_event::Sz::Inline)].concat()).is_ok());
         let wrapper_list_null_elem = WrapperList::from_cbor_bytes(&[arr_def(1), vec![NULL]].concat()).unwrap_err();
-        assert!(wrapper_list_null_elem.to_string().contains("Break while reading definite length sequence"), "{wrapper_list_null_elem}");
+        assert!(wrapper_list_null_elem.to_string().contains("Special"), "{wrapper_list_null_elem}");
         // WrapperTable = { * uint => uint }: same loop, null fed in key position.
         let wrapper_table_null_key = WrapperTable::from_cbor_bytes(&[map_def(1), vec![NULL], cbor_int(2, cbor_event::Sz::Inline)].concat()).unwrap_err();
-        assert!(wrapper_table_null_key.to_string().contains("Break while reading definite length sequence"), "{wrapper_table_null_key}");
+        assert!(wrapper_table_null_key.to_string().contains("Special"), "{wrapper_table_null_key}");
     }
 
     // exercise the shipped Display formatting in error.rs (DeserializeError::fmt_indent and

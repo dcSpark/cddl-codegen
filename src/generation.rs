@@ -530,7 +530,9 @@ impl GenerationScope {
                             FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
                             FixedValue::Float(f) => ("f64", f.to_string()),
-                            FixedValue::Text(s) => ("String", format!("\"{s}\".to_owned()")),
+                            FixedValue::Text(s) => {
+                                ("String", format!("\"{}\".to_owned()", escape_rust_str(s)))
+                            }
                         };
                         self.wasm(types, ident)
                             .new_fn(convert_to_snake_case(ident.as_ref()))
@@ -1686,7 +1688,7 @@ impl GenerationScope {
                             body,
                             "write_text",
                             serializer_use,
-                            &format!("\"{s}\""),
+                            &format!("\"{}\"", escape_rust_str(s)),
                             false,
                             line_ender,
                             &encoding_var,
@@ -2109,7 +2111,18 @@ impl GenerationScope {
                     // TODO: do this in one line without a block if possible somehow.
                     //       see other comment in generate_enum()
                     let mut some_block = Block::new("Some(x) =>");
-                    let opt_config = config.clone().expr("x").expr_is_ref(true).is_end(true);
+                    // The inner serialize must terminate the same way the whole Optional does. When
+                    // the Optional is the tail expression (`is_end`), each arm RETURNS the
+                    // serializer. When it is one statement among others (a struct field), the arms
+                    // must be *statements* ending in `?;`: an inner whose body is inlined (a
+                    // collection loop) emits an owning `Ok(serializer)` tail under `is_end=true`,
+                    // which moves `serializer` and then conflicts with the caller's trailing
+                    // `Ok(serializer)` (E0382). Mirroring `config.is_end` keeps both cases valid.
+                    let opt_config = config
+                        .clone()
+                        .expr("x")
+                        .expr_is_ref(true)
+                        .is_end(config.is_end);
                     self.generate_serialize(
                         types,
                         (&**ty).into(),
@@ -2119,11 +2132,18 @@ impl GenerationScope {
                     );
                     some_block.after(",");
                     opt_block.push_block(some_block);
-                    opt_block.line(format!(
-                        "None => {serializer_use}.write_special(cbor_event::Special::Null),"
-                    ));
-                    if !config.is_end {
-                        opt_block.after("?;");
+                    if config.is_end {
+                        opt_block.line(format!(
+                            "None => {serializer_use}.write_special(cbor_event::Special::Null),"
+                        ));
+                    } else {
+                        let mut none_block = Block::new("None =>");
+                        none_block.line(format!(
+                            "{serializer_use}.write_special(cbor_event::Special::Null)?;"
+                        ));
+                        none_block.after(",");
+                        opt_block.push_block(none_block);
+                        opt_block.after(";");
                     }
                     body.push_block(opt_block);
                 }
@@ -2342,9 +2362,12 @@ impl GenerationScope {
                                     config.var_name, deserializer_name
                                 ));
                             }
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != \"{}\"", config.var_name, x));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", config.var_name, x));
+                            let mut compare_block = Block::new(format!(
+                                "if {}_value != \"{}\"",
+                                config.var_name,
+                                escape_rust_str(x)
+                            ));
+                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", config.var_name, escape_rust_str(x)));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
                                 config.final_exprs.push(format!(
@@ -2585,11 +2608,16 @@ impl GenerationScope {
                         }
                         Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s"),
                         Primitive::Bool => {
-                            // no encoding differences for bool
+                            // no encoding differences for bool. Use `bool::deserialize` (like the
+                            // float arms below) rather than `raw.bool().map_err(Into::into)`: the
+                            // latter's intermediate error type is unconstrained in element/push
+                            // position (`arr.push(<expr>?)`), so with multiple `From<_> for
+                            // DeserializeError` impls it fails inference (E0282/E0283) — e.g.
+                            // `[* bool]` emitted non-compiling code.
                             deser_code.content.line(&final_result_expr_complete(
                                 &mut deser_code.throws,
                                 config.final_exprs,
-                                "raw.bool().map_err(Into::into)",
+                                "bool::deserialize(raw)",
                             ));
                         }
                         Primitive::F32 => {
@@ -4468,27 +4496,35 @@ fn make_deser_loop(len_var: &str, len_expr: &str, cli: &Cli) -> Block {
 }
 
 fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
-    // Mirror the map deserializer's break handling (see the `Type::Special` arm in the
-    // record-map codegen): a Special where an element is expected is graceful `Err`, never a
-    // panic. The naive `assert_eq!(special, Break)` was a DoS — hostile bytes like a
-    // definite-length array holding a `null` (`0x81 0xf6`) aborted the process instead of
-    // returning an error to the untrusted-input parser this library's consumers rely on.
-    let mut break_check = Block::new("if raw.cbor_type()? == cbor_event::Type::Special");
-    let mut len_match = Block::new(format!("match {len_var}"));
-    len_match.line(format!(
-        "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
-        cbor_event_len_n("_", cli)
-    ));
-    let mut indef_match = Block::new(format!(
-        "{} => match raw.special()?",
-        cbor_event_len_indef(cli)
-    ));
-    indef_match.line("cbor_event::Special::Break => break,");
-    indef_match.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
-    indef_match.after(",");
-    len_match.push_block(indef_match);
-    break_check.push_block(len_match);
-    break_check
+    // Only INDEFINITE-length collections carry a break byte (`0xff`). For a definite length the loop
+    // reads exactly `n` items, so there is nothing to detect here — and we must NOT intercept: the
+    // break byte shares major type 7 (Special) with bool / null / float16-32-64 / simple, so gating
+    // on the whole `Type::Special` class rejected every non-empty special *element* collection
+    // (`[* float64]` failed `BreakInDefiniteLen`; a definite array holding `null` — `0x81 0xf6` —
+    // aborted). Restricting the check to the indefinite case lets a definite float/bool element flow
+    // straight to the element deserializer.
+    //
+    // This uses only `cbor_type`/`special` (which need just `Read`), NOT a `fill_buf` byte peek
+    // (which needs `BufRead`): the check is emitted inside the reader-type-erased type-choice
+    // deserializer closures (`|raw: &mut Deserializer<_>|`), where a `BufRead` bound can't be
+    // inferred (E0282). The indefinite arm therefore still consumes the special and errors on a
+    // non-break — an indefinite collection of value-specials remains a (pre-existing) limitation,
+    // but the definite path (what the generator itself emits) is now correct.
+    let mut indef = Block::new(format!("if let {} = {len_var}", cbor_event_len_indef(cli)));
+    let mut special = Block::new("if raw.cbor_type()? == cbor_event::Type::Special");
+    let mut sp_match = Block::new("match raw.special()?");
+    sp_match.line("cbor_event::Special::Break => break,");
+    sp_match.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+    special.push_block(sp_match);
+    indef.push_block(special);
+    indef
+}
+
+/// Escape a CDDL fixed text value for safe interpolation into an emitted Rust string literal.
+/// CDDL text literals may legally contain `"` or `\`; without escaping, those emit invalid Rust
+/// (rustfmt then fails on the generated source). Plain values are unchanged.
+fn escape_rust_str(s: &str) -> String {
+    s.escape_default().to_string()
 }
 
 pub fn table_type(cli: &Cli) -> &'static str {
@@ -4566,6 +4602,14 @@ fn codegen_table_type(
         }
     };
     let value_flatten = if value_nullable { ".flatten()" } else { "" };
+    // When the value is nullable, the stored inner is `Option<InnerRust>`. If that inner is not
+    // directly wasm-exposable (a named collection / data-enum), the boundary must convert it —
+    // `.map(Into::into)` through the Option — not a blanket `.into()`, which has no
+    // `From<Option<Inner>>` impl (wasm E0277/E0308).
+    let value_nullable_inner_exposable = match value_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Optional(inner) => inner.conceptual_type.directly_wasm_exposable(types),
+        _ => false,
+    };
     // insert
     let mut insert_func = codegen::Function::new("insert");
     insert_func
@@ -4590,11 +4634,16 @@ fn codegen_table_type(
                 .into_iter()
         ),
         if value_nullable {
-            value_flatten
+            if value_nullable_inner_exposable {
+                value_flatten.to_owned()
+            } else {
+                // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
+                format!("{value_flatten}.map(Into::into)")
+            }
         } else if value_type.directly_wasm_exposable(types) {
-            ""
+            String::new()
         } else {
-            ".map(Into::into)"
+            ".map(Into::into)".to_owned()
         }
     ));
     // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
@@ -4602,6 +4651,15 @@ fn codegen_table_type(
     // get
     let get_ret_modifier = if value_type.is_copy(types) {
         ""
+    } else if value_nullable {
+        // stored value is `Option<InnerRust>`; convert the inner across the boundary (when it is
+        // not directly exposable) THROUGH the Option, yielding `Option<Option<Wrapper>>` which the
+        // trailing `value_flatten` collapses to `Option<Wrapper>`.
+        if value_nullable_inner_exposable {
+            ".map(|v| v.clone())"
+        } else {
+            ".map(|v| v.clone().map(Into::into))"
+        }
     } else if value_type.directly_wasm_exposable(types) {
         ".map(|v| v.clone())"
     } else {
@@ -5830,7 +5888,9 @@ fn codegen_struct(
                                 Block::new(format!("{x} => "))
                             }
                         }
-                        FixedValue::Text(x) => Block::new(format!("\"{x}\" => ")),
+                        FixedValue::Text(x) => {
+                            Block::new(format!("\"{}\" => ", escape_rust_str(x)))
+                        }
                         _ => panic!(
                             "unsupported map key type for {}.{}: {:?}",
                             name, field.name, key
@@ -5840,7 +5900,9 @@ fn codegen_struct(
                     let mut deser_block_code = DeserializationCode::default();
                     let key_in_rust = match &key {
                         FixedValue::Uint(x) => format!("Key::Uint({x})"),
-                        FixedValue::Text(x) => format!("Key::Str(\"{x}\".into())"),
+                        FixedValue::Text(x) => {
+                            format!("Key::Str(\"{}\".into())", escape_rust_str(x))
+                        }
                         _ => unimplemented!(),
                     };
                     if cli.preserve_encodings {
@@ -6079,7 +6141,7 @@ fn codegen_struct(
                                 &mut map_ser_content,
                                 "write_text",
                                 "serializer",
-                                &format!("\"{s}\""),
+                                &format!("\"{}\"", escape_rust_str(s)),
                                 false,
                                 "?;",
                                 &key_encoding_var,
@@ -6260,7 +6322,9 @@ fn codegen_struct(
                     if !field.optional {
                         let key = match &field.key {
                             Some(FixedValue::Uint(x)) => format!("Key::Uint({x})"),
-                            Some(FixedValue::Text(x)) => format!("Key::Str(String::from(\"{x}\"))"),
+                            Some(FixedValue::Text(x)) => {
+                                format!("Key::Str(String::from(\"{}\"))", escape_rust_str(x))
+                            }
                             None => unreachable!(),
                             _ => unimplemented!(),
                         };

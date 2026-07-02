@@ -109,6 +109,25 @@ if (CHECK) {
       .split("\n")
       .map(l => /^([\w.$-]+) +(ok|error \(graceful\)|PANIC)$/.exec(l))
       .filter((m): m is RegExpExecArray => m !== null);
+    // The label vocabulary is defined independently in src/robustness_tests.rs. If it drifts (a
+    // relabel + insta re-bless, both CI-green), this regex matches zero rows and the loop below
+    // becomes vacuous — the cross-check would "pass" having compared nothing. Assert non-empty, and
+    // assert every projected panic-class id is actually present (a missing row is otherwise invisible
+    // to both loop arms, which only fire on rows that DID parse).
+    if (rows.length === 0) {
+      drift.push(
+        "catalog↔matrix: parsed 0 rows from catalog.snap — the label format drifted from this regex " +
+          "(update project_robustness.ts) or the snapshot is empty",
+      );
+    } else {
+      const catalogIds = new Set(rows.map(([, id]) => id));
+      for (const id of panicIds)
+        if (!catalogIds.has(id))
+          drift.push(
+            `catalog↔matrix: matrix panic-class \`${id}\` has no parseable row in the committed catalog.snap ` +
+              `(renamed/dropped, or the label regex no longer matches its row)`,
+          );
+    }
     for (const [, id, label] of rows) {
       if (panicIds.has(id) && label !== "PANIC")
         drift.push(

@@ -1,5 +1,6 @@
 ---
 source: src/snapshot_tests.rs
+assertion_line: 340
 expression: lib
 ---
 #![allow(
@@ -66,10 +67,10 @@ impl Maybes {
     }
 
     pub fn get(&self, index: usize) -> Maybe {
-        self.0[index].clone().into()
+        self.0[index].clone()
     }
 
     pub fn add(&mut self, elem: Option<String>) {
-        self.0.push(elem.clone().into());
+        self.0.push(elem);
     }
 }

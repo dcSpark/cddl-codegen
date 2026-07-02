@@ -45,11 +45,11 @@ impl Holder {
     }
 
     pub fn val(&self) -> MaybeText {
-        self.0.val.clone().into()
+        self.0.val.clone()
     }
 
     pub fn new(val: Option<String>) -> Self {
-        Self(cddl_lib::Holder::new(val.clone().into()))
+        Self(cddl_lib::Holder::new(val))
     }
 }
 

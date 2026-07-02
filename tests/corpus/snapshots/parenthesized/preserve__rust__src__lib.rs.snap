@@ -16,7 +16,7 @@ pub mod serialization;
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
-use cbor_encodings::{HolderEncoding, NestedEncoding};
+use cbor_encodings::{HolderEncoding, NestedEncoding, NewtypeViaParensEncoding};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -54,12 +54,12 @@ impl Choice {
 pub struct Holder {
     pub ref_basic: Basic,
     pub ref_choice: Choice,
-    pub ref_newtype: NewtypeDropped,
+    pub ref_newtype: NewtypeViaParens,
     pub encodings: Option<HolderEncoding>,
 }
 
 impl Holder {
-    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeDropped) -> Self {
+    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeViaParens) -> Self {
         Self {
             ref_basic,
             ref_choice,
@@ -86,4 +86,29 @@ impl Nested {
     }
 }
 
-pub type NewtypeDropped = u64;
+#[derive(Clone, Debug)]
+pub struct NewtypeViaParens {
+    pub inner: u64,
+    pub encodings: Option<NewtypeViaParensEncoding>,
+}
+
+impl NewtypeViaParens {
+    pub fn new(inner: u64) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<u64> for NewtypeViaParens {
+    fn from(inner: u64) -> Self {
+        NewtypeViaParens::new(inner)
+    }
+}
+
+impl From<NewtypeViaParens> for u64 {
+    fn from(wrapper: NewtypeViaParens) -> Self {
+        wrapper.inner
+    }
+}

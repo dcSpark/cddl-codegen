@@ -109,15 +109,15 @@ impl Holder {
         self.0.ref_choice.clone().into()
     }
 
-    pub fn ref_newtype(&self) -> NewtypeDropped {
-        self.0.ref_newtype
+    pub fn ref_newtype(&self) -> NewtypeViaParens {
+        self.0.ref_newtype.clone().into()
     }
 
-    pub fn new(ref_basic: Basic, ref_choice: &Choice, ref_newtype: NewtypeDropped) -> Self {
+    pub fn new(ref_basic: Basic, ref_choice: &Choice, ref_newtype: &NewtypeViaParens) -> Self {
         Self(cddl_lib::Holder::new(
             ref_basic.into(),
             ref_choice.clone().into(),
-            ref_newtype.into(),
+            ref_newtype.clone().into(),
         ))
     }
 }
@@ -187,4 +187,37 @@ impl AsRef<cddl_lib::Nested> for Nested {
     }
 }
 
-pub type NewtypeDropped = u64;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NewtypeViaParens(cddl_lib::NewtypeViaParens);
+
+#[wasm_bindgen]
+impl NewtypeViaParens {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NewtypeViaParens, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::NewtypeViaParens> for NewtypeViaParens {
+    fn from(native: cddl_lib::NewtypeViaParens) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NewtypeViaParens> for cddl_lib::NewtypeViaParens {
+    fn from(wasm: NewtypeViaParens) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NewtypeViaParens> for NewtypeViaParens {
+    fn as_ref(&self) -> &cddl_lib::NewtypeViaParens {
+        &self.0
+    }
+}

@@ -25,6 +25,17 @@ fn tool_exists(bin: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Spawn cargo/wasm-pack for building a *generated* crate. The generated code is the harness's
+/// own output and legitimately over-imports; CI's `setup-rust-toolchain` injects
+/// `RUSTFLAGS="-D warnings"` into the job env, which nested cargo builds would otherwise inherit
+/// and fail on those unused-import warnings. The root workspace keeps `-D warnings` via the
+/// dedicated Build/clippy steps; only these nested generated-crate builds must be insulated.
+fn tool_cmd(program: &str) -> std::process::Command {
+    let mut c = std::process::Command::new(program);
+    c.env_remove("RUSTFLAGS");
+    c
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -42,7 +53,7 @@ fn run_test(
     let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
     println!("--------- running test: {dir} ---------");
     // build and run to generate code
-    let mut cargo_run = std::process::Command::new("cargo");
+    let mut cargo_run = tool_cmd("cargo");
     cargo_run.arg("run").arg("--").arg(format!(
         "--output={}",
         test_path.join(&export_path).to_str().unwrap()
@@ -115,7 +126,7 @@ fn run_test(
     }
     // run tests in generated code
     println!("   ------ testing ------");
-    let cargo_test = std::process::Command::new("cargo")
+    let cargo_test = tool_cmd("cargo")
         .arg("test")
         .current_dir(test_path.join(format!("{export_path}/rust")))
         .output()
@@ -188,7 +199,7 @@ fn run_test(
         }
         std::mem::drop(wasm_lib_rs);
         println!("   ------ testing (wasm) ------");
-        let cargo_test_wasm = std::process::Command::new("cargo")
+        let cargo_test_wasm = tool_cmd("cargo")
             .arg("test")
             .current_dir(&wasm_export_dir)
             .output()
@@ -205,7 +216,7 @@ fn run_test(
         );
         assert!(cargo_test_wasm.status.success());
     } else if wasm_expected {
-        let cargo_build_wasm = std::process::Command::new("cargo")
+        let cargo_build_wasm = tool_cmd("cargo")
             .arg("build")
             .current_dir(&wasm_export_dir)
             .output()
@@ -226,7 +237,7 @@ fn run_test(
     if roundtrip_script.exists() {
         if tool_exists("wasm-pack") && tool_exists("node") {
             println!("   ------ testing (wasm json roundtrip) ------");
-            let wasm_pack = std::process::Command::new("wasm-pack")
+            let wasm_pack = tool_cmd("wasm-pack")
                 .args(["build", "--target=nodejs", "--dev"])
                 .current_dir(&wasm_export_dir)
                 .output()
@@ -276,7 +287,7 @@ fn run_test(
         // checkout, so this only matters for the local signal).
         let schemas_dir = json_export_dir.join("schemas");
         let _ = std::fs::remove_dir_all(&schemas_dir);
-        let cargo_run_json = std::process::Command::new("cargo")
+        let cargo_run_json = tool_cmd("cargo")
             .arg("run")
             .current_dir(&json_export_dir)
             .output()
@@ -357,7 +368,7 @@ fn feature_corpus_compiles() {
             let out = root.join(format!("{stem}__{profile}"));
             let emit_tests = *profile == "default";
             // generate rust + wasm so both crates are compile-gated
-            let gen_out = std::process::Command::new("cargo")
+            let gen_out = tool_cmd("cargo")
                 .args(["run", "--"])
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
@@ -410,7 +421,7 @@ fn feature_corpus_compiles() {
                 } else {
                     "check"
                 };
-                let check = std::process::Command::new("cargo")
+                let check = tool_cmd("cargo")
                     .arg(cargo_cmd)
                     .current_dir(&crate_dir)
                     .env("CARGO_TARGET_DIR", &target_dir)
@@ -499,7 +510,7 @@ fn wasm_matrix_compiles() {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         let skipped = SKIP.contains(&stem);
         let out = root.join(stem);
-        let gen_out = std::process::Command::new("cargo")
+        let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
@@ -532,7 +543,7 @@ fn wasm_matrix_compiles() {
             }
             continue;
         }
-        let check = std::process::Command::new("cargo")
+        let check = tool_cmd("cargo")
             .arg("check")
             .current_dir(&wasm_dir)
             .env("CARGO_TARGET_DIR", &target_dir)
@@ -597,7 +608,7 @@ fn wasm_list_macro_compiles() {
     for (label, options) in cases {
         let out = test_path.join(format!("export_{label}"));
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = std::process::Command::new("cargo")
+        let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
             .arg(format!(
                 "--input={}",
@@ -631,7 +642,7 @@ fn wasm_list_macro_compiles() {
             .write_all(b"wasm-macro-crate = { path = \"../../../wasm-macro-crate\" }\n")
             .unwrap();
         std::mem::drop(cargo_toml);
-        let check = std::process::Command::new("cargo")
+        let check = tool_cmd("cargo")
             .arg("check")
             .current_dir(out.join("wasm"))
             .env("CARGO_TARGET_DIR", &target_dir)
@@ -683,7 +694,7 @@ fn flag_value_smoke() {
     for (label, options) in cases {
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = std::process::Command::new("cargo")
+        let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
@@ -698,7 +709,7 @@ fn flag_value_smoke() {
             ));
             continue;
         }
-        let check = std::process::Command::new("cargo")
+        let check = tool_cmd("cargo")
             .arg("check")
             .current_dir(out.join("rust"))
             .env("CARGO_TARGET_DIR", &target_dir)
@@ -756,7 +767,7 @@ fn wasm_cbor_json_api_macro_compiles() {
     let test_path = std::path::PathBuf::from_str("tests/canonical").unwrap();
     let out = test_path.join("export_cbor_json_api_macro");
     let _ = std::fs::remove_dir_all(&out);
-    let gen_out = std::process::Command::new("cargo")
+    let gen_out = tool_cmd("cargo")
         .args(["run", "--"])
         .arg(format!(
             "--input={}",
@@ -793,7 +804,7 @@ fn wasm_cbor_json_api_macro_compiles() {
         "cddl_codegen_wasm_cbor_json_api_macro_{:016x}",
         checkout_hash()
     ));
-    let check = std::process::Command::new("cargo")
+    let check = tool_cmd("cargo")
         .arg("check")
         .current_dir(out.join("wasm"))
         .env("CARGO_TARGET_DIR", &target_dir)

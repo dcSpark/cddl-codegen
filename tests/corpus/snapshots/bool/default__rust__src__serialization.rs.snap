@@ -1,5 +1,6 @@
 ---
 source: src/snapshot_tests.rs
+assertion_line: 105
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -29,10 +30,7 @@ impl Deserialize for HasBool {
         read_len.read_elems(1)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
-            let flag = raw
-                .bool()
-                .map_err(Into::into)
-                .map_err(|e: DeserializeError| e.annotate("flag"))?;
+            let flag = bool::deserialize(raw).map_err(|e: DeserializeError| e.annotate("flag"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
