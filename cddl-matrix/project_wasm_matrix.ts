@@ -61,9 +61,11 @@ const SHAPES: Record<string, Shape> = {
   denum: { defs: ["denum = uint / text"], ty: "denum" },
   // nullable -> `Option<T>` at the boundary. A distinct wasm-ABI shape: `Option<T>` needs
   // `OptionIntoWasmAbi`, which nested positions (map value, optional field) don't satisfy for a
-  // non-wrapper inner (known-red). map-key is pruned: a null/Option key hits a deliberate
-  // "special-typed map key" assert in generation (a generation limitation, not a wasm-ABI concern —
-  // the robustness matrix's territory), and a nullable map key is degenerate CDDL anyway.
+  // non-wrapper inner (known-red). map-key is pruned: a nullable map key is degenerate CDDL, and
+  // its wasm bindings don't compile (`Option<u64>` key fails `ErasableGeneric` — E0271/E0277), so
+  // un-pruning would only add a permanent SKIP cell. (The generation-time "special-typed map key"
+  // assert this prune used to cite is gone — special-class keys now generate; see the
+  // special_map_key corpus fixture.)
   nullable: { defs: ["opt = uint / null"], ty: "opt", skipRoles: ["map-key"] },
   // generic instance -> monomorphized wrapper struct
   generic: { defs: ["cont<T0> = [value: T0]", "uc = cont<uint>"], ty: "uc" },
