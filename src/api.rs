@@ -46,6 +46,19 @@ pub fn with_types<R>(
     cli: &Cli,
     f: impl FnOnce(&IntermediateTypes, bool) -> R,
 ) -> Result<R, Box<dyn std::error::Error>> {
+    // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
+    // signatures; without --preserve-encodings those signatures don't take it, so the generator
+    // emits `serialize(serializer, force_canonical)` calls against 1-arg methods and references an
+    // unbound `force_canonical` — a crate that does not compile. Reject the combination up front
+    // rather than emit broken output (the docs likewise require the two together).
+    if cli.canonical_form && !cli.preserve_encodings {
+        return Err(
+            "--canonical-form=true requires --preserve-encodings=true: the canonical toggle rides \
+             on the preserve-encodings serialize signatures, so on its own the generated crate does \
+             not compile"
+                .into(),
+        );
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();

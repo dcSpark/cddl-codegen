@@ -190,16 +190,6 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
   `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
   chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
-- **Five documented flag values with zero coverage at any oracle level** — no test generates with
-  `--annotate-fields=false` (selects a whole different deserialization/error-emission mode, 13+
-  branch sites in generation.rs incl. the code's own acknowledged-tricky preserve-encodings
-  interaction), `--to-from-bytes-methods=false`, `--binary-wrappers=true`,
-  `--wasm-cbor-json-api-macro` (the documented CML invocation path — unlike its two
-  snapshot-tested sibling macro flags), or `--canonical-form=true` without `--preserve-encodings`
-  (CLI-accepted; docs call standalone use legal). Cheapest acceptance: a generate + `cargo check`
-  smoke over `tests/core/input.cddl` per value — if a value doesn't even generate, that answer
-  itself converts it into either a CLI rejection or a ledgered gap. Alternative: deprecate/reject
-  the untestable values so the "profiles cover the flag space" premise (below) becomes true.
 - **"Supported" is silently a default-profile fact.** verify.ts probes default flags only, and the
   supported-catalog gate (`all_supported_constructs_generate`) runs the default profile — so a
   supported-construct × preserve/json failure is caught only where a corpus fixture isolates that
@@ -211,9 +201,12 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
 
 - Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
   *combinations* worth testing; revisit only if a flag-interaction bug actually slips through.
-  This holds only while every individual flag *value* appears in some profile or test — five
-  currently appear in none (see the pending decision above), so the combination dismissal must not
-  be read as covering them.
+  Every individual flag *value* now appears in some profile or test: the five that previously
+  didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
+  `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`
+  (`--wasm-cbor-json-api-macro`), and — for `--canonical-form=true` without `--preserve-encodings`,
+  which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
+  `flag_value_rejects_canonical_without_preserve`).
 - `quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass (the corpus `cargo check` is simpler and broader).
