@@ -257,13 +257,21 @@ enumerating?" and add a shape. Un-modelled but distinct (add when a consumer or 
 `#6.n(...)` types; map-representation structs — the latter blocked on the bareword-member-key generation
 panic that forces the struct roles to use array-rep, so fixing that panic is a prerequisite.
 
-**Behavioural upgrade.** The gate's verdict is *compile*, so a cell can be green while emitting a
-semantically wrong same-type conversion at the wasm boundary. The `--emit-tests` harness has landed but
-mints tests into the *rust* crate only — it exercises the underlying types, not the wasm wrapper API where
-this bug class lives (the flatten/`.into()` gaps are wasm-side; see the `#[ignore]`'d fidelity tests).
-Upgrading the per-cell verdict needs a wasm-side minted surface (a `tests_wasm.rs`-style module emitted
-per cell: construct through the wrapper API, round-trip, read accessors back); until then the sampled
-hand-written `tests_wasm.rs` hooks are the behavioural coverage.
+**Behavioural upgrade — remaining state.** The wasm-side minted surface has landed: `--emit-tests
+--wasm=true` emits a `cddl_generated_wasm_tests` module (`src/emit_tests_wasm.rs`) that constructs through
+the wrapper API, round-trips, and reads accessors back against the minted literals, cross-checked against
+an independent `cddl_lib::` rust build (the byte differential). It runs per-cell via
+`integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d under the CI freeze) and, in `verify.ts`,
+via an opt-in `--wasm` probe that `cargo test`s the generated wasm crate and threads `minted_wasm` /
+`wasm_roundtrips` into the per-feature and per-cell evidence. Remaining:
+- **`verify.ts --wasm` default-on** — the probe roughly doubles per-probe cargo work, so it is opt-in for
+  now; default it on once the wall-time is deemed acceptable for the manual gate.
+- **Unminted wasm shapes** — wrapper/collection ctor args (block-expr `new`/`add` build) and `@newtype`/tag
+  wrapper ctor args are currently **loud skips** (`eprintln!`), so a cell built entirely from them mints no
+  wasm surface and falls back to the compile verdict; a block-expr collection minter would close that.
+- **Fidelity gaps** — the wasm read-side flatten losses (optional-nullable field, double-nested enum
+  variant) remain generator-side, tracked by the `#[ignore]`'d fidelity tests; a presence-accessor fix,
+  not a test-surface change, closes them.
 
 **Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
