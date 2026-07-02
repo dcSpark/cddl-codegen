@@ -1,0 +1,7 @@
+; A map keyed by byte strings. The emit-tests minter synthesizes distinct `vec![__i as u8]` keys
+; so a non-empty map is minted and the byte-string KEY wire path is actually exercised — without a
+; mintable key the enclosing collection falls back to an EMPTY map and that path goes untested.
+bkeys = { * bytes => uint }
+; the inline form exercises the same key wire path through a field-local map (named tables mint
+; empty, so the inline field is what puts a real byte-string key on the wire via emit-tests).
+bytes_key_holder = [named: bkeys, inline: { * bytes => uint }]

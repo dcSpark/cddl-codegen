@@ -451,11 +451,11 @@ fn feature_corpus_compiles() {
         }
     }
     // execution-half vacuous-pass guard: most corpus fixtures mint at least one round-trip/reject
-    // test today (32 of 39 at landing; the rest are transparent aliases / pure c-enums). A big drop
-    // means the emitter's coverage silently shrank, not that the corpus got simpler.
+    // test today (41 of 44; the rest are transparent aliases / pure c-enums). A big drop means the
+    // emitter's coverage silently shrank, not that the corpus got simpler.
     assert!(
-        emitted_test_modules >= 25,
-        "only {emitted_test_modules} corpus fixtures emitted a generated-test module (expected >= 25) — emit_tests coverage shrank"
+        emitted_test_modules >= 38,
+        "only {emitted_test_modules} corpus fixtures emitted a generated-test module (expected >= 38) — emit_tests coverage shrank"
     );
     let _ = std::fs::remove_dir_all(&root);
     assert!(

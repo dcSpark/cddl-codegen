@@ -223,6 +223,7 @@ fn map_key_expr(key: &MapKey) -> String {
     match key {
         MapKey::Int(p) => format!("__i as {p}"),
         MapKey::Str => "__i.to_string()".to_owned(),
+        MapKey::Bytes => "vec![__i as u8]".to_owned(),
         MapKey::Bool => "__i == 1".to_owned(),
     }
 }

@@ -1,0 +1,21 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct BytesKeyHolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub named_encoding: LenEncoding,
+    pub named_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub named_value_encodings: BTreeMap<Vec<u8>, Option<cbor_event::Sz>>,
+    pub inline_encoding: LenEncoding,
+    pub inline_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub inline_value_encodings: BTreeMap<Vec<u8>, Option<cbor_event::Sz>>,
+}
