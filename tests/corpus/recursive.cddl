@@ -1,6 +1,8 @@
 ; A terminable recursive type (a rule referencing itself through a `*`-occurrence array, so an empty
 ; `children` terminates it). Generates a recursive-descent (de)serializer; the emit-tests minter is
-; depth-capped (MAX_MINT_DEPTH) so it mints a bounded instance rather than recursing forever.
+; depth-capped (MAX_MINT_DEPTH): each level mints a single child until the cap, where the unbounded
+; `children` array degrades to empty (`vec![]`, valid for `*`-occurrence) — so it round-trips a
+; bounded, fully-populated-then-terminated instance rather than recursing forever or minting nothing.
 ; NOTE: the generated deserializer has no recursion DEPTH GUARD — hostile deeply-nested CBOR
 ; overflows the stack (SIGABRT). That is a tracked product decision (see TESTING_ROADMAP "Pending
 ; decisions"); this fixture only locks the positive compile/round-trip path.
