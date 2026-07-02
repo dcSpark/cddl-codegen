@@ -1229,6 +1229,57 @@ fn emit_tests_execute() {
     );
 }
 
+/// Executes the `--emit-tests` generated WASM-test module end-to-end (TESTING_ROADMAP item 2, the
+/// behavioural frontier): generate the rich `core` fixture with `--wasm=true --emit-tests=true` and
+/// `cargo test` the generated WASM crate — run_test's wasm test step runs the emitted
+/// `wasm_roundtrip_*`/`wasm_reject_*` tests alongside the hand-written `tests_wasm.rs` suite (the
+/// plausibility cross-check: where the emitted module overlaps the hand-written one, both must pass).
+/// This is the wasm emitter's execution gate. The floor asserts keep the gate from going vacuous if
+/// emission silently shrinks.
+///
+/// `cargo check` never compiles `#[cfg(test)]` code, so the emitted wasm test module is invisible to
+/// every check-only gate (`feature_corpus_compiles`, `wasm_matrix_compiles`); a `cargo test` of the
+/// wasm crate is the only thing that compiles AND runs it.
+#[test]
+fn emit_wasm_tests_execute() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_rust_defs");
+    let extern_wasm_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("external_wasm_defs");
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization");
+    run_test(
+        "core",
+        &["--wasm=true", "--emit-tests=true"],
+        Some("emit_wasm_tests"),
+        &[extern_rust_path, custom_ser_path],
+        &[extern_wasm_path],
+        false,
+        &[],
+    );
+    let lib = std::fs::read_to_string("tests/core/export_emit_wasm_tests/wasm/src/lib.rs").unwrap();
+    assert!(
+        lib.contains("mod cddl_generated_wasm_tests"),
+        "--emit-tests emitted no generated WASM-test module"
+    );
+    // Floors pinned from the first real Phase-2 run (see emit_tests_wasm.rs); they keep the gate
+    // from going vacuous if emission silently shrinks.
+    let n_roundtrip = lib.matches("fn wasm_roundtrip_").count();
+    let n_reject = lib.matches("fn wasm_reject_").count();
+    assert!(
+        n_roundtrip >= 1,
+        "emitted only {n_roundtrip} wasm_roundtrip tests for the core fixture — emission silently shrank"
+    );
+    assert!(
+        n_reject >= 1,
+        "emitted only {n_reject} wasm_reject tests for the core fixture — emission silently shrank"
+    );
+}
+
 /// The IR-bug conformance oracle at breadth (TESTING_ROADMAP "IR-bug oracle at breadth"). The
 /// `--emit-tests` round-trip harness mints values from the SAME IR as the code under test, so an
 /// IR-level miscompile (a bound/member computed wrong at parse time) mints a spec-violating value
