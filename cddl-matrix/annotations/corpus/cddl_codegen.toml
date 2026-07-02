@@ -44,6 +44,12 @@ fixture = "primitives.cddl"
 id = "prelude.bool"
 fixture = "bool.cddl"
 
+# float64 elements are now exercised (a `[* float64]` collection round-trips): the element-loop
+# break-check must let a major-type-7 element through instead of rejecting it as a terminator.
+[[cover]]
+id = "prelude.float64"
+fixture = "homogeneous_array.cddl"
+
 # prelude.null is ➖ at TOP LEVEL (a `x = null` type panics — see the ➖ note below) but SUPPORTED as a
 # choice-member (the `T / null` -> Option<T> pattern). That per-cell coverage is a role-keyed [[cover]] in
 # the "per-cell (role × feature) coverage" section below — verified against the AST role floor AND the

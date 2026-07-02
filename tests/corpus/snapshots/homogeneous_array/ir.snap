@@ -4,6 +4,62 @@ expression: ir
 ---
 {
     RustIdent(
+        "Bools",
+    ): RustStruct {
+        ident: RustIdent(
+            "Bools",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    Bool,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
+    },
+    RustIdent(
+        "Floats",
+    ): RustStruct {
+        ident: RustIdent(
+            "Floats",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    F64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(

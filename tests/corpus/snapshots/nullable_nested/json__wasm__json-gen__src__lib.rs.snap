@@ -19,5 +19,8 @@ pub fn export_schemas() {
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
+    gen_json_schema!(cddl_lib::DataEnum);
+    gen_json_schema!(cddl_lib::NullableCollField);
+    gen_json_schema!(cddl_lib::NullableDenumField);
     gen_json_schema!(cddl_lib::NullableOptionalField);
 }

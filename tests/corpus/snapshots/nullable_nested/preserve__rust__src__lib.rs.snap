@@ -16,11 +16,71 @@ pub mod serialization;
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
-use cbor_encodings::NullableOptionalFieldEncoding;
+use cbor_encodings::{
+    NullableCollFieldEncoding, NullableDenumFieldEncoding, NullableOptionalFieldEncoding,
+};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
+#[derive(Clone, Debug)]
+pub enum DataEnum {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl DataEnum {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+pub type MaybeColl = Option<NumsArr>;
+
+pub type MaybeDenum = Option<DataEnum>;
+
 pub type MaybeUint = Option<u64>;
+
+#[derive(Clone, Debug)]
+pub struct NullableCollField {
+    pub c: MaybeColl,
+    pub encodings: Option<NullableCollFieldEncoding>,
+}
+
+impl NullableCollField {
+    pub fn new(c: MaybeColl) -> Self {
+        Self { c, encodings: None }
+    }
+}
+
+pub type NullableCollMap = OrderedHashMap<u64, MaybeColl>;
+
+#[derive(Clone, Debug)]
+pub struct NullableDenumField {
+    pub d: MaybeDenum,
+    pub encodings: Option<NullableDenumFieldEncoding>,
+}
+
+impl NullableDenumField {
+    pub fn new(d: MaybeDenum) -> Self {
+        Self { d, encodings: None }
+    }
+}
 
 pub type NullableMapValue = OrderedHashMap<u64, MaybeUint>;
 
@@ -40,3 +100,5 @@ impl NullableOptionalField {
         }
     }
 }
+
+pub type NumsArr = Vec<u64>;

@@ -1,1 +1,5 @@
 nums = [* uint]
+; float and bool elements are CBOR major type 7 (Special), which the array element-loop break-check
+; must NOT treat as a terminator — otherwise every non-empty value is rejected / fails to compile.
+floats = [* float64]
+bools = [* bool]

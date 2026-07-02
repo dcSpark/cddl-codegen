@@ -15,6 +15,88 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct Bools(Vec<bool>);
+
+#[wasm_bindgen]
+impl Bools {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> bool {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: bool) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<bool>> for Bools {
+    fn from(native: Vec<bool>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bools> for Vec<bool> {
+    fn from(wasm: Bools) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<bool>> for Bools {
+    fn as_ref(&self) -> &Vec<bool> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Floats(Vec<f64>);
+
+#[wasm_bindgen]
+impl Floats {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> f64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: f64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<f64>> for Floats {
+    fn from(native: Vec<f64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Floats> for Vec<f64> {
+    fn from(wasm: Floats) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<f64>> for Floats {
+    fn as_ref(&self) -> &Vec<f64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Nums(Vec<u64>);
 
 #[wasm_bindgen]

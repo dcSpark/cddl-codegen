@@ -4,6 +4,65 @@ expression: ir
 ---
 {
     RustIdent(
+        "DataEnum",
+    ): RustStruct {
+        ident: RustIdent(
+            "DataEnum",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "U64",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(
@@ -18,6 +77,228 @@ expression: ir
             newtype_getter: None,
         },
         variant: Extern,
+    },
+    RustIdent(
+        "NullableCollField",
+    ): RustStruct {
+        ident: RustIdent(
+            "NullableCollField",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "c",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "MaybeColl",
+                                    ),
+                                ),
+                                Optional(
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "NumsArr",
+                                                ),
+                                            ),
+                                            Array(
+                                                RustType {
+                                                    conceptual_type: Primitive(
+                                                        U64,
+                                                    ),
+                                                    encodings: [],
+                                                    config: RustTypeSerializeConfig {
+                                                        default: None,
+                                                        bounds: None,
+                                                        basic_override: false,
+                                                    },
+                                                },
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "NullableCollMap",
+    ): RustStruct {
+        ident: RustIdent(
+            "NullableCollMap",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Table {
+            domain: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            range: RustType {
+                conceptual_type: Alias(
+                    Rust(
+                        RustIdent(
+                            "MaybeColl",
+                        ),
+                    ),
+                    Optional(
+                        RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "NumsArr",
+                                    ),
+                                ),
+                                Array(
+                                    RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
+    },
+    RustIdent(
+        "NullableDenumField",
+    ): RustStruct {
+        ident: RustIdent(
+            "NullableDenumField",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "d",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "MaybeDenum",
+                                    ),
+                                ),
+                                Optional(
+                                    RustType {
+                                        conceptual_type: Rust(
+                                            RustIdent(
+                                                "DataEnum",
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
     },
     RustIdent(
         "NullableMapValue",
@@ -165,5 +446,33 @@ expression: ir
                 ],
             },
         ),
+    },
+    RustIdent(
+        "NumsArr",
+    ): RustStruct {
+        ident: RustIdent(
+            "NumsArr",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+        },
     },
 }
