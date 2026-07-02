@@ -410,11 +410,11 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // Array element types and map KEY types in the Special CBOR class (bool / null /
-        // float16-32-64 / simple, major type 7) used to be rejected here because they share their
+        // float16-32-64 / simple, major type 7) is tricky here because they share their
         // major type with the indefinite-length break byte (`0xff`), so a naive loop can't tell
-        // "read another item" from "stop at the break". `make_deser_loop_break_check`
-        // (generation.rs) now gates that ambiguity check on the INDEFINITE case only: a
-        // definite-length collection reads exactly `n` items and never inspects for a break, so a
+        // "read another item" from "stop at the break".
+        // `make_deser_loop_break_check` (generation.rs) gates that ambiguity check on the INDEFINITE case only:
+        // a definite-length collection reads exactly `n` items and never inspects for a break, so a
         // named `[* float64]` / `{ * bool => uint }` used as a record field deserializes
         // correctly (covered by the homogeneous_array / special_map_key corpus round-trips). The
         // indefinite case remains a pre-existing, code-commented limitation there — the break
@@ -1622,7 +1622,7 @@ impl ConceptualRustType {
                         | Primitive::U64 => true,
                         // NOT a js number: wasm-bindgen has no VectorIntoWasmAbi for bool, so a
                         // bare Vec<bool> return/param fails E0271 — it needs a BoolList wrapper
-                        // (first hit by a bool-keyed table's keys() accessor; see special_map_key)
+                        // (ex: hit by a bool-keyed table's keys() accessor; see special_map_key)
                         Primitive::Bool => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
@@ -1642,7 +1642,7 @@ impl ConceptualRustType {
                 // `#[wasm_bindgen]` WRAPPER struct (a generated `RustStruct`, e.g. `nums = [* uint]`)
                 // or a transparent `pub type` alias (no generated struct — a passthrough `arr2 = arr`,
                 // or a `foo_bytes = bytes .cbor foo` transparent to the wrapper `Foo`). A wrapper is
-                // NOT directly exposable. The bug was recursing into the inlined inner unconditionally:
+                // NOT directly exposable. The bug we avoid is recursing into the inlined inner unconditionally:
                 // for `nums` the inner `Vec<u64>` is exposable, so the *wrapper* `Nums` was wrongly
                 // called exposable and boundary conversions were dropped. For a transparent alias (or a
                 // re-exported c-style enum) we DO follow what it aliases — so `arr2 = arr` (→ exposable
