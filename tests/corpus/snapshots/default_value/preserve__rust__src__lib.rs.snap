@@ -24,6 +24,7 @@ use std::convert::TryFrom;
 pub struct Defaulted {
     pub a: u64,
     pub b: u64,
+    pub c: String,
     pub encodings: Option<DefaultedEncoding>,
 }
 
@@ -32,6 +33,7 @@ impl Defaulted {
         Self {
             a,
             b: 1337,
+            c: "he\"llo\\world".to_owned(),
             encodings: None,
         }
     }

@@ -18,10 +18,15 @@ use std::convert::TryFrom;
 pub struct Defaulted {
     pub a: u64,
     pub b: u64,
+    pub c: String,
 }
 
 impl Defaulted {
     pub fn new(a: u64) -> Self {
-        Self { a, b: 1337 }
+        Self {
+            a,
+            b: 1337,
+            c: "he\"llo\\world".to_owned(),
+        }
     }
 }

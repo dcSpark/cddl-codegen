@@ -17,4 +17,7 @@ pub struct DefaultedEncoding {
     pub b_encoding: Option<cbor_event::Sz>,
     pub b_default_present: bool,
     pub b_key_encoding: StringEncoding,
+    pub c_encoding: StringEncoding,
+    pub c_default_present: bool,
+    pub c_key_encoding: StringEncoding,
 }

@@ -85,6 +85,40 @@ expression: ir
                             comment: None,
                         },
                     },
+                    RustField {
+                        name: "c",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: Some(
+                                    Text(
+                                        "he\"llo\\world",
+                                    ),
+                                ),
+                                bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: true,
+                        key: Some(
+                            Text(
+                                "c",
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
                 ],
             },
         ),

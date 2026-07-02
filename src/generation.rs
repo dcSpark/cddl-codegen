@@ -10,7 +10,7 @@ use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
     FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RustField,
     RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType, RustType,
-    RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
+    RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
 };
 use crate::utils::{cbor_type_code_str, convert_to_snake_case};
 
@@ -4520,13 +4520,6 @@ fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     special.push_block(sp_match);
     indef.push_block(special);
     indef
-}
-
-/// Escape a CDDL fixed text value for safe interpolation into an emitted Rust string literal.
-/// CDDL text literals may legally contain `"` or `\`; without escaping, those emit invalid Rust
-/// (rustfmt then fails on the generated source). Plain values are unchanged.
-fn escape_rust_str(s: &str) -> String {
-    s.escape_default().to_string()
 }
 
 pub fn table_type(cli: &Cli) -> &'static str {

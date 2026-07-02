@@ -1,1 +1,1 @@
-defaulted = { a: uint, ? b: uint .default 1337 }
+defaulted = { a: uint, ? b: uint .default 1337, ? c: text .default "he\"llo\\world" }
