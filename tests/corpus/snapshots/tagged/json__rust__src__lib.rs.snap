@@ -14,4 +14,69 @@ use crate::error::*;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub payload: TaggedNewtype,
+}
+
+impl Holder {
+    pub fn new(payload: TaggedNewtype) -> Self {
+        Self { payload }
+    }
+}
+
+impl From<TaggedNewtype> for String {
+    fn from(wrapper: TaggedNewtype) -> Self {
+        wrapper.0
+    }
+}
+
 pub type Tagged = String;
+
+#[derive(Clone, Debug)]
+pub struct TaggedNewtype(String);
+
+impl TaggedNewtype {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for TaggedNewtype {
+    fn from(inner: String) -> Self {
+        TaggedNewtype::new(inner)
+    }
+}
+
+impl serde::Serialize for TaggedNewtype {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for TaggedNewtype {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for TaggedNewtype {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TaggedNewtype")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
