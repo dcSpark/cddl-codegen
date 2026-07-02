@@ -409,22 +409,17 @@ impl<'a> IntermediateTypes<'a> {
                 return ConceptualRustType::Rust(RustIdent::new(raw.clone())).into();
             }
         }
-        // Array element types in the Special CBOR class (bool / null / float16-32-64 / simple,
-        // major type 7) used to be rejected here because they share their major type with the
-        // indefinite-length break byte (`0xff`), so a naive loop can't tell "read another element"
-        // from "stop at the break". `make_deser_loop_break_check` (generation.rs) now gates that
-        // ambiguity check on the INDEFINITE case only: a definite-length collection reads exactly
-        // `n` elements and never inspects for a break, so a named `[* float64]` / `[* bool]` used as
-        // a record field deserializes correctly. The indefinite case remains a pre-existing,
-        // code-commented limitation there (it consumes the special and errors with
-        // EndingBreakMissing rather than aborting) — not something this assert needs to guard.
-        if let ConceptualRustType::Map(key_type, _val_type) = resolved_inner {
-            // Map keys keep the assert: unlike array elements, a map key of the Special class hits
-            // the ambiguity for BOTH definite and indefinite lengths (the loop still can't
-            // distinguish a key from a break in the indefinite case), and named special-key maps
-            // have no round-trip coverage proving they work.
-            assert!(!key_type.cbor_types(self).contains(&CBORType::Special));
-        }
+        // Array element types and map KEY types in the Special CBOR class (bool / null /
+        // float16-32-64 / simple, major type 7) used to be rejected here because they share their
+        // major type with the indefinite-length break byte (`0xff`), so a naive loop can't tell
+        // "read another item" from "stop at the break". `make_deser_loop_break_check`
+        // (generation.rs) now gates that ambiguity check on the INDEFINITE case only: a
+        // definite-length collection reads exactly `n` items and never inspects for a break, so a
+        // named `[* float64]` / `{ * bool => uint }` used as a record field deserializes
+        // correctly (covered by the homogeneous_array / special_map_key corpus round-trips). The
+        // indefinite case remains a pre-existing, code-commented limitation there — the break
+        // check consumes the special element/key and errors with EndingBreakMissing rather than
+        // aborting — not something an assert here needs to guard.
         resolved
     }
 
@@ -1606,8 +1601,7 @@ impl ConceptualRustType {
                 match inner {
                     Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
-                        Primitive::Bool
-                        | Primitive::F32
+                        Primitive::F32
                         | Primitive::F64
                         | Primitive::I8
                         | Primitive::U8
@@ -1618,6 +1612,10 @@ impl ConceptualRustType {
                         | Primitive::I64
                         | Primitive::N64
                         | Primitive::U64 => true,
+                        // NOT a js number: wasm-bindgen has no VectorIntoWasmAbi for bool, so a
+                        // bare Vec<bool> return/param fails E0271 — it needs a BoolList wrapper
+                        // (first hit by a bool-keyed table's keys() accessor; see special_map_key)
+                        Primitive::Bool => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
                         // Vec<String> is not supported by wasm-bindgen

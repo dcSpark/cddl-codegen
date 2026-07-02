@@ -888,6 +888,11 @@ fn materialize_at(
                     | Primitive::N64),
                 ) => format!("__i as {p}"),
                 ConceptualRustType::Primitive(Primitive::Str) => "__i.to_string()".to_owned(),
+                // bool has exactly 2 distinct keys, so only lengths <= 2 are mintable — beyond
+                // that the collect() would dedupe and the map would miss its target measure
+                ConceptualRustType::Primitive(Primitive::Bool) if measure <= 2 => {
+                    "__i == 1".to_owned()
+                }
                 _ => return None, // non-trivial keys aren't cheaply mintable
             };
             let val = valid_value_at(types, v, depth)?;

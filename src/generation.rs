@@ -4554,15 +4554,11 @@ fn codegen_table_type(
         tag.is_none(),
         "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?"
     );
-    // this would interfere with loop code generation unless we
-    // specially handle this case since you wouldn't know whether you hit a break
-    // or are reading a key here, unless we check, but then you'd need to store the
-    // non-break special value once read
-    assert!(
-        !key_type
-            .cbor_types(types)
-            .contains(&cbor_event::Type::Special)
-    );
+    // Special-class (major type 7) keys used to be asserted away here, but the break-byte
+    // ambiguity they alluded to lives in the rust-side deserialize loop, which
+    // `make_deser_loop_break_check` now handles (definite lengths read exactly `n` entries; the
+    // indefinite case errors gracefully). This wasm wrapper emits only accessors — nothing here
+    // depends on the key's CBOR class.
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false, cli);
 
     let inner_type = if exists_in_rust {
