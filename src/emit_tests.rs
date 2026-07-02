@@ -517,10 +517,13 @@ fn valid_measure(b: Bounds) -> i128 {
     b.0.or(b.1).unwrap_or(0)
 }
 
-/// nint bounds are stored as u64 magnitudes; mirror the generator's transform so a valid baseline
-/// value passes the same check `new()` emits (see `generation.rs::nint_bounds_to_u64`).
+/// nint bounds are stored as u64 magnitudes; the minted baseline must pass the exact check `new()`
+/// emits, so delegate to the generator's transform rather than reimplementing it. (A hand-rolled
+/// copy previously omitted the min/max endpoint SWAP the generator applies — harmless for the
+/// current single-endpoint `valid_measure`, but a latent divergence trap for the planned
+/// construct-reject work. Sharing the one implementation removes that class outright.)
 fn nint_bounds_to_u64(b: Bounds) -> Bounds {
-    (b.0.map(|x| (x + 1).abs()), b.1.map(|x| (x + 1).abs()))
+    crate::generation::nint_bounds_to_u64(&b)
 }
 
 /// Inclusive representable range of an integer primitive's backing Rust type.

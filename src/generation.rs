@@ -3805,7 +3805,9 @@ pub(crate) fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<Stri
 // SWAPPED: the value-min becomes the magnitude-max and the value-max becomes the magnitude-min
 // (e.g. `nint .ge -5` → `v >= -5` → `m <= 4`). Not swapping inverts the check in the constructor
 // (the deserializer, which checks the signed value directly, stays correct — so the two disagree).
-fn nint_bounds_to_u64(bounds: &(Option<i128>, Option<i128>)) -> (Option<i128>, Option<i128>) {
+pub(crate) fn nint_bounds_to_u64(
+    bounds: &(Option<i128>, Option<i128>),
+) -> (Option<i128>, Option<i128>) {
     (
         bounds.1.map(|x| (x + 1).abs()),
         bounds.0.map(|x| (x + 1).abs()),

@@ -42,31 +42,46 @@ const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
 //     delimiters themselves are kept so the value.text / value.bytes / quoted-key detectors still
 //     see that a literal is present. Handles \-escapes and CDDL's '…' byte strings (whose BCHAR
 //     set legally contains `;`). ---
-function split(line: string): { code: string; comment: string } {
+// A single stateful pass over the WHOLE text (not per-line): a CDDL `'…'` byte string's BCHAR set
+// legally spans newlines, so quote state must persist ACROSS line breaks. A per-line reset scanned a
+// multi-line literal's continuation lines as code and fabricated comment/dsl credit from a `;` inside
+// the literal. Newlines are preserved in each channel (so line-anchored code detectors still work),
+// except inside a literal, where the interior — newlines included — is masked out of the code channel.
+function scan(text: string): { code: string; comment: string } {
   let code = "";
+  let comment = "";
   let q: string | null = null;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let inComment = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (q) {
       if (ch === "\\") i++; // escaped char: stays masked, don't let \" close the literal
       else if (ch === q) {
         code += ch; // closing delimiter kept
         q = null;
       }
-      // interior masked: contributes nothing to the code channel
+      // interior (newlines included) masked
+      continue;
+    }
+    if (ch === "\n") {
+      inComment = false;
+      code += "\n";
+      comment += "\n";
+    } else if (inComment) {
+      comment += ch;
     } else if (ch === '"' || ch === "'") {
       q = ch;
       code += ch;
     } else if (ch === ";") {
-      return { code, comment: line.slice(i + 1) };
+      inComment = true;
     } else {
       code += ch;
     }
   }
-  return { code, comment: "" };
+  return { code, comment };
 }
-const codeOf = (t: string) => t.split(/\r?\n/).map(l => split(l).code).join("\n");
-const commentsOf = (t: string) => t.split(/\r?\n/).map(l => split(l).comment).join("\n");
+const codeOf = (t: string) => scan(t).code;
+const commentsOf = (t: string) => scan(t).comment;
 
 // rule LHS names (so a reference to one is a type2.typename "appears"); strip generics on the LHS.
 const ruleNames = (code: string): string[] =>
@@ -78,9 +93,11 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "type2.map", hit: c => c.includes("{") },
   { id: "type2.tag", hit: c => /#6(\.\d+)?\s*\(/.test(c) },
   // a parenthesized TYPE: parens with no member key (`:`) and no entry list (`,`) — those are group
-  // parens. The digit lookbehind excludes tag parens `#6.n(…)`. A ctl arg like `.size (0..32)` IS a
-  // ParenthesizedType in the cddl-crate AST, so crediting it here is correct, not an over-match.
-  { id: "type2.parenthesized", hit: c => /(?<!\d)\((?![^)]*[:,])[^)]*\)/.test(c) },
+  // parens. The digit lookbehind excludes tag parens `#6.n(…)`; the `[`/`{` lookbehind excludes a
+  // keyless inline GROUP directly inside a container (`[(uint)]`, `[(a // b)]`), which the cddl-crate
+  // AST classifies as grpent.inline_group, not type2.parenthesized. A ctl arg like `.size (0..32)` IS
+  // a ParenthesizedType, so crediting it (preceded by a space) is correct, not an over-match.
+  { id: "type2.parenthesized", hit: c => /(?<![\d\[{])\((?![^)]*[:,])[^)]*\)/.test(c) },
   { id: "type.choice", hit: c => /(?<!\/)\/(?![\/=])/.test(c) },          // single `/`, not `//` or the `/=` extend op
   // all-fixed-value choice (c-style enum): `= v / v [/ v]…` where every alternative is a literal value
   { id: "type.enum", hit: c => /=\s*(-?\d+|"[^"]*")(\s*\/\s*(-?\d+|"[^"]*"))+/.test(c) },
@@ -273,6 +290,13 @@ function selfCheck() {
   if (featuresIn("x = 1e+9").rfc.has("occur.one_or_more")) throw new Error("selfCheck: exponent `+` false-credited occur.one_or_more");
   if (featuresIn("x = uint ; unlike @newtype, this is plain").dsl.has("dsl.newtype")) throw new Error("selfCheck: prose comment mention credited a dsl directive");
   if (featuresIn("x = uint ; ask user@example about it").dsl.size) throw new Error("selfCheck: mid-prose @word invented a dsl id");
+  // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
+  // (the comma form is covered above at line ~265; this is the keyless single-type form).
+  if (featuresIn("g = [(uint)]").rfc.has("type2.parenthesized")) throw new Error("selfCheck: keyless inline group `[(uint)]` false-credited type2.parenthesized");
+  if (!featuresIn("g = [(uint)]").rfc.has("grpent.inline_group")) throw new Error("selfCheck: keyless inline group `[(uint)]` not detected as grpent.inline_group");
+  // a `;` inside a MULTI-LINE `'…'` byte literal must not fabricate a comment/dsl directive (quote
+  // state persists across newlines now, not reset per line).
+  if (featuresIn("x = 'ab\n;@newtype cd'").dsl.has("dsl.newtype")) throw new Error("selfCheck: `;@newtype` inside a multi-line bytes literal fabricated a comment directive");
 }
 
 // Role-aware self-check (item 6): the headline case — in `text / null`, `null` is covered as a
