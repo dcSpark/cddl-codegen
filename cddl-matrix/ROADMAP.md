@@ -53,6 +53,11 @@ All tooling is **Bun/TypeScript, run manually** from `cddl-matrix/`; `lib.ts` ho
 the stable-JSON serializer. Oracle paths are env-overridable (`RUST_CDDL`, `RUBY_CDDL`; `CODEGEN_DIR`
 derives from the repo root).
 
+**One entry point.** `bun run check.ts full` (from the repo root) runs every gate below in tier order
+— the CI-wired drift checks plus the manual `verify.ts` / `corpus_detect.ts` probes — with oracle
+preflight and a PASS/FAIL summary; it is the "run all to confirm consistency" path. The per-script
+commands below stay the reference for running one gate in isolation.
+
 **Full verification suite (run all to confirm consistency).** The fast, pure-`matrix.json` drift checks
 are **wired into CI** (`.github/workflows/build.yml` `matrix-drift` job runs `build_matrix.ts --check`,
 `project_robustness.ts --check`, `project_wasm_matrix.ts --check`, and `project_corpus.ts`); the

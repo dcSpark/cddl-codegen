@@ -234,12 +234,13 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    differential (item 3): synthetic breadth vs real-world depth.
    - **Existing `fuzz/` rot residuals (the harness is manual-only under the CI freeze).** The seed
      corpus now harvests all three golden-hex suites (default + preserve + canonical — done in
-     `generate.sh`), but two gaps remain: the 22-type probe list in `fuzz_targets/from_cbor_bytes.rs`
-     is hand-synced against the generated crate's `impl Deserialize` set with no drift guard (a new
-     `input.cddl` rule is silently unfuzzed) — derive or assert it from that set in `generate.sh`; and
-     the fuzz crate has no compile-rot check despite a ~5s stable-toolchain `cargo check` (a probe
-     rename or scrape-regex break silently rots the repo's sole OOM/stack-overflow oracle) — add it as
-     a documented manual/local step, not a workflow job.
+     `generate.sh`), and the fuzz crate's compile-rot is guarded by `check.ts`'s `full` tier
+     (`fuzz_compile_rot` gate: run `fuzz/generate.sh` iff `fuzz/generated` is absent or
+     `--refresh-fuzz`, then `cargo check` the fuzz crate) — a probe rename or scrape-regex break that
+     rots the repo's sole OOM/stack-overflow oracle now fails a local `full` run. One gap remains: the
+     22-type probe list in `fuzz_targets/from_cbor_bytes.rs` is hand-synced against the generated
+     crate's `impl Deserialize` set with no drift guard (a new `input.cddl` rule is silently unfuzzed)
+     — derive or assert it from that set in `generate.sh`.
    - **Recursive-spec stack-overflow fuzzing (now reachable).** `fuzz/generate.sh` fuzzes only the
      non-recursive preserve spec, so its stack-overflow oracle is structurally blind to unbounded
      recursion. Now that a terminable recursive corpus fixture exists (`tests/corpus/recursive.cddl`)
