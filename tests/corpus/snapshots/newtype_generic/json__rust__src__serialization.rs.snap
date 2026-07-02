@@ -33,8 +33,15 @@ impl Deserialize for WrappedArr {
             cbor_event::Len::Indefinite => true,
         } {
             if raw.cbor_type()? == cbor_event::Type::Special {
-                assert_eq!(raw.special()?, cbor_event::Special::Break);
-                break;
+                match len {
+                    cbor_event::Len::Len(_) => {
+                        return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                    }
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => break,
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
             }
             inner_arr.push(raw.unsigned_integer()? as u64);
         }
@@ -65,8 +72,15 @@ impl Deserialize for WrappedMap {
             cbor_event::Len::Indefinite => true,
         } {
             if raw.cbor_type()? == cbor_event::Type::Special {
-                assert_eq!(raw.special()?, cbor_event::Special::Break);
-                break;
+                match inner_len {
+                    cbor_event::Len::Len(_) => {
+                        return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                    }
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => break,
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
             }
             let inner_key = raw.unsigned_integer()? as u64;
             let inner_value = raw.text()? as String;

@@ -698,8 +698,15 @@ impl Deserialize for Bounds {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     a_arr.push(raw.unsigned_integer()? as u64);
                 }
@@ -722,8 +729,15 @@ impl Deserialize for Bounds {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match b_len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     let b_key = raw.unsigned_integer()? as u64;
                     let b_value = raw.unsigned_integer()? as u64;
@@ -2528,8 +2542,15 @@ impl Deserialize for InlineWrapper {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match index_0_len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     let index_0_key = raw.text()? as String;
                     let index_0_value = raw.text()? as String;
@@ -3242,8 +3263,15 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                         cbor_event::Len::Indefinite => true,
                     } {
                         if raw.cbor_type()? == cbor_event::Type::Special {
-                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                            break;
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                                }
+                                cbor_event::Len::Indefinite => match raw.special()? {
+                                    cbor_event::Special::Break => break,
+                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                                },
+                            }
                         }
                         arr_u64_arr.push(raw.unsigned_integer()? as u64);
                     }
@@ -3258,8 +3286,15 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                         cbor_event::Len::Indefinite => true,
                     } {
                         if raw.cbor_type()? == cbor_event::Type::Special {
-                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                            break;
+                            match map_text_to_u64_len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                                }
+                                cbor_event::Len::Indefinite => match raw.special()? {
+                                    cbor_event::Special::Break => break,
+                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                                },
+                            }
                         }
                         let map_text_to_u64_key = raw.text()? as String;
                         let map_text_to_u64_value = raw.unsigned_integer()? as u64;
@@ -3920,8 +3955,15 @@ impl Deserialize for PlainArrays {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     multi_read_len.read_elems(2)?;
                     multi_arr.push(Plain::deserialize_as_embedded_group(
@@ -4269,8 +4311,23 @@ impl Deserialize for TableArrMembers {
                                         cbor_event::Len::Indefinite => true,
                                     } {
                                         if raw.cbor_type()? == cbor_event::Type::Special {
-                                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                            break;
+                                            match len {
+                                                cbor_event::Len::Len(_) => {
+                                                    return Err(
+                                                        DeserializeFailure::BreakInDefiniteLen
+                                                            .into(),
+                                                    )
+                                                }
+                                                cbor_event::Len::Indefinite => {
+                                                    match raw.special()? {
+                                                        cbor_event::Special::Break => break,
+                                                        _ => return Err(
+                                                            DeserializeFailure::EndingBreakMissing
+                                                                .into(),
+                                                        ),
+                                                    }
+                                                }
+                                            }
                                         }
                                         arr_arr.push(raw.unsigned_integer()? as u64);
                                     }
@@ -4295,8 +4352,23 @@ impl Deserialize for TableArrMembers {
                                         cbor_event::Len::Indefinite => true,
                                     } {
                                         if raw.cbor_type()? == cbor_event::Type::Special {
-                                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                            break;
+                                            match tab_len {
+                                                cbor_event::Len::Len(_) => {
+                                                    return Err(
+                                                        DeserializeFailure::BreakInDefiniteLen
+                                                            .into(),
+                                                    )
+                                                }
+                                                cbor_event::Len::Indefinite => {
+                                                    match raw.special()? {
+                                                        cbor_event::Special::Break => break,
+                                                        _ => return Err(
+                                                            DeserializeFailure::EndingBreakMissing
+                                                                .into(),
+                                                        ),
+                                                    }
+                                                }
+                                            }
                                         }
                                         let tab_key = raw.text()? as String;
                                         let tab_value = raw.text()? as String;
@@ -4328,8 +4400,23 @@ impl Deserialize for TableArrMembers {
                                         cbor_event::Len::Indefinite => true,
                                     } {
                                         if raw.cbor_type()? == cbor_event::Type::Special {
-                                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                            break;
+                                            match len {
+                                                cbor_event::Len::Len(_) => {
+                                                    return Err(
+                                                        DeserializeFailure::BreakInDefiniteLen
+                                                            .into(),
+                                                    )
+                                                }
+                                                cbor_event::Len::Indefinite => {
+                                                    match raw.special()? {
+                                                        cbor_event::Special::Break => break,
+                                                        _ => return Err(
+                                                            DeserializeFailure::EndingBreakMissing
+                                                                .into(),
+                                                        ),
+                                                    }
+                                                }
+                                            }
                                         }
                                         arr2_arr.push(Foo::deserialize(raw)?);
                                     }
@@ -4424,8 +4511,15 @@ impl Deserialize for TableArrayWrapper {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match embedded_table_len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     let embedded_table_key = raw.unsigned_integer()? as u64;
                     let embedded_table_value = raw.text()? as String;
@@ -4499,8 +4593,23 @@ impl Deserialize for TableMapWrapper {
                                         cbor_event::Len::Indefinite => true,
                                     } {
                                         if raw.cbor_type()? == cbor_event::Type::Special {
-                                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                            break;
+                                            match key_721_len {
+                                                cbor_event::Len::Len(_) => {
+                                                    return Err(
+                                                        DeserializeFailure::BreakInDefiniteLen
+                                                            .into(),
+                                                    )
+                                                }
+                                                cbor_event::Len::Indefinite => {
+                                                    match raw.special()? {
+                                                        cbor_event::Special::Break => break,
+                                                        _ => return Err(
+                                                            DeserializeFailure::EndingBreakMissing
+                                                                .into(),
+                                                        ),
+                                                    }
+                                                }
+                                            }
                                         }
                                         let key_721_key = raw.unsigned_integer()? as u64;
                                         let key_721_value = raw.text()? as String;
@@ -4586,8 +4695,15 @@ impl Deserialize for TextArrayWrapper {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if raw.cbor_type()? == cbor_event::Type::Special {
-                        assert_eq!(raw.special()?, cbor_event::Special::Break);
-                        break;
+                        match embedded_text_len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        }
                     }
                     let embedded_text_key = raw.text()? as String;
                     let embedded_text_value = raw.text()? as String;
@@ -4660,8 +4776,23 @@ impl Deserialize for TextMapWrapper {
                                         cbor_event::Len::Indefinite => true,
                                     } {
                                         if raw.cbor_type()? == cbor_event::Type::Special {
-                                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                            break;
+                                            match key_721_len {
+                                                cbor_event::Len::Len(_) => {
+                                                    return Err(
+                                                        DeserializeFailure::BreakInDefiniteLen
+                                                            .into(),
+                                                    )
+                                                }
+                                                cbor_event::Len::Indefinite => {
+                                                    match raw.special()? {
+                                                        cbor_event::Special::Break => break,
+                                                        _ => return Err(
+                                                            DeserializeFailure::EndingBreakMissing
+                                                                .into(),
+                                                        ),
+                                                    }
+                                                }
+                                            }
                                         }
                                         let key_721_key = raw.text()? as String;
                                         let key_721_value = raw.text()? as String;
@@ -4933,8 +5064,19 @@ impl Deserialize for TypeChoice {
                             cbor_event::Len::Indefinite => true,
                         } {
                             if raw.cbor_type()? == cbor_event::Type::Special {
-                                assert_eq!(raw.special()?, cbor_event::Special::Break);
-                                break;
+                                match len {
+                                    cbor_event::Len::Len(_) => {
+                                        return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                                    }
+                                    cbor_event::Len::Indefinite => match raw.special()? {
+                                        cbor_event::Special::Break => break,
+                                        _ => {
+                                            return Err(
+                                                DeserializeFailure::EndingBreakMissing.into()
+                                            )
+                                        }
+                                    },
+                                }
                             }
                             arr_u64_arr.push(raw.unsigned_integer()? as u64);
                         }
@@ -5035,8 +5177,15 @@ impl Deserialize for WrapperList {
             cbor_event::Len::Indefinite => true,
         } {
             if raw.cbor_type()? == cbor_event::Type::Special {
-                assert_eq!(raw.special()?, cbor_event::Special::Break);
-                break;
+                match len {
+                    cbor_event::Len::Len(_) => {
+                        return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                    }
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => break,
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
             }
             inner_arr.push(raw.unsigned_integer()? as u64);
         }
@@ -5067,8 +5216,15 @@ impl Deserialize for WrapperTable {
             cbor_event::Len::Indefinite => true,
         } {
             if raw.cbor_type()? == cbor_event::Type::Special {
-                assert_eq!(raw.special()?, cbor_event::Special::Break);
-                break;
+                match inner_len {
+                    cbor_event::Len::Len(_) => {
+                        return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                    }
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => break,
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
             }
             let inner_key = raw.unsigned_integer()? as u64;
             let inner_value = raw.unsigned_integer()? as u64;
