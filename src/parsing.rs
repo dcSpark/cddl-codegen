@@ -290,7 +290,9 @@ fn parse_control_operator(
                 Some(if is_inclusive {
                     range_end
                 } else {
-                    range_end + 1
+                    // `a...b` is the exclusive range: it EXCLUDES b, so the max valid value
+                    // is b-1 (RFC 8610 §3.2). The inclusive `a..b` path keeps range_end as-is.
+                    range_end - 1
                 }),
             ))
         }

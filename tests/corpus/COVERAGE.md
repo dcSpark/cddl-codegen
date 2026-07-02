@@ -157,7 +157,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `rangeop.exclusive` | ⚠️ | Exclusive range (a...b) | the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`).  [`range_end + 1`] |
+| `rangeop.exclusive` | ✅ | Exclusive range (a...b) | `exclusive_range.cddl` |
 | `rangeop.inclusive` | ✅ | Inclusive range (a..b) | `sized_int.cddl` |
 
 ### `rule` (2)
@@ -296,13 +296,12 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 9. Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix.
 10. Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
 11. Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work.
-12. Bug — the exclusive range `a...b` mis-computes its upper bound: it should EXCLUDE `b` (max valid = b-1), but cddl-codegen emits `max = b+1`, so `[v: 0...10]` accepts 10 and 11 (exclusive_range.cddl snapshot: `max: Some(11)`). `rangeop.exclusive` is marked ⚠️ for this. Candidate cddl-codegen fix: `range_end + 1` -> `range_end - 1` in parsing.rs. (Surfaced by the matrix, not hidden by editing the example.)
-13. Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix.
-14. Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.
+12. Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix.
+13. Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.
 
 ## Summary
 
-- Features: **92** — ✅ 53 covered · ➕ 7 supported-untested · ⚠️ 6 partial · ➖ 26 not supported
+- Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 41
 

@@ -28,11 +28,11 @@ pub struct ExclusiveRange {
 
 impl ExclusiveRange {
     pub fn new(v: u64) -> Result<Self, DeserializeError> {
-        if v > 11 {
+        if v > 9 {
             return Err(DeserializeFailure::RangeCheck {
                 found: v as isize,
                 min: None,
-                max: Some(11),
+                max: Some(9),
             }
             .into());
         }

@@ -167,8 +167,9 @@ Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and
 The round-trip harness mints its values from the **same IR** as the code under test, so an IR-level
 miscompile — a bound or member computed wrong at *parse* time — mints a spec-violating value and then
 asserts it round-trips green (encoder and decoder agree with each other, both from the same bad IR).
-Live example: `tests/corpus/exclusive_range.cddl` (`[v: 0...10]`) mis-computes the exclusive upper
-bound, so the minter mints `v = 11` (spec max valid = 9) and the round-trip passes.
+Illustrative shape of the class (now fixed): `tests/corpus/exclusive_range.cddl` (`[v: 0...10]`) once
+mis-computed the exclusive upper bound, so the minter minted `v = 11` (spec max valid = 9) and the
+round-trip passed anyway — an IR-level bound bug invisible to the round-trip harness.
 
 `--emit-tests-conformance` closes that residual. When on, each emitted round-trip case gets one extra
 line right after its bytes are computed: `cddl_conformance::validate(&bytes, "<rule>")`, validating
@@ -200,8 +201,12 @@ For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-con
 - **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
   `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed
   for the right reason). An expected-fail fixture that *passes* turns the gate RED ("IR bug apparently
-  fixed or oracle lost teeth — investigate, then remove from `EXPECTED_FAIL`"). Currently just
-  `exclusive_range` (verified: the validator rejects the minted `11` as out of range `0 <= value < 10`).
+  fixed or oracle lost teeth — investigate, then remove from `EXPECTED_FAIL`"). **Currently empty** —
+  no corpus fixture mints a spec-violating value at HEAD. The machinery stays armed: the next IR-level
+  bug's fixture will trip this list. Its last resident, kept here as the illustrative case, was
+  `exclusive_range` (`[v: 0...10]`): the validator rejected the minted `11` as out of range
+  `0 <= value < 10`, and it was removed once `parsing.rs` was corrected to emit `max = b-1` and the
+  minted value became in-spec.
   The roadmap's two other named IR bugs are **not** on the list, empirically: `occurrence`'s
   `[+ uint]` / `[2*5 uint]` are transparent top-level array aliases the minter emits **no round-trip
   test** for (a minter-coverage gap — the validator *would* catch an out-of-count array, but nothing

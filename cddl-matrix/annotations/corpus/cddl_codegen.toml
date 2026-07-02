@@ -357,13 +357,6 @@ note = "text literal member (`b: \"marker\"`)"
 # evidence rule, made mechanical). Control-operator nuance is deferred to the control-op-support step
 # (no per-op support data yet to cross-check `status` against).
 
-# ---- ⚠️ partial — parsed but the semantics aren't honored ----
-[[note]]
-id = "rangeop.exclusive"
-status = "partial"
-reason = "the exclusive upper bound is mis-computed: `a...b` excludes `b` (max valid = b-1), but cddl-codegen emits `max = b+1` — `[v: 0...10]` generates `max: Some(11)`, accepting 10 and 11 which the spec excludes (see exclusive_range.cddl snapshot). It parses + compiles; only the bound is wrong (candidate fix: `range_end + 1` -> `range_end - 1`)."
-code_anchor = "range_end + 1"
-
 [[note]]
 id = "memberkey.cut"
 status = "unsupported"
@@ -581,9 +574,6 @@ text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = nu
 
 [[finding]]
 text = "Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work."
-
-[[finding]]
-text = "Bug — the exclusive range `a...b` mis-computes its upper bound: it should EXCLUDE `b` (max valid = b-1), but cddl-codegen emits `max = b+1`, so `[v: 0...10]` accepts 10 and 11 (exclusive_range.cddl snapshot: `max: Some(11)`). `rangeop.exclusive` is marked ⚠️ for this. Candidate cddl-codegen fix: `range_end + 1` -> `range_end - 1` in parsing.rs. (Surfaced by the matrix, not hidden by editing the example.)"
 
 [[finding]]
 text = "Gap — occurrence-count constraints on homogeneous arrays aren't enforced: `[+ uint]` (>=1) and `[2*5 uint]` (2..5) both emit a plain `Vec<u64>` with NO length check, so any count (incl. empty) is accepted. Bare `*` (zero-or-more) is faithfully a `Vec` — which is why it stays ✅ — but `+`/`n*m` silently drop a real constraint (analogous to the implicit-cut non-enforcement above). Candidate cddl-codegen fix."

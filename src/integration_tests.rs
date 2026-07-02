@@ -918,15 +918,24 @@ fn wasm_enum_nullable_variant_three_state_fidelity() {
 // Remove #[ignore] and write the real behavioral assertion when the generator is fixed (or when
 // the round-trip harness, TESTING_ROADMAP item 1, lands and covers it).
 
-/// `a...b` must EXCLUDE b (max valid = b-1) but the generator emits `max = b+1`:
-/// `[v: 0...10]` generates `max: Some(11)`, accepting both 10 and 11 (two invalid values).
+/// `a...b` must EXCLUDE b (max valid = b-1). `[v: 0...10]` must emit `max: Some(9)` — NOT the old
+/// `max: Some(11)` (which accepted the out-of-spec 10 and 11). Asserts on the COMMITTED snapshot so a
+/// regression can't slip back in via an unreviewed re-bless, mirroring `corpus_inline_group_members_kept`.
+/// The behavioral half (9 round-trips, 10/11 rejected) is owned by the `--emit-tests` reject cases and
+/// the `ir_conformance_corpus` oracle.
 #[test]
-#[ignore = "exclusive range upper bound mis-computed: a...b emits max=b+1 instead of b-1 (accepts two out-of-range values). Pinned by tests/corpus/snapshots/exclusive_range; ledgered in cddl-matrix/ROADMAP.md."]
 fn corpus_exclusive_range_upper_bound() {
-    unimplemented!(
-        "0...10 generates `if v > 11` / `max: Some(11)`; the correct exclusive max is 9. Fix the \
-         bound in parsing.rs (range_end + 1 -> range_end - 1), re-bless the exclusive_range corpus \
-         snapshots, then assert here that 9 round-trips and 10/11 are rejected, and remove #[ignore]."
+    let lib = std::fs::read_to_string(
+        "tests/corpus/snapshots/exclusive_range/default__rust__src__lib.rs.snap",
+    )
+    .expect("exclusive_range lib snapshot missing");
+    assert!(
+        lib.contains("max: Some(9)") && lib.contains("if v > 9"),
+        "exclusive_range no longer emits the exclusive upper bound 9 — the a...b (max=b-1) bound is wrong"
+    );
+    assert!(
+        !lib.contains("Some(11)") && !lib.contains("> 11"),
+        "exclusive_range emits the old inclusive-off-by-one bound 11 — a...b must EXCLUDE b (max=b-1)"
     );
 }
 
@@ -1186,9 +1195,15 @@ fn ir_conformance_corpus() {
 
     // Fixtures whose known IR bug makes the minted value spec-violating: the oracle MUST reject it.
     // (Empirically verified — see this gate's docs and tests/README.md § "IR-bug conformance oracle".)
-    //   - exclusive_range: `[v: 0...10]` mis-computes the exclusive upper bound as max=b+1, so the
-    //     minter mints v=11 (spec max valid = 9); the validator rejects 11.
-    const EXPECTED_FAIL: &[&str] = &["exclusive_range"];
+    //
+    // Empty at HEAD — no corpus fixture currently mints a spec-violating value. The machinery stays
+    // fully armed: the moment a new IR-level bug lands (a bound or member computed wrong at parse
+    // time), its fixture's minted bytes will fail the oracle and this gate turns RED, at which point
+    // the fixture is added here. The last resident was `exclusive_range` (`[v: 0...10]` computed the
+    // exclusive upper bound as max=b+1 instead of b-1, minting v=11 when the spec max valid is 9);
+    // it was removed when parsing.rs was corrected to `range_end - 1` and the oracle stopped
+    // rejecting its now-in-spec minted value.
+    const EXPECTED_FAIL: &[&str] = &[];
 
     // Fixtures excluded from the conformance sweep (generated WITHOUT --emit-tests-conformance) —
     // each with a concrete reason the oracle can't soundly judge it. Kept honest: a fixture only

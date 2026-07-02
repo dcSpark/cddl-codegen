@@ -33,11 +33,11 @@ impl Deserialize for ExclusiveRange {
                 .unsigned_integer()
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|x| {
-                    if x > 11 {
+                    if x > 9 {
                         Err(DeserializeFailure::RangeCheck {
                             found: x as isize,
                             min: None,
-                            max: Some(11),
+                            max: Some(9),
                         }
                         .into())
                     } else {
