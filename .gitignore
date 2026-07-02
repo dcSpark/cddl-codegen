@@ -23,6 +23,6 @@ tests/*/export*/
 # Scratch area for draft/investigation artifacts (not committed)
 /draft/
 
-# cddl-matrix: matrix.json is the committed golden (guarded by build_matrix.py --check);
+# cddl-matrix: matrix.json is the committed golden (guarded by `bun run build_matrix.ts --check`);
 # verify_report.json is a transient per-run report, not a source of truth.
 cddl-matrix/verify_report.json

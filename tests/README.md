@@ -102,12 +102,16 @@ crate); that combination is rejected in `api::with_types` and pinned by
 ### Independent conformance oracle (`tests/deser_test_conformance.rs`)
 
 A round-trip only proves our encoder and decoder agree with *each other* — a symmetric bug passes.
-For a second oracle that shares neither code nor assumptions with ours, `deser_test_conformance.rs`
-validates our serialized bytes against the source `.cddl` using the `cddl` crate's validator
-(`validate_cbor_from_slice`). A **failure is a strong signal** (our bytes don't match the spec the
-generator was built from); a **pass is weak** — the validator has known gaps (it does not enforce
-`uint .size`, and mishandles `.size`-aliased element types inside arrays), so it is a *second* oracle,
-never the sole one. Because the validator validates against a spec's first type rule only, the helper
+For a second oracle whose **decode + constraint-evaluation** path is independent of ours,
+`deser_test_conformance.rs` validates our serialized bytes against the source `.cddl` using the `cddl`
+crate's validator (`validate_cbor_from_slice`, which decodes with ciborium and evaluates constraints
+itself). A **failure is a strong signal** (our bytes don't match the spec the generator was built
+from); a **pass is weak** — the validator has known gaps (it does not enforce `uint .size`, and
+mishandles `.size`-aliased element types inside arrays) AND it is *not fully decorrelated*: it parses
+the `.cddl` with the same dcSpark `cddl` fork at the same pinned rev as the generator's own front end
+(`CDDL_ORACLE_DEP`), so a fork-level misparse escapes it. It is therefore a *second* oracle, never the
+sole one; decorrelating the parser (anweiss rev / the ruby `cddl` gem in verify.ts / a ciborium
+structural differential) is a TESTING_ROADMAP item. Because the validator validates against a spec's first type rule only, the helper
 prepends a synthetic root aliasing the rule under test.
 
 It's wired into the `preserve-encodings` fixture (the richest hand-written round-trip surface, and the

@@ -1,9 +1,15 @@
 // Independent conformance oracle (TESTING_ROADMAP "cddl-crate conformance oracle"): validate our
-// serialized bytes against the SOURCE `.cddl` using the `cddl` crate's validator — an oracle that
-// shares neither code nor assumptions with our own encoder/decoder, unlike a round-trip (which only
-// proves our encoder and decoder agree with *each other*, so a symmetric bug passes). A FAILURE is a
-// strong signal: our bytes don't match the spec the generator was built from. A PASS is weak: the
-// validator has known gaps (e.g. it does not enforce `uint .size`), so it can't be the *only* oracle.
+// serialized bytes against the SOURCE `.cddl` using the `cddl` crate's validator. Its DECODE +
+// CONSTRAINT-EVALUATION path is independent of our encoder/decoder (it decodes with ciborium and
+// evaluates constraints itself), so it catches a symmetric encoder/decoder bug a round-trip cannot
+// (a round-trip only proves our encoder and decoder agree with *each other*). CAVEAT — it is NOT
+// fully decorrelated: the validator parses the `.cddl` with the SAME dcSpark `cddl` fork at the SAME
+// pinned rev as the generator's own front end (see `CDDL_ORACLE_DEP`), so a fork-level grammar/AST
+// misparse corrupts the generator IR and the oracle's spec interpretation identically and that class
+// passes silently. A FAILURE is a strong signal: our bytes don't match the spec. A PASS is weak: the
+// validator has known gaps (e.g. it does not enforce `uint .size`) AND shares the parser, so it can't
+// be the *only* oracle. (Decorrelation options — an anweiss rev, the ruby `cddl` gem already wired in
+// cddl-matrix/verify.ts, or a ciborium structural differential — are a TESTING_ROADMAP item.)
 //
 // `cddl::validate_cbor_from_slice` validates against a spec's first non-generic type rule only, so we
 // prepend a synthetic root aliasing the rule under test — letting us point the validator at any rule
