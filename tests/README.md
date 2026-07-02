@@ -67,7 +67,15 @@ Each test generates a crate via the CLI (`cargo run`), appends hand-written roun
 json-schema build where applicable. Each config (`preserve`, `canonical`, `json`, multifile,
 raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't redundant.
 A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
-*wasm* crate and `cargo test`ed there (`tests/core/tests_wasm.rs` keeps the hook itself exercised).
+*wasm* crate and `cargo test`ed there (host target — the wasm-bindgen wrapper types are plain Rust,
+so no node/wasm-pack is needed). `tests/core/tests_wasm.rs` (default profile) and
+`tests/canonical/tests_wasm.rs` (preserve-encodings/canonical, whose map wrappers wrap
+`OrderedHashMap`) execute a representative sample of the wasm-ABI shape axis (the
+`project_wasm_matrix.ts` `SHAPES` list): construct through the wasm wrapper API, round-trip
+`to_cbor_bytes`/`from_cbor_bytes`, read every accessor back. That's the *behavioral* half the
+`wasm_matrix_compiles` gate below can't see — a semantically wrong accessor or boundary conversion
+compiles green. The rust-side value round-trips are `--emit-tests`' job; these files own the
+boundary.
 
 The `--wasm-list-macro`/`--wasm-conversions-macro` output references a *user-supplied* macro, so it
 can't compile standalone and its snapshot (`snapshot_tests::wasm_list_macro`) can't judge invocation
