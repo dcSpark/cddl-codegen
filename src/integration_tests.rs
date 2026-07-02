@@ -303,15 +303,22 @@ fn run_test(
     }
 }
 
-/// Generate + `cargo check` every `tests/corpus/*.cddl` crate under each emission profile. The
-/// snapshot suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a
-/// construct that emits non-compiling Rust would be snapshotted as "correct"; this is the compile
-/// gate for it. Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted
-/// under, since non-compiling output can be flag-specific (a bare construct compiled but its
-/// preserve/json variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust`
-/// and (when emitted) `wasm` crates — the wasm bindings are a whole output mode nothing else
-/// systematically compile-gates. One shared `CARGO_TARGET_DIR` so the deps build once. `int` needs
-/// no extern defs here — the generator emits its own `Int` type.
+/// Generate + gate every `tests/corpus/*.cddl` crate under each emission profile. The snapshot
+/// suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a construct that
+/// emits non-compiling Rust would be snapshotted as "correct"; this is the compile gate for it.
+/// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
+/// non-compiling output can be flag-specific (a bare construct compiled but its preserve/json
+/// variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust` and (when
+/// emitted) `wasm` crates — the wasm bindings are a whole output mode nothing else systematically
+/// compile-gates. One shared `CARGO_TARGET_DIR` so the deps build once. `int` needs no extern defs
+/// here — the generator emits its own `Int` type.
+///
+/// Under the DEFAULT profile this is also the corpus EXECUTION gate (TESTING_ROADMAP item 1 / c6):
+/// generation adds `--emit-tests` and the rust crate runs `cargo test`, executing the emitted
+/// round-trip + reject tests — a corpus construct must round-trip byte-identically, not just
+/// compile. One profile keeps the wall-clock bounded (preserve/json stay compile-only for now),
+/// and the emitted-module count floor keeps the execution half from going vacuous if emission
+/// silently shrinks.
 #[test]
 fn feature_corpus_compiles() {
     use std::str::FromStr;
@@ -339,6 +346,7 @@ fn feature_corpus_compiles() {
     const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 
     let mut failures = vec![];
+    let mut emitted_test_modules = 0usize;
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         if COMPILE_SKIP.contains(&stem) {
@@ -347,12 +355,18 @@ fn feature_corpus_compiles() {
         for (profile, extra) in profiles {
             let label = format!("{stem}/{profile}");
             let out = root.join(format!("{stem}__{profile}"));
+            let emit_tests = *profile == "default";
             // generate rust + wasm so both crates are compile-gated
             let gen_out = std::process::Command::new("cargo")
                 .args(["run", "--"])
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
                 .arg("--wasm=true")
+                .args(if emit_tests {
+                    &["--emit-tests=true"][..]
+                } else {
+                    &[][..]
+                })
                 .args(*extra)
                 .output()
                 .unwrap();
@@ -389,21 +403,43 @@ fn feature_corpus_compiles() {
                     ));
                     continue;
                 }
+                // the default-profile rust crate EXECUTES its emitted tests (strictly stronger
+                // than check: `cargo test` compiles the lib and runs the round-trip/reject module)
+                let cargo_cmd = if emit_tests && crate_sub == "rust" {
+                    "test"
+                } else {
+                    "check"
+                };
                 let check = std::process::Command::new("cargo")
-                    .arg("check")
+                    .arg(cargo_cmd)
                     .current_dir(&crate_dir)
                     .env("CARGO_TARGET_DIR", &target_dir)
                     .output()
                     .unwrap();
                 if !check.status.success() {
                     failures.push(format!(
-                        "{label} ({crate_sub}): cargo check failed\n{}",
+                        "{label} ({crate_sub}): cargo {cargo_cmd} failed\n{}\n{}",
+                        String::from_utf8_lossy(&check.stdout),
                         String::from_utf8_lossy(&check.stderr)
                     ));
                 }
             }
+            if emit_tests
+                && std::fs::read_to_string(out.join("rust/src/lib.rs"))
+                    .unwrap_or_default()
+                    .contains("mod cddl_generated_tests")
+            {
+                emitted_test_modules += 1;
+            }
         }
     }
+    // execution-half vacuous-pass guard: most corpus fixtures mint at least one round-trip/reject
+    // test today (32 of 39 at landing; the rest are transparent aliases / pure c-enums). A big drop
+    // means the emitter's coverage silently shrank, not that the corpus got simpler.
+    assert!(
+        emitted_test_modules >= 25,
+        "only {emitted_test_modules} corpus fixtures emitted a generated-test module (expected >= 25) — emit_tests coverage shrank"
+    );
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         failures.is_empty(),
