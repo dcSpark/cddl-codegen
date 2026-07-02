@@ -39,7 +39,11 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
 
-## 2. Wire the gate into CI
+## 2. Running the verification suite
+
+**CI policy — feature-frozen.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or
+expanded runs (CI cost; see `AGENTS.md`). The **(CI)** markers below describe what is *already*
+wired; everything else runs manually and stays that way.
 
 All tooling is **Bun/TypeScript, run manually** from `cddl-matrix/`; `lib.ts` holds the shared loaders +
 the stable-JSON serializer. Oracle paths are env-overridable (`RUST_CDDL`, `RUBY_CDDL`; `CODEGEN_DIR`
@@ -47,8 +51,8 @@ derives from the repo root).
 
 **Full verification suite (run all to confirm consistency).** The fast, pure-`matrix.json` drift checks
 are **wired into CI** (`.github/workflows/build.yml` `matrix-drift` job runs `build_matrix.ts --check`,
-`project_robustness.ts --check`, `project_wasm_matrix.ts --check`, and `project_corpus.ts`); only the
-heavy `verify.ts` oracle probe is still run manually (see Remaining).
+`project_robustness.ts --check`, `project_wasm_matrix.ts --check`, and `project_corpus.ts`); the
+heavy `verify.ts` oracle probe is run manually and stays manual (CI is frozen).
 - `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay. **(CI)**
 - `bun run project_wasm_matrix.ts --check` — drift gate for the wasm-ABI matrix fixtures
   (`tests/matrix_wasm/*.cddl`); pure `SHAPES`/`ROLES` projection, no cargo/oracles. **(CI)**
@@ -70,19 +74,17 @@ heavy `verify.ts` oracle probe is still run manually (see Remaining).
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 
 Remaining:
-- **Wire `verify.ts` into CI** (the fast drift/snapshot gates already run — see above). `verify.ts` needs
-  the three oracle tools present; have the CI lane provide them or skip that probe gracefully when absent.
 - **Third robustness catalog: expect-reject.** 19 annotation rows are projected into no test at all
   (non-panic `unsupported` — the parse-rejected control ops, generates-but-doesn't-compile rows like
   `prelude.any` — plus `out_of_profile`): project them into a `tests/matrix_reject/` fixture dir mirrored
   by a third generation-outcome catalog (expect graceful error), so a parser change that silently makes
   one of them parse (the exact thing the cddl-fork bump did to 14 control ops) is caught by the existing
-  CI test job instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
+  test suite instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
   in-process pattern as the panic catalog.
 - **Typecheck enforcement.** The scripts are strict-typed but nothing runs `tsc`. Add a `tsconfig.json` +
-  `@types/bun` (dev-only) and a `tsc --noEmit` step beside the gate (needs an ambient `declare module
-  "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is worth it; the
-  runtime stays dependency-free.
+  `@types/bun` (dev-only) and run `tsc --noEmit` manually beside the gate scripts (needs an ambient
+  `declare module "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is
+  worth it; the runtime stays dependency-free.
 
 ## 3. F3 — directional / enforcement support (partial; full split deferred)
 
@@ -247,7 +249,7 @@ panic that forces the struct roles to use array-rep, so fixing that panic is a p
 semantically wrong same-type conversion. Upgrade the verdict compile → round-trip once the property
 harness lands (`tests/TESTING_ROADMAP.md` item 1).
 
-**Oracles (so `verify.ts` runs outside CI):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
+**Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
 `~/.cargo/bin/cddl`), and cddl-codegen builds from this repo. The compile-gate reuses
 `integration_tests::feature_corpus_compiles`' pattern (shared `CARGO_TARGET_DIR`, one-time dep warm-up).

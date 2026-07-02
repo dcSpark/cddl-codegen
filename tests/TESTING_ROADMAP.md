@@ -6,6 +6,11 @@ multi-agent review (`draft/testing-recommendations/RECOMMENDATIONS.md` — the e
 findings from building the current suite. See `tests/README.md` for how the current setup works and
 what's already covered; completed work is logged in `tests/CLEAR_WINS_PLAN.md`.
 
+**CI policy — feature-frozen.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or
+expanded runs (CI cost; see `AGENTS.md`). No item below may be wired into CI: new verification
+systems run manually/locally. The only CI changes accepted are fixes for breakage caused by
+refactoring.
+
 ## North star — automated feature coverage
 
 The direction all of this points toward: **an automatic flow that ensures every CDDL construct worth
@@ -135,9 +140,9 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 
 ### Tier 3 — validation & process (opportunistic)
 
-5. **`cargo-mutants`** scoped to the emit core (`--file 'src/generation*'`), nightly + `--in-diff`
-   on PRs. The defining technique for a codegen tool — proves the suite *catches* wrong-codegen
-   bugs, not just covers lines. Only bites once #1 gives assertions with teeth; needs
+5. **`cargo-mutants`** scoped to the emit core (`--file 'src/generation*'`), run manually/locally
+   (CI is feature-frozen). The defining technique for a codegen tool — proves the suite *catches*
+   wrong-codegen bugs, not just covers lines. Only bites once #1 gives assertions with teeth; needs
    `cargo-nextest` as the runner.
    **Score mutants against the behavioral layers only** (a nextest filter excluding
    `snapshot_tests`): nearly every emit-core mutant changes output text, so under the full suite it

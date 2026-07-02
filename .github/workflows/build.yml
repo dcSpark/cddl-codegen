@@ -1,3 +1,7 @@
+# FEATURE-FROZEN (CI cost policy — see AGENTS.md "Build & verify" and tests/README.md).
+# This workflow accepts NO new jobs, steps, gates, or expanded runs. The only changes accepted are
+# fixes to things that break due to refactoring (e.g. a renamed path breaking an existing step).
+# New verification systems run manually/locally instead of being wired in here.
 name: Linter and unit tests
 
 on:
