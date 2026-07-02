@@ -3,7 +3,7 @@
  * Robustness-catalog projection — matrix support verdict -> .cddl fixtures.
  *
  * Projects the matrix's execution-grounded cddl-codegen support verdict into the fixtures that
- * src/robustness_tests.rs drives through a generate-only `catch_unwind` pass:
+ * src/tests/robustness_tests.rs drives through a generate-only `catch_unwind` pass:
  *   - tests/matrix_supported/<id>.cddl  — every status="supported" feature/control-op   (expect-ok)
  *   - tests/matrix_panic/<id>.cddl      — every status="unsupported" feature/control-op whose evidence is
  *                                         a generation PANIC (`panic (exit 101)`)         (expect-PANIC)
@@ -109,7 +109,7 @@ if (CHECK) {
       .split("\n")
       .map(l => /^([\w.$-]+) +(ok|error \(graceful\)|PANIC)$/.exec(l))
       .filter((m): m is RegExpExecArray => m !== null);
-    // The label vocabulary is defined independently in src/robustness_tests.rs. If it drifts (a
+    // The label vocabulary is defined independently in src/tests/robustness_tests.rs. If it drifts (a
     // relabel + insta re-bless, both CI-green), this regex matches zero rows and the loop below
     // becomes vacuous — the cross-check would "pass" having compared nothing. Assert non-empty, and
     // assert every projected panic-class id is actually present (a missing row is otherwise invisible
