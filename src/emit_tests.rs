@@ -72,6 +72,8 @@ pub(crate) enum MapKey {
     Int(Primitive),
     /// text key: `__i.to_string()`
     Str,
+    /// byte-string key: `vec![__i as u8]` (one distinct byte per index)
+    Bytes,
     /// bool key (only for count <= 2): `__i == 1`
     Bool,
 }
@@ -160,6 +162,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             let k = match key {
                 MapKey::Int(p) => format!("__i as {p}"),
                 MapKey::Str => "__i.to_string()".to_owned(),
+                MapKey::Bytes => "vec![__i as u8]".to_owned(),
                 MapKey::Bool => "__i == 1".to_owned(),
             };
             format!(
@@ -1137,10 +1140,24 @@ fn materialize_at(
                     | Primitive::N64),
                 ) => MapKey::Int(*p),
                 ConceptualRustType::Primitive(Primitive::Str) => MapKey::Str,
+                // one distinct byte per index (`vec![__i as u8]`); measure <= 256 keeps the keys
+                // distinct (beyond that `__i as u8` wraps and collect() would dedupe). Minted
+                // measures are tiny (0/1), so the cap is never a real constraint here.
+                ConceptualRustType::Primitive(Primitive::Bytes) if measure <= 256 => MapKey::Bytes,
                 // bool has exactly 2 distinct keys, so only lengths <= 2 are mintable — beyond
                 // that the collect() would dedupe and the map would miss its target measure
                 ConceptualRustType::Primitive(Primitive::Bool) if measure <= 2 => MapKey::Bool,
-                _ => return None, // non-trivial keys aren't cheaply mintable
+                other => {
+                    // A key shape we can't synthesize distinct instances for (named struct / tag
+                    // key, or a bytes/bool key past its distinct-value cap). The enclosing collection
+                    // still mints EMPTY via the caller's unbounded fallback, but that generic notice
+                    // masks WHY — surface the specific key here so the gap isn't silently a wrong
+                    // reason.
+                    eprintln!(
+                        "cddl-codegen --emit-tests: map key {other:?} not cheaply mintable — the map's key wire path is unexercised"
+                    );
+                    return None;
+                }
             };
             let val = valid_value_at(types, v, depth)?;
             // distinct keys 0..measure; collect() infers the map type from the target position
