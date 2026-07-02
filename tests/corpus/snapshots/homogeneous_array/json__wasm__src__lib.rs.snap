@@ -15,6 +15,64 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct BoolHolder(cddl_lib::BoolHolder);
+
+#[wasm_bindgen]
+impl BoolHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoolHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<BoolHolder, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn b(&self) -> Bools {
+        self.0.b.clone().into()
+    }
+
+    pub fn new(b: &Bools) -> Self {
+        Self(cddl_lib::BoolHolder::new(b.clone().into()))
+    }
+}
+
+impl From<cddl_lib::BoolHolder> for BoolHolder {
+    fn from(native: cddl_lib::BoolHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoolHolder> for cddl_lib::BoolHolder {
+    fn from(wasm: BoolHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoolHolder> for BoolHolder {
+    fn as_ref(&self) -> &cddl_lib::BoolHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Bools(Vec<bool>);
 
 #[wasm_bindgen]
