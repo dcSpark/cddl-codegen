@@ -18,6 +18,11 @@
  * that floor rather than growing the regexes. Prelude and control-op ids are matched by NAME token
  * (auto-covers ~90 ids); structural constructs use a small hand table. Supported ids with no possible
  * text detector are declared in NO_DETECTOR (exported), not silently treated as absent.
+ *
+ * Known-approximate cases audited and accepted under the above (each would be fixed by the AST-floor
+ * upgrade, not by more regex): hyphenated rule names; ctl-name credit from dotted ids / range bounds;
+ * `type.enum`'s missing end anchor; hex-literal / inline-group / prelude-name-as-key over-credit; the
+ * role floor missing `genericarg.multiple`.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

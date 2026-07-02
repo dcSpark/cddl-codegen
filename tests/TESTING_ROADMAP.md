@@ -85,6 +85,9 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.
      Decorrelating the parser (an anweiss rev, the ruby `cddl` gem already wired into
      `cddl-matrix/verify.ts`, or a ciborium structural differential) would harden both oracles at once.
+     Same family, still unrecorded elsewhere: a DECODE-side reference-codec differential (our bytes →
+     ciborium/minicbor decode → compare structure — the conformance oracle only exercises ciborium via
+     the `cddl` crate's validator, and minicbor is used nowhere).
 
 2. **Compile the generated *wasm* crate in the systematic gates.** *(compile foundation built + CI-wired;
    the remaining frontiers are behavioural (round-trip) coverage and the red-cell backlog below.)* The wasm
@@ -222,6 +225,14 @@ Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call. 
 rest of the deferred menu (incl. medium next-tasks like a preserve-encodings golden known-answer set
 and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`.
 
+- **MSRV / OS matrix for GENERATED code.** Generated crates pin no MSRV and are only ever built on
+  the dev/CI platform; whether to declare + test a minimum rustc (and a second OS) for generated
+  output is a policy call. Do-or-decline; currently in no living doc, recorded here so it's a
+  decision rather than an oversight.
+- **`example/` specs + docs-vs-behavior conformance.** `example/` is consumed by zero tests, and
+  `comment_dsl.mdx` / `output_format.mdx` have no behavioral conformance check (comment_dsl has a
+  name-level forward lint in `cddl-matrix/verify.ts` only). Decide: wire `example/` into a
+  compile-gate and spot-check the documented output claims, or drop/trim `example/`.
 - **Snapshot-only corpus policy.** A ~5-line `feature_corpus_compiles` skip-list would unblock
   *snapshot* coverage of the extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes
   (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`) emit paths — they emit undefined user-supplied types so they
@@ -264,6 +275,9 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
 - `quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass (the corpus `cargo check` is simpler and broader).
+- An orphan-fixture-directory meta-test (assert every `tests/<dir>/` is referenced by some gate):
+  fixture dirs change rarely and a new gate's author touches the dir listing anyway; the failure
+  mode (a committed fixture nothing runs) is caught by review at that rate.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`

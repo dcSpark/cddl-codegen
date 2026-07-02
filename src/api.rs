@@ -231,3 +231,25 @@ pub fn generated_strings(
 pub fn ir_structs_debug(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
     with_types(cli, |types, _| format!("{:#?}", types.rust_structs()))
 }
+
+#[cfg(test)]
+mod tests {
+    /// A multifile input DIRECTORY routinely contains non-`.cddl` files (README, LICENSE,
+    /// dotfiles); discovery must SKIP them rather than feed them to the CDDL parser (which
+    /// previously panicked on the first such file). Regression guard for the fix in
+    /// `cddl_paths`' extension filter.
+    #[test]
+    fn directory_input_skips_non_cddl_files() {
+        let dir =
+            std::env::temp_dir().join(format!("cddl_codegen_ext_skip_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lib.cddl"), "foo = [x: uint]\n").unwrap();
+        std::fs::write(dir.join("README"), "not cddl at all {{{").unwrap();
+        std::fs::write(dir.join(".gitignore"), "*").unwrap();
+        let mut found = Vec::new();
+        let result = super::cddl_paths(&mut found, &dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        result.unwrap();
+        assert_eq!(found, vec![dir.join("lib.cddl")]);
+    }
+}

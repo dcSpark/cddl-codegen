@@ -208,6 +208,10 @@ from a degenerate example.**
   are in `draft/cbor-event-overallocation-fix.md`, and the ready-to-submit upstream PR text is in
   `draft/cbor-event-upstream-pr.md`. Surfaced by `fuzz/`; it has no cargo-test crash-replay because an
   OOM/stack-overflow kills the test process — the fuzz process boundary is the only oracle for this class.
+  Related, unowned axis: generated crates float on semver `cbor_event = "2.4.0"`
+  (`static/Cargo_rust.toml`), so nothing tests the version RANGE consumers actually resolve — the
+  upstream fix above will arrive as exactly such a version event; a `--minimal-versions`-style or
+  pinned-latest check of a generated crate would own it.
   Sibling panic in the same fuzz session — the collection-loop `assert_eq!(special, Break)` abort on
   `0x81 0xf6` — **was** codegen-owned and is fixed (graceful `Err`; regression in `tests/core`
   `structural_rejects`).

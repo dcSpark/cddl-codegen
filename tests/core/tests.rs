@@ -608,7 +608,20 @@ mod tests {
                                     }
                                     components.push(vec![BREAK]);
                                     let bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
-                                    let _ = ArrayOptFields::from_cbor_bytes(&bytes).unwrap();
+                                    // value anchors: decode-accepts alone proved nothing — pin every
+                                    // field to what the hand-built bytes above encode (x/y/z are the
+                                    // fixed float constants, not fields; c: nint -10 is stored as the
+                                    // magnitude m = |v + 1| = 9)
+                                    let decoded = ArrayOptFields::from_cbor_bytes(&bytes).unwrap();
+                                    assert_eq!(decoded.a, if a { Some(0) } else { None });
+                                    assert_eq!(decoded.b, if b { Some("hello, world".to_owned()) } else { None });
+                                    assert_eq!(decoded.c, 9);
+                                    assert_eq!(decoded.d, if d { Some("cddl-codegen".to_owned()) } else { None });
+                                    // no PartialEq on generated types in this profile: anchor e by bytes
+                                    assert_eq!(
+                                        decoded.e.as_ref().map(|v| v.to_cbor_bytes()),
+                                        e.as_ref().map(|v| v.to_cbor_bytes())
+                                    );
                                 }
                             }
                         }
