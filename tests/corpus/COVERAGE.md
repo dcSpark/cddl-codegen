@@ -193,7 +193,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.major7` | ➖ | Major-type 7 / simple sigil (#7, #7.n) | `#7` / `#7.n` simple/float sigils — unmatched, catch-all panic  [`Ignoring Type2`] |
 | `type2.map` | ✅ | Map | `map_struct.cddl` — canonical = pure struct map; table-style is table.cddl; MIXED struct+table ({a: uint, * k => v}) is unsupported (parsing.rs) |
 | `type2.parenthesized` | ✅ | Parenthesized type | `parenthesized.cddl` — canonical = the fixture isolating `(T)` at type position; nested_group.cddl (the previous cover) contains a parenthesized GROUP RULE, not the type2 production — the old detector conflated the two |
-| `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
+| `type2.tag` | ⚠️ | Tagged data item (#6.n) | tagged CONTENT round-trips correctly when the tag is embedded (a `#6.n(...)` struct member/array element writes+checks the tag) or opted into a wrapper via the `@newtype` comment DSL (`tagged_newtype = #6.42(text) ; @newtype` in tagged.cddl emits a real newtype whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag). But a top-level single-type tag rule of a primitive (`tagged = #6.42(text)`) emits a transparent `pub type Tagged = String`: the alias is stripped for serialization so its OWN standalone API (`to/from_cbor_bytes` = `String`'s) DROPS the tag from the wire — a silent conformance bug (tagged.cddl snapshot). It parses + compiles (matrix probe = supported). The default (auto-wrap vs keep opt-in) is a pending maintainer decision — see TESTING_ROADMAP "Pending decisions".  [`Stripping the alias inlines the type for serialization`] |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
 | `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
@@ -302,7 +302,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **92** — ✅ 52 covered · ➕ 7 supported-untested · ⚠️ 7 partial · ➖ 26 not supported
+- Features: **92** — ✅ 51 covered · ➕ 7 supported-untested · ⚠️ 8 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 41
 
