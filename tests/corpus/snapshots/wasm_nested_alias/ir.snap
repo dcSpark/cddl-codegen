@@ -62,6 +62,7 @@ expression: ir
                     basic_override: false,
                 },
             },
+            bounds: None,
         },
     },
     RustIdent(
@@ -90,6 +91,7 @@ expression: ir
                     basic_override: false,
                 },
             },
+            bounds: None,
         },
     },
     RustIdent(
@@ -360,6 +362,7 @@ expression: ir
                     basic_override: false,
                 },
             },
+            bounds: None,
         },
     },
     RustIdent(

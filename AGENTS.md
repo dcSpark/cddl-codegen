@@ -77,7 +77,7 @@ If no system exists that could have got it, a description of the missing system 
 
 - Use Sonnet 5 only if Claude Code internals themselves are recommending its use (sometimes happens for tool calls, etc.)
 - use Opus 4.8 for anything with a clear implementation plan
-- Use Fabel 5 for any implementation plan creation, review of implementation/plan, or for any problem you deem very hard
+- Use Fable 5 for any implementation plan creation, review of implementation/plan, or for any problem you deem very hard
 
 ## Markdown formatting
 

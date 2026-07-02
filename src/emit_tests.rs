@@ -811,7 +811,7 @@ fn mint_struct(
         // element wire path is still exercised there. Named-table standalone element coverage is a
         // known residual (see TESTING_ROADMAP).
         RustStructType::Table { .. } => Some(format!("{name}::new()")),
-        RustStructType::Array { element_type } => {
+        RustStructType::Array { element_type, .. } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
             Some(match valid_value_at(types, element_type, depth + 1) {

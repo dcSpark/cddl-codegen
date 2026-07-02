@@ -56,6 +56,67 @@ impl AsRef<Vec<u64>> for Bounded {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct OccurrenceHolder(cddl_lib::OccurrenceHolder);
+
+#[wasm_bindgen]
+impl OccurrenceHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OccurrenceHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn o(&self) -> OneOrMore {
+        self.0.o.clone().into()
+    }
+
+    pub fn b(&self) -> Bounded {
+        self.0.b.clone().into()
+    }
+
+    pub fn inline_bounded(&self) -> TextList {
+        self.0.inline_bounded.clone().into()
+    }
+
+    pub fn new(
+        o: &OneOrMore,
+        b: &Bounded,
+        inline_bounded: &TextList,
+    ) -> Result<OccurrenceHolder, JsError> {
+        cddl_lib::OccurrenceHolder::new(
+            o.clone().into(),
+            b.clone().into(),
+            inline_bounded.clone().into(),
+        )
+        .map(Into::into)
+        .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::OccurrenceHolder> for OccurrenceHolder {
+    fn from(native: cddl_lib::OccurrenceHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OccurrenceHolder> for cddl_lib::OccurrenceHolder {
+    fn from(wasm: OccurrenceHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OccurrenceHolder> for OccurrenceHolder {
+    fn as_ref(&self) -> &cddl_lib::OccurrenceHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct OneOrMore(Vec<u64>);
 
 #[wasm_bindgen]
@@ -91,6 +152,47 @@ impl From<OneOrMore> for Vec<u64> {
 
 impl AsRef<Vec<u64>> for OneOrMore {
     fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextList(Vec<String>);
+
+#[wasm_bindgen]
+impl TextList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<String>> for TextList {
+    fn from(native: Vec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextList> for Vec<String> {
+    fn from(wasm: TextList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<String>> for TextList {
+    fn as_ref(&self) -> &Vec<String> {
         &self.0
     }
 }

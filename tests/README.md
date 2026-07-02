@@ -207,11 +207,11 @@ For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-con
   `exclusive_range` (`[v: 0...10]`): the validator rejected the minted `11` as out of range
   `0 <= value < 10`, and it was removed once `parsing.rs` was corrected to emit `max = b-1` and the
   minted value became in-spec.
-  The roadmap's two other named IR bugs are **not** on the list, empirically: `occurrence`'s
-  `[+ uint]` / `[2*5 uint]` are transparent top-level array aliases the minter emits **no round-trip
-  test** for (a minter-coverage gap — the validator *would* catch an out-of-count array, but nothing
-  is minted to validate); `inline_group` (`[(uint, tstr)]`) is **fixed at HEAD** (it emits a 2-field
-  struct that reads 2 elems and conforms — its stale `#[ignore]` stub and ledger entry predate the fix).
+  `inline_group` (`[(uint, tstr)]`) and `occurrence` (`[+ uint]` / `[2*5 uint]`) are earlier
+  residents' siblings that never joined the list: both are **fixed at HEAD** (inline_group emits a
+  2-field struct that reads 2 elems; occurrence bounds now live on the ARRAY type — enforced as a
+  length check at embed sites and covered by `occurrence_holder`'s minted round-trip + deser-reject
+  cases, where they were once misread as element VALUE bounds).
 - **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
   and `sized_int` (validator gap — it cannot evaluate a range with a negative lower bound, `i_8:

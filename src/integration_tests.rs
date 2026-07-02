@@ -939,17 +939,37 @@ fn corpus_exclusive_range_upper_bound() {
     );
 }
 
-/// `[+ uint]` (>=1) and `[2*5 uint]` (2..=5) both emit a bare `Vec<u64>` with no length check —
-/// out-of-bounds lengths serialize and deserialize without error.
+/// Occurrence counts (`+`, `n*m`) are LENGTH constraints on the array: embed sites must enforce
+/// them on the array's length (deserialize + fallible constructor) and must never misread them
+/// as element VALUE bounds (`[+ uint]` once rejected the element value 0 and `[2*5 uint]`
+/// rejected element values outside 2..=5, while any length passed — parsing hung the bounds on
+/// the element type instead of the array). This asserts on the COMMITTED occurrence snapshots so
+/// neither regression can come back via an unreviewed re-bless; the *executed* proof is the
+/// fixture's emit-tests run in `feature_corpus_compiles` (its deser-reject cases push each
+/// field's length out of bounds — mutation-verified red when the emitted length check is
+/// removed).
 #[test]
-#[ignore = "occurrence-count constraints (+, n*m) are not enforced on homogeneous arrays: emitted Vec has no length check. Pinned by tests/corpus/snapshots/occurrence; ledgered in cddl-matrix/ROADMAP.md."]
 fn corpus_occurrence_bounds_enforced() {
-    unimplemented!(
-        "[+ uint] and [2*5 uint] emit bare Vec<u64> with no length validation in serialize or \
-         deserialize. Add bounds enforcement, re-bless the occurrence corpus snapshots, then assert \
-         here that an empty / 6-element vector is rejected, and remove #[ignore]. Follow-up once \
-         enforcement exists: an emit-tests reject case + putting occurrence under the \
-         ir_conformance_corpus oracle (see TESTING_ROADMAP's reject-side item)."
+    let ser = std::fs::read_to_string(
+        "tests/corpus/snapshots/occurrence/default__rust__src__serialization.rs.snap",
+    )
+    .expect("occurrence serialization snapshot missing");
+    for check in [
+        "if o_arr.len() < 1 {",
+        "if b_arr.len() < 2 || b_arr.len() > 5 {",
+        "if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {",
+    ] {
+        assert!(
+            ser.contains(check),
+            "occurrence snapshot lost the occurrence-count length check `{check}`"
+        );
+    }
+    // the value-misread form bound each ELEMENT read through `.and_then(|x| if x < ... )` —
+    // occurrence bounds must never re-attach to element values
+    assert!(
+        !ser.contains("found: x as isize"),
+        "occurrence snapshot has an element VALUE RangeCheck — occurrence counts are being \
+         misread as element value bounds again"
     );
 }
 

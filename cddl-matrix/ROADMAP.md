@@ -178,9 +178,6 @@ from a degenerate example.**
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail
   under `--preserve-encodings`; generics on plain groups rejected.
-- **Occurrence-count constraints aren't enforced** on homogeneous arrays — `[+ uint]` (≥1) and `[2*5 uint]`
-  (2..5) both emit a bare `Vec<u64>` with no length check (bare `*` is faithfully a `Vec`, so only `+`/`n*m`
-  drop a constraint). Surfaced by `occurrence.cddl`.
 - **`int`-keyed tables emit uncompilable code.** `t = { * int => text }` (+ any embed) generates with
   exit 0 but the crate fails `cargo check`: E0425 `cannot find type Int` — the reserved `Int` enum is
   never emitted when its only reference is a table key — plus an E0034 `.cloned()` ambiguity. Silent at
