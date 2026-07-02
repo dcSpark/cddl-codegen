@@ -220,3 +220,19 @@ Requires `--to-from-bytes-methods`. Values are minted deterministically from the
 cddl-codegen --input=example --output=export --emit-tests true
 ```
 :::
+
+<br/><br/>
+
+:::info `--deserialize-depth-limit`
+Opt-in recursion depth guard for the generated deserializers. Generated composite deserializers are recursive-descent, so a recursive type (e.g. `tree = [value: uint, children: [* tree]]`, Plutus-style data) has no intrinsic depth bound: maliciously deep CBOR recurses until the thread's stack overflows and the process **aborts (SIGABRT — uncatchable, not a returnable error)**.
+
+When set to `N`, every generated composite `deserialize` acquires an RAII depth guard at entry (a thread-local counter, decremented on every return path including `?`-propagation); once nesting exceeds `N`, deserialization returns a graceful `DeserializeError` (`DeserializeFailure::DepthLimitExceeded`) instead of recursing further. The limit is baked into the generated crate at generation time.
+
+**This rejects any document nested deeper than `N`, including spec-valid ones** — that is the point of it being opt-in. cddl-codegen must not invent a data limit the spec doesn't have, so there is no default guard: leaving the flag off produces output byte-identical to a build without it. Enable it when your consumer deserializes untrusted input (e.g. on-chain data), where the unbounded default's stack-overflow abort is a DoS. Choose `N` above the deepest nesting any legitimate document reaches.
+
+**Possible values:** any unsigned integer (unset = off)<br></br>
+**Default:** off (no guard)
+```bash
+cddl-codegen --input=example --output=export --deserialize-depth-limit 128
+```
+:::

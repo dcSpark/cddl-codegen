@@ -30,6 +30,11 @@ pub enum DeserializeFailure {
         found: Key,
         expected: Key,
     },
+    /// The recursion depth guard (opt-in via `--deserialize-depth-limit`) rejected input nested
+    /// deeper than the configured limit, instead of recursing further and overflowing the stack.
+    DepthLimitExceeded {
+        limit: usize,
+    },
     /// Invalid internal structure imposed on top of the CBOR format
     InvalidStructure(Box<dyn std::error::Error>),
     MandatoryFieldMissing(Key),
@@ -99,6 +104,7 @@ impl DeserializeError {
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
+            DeserializeFailure::DepthLimitExceeded { limit } => write!(f, "Deserialization recursion depth exceeded the configured limit of {}", limit),
             DeserializeFailure::InvalidStructure(e) => {
                 write!(f, "Invalid internal structure: {}", e)
             }

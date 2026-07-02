@@ -1266,6 +1266,14 @@ impl GenerationScope {
         if export_raw_bytes_encoding_trait {
             serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
         }
+        // Opt-in recursion depth guard runtime (the `DepthGuard` RAII type + thread-local counter).
+        // Conditioned like the preserve-encodings runtime so crates generated without the flag carry
+        // no dead runtime code. The `DepthLimitExceeded` failure variant it constructs lives in the
+        // verbatim-copied error.rs (a monolithic pub enum a file-concat can't conditionally extend;
+        // a pub variant is not dead code), so only this function/thread-local piece is gated here.
+        if cli.deserialize_depth_limit.is_some() {
+            serialize_paths.push(cli.static_dir.join("serialization_depth_guard.rs"));
+        }
         concat_files(&serialize_paths)
     }
 
@@ -6446,10 +6454,11 @@ fn codegen_struct(
         }
 
         if let Some(deser_embedded_impl) = &mut deser_embedded_impl {
-            let mut deser_f = make_deserialization_function("deserialize");
+            let mut deser_f = make_deserialization_function("deserialize", cli);
             deser_f.push_all(deser_scaffolding);
             deser_impl.push_fn(deser_f);
-            let mut deser_embed_f = make_deserialization_function("deserialize_as_embedded_group");
+            let mut deser_embed_f =
+                make_deserialization_function("deserialize_as_embedded_group", cli);
             let read_len_arg = if deser_code.read_len_used {
                 "read_len"
             } else {
@@ -6469,7 +6478,7 @@ fn codegen_struct(
             deser_embed_f.push_all(deser_code.content);
             deser_embedded_impl.push_fn(deser_embed_f);
         } else {
-            let mut deser_f = make_deserialization_function("deserialize");
+            let mut deser_f = make_deserialization_function("deserialize", cli);
             deser_f.push_all(deser_scaffolding);
             deser_f.push_all(deser_code.content);
             deser_impl.push_fn(deser_f);
@@ -7230,7 +7239,7 @@ fn generate_enum(
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
-    let mut deser_func = make_deserialization_function("deserialize");
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut error_annotator = make_err_annotate_block(name.as_ref(), "", "");
     let deser_body: &mut dyn CodeBlock = if cli.annotate_fields {
         &mut error_annotator
@@ -7820,11 +7829,24 @@ fn make_serialization_impl(name: &str, cli: &Cli) -> codegen::Impl {
     ser_impl
 }
 
-fn make_deserialization_function(name: &str) -> codegen::Function {
+fn make_deserialization_function(name: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f.generic("R: BufRead + Seek")
         .ret("Result<Self, DeserializeError>")
         .arg("raw", "&mut Deserializer<R>");
+    // Opt-in recursion depth guard: the first statement of every composite `deserialize` acquires
+    // an RAII guard whose Drop restores the thread-local depth on any return path (including `?`).
+    // Bound in the outer function scope so it stays alive across the annotator closure the body may
+    // be wrapped in. Only the top-level `deserialize` is guarded (not `deserialize_as_embedded_group`,
+    // which is part of the same logical type and reached with the guard already held). The limit is
+    // baked at generation time from the flag.
+    if name == "deserialize"
+        && let Some(limit) = cli.deserialize_depth_limit
+    {
+        f.line(format!(
+            "let _depth_guard = DepthGuard::acquire({limit}usize)?;"
+        ));
+    }
     f
 }
 
@@ -8108,7 +8130,7 @@ fn generate_wrapper_struct(
         cli,
     );
     ser_impl.push_fn(ser_func);
-    let mut deser_func = make_deserialization_function("deserialize");
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
     if let ConceptualRustType::Rust(id) = &field_type.conceptual_type
@@ -8631,7 +8653,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     // deserialization
     let mut deser_impl = codegen::Impl::new("Int");
     deser_impl.impl_trait("Deserialize");
-    let mut deser_func = make_deserialization_function("deserialize");
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut annotate = make_err_annotate_block("Int", "", "");
     let mut deser_match = Block::new("match raw.cbor_type()?");
     if cli.preserve_encodings {
