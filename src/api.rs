@@ -19,13 +19,20 @@ fn cddl_paths(
     output: &mut Vec<std::path::PathBuf>,
     cd: &std::path::PathBuf,
 ) -> std::io::Result<()> {
-    for dir_entry in std::fs::read_dir(cd)? {
-        let path = dir_entry?.path();
+    // read_dir order is filesystem-dependent, and file order decides the rule order fed to the
+    // topological sort (and thus naming/emission tie-breaks) — sort so the same spec directory
+    // generates byte-identical output on every machine (the reproducibility invariant).
+    let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(cd)?
+        .map(|dir_entry| dir_entry.map(|e| e.path()))
+        .collect::<std::io::Result<_>>()?;
+    paths.sort();
+    for path in paths {
         if path.is_dir() {
             cddl_paths(output, &path)?;
-        } else if path.as_path().extension().unwrap() == "cddl" {
+        } else if path.extension().is_some_and(|ext| ext == "cddl") {
             output.push(path);
         } else {
+            // extensionless files (README, LICENSE, dotfiles) land here too instead of panicking
             println!("Skipping file: {}", path.as_path().to_str().unwrap());
         }
     }

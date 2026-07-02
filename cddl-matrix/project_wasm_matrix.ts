@@ -97,6 +97,13 @@ const ROLES: Record<string, Role> = {
   "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` }, // new(inner: T), getter
 };
 
+// A typo'd role name in `roles`/`skipRoles` would be a silent no-op that shrinks the projected grid
+// (the only trace: an orphan-fixture deletion in a diff) — validate every entry against ROLES.
+for (const [shape, s] of Object.entries(SHAPES))
+  for (const r of [...(s.roles ?? []), ...(s.skipRoles ?? [])])
+    if (!(r in ROLES))
+      throw new Error(`SHAPES.${shape}: unknown role \`${r}\` (valid: ${Object.keys(ROLES).sort().join(", ")})`);
+
 const cells: { file: string; body: string }[] = [];
 for (const shape of Object.keys(SHAPES).sort()) {
   const { defs, ty, roles, skipRoles } = SHAPES[shape];
@@ -107,7 +114,14 @@ for (const shape of Object.keys(SHAPES).sort()) {
     cells.push({ file: `${shape}__${role}.cddl`, body: lines.join("\n") + "\n" });
   }
 }
-cells.sort((a, b) => (a.file < b.file ? -1 : 1));
+cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+
+// Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
+const EXPECTED_CELLS = 80; // 13 full shapes × 6 roles − 1 nullable/map-key skip + 3 single-role shapes
+if (cells.length !== EXPECTED_CELLS)
+  throw new Error(
+    `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
+  );
 
 const drift: string[] = [];
 if (!CHECK) mkdirSync(DIR, { recursive: true });

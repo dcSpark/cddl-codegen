@@ -171,6 +171,10 @@ fn generation_is_deterministic() {
             "tests/json/input.cddl",
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
+        // directory input: multi-file enumeration + scope/module emission. The in-process double-run
+        // can't vary filesystem enumeration order, so order-independence itself is guaranteed by
+        // construction (cddl_paths sorts); this case guards the rest of the multi-file pipeline.
+        ("tests/multifile/inputs", &[]),
     ];
     for (input, extra) in cases {
         let cli = cli_for(std::path::Path::new(input), extra);

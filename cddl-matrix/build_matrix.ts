@@ -9,7 +9,7 @@
  * Run from cddl-matrix/:  bun run build_matrix.ts   (or `--check` for the snapshot gate)
  */
 import { readFileSync } from "node:fs";
-import { ROOT, loadMatrixInputs, loadToml, globRel, stableJson } from "./lib";
+import { ROOT, loadMatrixInputs, loadTomlArray, globRel, stableJson } from "./lib";
 
 const { features, roles, contain, encodings, controlOps } = loadMatrixInputs();
 
@@ -18,7 +18,7 @@ const { features, roles, contain, encodings, controlOps } = loadMatrixInputs();
 const annos: Record<string, { id: string }[]> = {};
 for (const p of globRel("annotations/*.toml")) {
   const name = p.split("/").at(-1)!.replace(/\.toml$/, "");
-  annos[name] = loadToml(p).support ?? [];
+  annos[name] = loadTomlArray(p, "support");
 }
 
 // F1: control ops already carry their introducing RFC; mirror it into `profile` (build-only) so the
@@ -29,14 +29,27 @@ const matrix = {
   features, roles, containment: contain, encodings, control_operators, annotations: annos,
 };
 
-// --- invariant: every annotation id resolves to a real master id ---
-const masterIds = new Set<string>(
-  [...features, ...roles, ...contain, ...encodings, ...control_operators].map(x => x.id),
-);
+// --- invariants: master ids are unique, and every annotation id resolves to a real master id.
+// Duplicates would pass the Set-based resolution check while every downstream Map join silently
+// collapses them last-wins (and verify.ts would probe + write both rows), so they are hard errors.
+const allMasterIds = [...features, ...roles, ...contain, ...encodings, ...control_operators].map(x => x.id);
+const masterIds = new Set<string>(allMasterIds);
 const errors: string[] = [];
-for (const [tool, rows] of Object.entries(annos))
-  for (const r of rows)
+if (masterIds.size !== allMasterIds.length) {
+  const seen = new Set<string>();
+  for (const id of allMasterIds) {
+    if (seen.has(id)) errors.push(`duplicate master id '${id}'`);
+    seen.add(id);
+  }
+}
+for (const [tool, rows] of Object.entries(annos)) {
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.id)) errors.push(`annotations/${tool}: duplicate id '${r.id}'`);
+    seen.add(r.id);
     if (!masterIds.has(r.id)) errors.push(`annotations/${tool}: '${r.id}' resolves to no master id`);
+  }
+}
 
 const out = stableJson(matrix);
 const nAnno = Object.values(annos).reduce((a, v) => a + v.length, 0);

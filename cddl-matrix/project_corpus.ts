@@ -296,7 +296,9 @@ o("- **Test:** `tests/corpus/<construct>.cddl`, driven by `snapshot_tests::featu
 o("  generated under every flag profile (`default`/`preserve`/`json`) plus an IR dump, and the generated");
 o("  *source* is snapshotted. Bless with `INSTA_UPDATE=always cargo test snapshot_tests`.");
 o("- **Compile gate:** `integration_tests::feature_corpus_compiles` `cargo check`s every corpus file under");
-o("  all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them.");
+o("  all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them — except");
+o("  fixtures on the harness's `COMPILE_SKIP` list (user-supplied-code constructs, e.g. `dsl_custom.cddl`),");
+o("  which are snapshot-only here and compile-exercised via their integration fixtures instead.");
 o("- **Axis:** the corpus snapshots generated *source*, not wire bytes — wire encodings are golden_hex's");
 o("  axis (`tests/golden_hex/COVERAGE.md`, RFC 8949). A ✅ here means \"a fixture isolates this construct,\"");
 o("  not \"every encoding of it is asserted.\"");
