@@ -109,6 +109,54 @@ mod tests {
         }
     }
 
+    // Negative half of the wrapper tests above (which never feed one invalid input): each reject
+    // is asserted on an error-message SUBSTRING, not bare is_err(), so a rejection can't pass for
+    // the wrong reason (e.g. a parse hiccup instead of the bound). The is_ok() baselines are the
+    // positive tests above, which accept the same shapes with one dimension fixed.
+    fn assert_json_reject<W>(json: &str, needle: &str)
+    where
+        W: for<'de> serde::Deserialize<'de>,
+    {
+        // no unwrap_err(): the wrapper types don't all implement Debug
+        let err = match serde_json::from_str::<W>(json) {
+            Ok(_) => panic!("rejecting {json}: expected an error, but it deserialized"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            err.contains(needle),
+            "rejecting {json}: expected an error containing {needle:?}, got: {err}"
+        );
+    }
+
+    #[test]
+    fn json_rejects() {
+        // out-of-range values for bounded / sized numeric newtypes
+        assert_json_reject::<U8Wrapper>("256", "expected u8"); // u8_wrapper = uint .lt 256
+        assert_json_reject::<U8Wrapper>("-1", "expected u8");
+        assert_json_reject::<I16Wrapper>("40000", "expected i16"); // i16_wrapper = int .size 2
+        assert_json_reject::<I16Wrapper>("-40000", "expected i16");
+        assert_json_reject::<U64Wrapper>("-1", "expected u64");
+        // Int's JSON form is the signed decimal STRING; one-past-the-extremes must reject
+        // (u64::MAX + 1 and -(2^64) - 1, the exact boundaries int_json pins from the inside)
+        assert_json_reject::<Int>("\"18446744073709551616\"", "invalid Int");
+        assert_json_reject::<Int>("\"-18446744073709551617\"", "invalid Int");
+        assert_json_reject::<Int>("\"abc\"", "invalid Int");
+        // bad hex for the bytes newtype: non-hex characters, and an odd digit count
+        assert_json_reject::<BytesWrapper>("\"zzzz\"", "invalid hex bytes");
+        assert_json_reject::<BytesWrapper>("\"abc\"", "invalid hex bytes");
+        // custom (@custom_json) wrapper parses a u64 out of a string
+        assert_json_reject::<CustomWrapper>("\"abc\"", "invalid u64 as string");
+        assert_json_reject::<CustomWrapper>("\"-1\"", "invalid u64 as string");
+        // wrong JSON type entirely, for every JSON shape the fixture emits
+        assert_json_reject::<U8Wrapper>("\"5\"", "invalid type");
+        assert_json_reject::<StrWrapper>("5", "invalid type");
+        assert_json_reject::<BytesWrapper>("5", "invalid type");
+        assert_json_reject::<CustomWrapper>("1234", "invalid type");
+        assert_json_reject::<Int>("5", "invalid type");
+        assert_json_reject::<NintWrapper>("\"5\"", "invalid type");
+        assert_json_reject::<StructWrapper>("\"5\"", "invalid type");
+    }
+
     // Item 7a (TESTING_ROADMAP.md): each type emits a hand-written `impl JsonSchema` alongside its
     // serde impl, and json-gen ships those schemas. The two are generated independently, so they can
     // silently disagree — a gap the round-trip tests above can't see (they only check that serde is
@@ -143,5 +191,42 @@ mod tests {
         check!(CustomWrapper, CustomWrapper::new(1234));
         check!(Int, Int::new_uint(u64::MAX));
         check!(Int, Int::new_nint(499));
+    }
+
+    // The negative counterpart of schemas_validate_serialization, which is positive-only: a schema
+    // that degrades to something too PERMISSIVE (the degenerate always-true `{}` accepts every
+    // instance) still passes every positive check. So for each covered type, validate one
+    // deliberately wrong-shaped value against the emitted schema and assert validation FAILS —
+    // over-permissive schema drift (the likelier decay direction for hand-written impls) becomes a
+    // CI failure instead of staying invisible.
+    #[test]
+    fn schemas_reject_wrong_shapes() {
+        fn check_rejects(schema: schemars::Schema, value: serde_json::Value, label: &str) {
+            let schema = serde_json::to_value(schema).unwrap();
+            let validator = jsonschema::validator_for(&schema)
+                .unwrap_or_else(|e| panic!("{label}: emitted schema is not a valid JSON Schema: {e}"));
+            assert!(
+                !validator.is_valid(&value),
+                "{label}: wrong-shaped {value} unexpectedly validates against the emitted schema — the schema is over-permissive"
+            );
+        }
+        macro_rules! check_rejects {
+            ($ty:ty, $val:expr) => {
+                check_rejects(schemars::schema_for!($ty), $val, stringify!($ty))
+            };
+        }
+        // string-shaped JSON forms reject a number...
+        check_rejects!(BytesWrapper, serde_json::json!(5));
+        check_rejects!(StrWrapper, serde_json::json!(5));
+        check_rejects!(CustomWrapper, serde_json::json!(1234));
+        check_rejects!(IntWrapper, serde_json::json!(5));
+        check_rejects!(Int, serde_json::json!(5));
+        // ...and number-shaped forms reject a string
+        check_rejects!(U8Wrapper, serde_json::json!("nope"));
+        check_rejects!(U64Wrapper, serde_json::json!("nope"));
+        check_rejects!(I16Wrapper, serde_json::json!("nope"));
+        check_rejects!(I64Wrapper, serde_json::json!("nope"));
+        check_rejects!(NintWrapper, serde_json::json!("nope"));
+        check_rejects!(StructWrapper, serde_json::json!("nope"));
     }
 }
