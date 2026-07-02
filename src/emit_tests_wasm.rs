@@ -215,6 +215,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             )
         }
         MintValue::TableEmpty { ident } => format!("{}::new()", sc(ident)),
+        MintValue::IntExtern { ident, value } => format!("{}::new_uint({value})", sc(ident)),
     }
 }
 
@@ -292,6 +293,15 @@ fn wasm_named(
         }
         RustStructType::GroupChoice { variants, .. } => {
             wasm_choice_value(types, &name, variants, true, mv, scoped, cli)
+        }
+        // the reserved `Int` extern crosses the wasm boundary as a wrapper with a single
+        // `Int::new(x: i64)` ctor (dispatches to `new_uint`/`new_nint` on sign); mint the
+        // non-negative baseline. Every other extern references user code with no wasm ctor.
+        RustStructType::Extern if name == "Int" => {
+            let MintValue::IntExtern { value, .. } = mv else {
+                return None;
+            };
+            Some(format!("Int::new({value})"))
         }
         // @newtype/tag wrappers have no wasm `new`; a wrapper as a ctor ARG can't be built here
         RustStructType::Wrapper { .. }

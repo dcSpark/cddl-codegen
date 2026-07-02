@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -641,7 +641,7 @@ impl Deserialize for PreludeInteger {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
-                cbor_event::Type::Array | cbor_event::Type::Map => {
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
                     Ok(PreludeInteger::Int(Int::deserialize(raw)?))
                 }
                 cbor_event::Type::Tag => Ok(PreludeInteger::PreludeBigint(
