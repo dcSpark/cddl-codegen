@@ -6,8 +6,10 @@ the done work landed lives in git history (this doc was pruned of it; the projec
 the scale report + cold-critique).
 
 **Status: gate-green.** 92 features (81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), all axes
-reconciled/deterministic, with compile-gated execution-grounded support **per-feature, per-cell
-(role × feature), and per-control-op** (all 37 IANA ops probed). Both flagship projections GENERATE their
+reconciled/deterministic, with execution-gated support **per-feature, per-cell (role × feature), and
+per-control-op** (all 37 IANA ops probed): "supported" requires the generated crate's `--emit-tests`
+round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
+mint no test surface (recorded honestly in the evidence). Both flagship projections GENERATE their
 hand docs and drift-check: `golden_hex` (encoding axis, Q3) and the `corpus` projection (feature axis Q2 +
 per-cell **role × feature** coverage). The north-star — subsuming `tests/corpus/COVERAGE.md` — is **DONE**
 (two independent cold reviews: "clear win").
@@ -18,8 +20,9 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 > real hand doc from it is a **clear win**.
 
 > **Findings ledger (F#)** from the cold critique (full write-up in git history): F1, F2, F4–F7 **done**;
-> **F3 partial** (support is compile-gated; the 5-way directional split is deferred — §3); **F8–F11 out of
-> scope** (bottom). Only still-open findings are sections below.
+> **F3 partial** (support is execution-gated — round-trip + reject tests run per probe; the directional
+> encode/decode split is deferred — §3); **F8–F11 out of scope** (bottom). Only still-open findings are
+> sections below.
 
 ## 1. Remaining work — projections & queries
 
@@ -33,7 +36,8 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   capability is proven, just not emitted as a standing artifact.
 - **Secondary query scripts (Q4/Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
   (profile/version diff) are largely already satisfied by `verify.ts`'s reconciliation + the F6 snapshot —
-  they need only thin query scripts. **Q4** (directional support) is blocked on F3 execution (§3).
+  they need only thin query scripts. **Q4** (directional support) is blocked on F3's remaining
+  encode/decode split (§3).
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -57,10 +61,12 @@ heavy `verify.ts` oracle probe is run manually and stays manual (CI is frozen).
 - `bun run project_wasm_matrix.ts --check` — drift gate for the wasm-ABI matrix fixtures
   (`tests/matrix_wasm/*.cddl`); pure `SHAPES`/`ROLES` projection, no cargo/oracles. **(CI)**
 - `bun run verify.ts` — reconcile (bidirectional grammar/prelude/vendor lints) + probe **per-feature,
-  per-cell, AND per-control-op** support, **compile-gated** (generate + `cargo check`); rewrites
-  `annotations/cddl_codegen.toml`. Needs the three oracles (ruby `cddl`, rust `cddl` CLI, `cddl-codegen`) —
-  installable: `gem install --user-install cddl`, `cargo install cddl` (set `RUST_CDDL`), cddl-codegen
-  builds from this repo. Slow (probes ~156 examples × generate+compile via `cargo`).
+  per-cell, AND per-control-op** support, **execution-gated** (generate with `--emit-tests=true` +
+  `cargo test`; a failing test run pays one extra `cargo check` to classify does-not-compile vs
+  round-trip-fails); rewrites `annotations/cddl_codegen.toml`. Needs the three oracles (ruby `cddl`,
+  rust `cddl` CLI, `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl`
+  (set `RUST_CDDL`), cddl-codegen builds from this repo. Slow (probes ~156 examples ×
+  generate+`cargo test` via `cargo`).
 - `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
   (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role
@@ -88,17 +94,23 @@ Remaining:
   `declare module "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is
   worth it; the runtime stays dependency-free.
 
-## 3. F3 — directional / enforcement support (partial; full split deferred)
+## 3. F3 — directional / enforcement support (execution-gated; encode/decode split deferred)
 
-Support is no longer one bit: the probe is **compile-gated** — generate the crate AND `cargo check` it, so
-"supported" means *accept + compiles* (this caught `x = any`). `QUERIES.md` Q4 still wants the full 5-way
-split **{accept, encode, decode, round-trip, enforce-constraint}**, which needs per-feature *execution* of
-the compiled code (round-trip + constraint checks), not just compilation — machinery still deferred; Q4 is
-blocked until it lands.
+Support is execution-gated: the probe generates with `--emit-tests=true` AND runs `cargo test`, so
+"supported" means *accept + compiles + the IR-minted round-trip and bounded-reject tests pass* wherever the
+type mints a test surface (a per-probe `minted` bit keeps the evidence honest — transparent aliases, pure
+c-enums, prelude scalar typedefs and the `Int` extern mint nothing and fall back to the compile verdict,
+which also caught `x = any`). Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode, round-trip,
+enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for minting
+shapes; still deferred: the **encode vs decode** direction (a round-trip conflates them — splitting needs
+per-direction reference vectors, not just self-consistency) and execution for the unminted shapes (the
+minter-coverage items in `tests/TESTING_ROADMAP.md`). Q4 stays blocked on that directional split.
 
 **Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
-execution. F3 is the *upgrade path*: it would make those ⚠️ verdicts execution-grounded and unblock Q4.
+execution — those stay hand-asserted even now: cut/socket semantics are validation concerns a round-trip
+can't observe, and the `preserve` profile is a flag axis the probe doesn't run (see "supported is silently
+a default-profile fact" in `tests/TESTING_ROADMAP.md`).
 
 ## 4. F4 / F5 follow-ons (only when their consumer exists)
 
@@ -155,12 +167,15 @@ from a degenerate example.**
   confounded the panic reason. The `type2.map`-in-a-role cells (`array-element` / `cbor-payload` /
   `choice-member` / `generic-arg` / `occurrence-target`) are 2-field, so they panic for the real
   **anonymous-group** reason, not the single-field-map bug. No single-field struct-map cell example remains.
-- **Compile-gate (F3 partial) — the support probe requires the generated crate to COMPILE, not just
-  cddl-codegen exit 0.** This caught a false positive the exit-code probe had laundered: `x = any` exits 0
-  but emits `pub type X = Any;` (undefined type → won't compile), so `prelude.any` is correctly ➖ (root
-  cause: `any` absent from `is_identifier_reserved`). 4 user-code features stay `supported` via a documented
-  `COMPILE_GATE_EXEMPT` allowlist (they reference user-supplied code, so can't compile standalone —
-  `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`; integration-tested).
+- **Execution-gate (F3) — the support probe requires the generated crate's emitted tests to PASS, not just
+  cddl-codegen exit 0.** The compile layer caught a false positive the exit-code probe had laundered:
+  `x = any` exits 0 but emits `pub type X = Any;` (undefined type → won't compile), so `prelude.any` is
+  correctly ➖ (root cause: `any` absent from `is_identifier_reserved`). The test layer (`--emit-tests` +
+  `cargo test`) runs the IR-minted round-trip/reject module per probe; a "compiles but emitted round-trip
+  tests fail" verdict is its distinct false-positive class. 4 user-code features stay `supported` via a
+  documented `COMPILE_GATE_EXEMPT` allowlist (they reference user-supplied code, so can't compile — or
+  test — standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`;
+  integration-tested).
 - **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize` is gated on
   `target_arch = "wasm32"`, so there's no free serde dump on a native build; `examples/ast_roles.rs`
   hand-walks via the crate's `Visitor` trait instead. Role-detection only needs the crate to PARSE (soft
@@ -243,8 +258,12 @@ enumerating?" and add a shape. Un-modelled but distinct (add when a consumer or 
 panic that forces the struct roles to use array-rep, so fixing that panic is a prerequisite.
 
 **Behavioural upgrade.** The gate's verdict is *compile*, so a cell can be green while emitting a
-semantically wrong same-type conversion. Upgrade the verdict compile → round-trip once the property
-harness lands (`tests/TESTING_ROADMAP.md` item 1).
+semantically wrong same-type conversion at the wasm boundary. The `--emit-tests` harness has landed but
+mints tests into the *rust* crate only — it exercises the underlying types, not the wasm wrapper API where
+this bug class lives (the flatten/`.into()` gaps are wasm-side; see the `#[ignore]`'d fidelity tests).
+Upgrading the per-cell verdict needs a wasm-side minted surface (a `tests_wasm.rs`-style module emitted
+per cell: construct through the wrapper API, round-trip, read accessors back); until then the sampled
+hand-written `tests_wasm.rs` hooks are the behavioural coverage.
 
 **Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
