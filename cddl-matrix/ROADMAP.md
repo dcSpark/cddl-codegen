@@ -268,13 +268,14 @@ panic that forces the struct roles to use array-rep, so fixing that panic is a p
 the wrapper API, round-trips, and reads accessors back against the minted literals, cross-checked against
 an independent `cddl_lib::` rust build (the byte differential). It runs per-cell via
 `integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d under the CI freeze) and, in `verify.ts`,
-via an opt-in `--wasm` probe that `cargo test`s the generated wasm crate and threads `minted_wasm` /
-`wasm_roundtrips` into the per-feature and per-cell evidence. Remaining:
-- **`verify.ts --wasm` default-on** — the probe roughly doubles per-probe cargo work, so it is opt-in for
-  now; default it on once the wall-time is deemed acceptable for the manual gate.
+via a **default-on** `--wasm` probe (opt out with `--no-wasm` / `VERIFY_WASM=0`) that `cargo test`s the
+generated wasm crate and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell
+evidence. Remaining:
 - **Unminted wasm shapes** — wrapper/collection ctor args (block-expr `new`/`add` build) and `@newtype`/tag
   wrapper ctor args are currently **loud skips** (`eprintln!`), so a cell built entirely from them mints no
-  wasm surface and falls back to the compile verdict; a block-expr collection minter would close that.
+  wasm surface and falls back to the compile verdict; a block-expr collection minter would close that (it
+  is the same deferred minter that gates the corpus/matrix wasm round-trip breadth in
+  `tests/TESTING_ROADMAP.md`).
 - **Fidelity gaps** — the wasm read-side flatten losses (optional-nullable field, double-nested enum
   variant) remain generator-side, tracked by the `#[ignore]`'d fidelity tests; a presence-accessor fix,
   not a test-surface change, closes them.
