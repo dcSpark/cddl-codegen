@@ -10,13 +10,27 @@ extern crate derivative;
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::error::*;
 use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::BoolHolderEncoding;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct BoolHolder {
+    pub b: Bools,
+    pub encodings: Option<BoolHolderEncoding>,
+}
+
+impl BoolHolder {
+    pub fn new(b: Bools) -> Self {
+        Self { b, encodings: None }
+    }
+}
 
 pub type Bools = Vec<bool>;
 
