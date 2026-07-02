@@ -56,6 +56,145 @@ use crate::utils::{convert_to_camel_case, convert_to_snake_case};
 
 type Bounds = (Option<i128>, Option<i128>);
 
+// ============================================================================================
+// The MINT-VALUE data layer. Value derivation (`valid_value`/`materialize`/`mint_struct` and the
+// `bound_cases` boundary triples) produces this abstract tree; a renderer turns it into source.
+// `render_rust` reproduces the rust-crate API strings byte-for-byte (the ONLY renderer today).
+// A second renderer (`emit_tests_wasm::render_wasm`, off in this module) targets the wasm wrapper
+// API from the SAME tree, so a single derivation surface feeds both crates' emitted tests. Kept
+// only as abstract as those two renderers need — deliberately NOT a general codegen IR.
+// ============================================================================================
+
+/// The synthesized-key kind for a minted map (distinct keys `0..count`).
+#[derive(Clone)]
+pub(crate) enum MapKey {
+    /// integer key cast to the map's key primitive: `__i as <prim>`
+    Int(Primitive),
+    /// text key: `__i.to_string()`
+    Str,
+    /// bool key (only for count <= 2): `__i == 1`
+    Bool,
+}
+
+/// An abstract minted value. Each variant maps to exactly one rust-source shape (`render_rust`) and,
+/// under the wasm renderer, to the corresponding wrapper-API construction.
+#[derive(Clone)]
+pub(crate) enum MintValue {
+    /// `None` (an `Optional` field's degenerate baseline)
+    None,
+    /// `false` (bool baseline / measured bool)
+    Bool,
+    /// `0.0` (float baseline)
+    Float,
+    /// an integer literal; `prim` is the backing rust primitive (load-bearing for the wasm renderer,
+    /// unused by `render_rust`). Covers unsigned/signed ints and `N64` (nint magnitude).
+    Int {
+        value: i128,
+        // read by the wasm renderer (emit_tests_wasm); `render_rust` needs only `value`
+        #[allow(dead_code)]
+        prim: Primitive,
+    },
+    /// a text string of the given length: `"a".repeat(len)`
+    Str { len: i128 },
+    /// a byte string of the given length: `vec![0u8; len]`
+    Bytes { len: i128 },
+    /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`
+    Array {
+        elem: Option<Box<MintValue>>,
+        count: i128,
+    },
+    /// a map of `count` entries with synthesized keys
+    Map {
+        key: MapKey,
+        val: Box<MintValue>,
+        count: i128,
+    },
+    /// `Default::default()` — an empty inline-map field minted for an unmintable element (loud skip)
+    DefaultMap,
+    /// a named record: `Ident::new(args)` (+ `.unwrap()` when `can_fail`)
+    Record {
+        ident: String,
+        args: Vec<MintValue>,
+        can_fail: bool,
+    },
+    /// a named `@newtype`/tag wrapper: `Ident::new(inner)` (+ `.unwrap()`)
+    Wrapper {
+        ident: String,
+        inner: Box<MintValue>,
+        can_fail: bool,
+    },
+    /// a c-style enum variant: `Ident::Variant`
+    CEnum { ident: String, variant: String },
+    /// a type/group choice: `Ident::new_<variant>(args)` (+ `.unwrap()`)
+    Choice {
+        ident: String,
+        variant: String,
+        args: Vec<MintValue>,
+        can_fail: bool,
+    },
+    /// a named table minted empty: `Ident::new()`
+    TableEmpty { ident: String },
+}
+
+/// Render a `MintValue` as the rust-crate API expression string. This reproduces, byte-for-byte,
+/// the output the fused derive-and-format code produced before the derivation/render split.
+pub(crate) fn render_rust(mv: &MintValue) -> String {
+    let unwrap = |can_fail: bool| if can_fail { ".unwrap()" } else { "" };
+    match mv {
+        MintValue::None => "None".to_owned(),
+        MintValue::Bool => "false".to_owned(),
+        MintValue::Float => "0.0".to_owned(),
+        MintValue::Int { value, .. } => format!("{value}"),
+        MintValue::Str { len } => format!("\"a\".repeat({len})"),
+        MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
+        MintValue::Array {
+            elem: Some(e),
+            count,
+        } => format!("vec![{}; {count}]", render_rust(e)),
+        MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
+        MintValue::Map { key, val, count } => {
+            let k = match key {
+                MapKey::Int(p) => format!("__i as {p}"),
+                MapKey::Str => "__i.to_string()".to_owned(),
+                MapKey::Bool => "__i == 1".to_owned(),
+            };
+            format!(
+                "(0u64..{count}).map(|__i| ({k}, {})).collect()",
+                render_rust(val)
+            )
+        }
+        MintValue::DefaultMap => "Default::default()".to_owned(),
+        MintValue::Record {
+            ident,
+            args,
+            can_fail,
+        } => {
+            let a: Vec<String> = args.iter().map(render_rust).collect();
+            format!("{ident}::new({}){}", a.join(", "), unwrap(*can_fail))
+        }
+        MintValue::Wrapper {
+            ident,
+            inner,
+            can_fail,
+        } => format!("{ident}::new({}){}", render_rust(inner), unwrap(*can_fail)),
+        MintValue::CEnum { ident, variant } => format!("{ident}::{variant}"),
+        MintValue::Choice {
+            ident,
+            variant,
+            args,
+            can_fail,
+        } => {
+            let a: Vec<String> = args.iter().map(render_rust).collect();
+            format!(
+                "{ident}::new_{variant}({}){}",
+                a.join(", "),
+                unwrap(*can_fail)
+            )
+        }
+        MintValue::TableEmpty { ident } => format!("{ident}::new()"),
+    }
+}
+
 /// Emit the `#[cfg(test)]` generated-test module (reject + round-trip halves), or `None` if
 /// nothing at all could be minted.
 pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String> {
@@ -270,7 +409,7 @@ fn record_roundtrip(
             !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
         })
         .collect();
-    let mut valid_args: Vec<String> = Vec::new();
+    let mut valid_args: Vec<MintValue> = Vec::new();
     for f in &ctor_fields {
         match valid_value(types, &f.rust_type) {
             Some(v) => valid_args.push(v),
@@ -283,16 +422,16 @@ fn record_roundtrip(
             }
         }
     }
-    let unwrap = if record_ctor_can_fail(record) {
-        ".unwrap()"
-    } else {
-        ""
-    };
-    let base = format!("{name}::new({}){unwrap}", valid_args.join(", "));
+    let base = render_rust(&MintValue::Record {
+        ident: name.to_owned(),
+        args: valid_args,
+        can_fail: record_ctor_can_fail(record),
+    });
     let mut cases = vec![(base.clone(), "baseline".to_owned())];
     for f in record.fields.iter().filter(|f| f.optional) {
         match valid_value(types, &f.rust_type) {
             Some(x) => {
+                let x = render_rust(&x);
                 // a defaulted optional is stored as a PLAIN field (absent on the wire = default);
                 // only non-defaulted optionals are Option<T> in the struct
                 let assign = if f.rust_type.config.default.is_some() {
@@ -320,7 +459,11 @@ fn record_roundtrip(
             && let Some(x) = valid_value(types, inner)
         {
             cases.push((
-                format!("{{ let mut v = {base}; v.{} = Some({x}); v }}", f.name),
+                format!(
+                    "{{ let mut v = {base}; v.{} = Some({}); v }}",
+                    f.name,
+                    render_rust(&x)
+                ),
                 format!("nullable `{}` present", f.name),
             ));
             break;
@@ -347,7 +490,7 @@ fn choice_roundtrip(
             );
             continue;
         };
-        let mut args: Vec<String> = Vec::new();
+        let mut args: Vec<MintValue> = Vec::new();
         let mut ok = true;
         for (ty, field) in &arg_fields {
             match valid_value(types, ty) {
@@ -364,13 +507,13 @@ fn choice_roundtrip(
         if !ok {
             continue;
         }
-        let unwrap = if arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)) {
-            ".unwrap()"
-        } else {
-            ""
-        };
         cases.push((
-            format!("{name}::{ctor}({}){unwrap}", args.join(", ")),
+            render_rust(&MintValue::Choice {
+                ident: name.to_owned(),
+                variant: variant.name_as_var(),
+                args,
+                can_fail: arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)),
+            }),
             format!("variant {}", variant.name),
         ));
     }
@@ -398,16 +541,12 @@ fn wrapper_roundtrip(
         return None;
     };
     // mirrors the wrapper ctor's fallibility rule: `new()` returns Result iff a min_max check exists
-    let unwrap = if min_max.is_some() { ".unwrap()" } else { "" };
-    roundtrip_body(
-        name,
-        vec![(
-            format!("{name}::new({inner}){unwrap}"),
-            "baseline".to_owned(),
-        )],
-        conf,
-        value_eq,
-    )
+    let base = render_rust(&MintValue::Wrapper {
+        ident: name.to_owned(),
+        inner: Box::new(inner),
+        can_fail: min_max.is_some(),
+    });
+    roundtrip_body(name, vec![(base, "baseline".to_owned())], conf, value_eq)
 }
 
 /// Mirrors a choice-variant ctor's per-arg fallibility (`generation.rs` per-variant `can_fail`):
@@ -460,7 +599,7 @@ fn record_deser_reject(
     let mut valid_args: Vec<String> = Vec::new();
     for f in &ctor_fields {
         match valid_value(types, &f.rust_type) {
-            Some(v) => valid_args.push(v),
+            Some(v) => valid_args.push(render_rust(&v)),
             None => {
                 eprintln!(
                     "cddl-codegen --emit-tests: skipped {name} (field {} not cheaply mintable)",
@@ -488,6 +627,7 @@ fn record_deser_reject(
             continue;
         }
         for (expr, accept, label) in cases {
+            let expr = render_rust(&expr);
             if accept {
                 let value_eq_line = if value_eq {
                     format!(
@@ -562,7 +702,7 @@ fn choice_construct_reject(
                         valid_value(types, ty)
                     };
                     match v {
-                        Some(s) => call_args.push(s),
+                        Some(s) => call_args.push(render_rust(&s)),
                         None => {
                             ok = false;
                             break;
@@ -604,6 +744,7 @@ fn wrapper_construct_reject(
     let lines: Vec<String> = cases
         .into_iter()
         .map(|(expr, accept, label)| {
+            let expr = render_rust(&expr);
             if accept {
                 format!("    assert!({name}::new({expr}).is_ok(), \"{name}::new {label} value must be accepted\");")
             } else {
@@ -688,7 +829,7 @@ fn bound_cases(
     ty: &RustType,
     bounds: Bounds,
     is_len: bool,
-) -> Vec<(String, bool, &'static str)> {
+) -> Vec<(MintValue, bool, &'static str)> {
     let mut out = Vec::new();
     if let Some(min) = bounds.0 {
         if let Some(e) = materialize(types, ty, min) {
@@ -717,16 +858,16 @@ fn bound_cases(
 /// minted empty at the cap, with a loud notice; any other capped mint gets the caller's loud skip).
 const MAX_MINT_DEPTH: u8 = 4;
 
-/// A valid in-range Rust value expression for `ty`, or `None` if it can't be cheaply minted.
-fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
+/// A valid in-range minted value for `ty`, or `None` if it can't be cheaply minted.
+fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<MintValue> {
     valid_value_at(types, ty, 0)
 }
 
-fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option<String> {
+fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option<MintValue> {
     match ty.resolve_alias_shallow() {
-        ConceptualRustType::Optional(_) => Some("None".to_owned()),
-        ConceptualRustType::Primitive(Primitive::Bool) => Some("false".to_owned()),
-        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => Some("0.0".to_owned()),
+        ConceptualRustType::Optional(_) => Some(MintValue::None),
+        ConceptualRustType::Primitive(Primitive::Bool) => Some(MintValue::Bool),
+        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => Some(MintValue::Float),
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
         // min (or 0 when unbounded) is in range.
@@ -736,7 +877,10 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
                 .bounds
                 .map(nint_bounds_to_u64)
                 .unwrap_or((None, None));
-            Some(format!("{}", valid_measure(b)))
+            Some(MintValue::Int {
+                value: valid_measure(b),
+                prim: Primitive::N64,
+            })
         }
         // a field nesting a NAMED generated type: mint an instance of that type recursively
         ConceptualRustType::Rust(ident) => mint_struct(types, ident, depth),
@@ -781,7 +925,7 @@ fn mint_struct(
     types: &IntermediateTypes,
     ident: &crate::intermediate::RustIdent,
     depth: u8,
-) -> Option<String> {
+) -> Option<MintValue> {
     if depth >= MAX_MINT_DEPTH {
         return None;
     }
@@ -798,51 +942,33 @@ fn mint_struct(
                         && f.rust_type.config.default.is_none()
                 })
                 .collect();
-            let args: Option<Vec<String>> = ctor_fields
+            let args: Option<Vec<MintValue>> = ctor_fields
                 .iter()
                 .map(|f| valid_value_at(types, &f.rust_type, depth + 1))
                 .collect();
-            let unwrap = if record_ctor_can_fail(record) {
-                ".unwrap()"
-            } else {
-                ""
-            };
-            Some(format!("{name}::new({}){unwrap}", args?.join(", ")))
+            Some(MintValue::Record {
+                ident: name,
+                args: args?,
+                can_fail: record_ctor_can_fail(record),
+            })
         }
         RustStructType::Wrapper { wrapped, min_max } => {
             let inner = match min_max {
                 Some(mm) => materialize_at(types, wrapped, valid_measure(*mm), depth + 1)?,
                 None => valid_value_at(types, wrapped, depth + 1)?,
             };
-            let unwrap = if min_max.is_some() { ".unwrap()" } else { "" };
-            Some(format!("{name}::new({inner}){unwrap}"))
+            Some(MintValue::Wrapper {
+                ident: name,
+                inner: Box::new(inner),
+                can_fail: min_max.is_some(),
+            })
         }
-        RustStructType::CStyleEnum { variants } => {
-            variants.first().map(|v| format!("{name}::{}", v.name))
-        }
+        RustStructType::CStyleEnum { variants } => variants.first().map(|v| MintValue::CEnum {
+            ident: name,
+            variant: v.name.to_string(),
+        }),
         RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
-            // first constructible variant wins (deterministic: variant order is IR order)
-            for variant in variants {
-                let Some(arg_fields) = variant_arg_fields(types, variant) else {
-                    continue;
-                };
-                let args: Option<Vec<String>> = arg_fields
-                    .iter()
-                    .map(|(ty, _)| valid_value_at(types, ty, depth + 1))
-                    .collect();
-                let Some(args) = args else { continue };
-                let unwrap = if arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)) {
-                    ".unwrap()"
-                } else {
-                    ""
-                };
-                return Some(format!(
-                    "{name}::new_{}({}){unwrap}",
-                    variant.name_as_var(),
-                    args.join(", ")
-                ));
-            }
-            None
+            mint_choice(types, &name, variants, depth)
         }
         // transparent aliases: an empty map/vec is valid for `*`-occurrence tables/arrays, and the
         // alias's associated `new()` resolves to the underlying map type's constructor
@@ -850,34 +976,63 @@ fn mint_struct(
         // inline `{ * k => v }` map *fields* already mint one entry via materialize_at, so the map
         // element wire path is still exercised there. Named-table standalone element coverage is a
         // known residual (see TESTING_ROADMAP).
-        RustStructType::Table { .. } => Some(format!("{name}::new()")),
+        RustStructType::Table { .. } => Some(MintValue::TableEmpty { ident: name }),
         RustStructType::Array { element_type, .. } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
-            Some(match valid_value_at(types, element_type, depth + 1) {
-                Some(e) => format!("vec![{e}; 1]"),
-                None => "vec![]".to_owned(),
+            Some(MintValue::Array {
+                elem: valid_value_at(types, element_type, depth + 1).map(Box::new),
+                count: 1,
             })
         }
         RustStructType::Extern | RustStructType::RawBytesType => None,
     }
 }
 
+/// Mint the first constructible variant of a choice (deterministic: variant order is IR order).
+fn mint_choice(
+    types: &IntermediateTypes,
+    name: &str,
+    variants: &[EnumVariant],
+    depth: u8,
+) -> Option<MintValue> {
+    for variant in variants {
+        let Some(arg_fields) = variant_arg_fields(types, variant) else {
+            continue;
+        };
+        let args: Option<Vec<MintValue>> = arg_fields
+            .iter()
+            .map(|(ty, _)| valid_value_at(types, ty, depth + 1))
+            .collect();
+        let Some(args) = args else { continue };
+        return Some(MintValue::Choice {
+            ident: name.to_owned(),
+            variant: variant.name_as_var(),
+            args,
+            can_fail: arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)),
+        });
+    }
+    None
+}
+
 /// An empty value expression for a collection `ty` (valid for a 0-lower-bound `*`-occurrence).
 /// `Default::default()` covers every collection representation an inline map field can take
 /// (`BTreeMap`, or the preserve-encodings `OrderedHashMap`, both `Default`), inferred from the
 /// constructor-argument position; `vec![]` is the clearer form for arrays.
-fn empty_collection(ty: &RustType) -> Option<String> {
+fn empty_collection(ty: &RustType) -> Option<MintValue> {
     match ty.resolve_alias_shallow() {
-        ConceptualRustType::Array(_) => Some("vec![]".to_owned()),
-        ConceptualRustType::Map(_, _) => Some("Default::default()".to_owned()),
+        ConceptualRustType::Array(_) => Some(MintValue::Array {
+            elem: None,
+            count: 0,
+        }),
+        ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
         _ => None,
     }
 }
 
-/// Build a Rust value expression for `ty` whose bound-relevant measure equals `measure`
+/// Build a minted value for `ty` whose bound-relevant measure equals `measure`
 /// (the value itself for integers, the length for text/bytes/array/map).
-fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Option<String> {
+fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Option<MintValue> {
     materialize_at(types, ty, measure, 0)
 }
 
@@ -886,7 +1041,7 @@ fn materialize_at(
     ty: &RustType,
     measure: i128,
     depth: u8,
-) -> Option<String> {
+) -> Option<MintValue> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => match p {
             Primitive::U8
@@ -901,18 +1056,27 @@ fn materialize_at(
                 // coincides with the type's domain (e.g. `uint .lt 256` backed by `u8`) there's no
                 // representable out-of-bounds value — skip rather than emit uncompilable code.
                 let (lo, hi) = prim_range(p);
-                (measure >= lo && measure <= hi).then(|| format!("{measure}"))
+                (measure >= lo && measure <= hi).then_some(MintValue::Int {
+                    value: measure,
+                    prim: *p,
+                })
             }
             // nint stored values are non-negative u64 magnitudes; valid_measure keeps them in range
-            Primitive::N64 => Some(format!("{measure}")),
-            Primitive::Str => Some(format!("\"a\".repeat({measure})")),
-            Primitive::Bytes => Some(format!("vec![0u8; {measure}]")),
-            Primitive::Bool => Some("false".to_owned()),
-            Primitive::F32 | Primitive::F64 => Some("0.0".to_owned()),
+            Primitive::N64 => Some(MintValue::Int {
+                value: measure,
+                prim: Primitive::N64,
+            }),
+            Primitive::Str => Some(MintValue::Str { len: measure }),
+            Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
+            Primitive::Bool => Some(MintValue::Bool),
+            Primitive::F32 | Primitive::F64 => Some(MintValue::Float),
         },
         ConceptualRustType::Array(elem) => {
             let e = valid_value_at(types, elem, depth)?;
-            Some(format!("vec![{e}; {measure}]"))
+            Some(MintValue::Array {
+                elem: Some(Box::new(e)),
+                count: measure,
+            })
         }
         ConceptualRustType::Map(k, v) => {
             let key = match k.resolve_alias_shallow() {
@@ -926,20 +1090,20 @@ fn materialize_at(
                     | Primitive::I32
                     | Primitive::I64
                     | Primitive::N64),
-                ) => format!("__i as {p}"),
-                ConceptualRustType::Primitive(Primitive::Str) => "__i.to_string()".to_owned(),
+                ) => MapKey::Int(*p),
+                ConceptualRustType::Primitive(Primitive::Str) => MapKey::Str,
                 // bool has exactly 2 distinct keys, so only lengths <= 2 are mintable — beyond
                 // that the collect() would dedupe and the map would miss its target measure
-                ConceptualRustType::Primitive(Primitive::Bool) if measure <= 2 => {
-                    "__i == 1".to_owned()
-                }
+                ConceptualRustType::Primitive(Primitive::Bool) if measure <= 2 => MapKey::Bool,
                 _ => return None, // non-trivial keys aren't cheaply mintable
             };
             let val = valid_value_at(types, v, depth)?;
             // distinct keys 0..measure; collect() infers the map type from the target position
-            Some(format!(
-                "(0u64..{measure}).map(|__i| ({key}, {val})).collect()"
-            ))
+            Some(MintValue::Map {
+                key,
+                val: Box::new(val),
+                count: measure,
+            })
         }
         _ => None,
     }
