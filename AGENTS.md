@@ -73,6 +73,12 @@ Sometimes it could have been caught systematically, but the system didn't have t
 Generally, for any test failure, we have to think from first principles about how we could have avoided this in the first place.
 If no system exists that could have got it, a description of the missing system may exist (or have to be added) in the testing roadmap: `tests/TESTING_ROADMAP.md`
 
+## Which AI model to use:
+
+- Use Sonnet 5 only if Claude Code internals themselves are recommending its use (sometimes happens for tool calls, etc.)
+- use Opus 4.8 for anything with a clear implementation plan
+- Use Fabel 5 for any implementation plan creation, review of implementation/plan, or for any problem you deem very hard
+
 ## Markdown formatting
 
 A lot of components of this library have markdown files following two different structures:
