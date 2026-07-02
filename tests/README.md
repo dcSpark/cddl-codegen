@@ -69,6 +69,14 @@ raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't r
 A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
 *wasm* crate and `cargo test`ed there (`tests/core/tests_wasm.rs` keeps the hook itself exercised).
 
+The `--wasm-list-macro`/`--wasm-conversions-macro` output references a *user-supplied* macro, so it
+can't compile standalone and its snapshot (`snapshot_tests::wasm_list_macro`) can't judge invocation
+semantics; `wasm_list_macro_compiles` compile-gates it against the real macro definitions in
+[`tests/wasm-macro-crate`](wasm-macro-crate) (wired in as a path dependency, the same way
+extern-deps wires `tests/extern-dep-crate`). Those macros' arms are written so the wrong-emission
+classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an unreachable
+combination — fail to compile (see the crate's README).
+
 ## Generated-test harness (`--emit-tests`, `src/emit_tests.rs`)
 
 The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
