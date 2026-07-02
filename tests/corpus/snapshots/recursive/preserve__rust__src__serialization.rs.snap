@@ -1,0 +1,113 @@
+---
+source: src/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Tree {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.value,
+            fit_sz(
+                self.value,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.value_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.children_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.children.len() as u64),
+        )?;
+        for element in self.children.iter() {
+            element.serialize(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.children_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Tree {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (value, value_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("value"))?;
+            let (children, children_encoding) = (|| -> Result<_, DeserializeError> {
+                let mut children_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let children_encoding = len.into();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (children_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if let cbor_event::LenSz::Indefinite = len {
+                        if raw.cbor_type()? == cbor_event::Type::Special {
+                            match raw.special()? {
+                                cbor_event::Special::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            }
+                        }
+                    }
+                    children_arr.push(Tree::deserialize(raw)?);
+                }
+                Ok((children_arr, children_encoding))
+            })()
+            .map_err(|e| e.annotate("children"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Tree {
+                value,
+                children,
+                encodings: Some(TreeEncoding {
+                    len_encoding,
+                    value_encoding,
+                    children_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Tree"))
+    }
+}
