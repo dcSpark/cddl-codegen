@@ -3,6 +3,39 @@
 cddl-codegen is tested in two complementary layers. Keep them distinct — they answer different
 questions.
 
+## Running everything
+
+`check.ts` at the repo root is the single entry point for "run everything that verifies this repo".
+It's a dependency-free Bun script built around a gate **registry** — one entry per verification gate
+— with three tiers, each a superset of the previous:
+
+| Tier | Command | What it runs | Wall time (warm) |
+|------|---------|--------------|------------------|
+| `quick` | `bun run check.ts quick` | fmt + clippy + snapshot tests — the inner loop | ~12s |
+| `ci` (default) | `bun run check.ts` | exactly the frozen `build.yml` union (both jobs) | ~3 min |
+| `full` | `bun run check.ts full` | `ci` + every manual-only gate | ~9 min |
+
+`ci` is "what a PR would face" — run it before every push. `full` additionally runs the gates CI
+can't (the two `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus`,
+`cddl-matrix/verify.ts`, `corpus_detect.ts`, and the fuzz-crate compile-rot check) — run it before
+shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
+`SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
+*visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
+every in-tier gate first).
+
+`verify.ts` needs two oracles (ruby `cddl`, rust `cddl`); the runner preflights them and prints
+install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). The fuzz
+gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
+
+The runner's **first gate is three self-completeness meta-checks**: every `#[ignore]` test must be
+registered as a manual gate or a known-failing stub, every `cddl-matrix/*.ts` (minus `lib.ts`) must
+be wired to a tier, and each `ci` command must still appear in `build.yml`. This is the systematic
+catch for the disease the runner cures — a gate that exists but is in nobody's habit — so a new
+manual gate or IOU stub is a conscious registry edit, not a silent omission.
+
+Wall times above are warm-cache, measured on the dev machine; a cold build adds the one-time
+dependency + test-binary compile.
+
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
 | **Golden snapshots** | `src/tests/snapshot_tests.rs` | "Did the *generated source* change?" | fast (~5s, in-process) |

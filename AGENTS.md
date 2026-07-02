@@ -66,10 +66,17 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 ## Build & verify
 
-There are multiple sources of verifications steps that are useful to know if a feature is safe to ship:
-- CI workflow (`.github/workflows/build.yml`). It's cheaper (to avoid large CI costs)
-- Traditional build tools: `cargo fmt`, `clippy`, build
-- Full test suite: `tests/README.md`
+`bun run check.ts` at the repo root is the one entry point for verification: a gate registry with
+three tiers, each a superset of the previous.
+- `bun run check.ts quick` — fmt + clippy + snapshot tests (the inner loop).
+- `bun run check.ts` (`ci`, default) — exactly the frozen `build.yml` union: "what a PR would face".
+- `bun run check.ts full` — `ci` + every manual-only gate (the two `#[ignore]`d gates, `verify.ts`,
+  `corpus_detect.ts`, the fuzz compile-rot check). Run this before shipping a feature.
+
+Every run prints the full registry as a PASS/FAIL/SKIPPED/STUB table and exits non-zero on any fail;
+its first gate self-checks that every manual gate, IOU stub, and `cddl-matrix` script is registered,
+so the "run everything" set can't silently rot. The runner is the local *superset* of CI, never a
+replacement to be wired in. See `tests/README.md` § "Running everything".
 
 **CI is feature-frozen — make NO modifications to the CI flow.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or expansions of existing runs.
 The only acceptable CI changes are fixes to things that break due to refactoring
