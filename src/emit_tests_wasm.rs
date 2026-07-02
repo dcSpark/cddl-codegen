@@ -345,7 +345,22 @@ fn wasm_arg(
     scoped: &ScopeMap,
     cli: &Cli,
 ) -> Option<String> {
-    let val = wasm_value(types, mv, field_ty.resolve_alias_shallow(), scoped, cli)?;
+    let resolved = field_ty.resolve_alias_shallow();
+    // A wrapper collection reached through a rust alias (`nums = [* uint]` used as a field mints
+    // `Alias(Rust(Nums), Array(U64))`) crosses the wasm boundary as `&Nums`, NOT a transparent
+    // `Vec` — but shallow-resolving the alias would peel the `Nums` wrapper away and let the Array
+    // branch mint a bare `vec![..]`, which no longer type-checks against the `&Nums` ctor param.
+    // `directly_wasm_exposable` on the UNRESOLVED type sees the wrapper (returns false), so use it to
+    // loud-skip here — the block-expr wrapper-collection build is the same deferred class as an
+    // inline non-exposable list/map field (which `wasm_value` already returns None for).
+    if matches!(
+        resolved,
+        ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+    ) && !field_ty.conceptual_type.directly_wasm_exposable(types)
+    {
+        return None;
+    }
+    let val = wasm_value(types, mv, resolved, scoped, cli)?;
     if field_ty.for_wasm_param(types).starts_with('&') {
         Some(format!("&{val}"))
     } else {

@@ -572,6 +572,134 @@ fn wasm_matrix_compiles() {
     );
 }
 
+/// The wasm-ABI matrix ROUND-TRIP gate — the behavioural upgrade of `wasm_matrix_compiles`. Same cell
+/// enumeration (`tests/matrix_wasm/*.cddl`), but each cell is generated with `--wasm=true
+/// --emit-tests=true` and `cargo test`ed (not `cargo check`ed): this compiles AND RUNS the emitted
+/// `cddl_generated_wasm_tests` module (cross-crate byte differential + wire round-trip + accessor
+/// read-back + boundary acceptance — see `src/emit_tests_wasm.rs`). A cell can `cargo check` green
+/// (compile gate) while the wrapper API does a semantically wrong same-type conversion; that only
+/// surfaces when the emitted assertions RUN, which is what this gate adds.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze (`cargo test`
+/// per cell is materially heavier than the compile gate's per-cell `cargo check`). Run it with
+/// `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`.
+///
+/// `SKIP` holds the deliberately-red cells with a per-entry reason. Same four-state verdict matrix as
+/// `wasm_matrix_compiles`: a red non-SKIP cell fails (real finding, or deliberately SKIP-list it with a
+/// ledger reason); a SKIP cell that now passes fails the resurfaced guard (a fix landed — take it off
+/// SKIP). `wasm_matrix_compiles` stays byte-for-byte untouched: the compile verdict remains the
+/// always-on CI floor, this is the manual round-trip verdict on top. Its own scratch dir name lets it
+/// run beside the compile gate. Note: a cell whose shape mints no wasm test surface (nothing the
+/// emitter can faithfully build — e.g. a pure c-enum, or a wrapper/collection ctor arg with no wasm
+/// build) simply emits no module and `cargo test` passes with zero emitted tests; that is a
+/// legitimate green here (the emitter skips loudly), NOT a false pass — the compile gate already
+/// pins that the cell's wasm ABI compiles.
+#[test]
+#[ignore]
+fn wasm_matrix_roundtrips() {
+    use std::str::FromStr;
+
+    // Deliberately-red cells (`<shape>__<role>`), each with its reason. Pinned from the first full
+    // `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored` run: that run surfaced one
+    // real finding — `coll__struct-field` (a `nums = [* uint]` wrapper list used as a struct field,
+    // minted as `Alias(Rust(Nums), Array(U64))`) — where the emitter shallow-resolved the alias, lost
+    // the `Nums` wrapper, and minted a bare `vec![..]` against the `&Nums` wasm ctor param (E0308).
+    // Fixed at source in `emit_tests_wasm::wasm_arg` (loud-skip via the UNRESOLVED type's
+    // wasm-exposability, matching the documented wrapper-collection deferral), so it is NOT SKIP-listed
+    // — it round-trips green (its only field is now a loud skip, so the cell mints no wasm surface).
+    const SKIP: &[&str] = &[
+        // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
+        // is integration-tested in tests/extern-deps. Permanent skip (never compiles, so never tests).
+        "extern__array-element",
+    ];
+
+    let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    assert!(
+        !entries.is_empty(),
+        "no wasm-matrix fixtures in {dir:?} (run `bun run project_wasm_matrix.ts`)"
+    );
+
+    // Own scratch dir (distinct from wasm_matrix_compiles) + one shared target so cbor_event/
+    // wasm-bindgen/the libtest harness build once, then each tiny crate tests incrementally.
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_matrix_rt_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![]; // red cells NOT on SKIP — real findings
+    let mut resurfaced = vec![]; // SKIP cells that now pass — remove them from SKIP
+    for input in &entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        let skipped = SKIP.contains(&stem);
+        let out = root.join(stem);
+        let gen_out = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=true")
+            .arg("--emit-tests=true")
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            if !skipped {
+                failures.push(format!(
+                    "{stem}: generation failed\n{}",
+                    String::from_utf8_lossy(&gen_out.stderr)
+                ));
+            }
+            continue;
+        }
+        let wasm_dir = out.join("wasm");
+        if !wasm_dir.exists() {
+            // Every cell wraps its shape in a composite `holder`, so a wasm crate is always expected.
+            if skipped {
+                resurfaced.push(format!("{stem} (emits no wasm crate)"));
+            } else {
+                failures.push(format!(
+                    "{stem}: generated no wasm crate (expected a wasm wrapper for every cell — the cell \
+                     is no longer being round-trip-gated)"
+                ));
+            }
+            continue;
+        }
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(&wasm_dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        match (skipped, test.status.success()) {
+            (false, false) => failures.push(format!(
+                "{stem}: cargo test failed (wasm round-trip red cell — fix the emitter/generator or, \
+                 deliberately, add to SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&test.stdout),
+                String::from_utf8_lossy(&test.stderr)
+            )),
+            (true, true) => resurfaced.push(stem.to_string()),
+            _ => {} // (false,true)=green as expected; (true,false)=red as expected
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        resurfaced.is_empty(),
+        "these SKIP-listed wasm-matrix cells now round-trip — remove them from SKIP (a fix landed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "wasm-matrix cells failed to round-trip:\n\n{}",
+        failures.join("\n\n")
+    );
+}
+
 /// Compile gate for `--wasm-list-macro` / `--wasm-conversions-macro`. The emitted code references
 /// a user-supplied macro (`impl_wasm_list!` invocations replace each list wrapper's inline
 /// struct/accessor/conversion block), so it can't compile standalone and was previously
