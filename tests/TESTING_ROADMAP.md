@@ -120,11 +120,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      `IntermediateTypes::has_wasm_wrapper(ident)`; route new naming / boundary / exposability decisions
      through it (see `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work").
    - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
-     it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
-     One known hole: `_CDDL_CODEGEN_RAW_BYTES_TYPE_` has no SHAPES entry, and neither raw-bytes fixture
-     ships a `tests_wasm.rs` — the raw-bytes wasm boundary is compile-only via `external_wasm_raw_bytes_def`
-     (a `rawbytes` shape would gate the compile half systematically; a `tests_wasm.rs` in `tests/raw-bytes/`
-     the behavioral half).
+     it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them. The
+     `rawbytes` shape (`_CDDL_CODEGEN_RAW_BYTES_TYPE_` -> a user-supplied `PubKey`) is enumerated; its cells
+     can't `cargo check` standalone, so the gate splices the in-repo defs
+     (`tests/external_{rust,wasm}_raw_bytes_def`) into each `rawbytes__*` crate before compiling — the pattern
+     to reuse for any future user-supplied-type shape whose defs live in-repo (`extern` stays a permanent
+     SKIP because its defs live only in `tests/extern-deps`).
    - **Behavioural frontier (compile → round-trip) — landed; residue below.** The compile gate can be
      green while a cell emits a semantically wrong same-type conversion at the wasm boundary (an identity
      `.into()` where a transform was needed). That is now caught: `--emit-tests --wasm=true` emits a

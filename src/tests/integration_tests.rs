@@ -36,6 +36,33 @@ fn tool_cmd(program: &str) -> std::process::Command {
     c
 }
 
+/// Append the in-repo user-supplied `RawBytesEncoding` defs (`PubKey`) into a freshly generated crate
+/// rooted at `out` (rust + wasm), so a `rawbytes__*` wasm-matrix cell — whose `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+/// resolves to that user type — compiles/tests standalone instead of being a permanent SKIP like `extern`.
+/// Mirrors `run_test`'s external-file append (including the `use serialization::*;` the rust def needs for
+/// `RawBytesEncoding`/`Deserialize*`); the matrix never passes `--lib-name`, so the wasm def's `cddl_lib`
+/// path needs no substitution here.
+fn append_raw_bytes_defs(out: &std::path::Path) {
+    use std::io::Write;
+    let rust_def = std::fs::read_to_string("tests/external_rust_raw_bytes_def").unwrap();
+    let mut rust_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out.join("rust/src/lib.rs"))
+        .unwrap();
+    rust_lib
+        .write_all(b"\n\nuse serialization::*;\n\n")
+        .unwrap();
+    rust_lib.write_all(rust_def.as_bytes()).unwrap();
+    std::mem::drop(rust_lib);
+    let wasm_def = std::fs::read_to_string("tests/external_wasm_raw_bytes_def").unwrap();
+    let mut wasm_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out.join("wasm/src/lib.rs"))
+        .unwrap();
+    wasm_lib.write_all(b"\n\n").unwrap();
+    wasm_lib.write_all(wasm_def.as_bytes()).unwrap();
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -475,7 +502,10 @@ fn feature_corpus_compiles() {
 /// was invisible. Here an un-covered boundary bug shows up as a specific red cell instead of by luck.
 ///
 /// `SKIP` holds the deliberately-red cells (pre-existing gaps tracked in `cddl-matrix/ROADMAP.md`, plus
-/// `extern`, which references a user-supplied type and can't compile standalone). A fix lands by taking
+/// `extern`, which references a user-supplied type and can't compile standalone). `rawbytes__*` cells also
+/// reference a user-supplied type, but its defs are in-repo — `append_raw_bytes_defs` splices them in per
+/// cell (same 2 commands, no extra cargo invocation), so those cells compile for real instead of SKIP-ing.
+/// A fix lands by taking
 /// its cell off `SKIP` — and the guard below fails if a `SKIP` cell starts compiling, so the list can't
 /// silently rot. A cell that's red but NOT in `SKIP` fails the test: it's a new wasm-ABI bug to fix or
 /// (deliberately, with a ledger entry) skip-list. `cargo check`s only the wasm crate (single default
@@ -548,6 +578,12 @@ fn wasm_matrix_compiles() {
                 ));
             }
             continue;
+        }
+        // `rawbytes__*` cells resolve `_CDDL_CODEGEN_RAW_BYTES_TYPE_` to a user-supplied type (`PubKey`),
+        // undefined in a bare crate. Unlike `extern` (whose defs live only in tests/extern-deps), the raw-bytes
+        // defs are in-repo, so append them and the cell compiles for real instead of being a SKIP.
+        if stem.starts_with("rawbytes__") {
+            append_raw_bytes_defs(&out);
         }
         let check = tool_cmd("cargo")
             .arg("check")
@@ -675,6 +711,10 @@ fn wasm_matrix_roundtrips() {
                 ));
             }
             continue;
+        }
+        // See wasm_matrix_compiles: append the in-repo raw-bytes defs so `rawbytes__*` cells compile/run.
+        if stem.starts_with("rawbytes__") {
+            append_raw_bytes_defs(&out);
         }
         let test = tool_cmd("cargo")
             .arg("test")

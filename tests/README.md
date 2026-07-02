@@ -337,7 +337,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
     (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`,
     `cborwrap`/`cborwrap2`, `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
-    `nullable` (`Option<T>`), `generic`, `chain`, `extern`. This is the
+    `nullable` (`Option<T>`), `generic`, `chain`, `extern`, `rawbytes` (a user-supplied
+    `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
     deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
     — see the docstrings in `src/intermediate.rs`).
@@ -353,7 +354,12 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
 - **The gate** (`integration_tests::wasm_matrix_compiles`) globs the fixtures, generates each
   `--wasm=true`, and `cargo check`s the wasm crate. The wasm crate path-depends on the rust crate, so
   rust-side type errors surface here too — which means some skip-listed reds are rust-crate generation
-  bugs rather than wasm-boundary ones. It follows `feature_corpus_compiles`' shared-target-dir *pattern*
+  bugs rather than wasm-boundary ones. A `rawbytes__*` cell resolves `_CDDL_CODEGEN_RAW_BYTES_TYPE_` to a
+  user-supplied type (`PubKey`), so before `cargo check` the gate splices the in-repo defs
+  (`tests/external_{rust,wasm}_raw_bytes_def`) into the generated rust + wasm crates via
+  `append_raw_bytes_defs` — mirroring `run_test`'s external-file append. That's why `rawbytes` compiles for
+  real instead of being SKIP-listed like `extern` (whose defs live only in `tests/extern-deps`); it costs no
+  extra cargo invocation (same per-cell generate + check). It follows `feature_corpus_compiles`' shared-target-dir *pattern*
   but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
   tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
   compile green while emitting *semantically* wrong bindings (e.g. an identity `.into()` where a transform
