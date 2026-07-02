@@ -605,14 +605,12 @@ fn wasm_matrix_compiles() {
 fn wasm_matrix_roundtrips() {
     use std::str::FromStr;
 
-    // Deliberately-red cells (`<shape>__<role>`), each with its reason. Pinned from the first full
-    // `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored` run: that run surfaced one
-    // real finding — `coll__struct-field` (a `nums = [* uint]` wrapper list used as a struct field,
-    // minted as `Alias(Rust(Nums), Array(U64))`) — where the emitter shallow-resolved the alias, lost
-    // the `Nums` wrapper, and minted a bare `vec![..]` against the `&Nums` wasm ctor param (E0308).
-    // Fixed at source in `emit_tests_wasm::wasm_arg` (loud-skip via the UNRESOLVED type's
-    // wasm-exposability, matching the documented wrapper-collection deferral), so it is NOT SKIP-listed
-    // — it round-trips green (its only field is now a loud skip, so the cell mints no wasm surface).
+    // Deliberately-red cells (`<shape>__<role>`), each with its reason. The wrapper-collection
+    // struct-field cells (`coll__struct-field` `nums = [* uint]`, `collmap__struct-field`,
+    // `passthrumap__struct-field`) round-trip green: the emitter builds their `&Nums`/`&Mp` ctor arg
+    // through the wrapper's `new`/`add`/`insert` API, taking the wrapper NAME from the UNRESOLVED
+    // conceptual type (`emit_tests_wasm::wasm_collection_build`) so it doesn't shallow-resolve the
+    // alias into a bare `vec![..]` against the `&Nums` param — so they are NOT SKIP-listed.
     const SKIP: &[&str] = &[
         // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
         // is integration-tested in tests/extern-deps. Permanent skip (never compiles, so never tests).
@@ -1463,8 +1461,9 @@ fn emit_wasm_tests_execute() {
     );
     assert!(wasm_test.status.success());
 
-    // Floors pinned from the first real Phase-2 run (see emit_tests_wasm.rs); they keep the gate
-    // from going vacuous if emission silently shrinks.
+    // Floors pinned to the core fixture's minted count; they keep the gate from going vacuous if
+    // emission silently shrinks. Ratcheted when the wrapper-collection (new/add, new/insert) and
+    // wrapper-`From` ctor-arg builds landed — every core type now mints a wasm surface (no loud skip).
     let lib = std::fs::read_to_string(&wasm_lib_path).unwrap();
     assert!(
         lib.contains("mod cddl_generated_wasm_tests"),
@@ -1473,11 +1472,11 @@ fn emit_wasm_tests_execute() {
     let n_roundtrip = lib.matches("fn wasm_roundtrip_").count();
     let n_bounds = lib.matches("fn wasm_bounds_").count();
     assert!(
-        n_roundtrip >= 45,
+        n_roundtrip >= 60,
         "emitted only {n_roundtrip} wasm_roundtrip tests for the core fixture — emission silently shrank"
     );
     assert!(
-        n_bounds >= 4,
+        n_bounds >= 5,
         "emitted only {n_bounds} wasm_bounds tests for the core fixture — emission silently shrank"
     );
 }

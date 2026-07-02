@@ -39,7 +39,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
   cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
   (`src/emit_tests_wasm.rs`, a cross-crate byte differential + accessor read-back) that runs via
   `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual). See item 2.
-  The residue there is the fidelity stubs + the deferred block-expr collection minter shapes.
+  The residue there is the fidelity stubs (nullable flatten read-side loss).
 - **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
   emission can never again pass as supported (item 7).
 
@@ -133,17 +133,15 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      accessor read-back — a second renderer over the same `emit_tests::MintValue` derivation surface (no
      duplicate minter). It runs in the default suite (`integration_tests::emit_wasm_tests_execute`, the
      `core` fixture) and per grid cell via `integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d
-     under the CI freeze). The first per-cell run paid off immediately: it caught `coll__struct-field`
-     (a `[* uint]` wrapper list used as a struct field) minting a bare `vec![..]` against a `&Nums` wasm
-     ctor — the emitter shallow-resolved the alias past its wrapper — fixed in `emit_tests_wasm::wasm_arg`
-     to loud-skip via the UNRESOLVED type's `directly_wasm_exposable`. Residue:
-     - **Deferred wasm minter shapes (loud skips today).** A wrapper/collection ctor arg needs a block-expr
-       build (`{ let mut l = FooList::new(); l.add(&e); l }`) and a `@newtype`/tag wrapper ctor arg has no
-       wasm `new`; both are currently `eprintln!` skips, so a cell built only from them mints no wasm surface
-       and falls back to the compile verdict. A block-expr collection minter is the highest-leverage
-       extension — it would give the corpus- and matrix-breadth wasm round-trip gates (below) a mint
-       surface for the collection/wrapper cells they currently fall back to compile on.
-       Corpus- and matrix-breadth wasm round-trip coverage is otherwise wired: `feature_corpus_compiles`
+     under the CI freeze). Every mintable core/matrix shape now emits a wasm surface: wrapper-collection
+     ctor args build through the wrapper's `new`/`add` (list) or `new`/`insert` (map) API as a block
+     expression, deriving the wrapper NAME from the UNRESOLVED conceptual type (`for_wasm_member`) so an
+     aliased list like `nums = [* uint]` stays `&Nums` rather than being shallow-resolved to a bare
+     `vec![..]` against a `&Nums` ctor (the `coll__struct-field` trap the per-cell run first surfaced); and
+     `@newtype`/tag/table/array wrapper ctor args — which export no wasm `new` — build via the
+     `From<cddl_lib::Native>` impl every wasm wrapper carries. Only extern / raw-bytes ctor args stay a loud
+     skip (user-supplied types with no generated conversion). Residue:
+     - **Corpus- and matrix-breadth wasm round-trip coverage** is wired: `feature_corpus_compiles`
        `cargo test`s the wasm crate under the default profile (not just `cargo check`), and `verify.ts`
        runs the wasm oracle by default (opt out with `--no-wasm` / `VERIFY_WASM=0`).
      - **Two pre-existing `core`-fixture findings the wasm gate has to route around** (surfaced building the

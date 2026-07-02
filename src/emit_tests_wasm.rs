@@ -25,15 +25,17 @@
 //! so a wasm `Result` is unwrapped as `.ok().expect(..)`, never `.unwrap()`/`.expect()`; composite
 //! ctor params cross as `&Wrapper` (hence the `&` before composite args); c-style enums cross by
 //! value as the re-exported rust enum (no wrapper); fixed-value fields are omitted from `new`; and
-//! `@newtype`/tag wrappers expose NO wasm `new` in the generated crate, so a wrapper entry type is
-//! built by decoding the rust twin's bytes (`from_cbor_bytes`) rather than a wasm ctor.
+//! `@newtype`/tag wrappers expose NO wasm `new` in the generated crate, so a wrapper ENTRY type is
+//! built by decoding the rust twin's bytes (`from_cbor_bytes`), and a wrapper CTOR ARG is built via
+//! the `From<cddl_lib::Native>` impl every wasm wrapper carries (`wasm_named`); a wrapper COLLECTION
+//! ctor arg (`FooList`/`FooMap`, or an aliased `nums = [* uint]` -> `&Nums`) is built as a block
+//! expression through the wrapper's `new`/`add`/`insert` API (`wasm_collection_build`).
 //!
 //! **Loud skips (never silent):** every shape this renderer can't faithfully express emits an
-//! `eprintln!("cddl-codegen --emit-tests: ...")` and is dropped — wrapper-typed composite ctor args
-//! (no wasm ctor to build them), non-primitive-element collection fields (wrapper lists / maps, whose
-//! block-expr build is deferred), optional-nullable present-null flatten points, and the macro-API
-//! flag configurations (whole module). The hand-written `tests/<dir>/tests_wasm.rs` covers the
-//! deferred collection/wrapper shapes as a plausibility cross-check.
+//! `eprintln!("cddl-codegen --emit-tests: ...")` and is dropped — extern / raw-bytes ctor args
+//! (user-supplied types with no generated conversion), optional-nullable present-null flatten points,
+//! and the macro-API flag configurations (whole module). The hand-written `tests/<dir>/tests_wasm.rs`
+//! covers the collection/wrapper shapes as a plausibility cross-check.
 //!
 //! **Mutation-verified (red-first, per repo idiom — the same discipline as `emit_tests.rs`'s
 //! constant-writing-serializer check).** Three hand-applied `generation.rs` mutations — each an
