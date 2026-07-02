@@ -250,11 +250,17 @@ fn wasm_value(
                 // wasm exposes this as a plain Vec<prim>, identical literal to the rust side
                 Some(emit_tests::render_rust(mv))
             } else {
-                // a wrapper List (FooList, …): block-expr build via new/add is deferred
+                // a wrapper List (FooList, …): the new/add block-expr build lives in `wasm_arg`,
+                // which still holds the UNRESOLVED type carrying the wrapper NAME (a resolved
+                // `Array(_)` here has already lost it — the coll__struct-field trap). Reaching this
+                // arm means the wrapper collection sat past a name-erasing point (e.g. nested in an
+                // `Optional`), which stays a deferred loud skip at the caller.
                 None
             }
         }
-        ConceptualRustType::Map(_, _) => None, // wrapper map block-expr build deferred
+        // wrapper Map (FooMap, …): same as the array arm — the new/insert block-expr build lives in
+        // `wasm_arg` where the wrapper name survives; a resolved `Map(_,_)` here has lost it.
+        ConceptualRustType::Map(_, _) => None,
         ConceptualRustType::Rust(ident) => wasm_named(types, ident, mv, scoped, cli),
         ConceptualRustType::Fixed(_) | ConceptualRustType::Alias(_, _) => None,
     }
@@ -346,25 +352,93 @@ fn wasm_arg(
     cli: &Cli,
 ) -> Option<String> {
     let resolved = field_ty.resolve_alias_shallow();
-    // A wrapper collection reached through a rust alias (`nums = [* uint]` used as a field mints
-    // `Alias(Rust(Nums), Array(U64))`) crosses the wasm boundary as `&Nums`, NOT a transparent
-    // `Vec` — but shallow-resolving the alias would peel the `Nums` wrapper away and let the Array
-    // branch mint a bare `vec![..]`, which no longer type-checks against the `&Nums` ctor param.
-    // `directly_wasm_exposable` on the UNRESOLVED type sees the wrapper (returns false), so use it to
-    // loud-skip here — the block-expr wrapper-collection build is the same deferred class as an
-    // inline non-exposable list/map field (which `wasm_value` already returns None for).
+    // A wrapper collection crosses the wasm boundary as `&Wrapper` (a `FooList`/`FooMap`, or a named
+    // list/map like `nums = [* uint]` -> `&Nums`), so it's built through the wrapper's `new`/`add`
+    // (list) or `new`/`insert` (map) API — see `wasm_collection_build`. `directly_wasm_exposable` on
+    // the UNRESOLVED type distinguishes it from a plain `Vec<prim>` (which crosses transparently).
     if matches!(
         resolved,
         ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
     ) && !field_ty.conceptual_type.directly_wasm_exposable(types)
     {
-        return None;
+        let build =
+            wasm_collection_build(types, &field_ty.conceptual_type, resolved, mv, scoped, cli)?;
+        // the ctor param is `&Wrapper` for a wrapper collection (`for_wasm_param` prefixes `&`)
+        return Some(if field_ty.for_wasm_param(types).starts_with('&') {
+            format!("&{build}")
+        } else {
+            build
+        });
     }
     let val = wasm_value(types, mv, resolved, scoped, cli)?;
     if field_ty.for_wasm_param(types).starts_with('&') {
         Some(format!("&{val}"))
     } else {
         Some(val)
+    }
+}
+
+/// Build a wrapper collection (`FooList`/`FooMap`, or a named list/map wrapper) through its wasm
+/// `new`/`add` (list) or `new`/`insert` (map) API as a block expression usable in ctor-arg position.
+///
+/// CRITICAL: the wrapper type NAME is taken from `unresolved` (the field's own `Alias(Rust(Nums), ..)`
+/// / inline `Array(..)` conceptual type), NEVER from `resolved` — shallow-resolving past the alias
+/// drops the `Nums` wrapper and would name the build `<Elem>List`, which doesn't type-check against
+/// the `&Nums` ctor param (the coll__struct-field trap). `for_wasm_member` reads that name off the
+/// unresolved type (the alias ident for a named list/map, `<Elem>List`/`Map<K>To<V>` for an inline
+/// one) — exactly the wrapper the generator emits. `resolved` supplies the element / key+value types,
+/// which are the same whichever way the field named its collection.
+fn wasm_collection_build(
+    types: &IntermediateTypes,
+    unresolved: &ConceptualRustType,
+    resolved: &ConceptualRustType,
+    mv: &MintValue,
+    scoped: &ScopeMap,
+    cli: &Cli,
+) -> Option<String> {
+    let wrapper = unresolved.for_wasm_member(types);
+    match (resolved, mv) {
+        (ConceptualRustType::Array(elem_ty), MintValue::Array { elem, count }) => {
+            // `add(elem)` takes the element via `for_wasm_param`, so reuse `wasm_arg` for the same
+            // by-ref/by-value boundary the wrapper's ctor param uses.
+            let mut body = format!("let mut l = {wrapper}::new();");
+            if let Some(e) = elem {
+                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
+                for _ in 0..*count {
+                    body.push_str(&format!(" l.add({elem_expr});"));
+                }
+            }
+            Some(format!("{{ {body} l }}"))
+        }
+        (ConceptualRustType::Map(_k, v), MintValue::Map { key, val, count }) => {
+            // cheaply-minted map keys are always primitives crossing by value (see `materialize`),
+            // so synthesize each of the `count` distinct keys as a literal; `insert` takes the value
+            // via `for_wasm_param`, so `wasm_arg` gives it the same boundary treatment.
+            let val_expr = wasm_arg(types, val, v, scoped, cli)?;
+            let mut body = format!("let mut m = {wrapper}::new();");
+            for i in 0..*count {
+                body.push_str(&format!(
+                    " m.insert({}, {val_expr});",
+                    map_key_literal(key, i)
+                ));
+            }
+            Some(format!("{{ {body} m }}"))
+        }
+        // an inline map minted empty for an unmintable value (loud-skip fallback): build it empty
+        (ConceptualRustType::Map(_, _), MintValue::DefaultMap) => {
+            Some(format!("{{ {wrapper}::new() }}"))
+        }
+        _ => None,
+    }
+}
+
+/// A single synthesized map key at index `i` (the literal form of `map_key_expr`, whose `__i` is a
+/// closure param unavailable in the explicit-`insert` build).
+fn map_key_literal(key: &MapKey, i: i128) -> String {
+    match key {
+        MapKey::Int(p) => format!("{i} as {p}"),
+        MapKey::Str => format!("{i}.to_string()"),
+        MapKey::Bool => format!("{i} == 1"),
     }
 }
 
