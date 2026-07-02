@@ -162,6 +162,60 @@ round-trip, not just compile.
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
+### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
+
+The round-trip harness mints its values from the **same IR** as the code under test, so an IR-level
+miscompile — a bound or member computed wrong at *parse* time — mints a spec-violating value and then
+asserts it round-trips green (encoder and decoder agree with each other, both from the same bad IR).
+Live example: `tests/corpus/exclusive_range.cddl` (`[v: 0...10]`) mis-computes the exclusive upper
+bound, so the minter mints `v = 11` (spec max valid = 9) and the round-trip passes.
+
+`--emit-tests-conformance` closes that residual. When on, each emitted round-trip case gets one extra
+line right after its bytes are computed: `cddl_conformance::validate(&bytes, "<rule>")`, validating
+the minted bytes against the type's **source `.cddl` rule** via the `cddl` crate's independent
+decode+constraint path (the same validator, and the same shared helpers, as
+`deser_test_conformance.rs` — the emitter reuses them, it does not duplicate the validator). The
+Rust type name is mapped back to its source rule via `convert_to_snake_case`, gated on the ident
+being a real top-level rule (`IntermediateTypes::is_toplevel_rule`) and on the reversal round-tripping
+faithfully — a synthesized struct or a lossy name gets no call.
+
+**What it proves / can't.** A conformance failure is a strong signal (our bytes violate the spec the
+generator was built from). Same caveats as `deser_test_conformance.rs`: it shares the dcSpark fork's
+*parser* with the generator, so it catches wrong **values**, not fork-level misparses; and the minted
+values are shallow (None arms, empty tables, depth-capped recursion), so it's breadth across fixtures,
+not exhaustive per-type depth.
+
+**The gate** (`integration_tests::ir_conformance_corpus`, `#[ignore]`d — **manual/local only** under
+the CI freeze, because it adds the heavy `cddl` dep to every corpus crate):
+
+```sh
+cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture   # ~1 min
+```
+
+For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-conformance`, appends
+`CDDL_ORACLE_DEP` + the shared oracle helpers, copies the fixture in as
+`cddl_conformance_source.cddl`, and `cargo test`s the crate under one shared `CARGO_TARGET_DIR` (so
+`cddl` compiles once). Two curated lists, each empirically justified:
+
+- **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
+  `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed
+  for the right reason). An expected-fail fixture that *passes* turns the gate RED ("IR bug apparently
+  fixed or oracle lost teeth — investigate, then remove from `EXPECTED_FAIL`"). Currently just
+  `exclusive_range` (verified: the validator rejects the minted `11` as out of range `0 <= value < 10`).
+  The roadmap's two other named IR bugs are **not** on the list, empirically: `occurrence`'s
+  `[+ uint]` / `[2*5 uint]` are transparent top-level array aliases the minter emits **no round-trip
+  test** for (a minter-coverage gap — the validator *would* catch an out-of-count array, but nothing
+  is minted to validate); `inline_group` (`[(uint, tstr)]`) is **fixed at HEAD** (it emits a 2-field
+  struct that reads 2 elems and conforms — its stale `#[ignore]` stub and ledger entry predate the fix).
+- **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
+  (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
+  and `sized_int` (validator gap — it cannot evaluate a range with a negative lower bound, `i_8:
+  -128..127`, nor `.size` on a signed `int`, `i_64: int .size 8`; our minted values are in-spec).
+
+Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
+rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
+so a silent no-op sweep can't pass.
+
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
 A **coverage-by-construction** gate for the generated wasm-bindgen bindings: it compiles the wasm crate

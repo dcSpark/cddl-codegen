@@ -780,6 +780,15 @@ impl<'a> IntermediateTypes<'a> {
         self.scopes.get(ident).unwrap_or(&self.root_scope)
     }
 
+    /// Whether `ident` names a top-level CDDL rule (as opposed to a struct synthesized during IR
+    /// build — an embedded record, inline group, etc.). `scopes` is populated by `mark_scope`,
+    /// which `api::with_types` calls once per parsed rule, so its key set is exactly the top-level
+    /// rules. Used by the `--emit-tests-conformance` oracle: only a real rule name can be aliased as
+    /// the validator's synthetic root, so synthesized structs get no conformance call.
+    pub fn is_toplevel_rule(&self, ident: &RustIdent) -> bool {
+        self.scopes.contains_key(ident)
+    }
+
     // we need to do this for some generated intermediate structures as the parsing code
     // doesn't allow to just generate a rust struct but instead inserts everything needed
     pub fn remove_rust_struct(&mut self, ident: &RustIdent) -> Option<RustStruct> {

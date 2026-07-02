@@ -776,6 +776,34 @@ fn flag_value_rejects_canonical_without_preserve() {
 /// it can't compile standalone. Wire in `tests/wasm-macro-crate`'s real `cbor_json_api!` definition
 /// (whose bodies mirror the inline emission, so a divergent invocation fails to compile) and
 /// `cargo check` the generated wasm crate — same pattern as `wasm_list_macro_compiles`.
+/// `--emit-tests-conformance` without `--emit-tests` must be rejected up front (there is no
+/// generated-test module to add the conformance calls to). Pins the rejection *and* its message so
+/// the guard can't silently become a no-op, and confirms the same flags together are accepted — so
+/// the rejection is specific to the missing `--emit-tests`. Mirrors
+/// `flag_value_rejects_canonical_without_preserve`.
+#[test]
+fn flag_rejects_conformance_without_emit_tests() {
+    let mut cli = crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/corpus/exclusive_range.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        emit_tests_conformance: true,
+        emit_tests: false,
+        ..Default::default()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--emit-tests-conformance without --emit-tests should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--emit-tests-conformance") && msg.contains("--emit-tests=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
+    cli.emit_tests = true;
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "--emit-tests-conformance with --emit-tests should be accepted"
+    );
+}
+
 #[test]
 fn wasm_cbor_json_api_macro_compiles() {
     use std::str::FromStr;
@@ -1108,6 +1136,196 @@ fn emit_tests_execute() {
     assert!(
         n_reject >= 3,
         "emitted only {n_reject} reject tests for the preserve fixture — emission silently shrank"
+    );
+}
+
+/// The IR-bug conformance oracle at breadth (TESTING_ROADMAP "IR-bug oracle at breadth"). The
+/// `--emit-tests` round-trip harness mints values from the SAME IR as the code under test, so an
+/// IR-level miscompile (a bound/member computed wrong at parse time) mints a spec-violating value
+/// and then asserts it round-trips *green*. This gate closes that residual: it generates every
+/// `tests/corpus/*.cddl` with `--emit-tests --emit-tests-conformance`, wires in the `cddl` crate
+/// (`CDDL_ORACLE_DEP`) + the shared oracle helpers (`deser_test_conformance.rs`) + the source spec,
+/// and `cargo test`s each crate — so each minted round-trip value is validated against its SOURCE
+/// `.cddl` rule by the `cddl` crate's independent decode+constraint path.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze (it adds the
+/// heavy `cddl` dep to every corpus crate; see `tests/README.md`). Run with:
+///   `cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture`
+///
+/// EXPECTED_FAIL: fixtures with a known IR bug whose minted value the oracle MUST reject. Their
+/// `cargo test` must FAIL *and* the output must carry the oracle's distinctive message (so it failed
+/// for the right reason, not an unrelated break). If an expected-fail fixture PASSES, the gate goes
+/// RED ("IR bug apparently fixed or oracle lost teeth — investigate, then remove from EXPECTED_FAIL").
+/// Any fixture NOT on the list that fails conformance also goes RED (a new IR miscompile).
+///
+/// Scope (documented, not solved): minted values are shallow/degenerate (None arms, empty tables,
+/// depth-capped recursion) — this validates what the minter mints, at breadth across fixtures, not
+/// exhaustive per-type depth; and it shares the dcSpark `cddl` fork's PARSER with the generator, so
+/// it catches wrong VALUES, not fork-level misparses (same caveat as `deser_test_conformance.rs`).
+#[test]
+#[ignore = "manual/local IR-conformance gate (heavy cddl dep, CI feature-frozen): cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture"]
+fn ir_conformance_corpus() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+
+    // Fixtures whose known IR bug makes the minted value spec-violating: the oracle MUST reject it.
+    // (Empirically verified — see this gate's docs and tests/README.md § "IR-bug conformance oracle".)
+    //   - exclusive_range: `[v: 0...10]` mis-computes the exclusive upper bound as max=b+1, so the
+    //     minter mints v=11 (spec max valid = 9); the validator rejects 11.
+    const EXPECTED_FAIL: &[&str] = &["exclusive_range"];
+
+    // Fixtures excluded from the conformance sweep (generated WITHOUT --emit-tests-conformance) —
+    // each with a concrete reason the oracle can't soundly judge it. Kept honest: a fixture only
+    // belongs here for a *validator/minter* gap, never to paper over a real bug.
+    //   - dsl_custom: references user-supplied @custom_serialize fns; can't compile standalone
+    //     (same reason feature_corpus_compiles skips it).
+    //   - sized_int: VALIDATOR GAP. Its spec has `i_8: -128..127` and `i_64: int .size 8`; the cddl
+    //     validator can't parse a range whose lower bound is a negative int ("lower value must be a
+    //     uint type. got -128") nor `.size` on a signed `int` ("target for .size must a string or
+    //     uint data type, got int"). Our minted values are in-spec (all zeros) — this is a limitation
+    //     of the oracle's constraint evaluator, not an encoder bug (see tests/README.md).
+    const CONFORMANCE_SKIP: &[&str] = &["dsl_custom", "sized_int"];
+
+    let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
+
+    let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_ir_conformance_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    // The oracle's distinctive panic message (assert_cddl_conforms) — proves an expected-fail
+    // fixture failed *for the right reason*, not via some unrelated compile/test break.
+    const ORACLE_MSG: &str = "cddl conformance failed for rule";
+
+    let mut failures = vec![];
+    let mut fixed_or_toothless = vec![]; // EXPECTED_FAIL fixtures that unexpectedly passed
+    let mut validated_fixtures = 0usize; // vacuity floor: fixtures that actually emitted a conformance call
+    for input in &entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        if CONFORMANCE_SKIP.contains(&stem) {
+            continue;
+        }
+        let expected_fail = EXPECTED_FAIL.contains(&stem);
+        let out = root.join(stem);
+        let gen_out = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg("--emit-tests=true")
+            .arg("--emit-tests-conformance=true")
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            failures.push(format!(
+                "{stem}: generation failed\n{}",
+                String::from_utf8_lossy(&gen_out.stderr)
+            ));
+            continue;
+        }
+        let rust_dir = out.join("rust");
+        // wire in the shared oracle helpers (cddl_oracle_load_spec / assert_cddl_conforms) that the
+        // emitted cddl_conformance::validate calls resolve to — append them to lib.rs, like run_test
+        // appends deser_test_conformance.rs into the preserve fixture.
+        let lib_rs_path = rust_dir.join("src/lib.rs");
+        let mut lib_rs = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&lib_rs_path)
+            .unwrap();
+        lib_rs.write_all(b"\n\n").unwrap();
+        lib_rs.write_all(conformance_helpers.as_bytes()).unwrap();
+        std::mem::drop(lib_rs);
+        // the emitted validate() reads the spec from `cddl_conformance_source.cddl` next to the
+        // crate's Cargo.toml (CARGO_MANIFEST_DIR) — copy the fixture there.
+        std::fs::copy(input, rust_dir.join("cddl_conformance_source.cddl")).unwrap();
+        // add the cddl dep (rev-pinned, synced with Cargo.toml by cddl_oracle_dep_rev_matches_cargo_toml)
+        let mut cargo_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(rust_dir.join("Cargo.toml"))
+            .unwrap();
+        cargo_toml.write_all(CDDL_ORACLE_DEP.as_bytes()).unwrap();
+        std::mem::drop(cargo_toml);
+
+        // vacuity: did this fixture actually emit any conformance call? (a fixture whose only
+        // round-trip types are transparent array/table aliases emits none — see occurrence)
+        let lib_src = std::fs::read_to_string(&lib_rs_path).unwrap();
+        if lib_src.contains("cddl_conformance::validate(") {
+            validated_fixtures += 1;
+        } else if expected_fail {
+            // an expected-fail fixture that emits no conformance call can never fail for the right
+            // reason — the list is wrong.
+            failures.push(format!(
+                "{stem}: on EXPECTED_FAIL but emitted no conformance call (nothing to validate) — \
+                 the list is stale"
+            ));
+            continue;
+        }
+
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(&rust_dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let passed = test.status.success();
+        match (expected_fail, passed) {
+            (true, true) => fixed_or_toothless.push(format!(
+                "{stem}: EXPECTED_FAIL fixture PASSED conformance — IR bug apparently fixed or the \
+                 oracle lost teeth. Investigate, then remove it from EXPECTED_FAIL."
+            )),
+            (true, false) => {
+                if !combined.contains(ORACLE_MSG) {
+                    failures.push(format!(
+                        "{stem}: EXPECTED_FAIL fixture failed, but NOT via the conformance oracle \
+                         (missing `{ORACLE_MSG}`) — it broke for an unrelated reason:\n{combined}"
+                    ));
+                }
+            }
+            (false, true) => {} // green as expected
+            (false, false) => failures.push(format!(
+                "{stem}: conformance FAILED for a fixture not on EXPECTED_FAIL — either a new \
+                 IR-level miscompile (mints spec-violating bytes) or a validator gap to document \
+                 + add to CONFORMANCE_SKIP:\n{combined}"
+            )),
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    // vacuity floor: a silent no-op sweep (nothing validated) must not pass. 33 of the 39 non-skip
+    // corpus fixtures emit at least one conformance call at landing (the rest are transparent
+    // array/table aliases / pure c-enums / extern-only). Floor kept below that for minter headroom.
+    assert!(
+        validated_fixtures >= 20,
+        "only {validated_fixtures} corpus fixtures emitted a conformance call (expected >= 20) — \
+         the oracle went vacuous (minter coverage shrank or the flag stopped emitting calls)"
+    );
+    assert!(
+        fixed_or_toothless.is_empty(),
+        "EXPECTED_FAIL fixtures no longer fail conformance:\n\n{}",
+        fixed_or_toothless.join("\n\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "IR-conformance gate failures:\n\n{}",
+        failures.join("\n\n")
     );
 }
 

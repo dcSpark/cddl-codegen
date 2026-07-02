@@ -62,6 +62,17 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub emit_tests: bool,
 
+    /// Add an independent conformance oracle to every `--emit-tests` round-trip case: right after
+    /// the value's CBOR bytes are computed, validate them against the SOURCE `.cddl` rule using the
+    /// `cddl` crate's validator (decode + constraint evaluation independent of our encoder/decoder).
+    /// This catches IR-level miscompiles that mint a spec-violating value and then assert it
+    /// round-trips green (the round-trip harness shares the generator's IR, so it can't catch those
+    /// on its own). Requires `--emit-tests`. Off by default. The generated test crate then needs the
+    /// `cddl` dependency and its source spec on disk next to the crate (see the manual IR-conformance
+    /// gate, `integration_tests::ir_conformance_corpus`).
+    #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
+    pub emit_tests_conformance: bool,
+
     /// Opt-in recursion depth guard for generated deserializers. When set to N, every generated
     /// composite `deserialize` acquires an RAII depth guard and returns a graceful
     /// `DeserializeError` (never overflows the stack) once nesting exceeds N. OFF by default: a
