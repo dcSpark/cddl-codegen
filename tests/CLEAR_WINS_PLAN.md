@@ -179,11 +179,9 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
   selection. Re-litigating the README's choice is a human call.
 
 ### Assertion upgrades needing value choices (medium-ish)
-- **comment-dsl `assert!(true)` → round-trip** (`group_choice`/`type_choice`/`type_choice_variants`):
-  some fixtures take raw CBOR / placeholder data, so a human must pick valid round-trippable values.
-- **multifile / extern-deps compile-only dirs → round-trip**: contradicts the explicit maintainer
+- **extern-deps compile-only dir → round-trip**: contradicts the explicit maintainer
   "compile-only by design" comment; scope (leaf types vs full `everything` incl. ExternalFoo +
-  tagged/map) is a product call.
+  tagged/map) is a product call. (The sibling `multifile` dir now has cross-module round-trips.)
 - **Stubbed `no_key_group` comment-dsl test**: needs identifying which CDDL construct routes through
   the no-key-group emit path before an assertion can be written.
 
@@ -194,11 +192,6 @@ Note: cw10 and cw11 both touch `structural_rejects` — apply additively / one a
   extern + raw-bytes-trait emit paths (the dedicated `tests/extern-deps` / `tests/raw-bytes` dirs
   give compile+round-trip, not snapshots). Adding a small skip-list is ~5 test-only lines, but it
   introduces a "snapshot-only corpus" policy the current docs don't have — bless it first.
-
-### New harness / vectors (medium)
-- **Preserve-encodings golden known-answer set**: a new `golden_hex_preserve` mirror with
-  hand-derived RFC 8949 indefinite-length vectors — the only known-byte oracle for the preserve path.
-  Requires authoring spec-anchored vectors + a new harness entry.
 
 ### Note — no action (correcting a mistaken premise)
 - **`tests/robustness` is NOT an orphan.** It's wired via `src/robustness_tests.rs`
