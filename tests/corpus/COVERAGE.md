@@ -184,7 +184,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.major` | ➖ | Major-type sigil (#N, #N.n) | major-type sigils `#N` / `#N.n` — Type2::DataMajorType unmatched, catch-all panic  [`Ignoring Type2`] |
 | `type2.major7` | ➖ | Major-type 7 / simple sigil (#7, #7.n) | `#7` / `#7.n` simple/float sigils — unmatched, catch-all panic  [`Ignoring Type2`] |
 | `type2.map` | ✅ | Map | `map_struct.cddl` — canonical = pure struct map; table-style is table.cddl; MIXED struct+table ({a: uint, * k => v}) is unsupported (parsing.rs) |
-| `type2.parenthesized` | ✅ | Parenthesized type | `nested_group.cddl` |
+| `type2.parenthesized` | ✅ | Parenthesized type | `parenthesized.cddl` — canonical = the fixture isolating `(T)` at type position; nested_group.cddl (the previous cover) contains a parenthesized GROUP RULE, not the type2 production — the old detector conflated the two |
 | `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |

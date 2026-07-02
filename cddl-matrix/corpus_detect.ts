@@ -12,11 +12,12 @@
  *   bun run corpus_detect.ts
  *
  * ponytail: text-scan detection (comment-stripped for RFC constructs, comment-only for the @-DSL), not a
- * real parse — there is no CDDL→AST dump available (the rust `cddl` CLI only compiles; the parsing `cddl`
- * crate is Rust, this tooling is TS). Consistent with verify.ts, which also hand-scans CDDL text. Upgrade
- * path if precision ever bites: a `cargo run` helper that dumps the `cddl` crate AST as JSON. Prelude and
- * control-op ids are matched by NAME token (auto-covers ~90 ids); structural constructs use a small hand
- * table. Features with no detector are reported, not silently treated as absent.
+ * real parse. Consistent with verify.ts, which also hand-scans CDDL text. The upgrade path EXISTS in this
+ * file (`rolesIn` shells `examples/ast_roles.rs`, the real cddl-crate parse, and project_corpus already
+ * uses it for role-keyed covers); if text-scan precision bites again, move the feature-axis evidence onto
+ * that floor rather than growing the regexes. Prelude and control-op ids are matched by NAME token
+ * (auto-covers ~90 ids); structural constructs use a small hand table. Supported ids with no possible
+ * text detector are declared in NO_DETECTOR (exported), not silently treated as absent.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -34,15 +35,35 @@ const preludeNames = matrix.features.filter(f => f.production === "prelude").map
 const ctlNames = matrix.control_operators.map(c => c.id.slice("ctl.".length));
 const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
 
-// --- comment handling: CDDL comment is `;`..EOL (but not inside a "string"). Split each line into
-//     code (RFC constructs live here) and comment (the @-DSL lives here). ---
+// --- comment handling: CDDL comment is `;`..EOL (but not inside a "text" or '…' bytes literal).
+//     Split each line into code (RFC constructs live here) and comment (the @-DSL lives here).
+//     String-literal INTERIORS are masked out of the code channel: literal content is data, not
+//     code — a doc string mentioning `uint` or a URL's `//` must not credit a feature. The quote
+//     delimiters themselves are kept so the value.text / value.bytes / quoted-key detectors still
+//     see that a literal is present. Handles \-escapes and CDDL's '…' byte strings (whose BCHAR
+//     set legally contains `;`). ---
 function split(line: string): { code: string; comment: string } {
-  let inQ = false;
+  let code = "";
+  let q: string | null = null;
   for (let i = 0; i < line.length; i++) {
-    if (line[i] === '"') inQ = !inQ;
-    else if (line[i] === ";" && !inQ) return { code: line.slice(0, i), comment: line.slice(i + 1) };
+    const ch = line[i];
+    if (q) {
+      if (ch === "\\") i++; // escaped char: stays masked, don't let \" close the literal
+      else if (ch === q) {
+        code += ch; // closing delimiter kept
+        q = null;
+      }
+      // interior masked: contributes nothing to the code channel
+    } else if (ch === '"' || ch === "'") {
+      q = ch;
+      code += ch;
+    } else if (ch === ";") {
+      return { code, comment: line.slice(i + 1) };
+    } else {
+      code += ch;
+    }
   }
-  return { code: line, comment: "" };
+  return { code, comment: "" };
 }
 const codeOf = (t: string) => t.split(/\r?\n/).map(l => split(l).code).join("\n");
 const commentsOf = (t: string) => t.split(/\r?\n/).map(l => split(l).comment).join("\n");
@@ -56,23 +77,30 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "type2.array", hit: c => c.includes("[") },
   { id: "type2.map", hit: c => c.includes("{") },
   { id: "type2.tag", hit: c => /#6(\.\d+)?\s*\(/.test(c) },
-  { id: "type2.parenthesized", hit: c => /\([^)]*:/.test(c) },           // a (group) with a key, not a ctl-arg paren
-  { id: "type.choice", hit: c => /(?<!\/)\/(?!\/)/.test(c) },             // single `/`, not `//`
+  // a parenthesized TYPE: parens with no member key (`:`) and no entry list (`,`) — those are group
+  // parens. The digit lookbehind excludes tag parens `#6.n(…)`. A ctl arg like `.size (0..32)` IS a
+  // ParenthesizedType in the cddl-crate AST, so crediting it here is correct, not an over-match.
+  { id: "type2.parenthesized", hit: c => /(?<!\d)\((?![^)]*[:,])[^)]*\)/.test(c) },
+  { id: "type.choice", hit: c => /(?<!\/)\/(?![\/=])/.test(c) },          // single `/`, not `//` or the `/=` extend op
   // all-fixed-value choice (c-style enum): `= v / v [/ v]…` where every alternative is a literal value
   { id: "type.enum", hit: c => /=\s*(-?\d+|"[^"]*")(\s*\/\s*(-?\d+|"[^"]*"))+/.test(c) },
-  { id: "group.choice", hit: c => c.includes("//") },
+  { id: "group.choice", hit: c => /\/\/(?!=)/.test(c) },                  // `//`, not the `//=` extend op
+  { id: "assignt.extend", hit: c => /(?<!\/)\/=/.test(c) },               // `a /= …` type-socket extension
+  { id: "assigng.extend", hit: c => /\/\/=/.test(c) },                    // `g //= …` group-socket extension
   { id: "memberkey.bareword", hit: c => /\b[A-Za-z_]\w*\s*:/.test(c) },
   { id: "memberkey.value", hit: c => /(^|[\s,{])(-?\d+|"[^"]*")\s*:/.test(c) },
   { id: "memberkey.type1", hit: c => c.includes("=>") },
   { id: "memberkey.cut", hit: c => c.includes("^") },
+  // occurrence per RFC 8610 `occur = [uint] "*" [uint] / "+" / "?"`: whitespace after `+`/around
+  // `*` is optional, and either `*` bound may be absent — a one-sided `2*`/`*5` is still bounded.
   { id: "occur.optional", hit: c => c.includes("?") },
-  { id: "occur.one_or_more", hit: c => /(^|[\s[(])\+\s/.test(c) },   // `+` occurrence, incl. the canonical `[+ x]` form (after a bracket)
-  { id: "occur.bounded", hit: c => /\d+\*\d+/.test(c) },
-  { id: "occur.zero_or_more", hit: c => /(^|[\s,{[])\*(?!\d)/.test(c) },  // `*` occurrence (excl. the n*m form)
+  { id: "occur.one_or_more", hit: c => /(^|[\s,[({])\+/.test(c) },        // leading class keeps `1e+9`-style exponents out
+  { id: "occur.bounded", hit: c => /\d\*|\*\d/.test(c) },                 // a digit directly adjacent to `*` (bounds are adjacent per the ABNF)
+  { id: "occur.zero_or_more", hit: c => /(?<!\d)\*(?!\d)/.test(c) },      // bare `*` (no bound on either side)
   { id: "rangeop.exclusive", hit: c => c.includes("...") },
   { id: "rangeop.inclusive", hit: c => /(?<!\.)\.\.(?!\.)/.test(c) },
   { id: "value.text", hit: c => /"[^"]*"/.test(c) },
-  { id: "value.bytes", hit: c => /\b(h|b64)'/.test(c) },
+  { id: "value.bytes", hit: c => /'/.test(c) },  // h'…' / b64'…' / bare '…' — post-masking, `'` only occurs as a bytes-literal delimiter
   { id: "value.number", hit: c => /(^|[\s,/[(])-?\d+\b/.test(c) },        // incl. range/ctl-arg numbers (over-credits — that's the point)
   { id: "genericparm.type", hit: c => /^[ \t]*[A-Za-z_]\w*<[^>]+>\s*=/m.test(c) },
   { id: "genericarg.type", hit: c => /\b[A-Za-z_]\w*<[^>=]+>(?!\s*=)/.test(c) },
@@ -83,6 +111,14 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
   { id: "type2.value", hit: c => /(^|[\s,/[(])(-?\d+\b|"[^"]*"|(h|b64)')/.test(c) }, // a literal at a type position
 ];
 
+// Matrix-`supported` ids featuresIn structurally CANNOT detect (no STRUCT / prelude / ctl /
+// typename / dsl path can produce them — they're implicit in ordinary syntax the scan can't
+// individuate). Declared so the blindness is stated instead of silent: check D can never demand
+// covers for these, and a feature-axis [[cover]] naming one would always fail check A until a
+// detector (or the AST floor) takes over. The AST role floor below already classifies
+// grpent.groupname / grpent.member correctly — the gap is only in the text-scan channel.
+export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "grpent.member"]);
+
 export interface Detected { rfc: Set<string>; ctl: Set<string>; dsl: Set<string> }
 
 export function featuresIn(cddl: string): Detected {
@@ -92,8 +128,9 @@ export function featuresIn(cddl: string): Detected {
   const ctl = new Set<string>();
   const dsl = new Set<string>();
 
-  // prelude types by name token
-  for (const n of preludeNames) if (new RegExp(`\\b${reEsc(n)}\\b`).test(code)) rfc.add(`prelude.${n}`);
+  // prelude types by name token (same hyphen guard as the ctl loop below: CDDL ids may contain `-`,
+  // so `\b` alone would credit `float16` inside `float16-32` and `any` inside `cbor-any`)
+  for (const n of preludeNames) if (new RegExp(`(?<![\\w-])${reEsc(n)}(?![\\w-])`).test(code)) rfc.add(`prelude.${n}`);
   // control operators by `.name` token (guard against the `.b64u` ⊂ `.b64u-sloppy` prefix trap)
   for (const n of ctlNames) if (new RegExp(`\\.${reEsc(n)}(?![\\w-])`).test(code)) { ctl.add(`ctl.${n}`); rfc.add("type1.ctlop"); }
   // structural constructs
@@ -121,9 +158,9 @@ export function featuresIn(cddl: string): Detected {
 // matrix feature ids (the editorial "what is a feature" mapping stays in TS), yielding the role-keyed
 // floor: per fixture, the set of `<feature-id>@<role-id>` cells it exercises.
 //
-// ponytail: built but NOT yet wired into project_corpus.ts — this is the data layer (prove it first).
-// dsl.*/ext.* still come from the text scan above (they live in comments / are sentinel typenames, which
-// the parser strips/erases); the AST floor covers the RFC + control-op constructs, where roles matter.
+// Wired into project_corpus.ts (check A's role-keyed cover branch imports rolesIn). dsl.*/ext.* still
+// come from the text scan above (they live in comments / are sentinel typenames, which the parser
+// strips/erases); the AST floor covers the RFC + control-op constructs, where roles matter.
 
 interface RoleRec { role: string; kind: string; name?: string }
 
@@ -199,6 +236,36 @@ function selfCheck() {
   if (!d.dsl.has("dsl.newtype") || !d.dsl.has("dsl.custom_json")) throw new Error("selfCheck: missing DSL id");
   if (d.rfc.has("type1.ctlop")) throw new Error("selfCheck: DSL `@custom...` leaked into code as a ctlop");
   if (!featuresIn("foo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: foo]").dsl.has("ext.extern")) throw new Error("selfCheck: missing ext.extern");
+
+  // regression cases from the test-framework audit (draft/test-setup/bugs-corpus-detect.md)
+  if (!featuresIn("foo = (uint)").rfc.has("type2.parenthesized")) throw new Error("selfCheck: `(uint)` (the matrix's own example) not detected as a parenthesized type");
+  if (featuresIn("inner = (a: uint, b: uint)").rfc.has("type2.parenthesized")) throw new Error("selfCheck: group-definition parens false-credited type2.parenthesized");
+  if (featuresIn("g = [(uint, tstr)]").rfc.has("type2.parenthesized")) throw new Error("selfCheck: inline group false-credited type2.parenthesized");
+  if (featuresIn("tagged = #6.42(text)").rfc.has("type2.parenthesized")) throw new Error("selfCheck: tag parens false-credited type2.parenthesized");
+  const lit = featuresIn('note = "contains uint and null, see http://example.com"');
+  for (const id of ["prelude.uint", "prelude.null", "group.choice"])
+    if (lit.rfc.has(id)) throw new Error(`selfCheck: string-literal content credited ${id}`);
+  if (!lit.rfc.has("value.text")) throw new Error("selfCheck: literal masking broke value.text");
+  if (!featuresIn('x = "\\"" ; @newtype').dsl.has("dsl.newtype")) throw new Error("selfCheck: escaped quote swallowed a real comment directive");
+  if (featuresIn("x = 'ab;@newtype cd'").dsl.has("dsl.newtype")) throw new Error("selfCheck: `;` inside a bytes literal fabricated a comment directive");
+  if (!featuresIn("magic = 'rawbytes'").rfc.has("value.bytes")) throw new Error("selfCheck: bare '…' byte string not detected as value.bytes");
+  const ext2 = featuresIn("a = int\na /= tstr");
+  if (!ext2.rfc.has("assignt.extend")) throw new Error("selfCheck: missing assignt.extend for `/=`");
+  if (ext2.rfc.has("type.choice")) throw new Error("selfCheck: `/=` false-credited type.choice");
+  const extg = featuresIn("tcpopts //= (2: tstr)");
+  if (!extg.rfc.has("assigng.extend")) throw new Error("selfCheck: missing assigng.extend for `//=`");
+  if (extg.rfc.has("group.choice")) throw new Error("selfCheck: `//=` false-credited group.choice");
+  if (featuresIn("x = float16-32").rfc.has("prelude.float16")) throw new Error("selfCheck: hyphen-prefix prelude name false credit (float16 in float16-32)");
+  if (!featuresIn("x = float16-32").rfc.has("prelude.float16-32")) throw new Error("selfCheck: hyphen guard broke exact hyphenated prelude match");
+  for (const [src, id] of [
+    ["g = [+uint]", "occur.one_or_more"],
+    ["h = {+ tstr => uint}", "occur.one_or_more"],
+    ["i = [2* uint]", "occur.bounded"],
+    ["j = [*5 uint]", "occur.bounded"],
+    ["k = [((* uint))]", "occur.zero_or_more"],
+  ] as const)
+    if (!featuresIn(src).rfc.has(id)) throw new Error(`selfCheck: ${id} missing in \`${src}\``);
+  if (featuresIn("x = 1e+9").rfc.has("occur.one_or_more")) throw new Error("selfCheck: exponent `+` false-credited occur.one_or_more");
 }
 
 // Role-aware self-check (item 6): the headline case — in `text / null`, `null` is covered as a
@@ -219,8 +286,13 @@ function roleSelfCheck() {
     throw new Error("roleSelfCheck: null wrongly credited at top-level (the text-scan lie item 6 fixes)");
 }
 
+// Pure-regex regression suite, ~ms: run on EVERY import (not just the CLI), so the CI drift job —
+// which consumes featuresIn via project_corpus.ts — executes it too. A detector regression then
+// fails the gate itself instead of waiting for someone to run the CLI diagnostic by hand.
+// (roleSelfCheck stays CLI-only below: it shells cargo.)
+selfCheck();
+
 if (import.meta.main) {
-  selfCheck();
   roleSelfCheck();
   const files = [...new Glob("*.cddl").scanSync({ cwd: CORPUS })].sort();
   const allFeatureIds = new Set(matrix.features.map(f => f.id));
@@ -259,7 +331,7 @@ if (import.meta.main) {
   console.log(`\n=== floor vs matrix universe ===`);
   console.log(`detected (D1 'covered' floor): ${seen.size} / ${universe.size} ids`);
   console.log(`NOT detected anywhere (➕ supported-untested or ➖ unsupported candidates): ${undetected.length}`);
-  console.log(`  ${undetected.join(", ")}`);
+  console.log(`  ${undetected.map(id => (NO_DETECTOR.has(id) ? `${id} [NO DETECTOR — undetectable by the text scan, see NO_DETECTOR]` : id)).join(", ")}`);
   if (spurious.length) console.log(`SPURIOUS (detected but not a matrix id — detector bug): ${spurious.join(", ")}`);
   console.log(`\nCDDL_CODEGEN profile ids seen across corpus: ${[...new Set(perFixture.flatMap(p => [...p.dsl]))].sort().join(" ")}`);
 
