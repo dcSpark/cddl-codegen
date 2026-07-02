@@ -70,7 +70,19 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
      indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers); the
      remaining frontier is minted *encodings* at scale (not just hand-picked ones), the only
-     at-scale test of those high-stakes flags.
+     at-scale test of those high-stakes flags. Three hardening refinements to the hand-picked suites
+     (each needs careful RFC-8949 hand-derivation — do NOT rush, a wrong vector is a wrong oracle):
+     (a) *value anchor* — `kat_preserve!`/`kat_canonical!` assert only `bytes → T → bytes`, never a
+     decoded FIELD value, so an exactly-compensating decode+encode bug passes; add a `$value` leg
+     (mirroring the default `kat!`) asserting one decoded field per vector; (b) *nint vectors* —
+     neither sibling suite has a major-type-1 (nint) KAT, so nint under preserve/canonical is anchored
+     only by the circular `cbor_int()` helper; add hand-derived nint vectors (preserve of -24/-25
+     across the 1/2/4/8-byte forms; canonical minimization of a padded `0x3b ff..ff`); (c) *canonical
+     mixed-key table* — `tests/canonical/input.cddl`'s only table is homogeneous `{ * uint => text }`,
+     which can't discriminate length-first from pure-bytewise key ordering, so all four emitted runtime
+     table-map sort sites can be swapped to the wrong RFC 8949 rule with every behavioral test still
+     green (only the codegen-time struct sort is pinned, `intermediate.rs`); add a mixed-major-key
+     table fixture (e.g. int keys 256 and -1) with a hex-pinned expected-bytes vector.
    - **IR-bug oracle at breadth (the residual that closes the oracle-inversion theme).** The emitted
      harness proves the encoder and decoder agree with *each other*, but its minted value is derived
      from the SAME IR as the code under test — so an IR-level miscompile (a bound/member computed
