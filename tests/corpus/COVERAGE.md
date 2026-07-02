@@ -19,10 +19,13 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 - **Test:** `tests/corpus/<construct>.cddl`, driven by `snapshot_tests::feature_corpus` — each file is
   generated under every flag profile (`default`/`preserve`/`json`) plus an IR dump, and the generated
   *source* is snapshotted. Bless with `INSTA_UPDATE=always cargo test snapshot_tests`.
-- **Compile gate:** `integration_tests::feature_corpus_compiles` `cargo check`s every corpus file under
-  all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them — except
-  fixtures on the harness's `COMPILE_SKIP` list (user-supplied-code constructs, e.g. `dsl_custom.cddl`),
-  which are snapshot-only here and compile-exercised via their integration fixtures instead.
+- **Compile + execution gate:** `integration_tests::feature_corpus_compiles` `cargo check`s every corpus
+  file under all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them —
+  and under the default profile it also generates with `--emit-tests` and `cargo test`s the crate, so
+  every constructible corpus type must **round-trip byte-identically** (plus bounded-reject checks),
+  not just compile. Exception: fixtures on the harness's `COMPILE_SKIP` list (user-supplied-code
+  constructs, e.g. `dsl_custom.cddl`), which are snapshot-only here and compile-exercised via their
+  integration fixtures instead.
 - **Axis:** the corpus snapshots generated *source*, not wire bytes — wire encodings are golden_hex's
   axis (`tests/golden_hex/COVERAGE.md`, RFC 8949). A ✅ here means "a fixture isolates this construct,"
   not "every encoding of it is asserted."

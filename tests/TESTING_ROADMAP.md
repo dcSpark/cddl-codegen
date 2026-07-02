@@ -53,11 +53,13 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    (and led to fixing) two miscompiles that snapshots + compile gates had blessed: the `.ne`
    unsatisfiable-bound window, and preserve-encodings map records writing default-valued fields
    the header didn't count (corrupt CBOR on any freshly-constructed defaulted value). Remaining:
-   - **c6 — matrix-driven execution (the F3 frontier).** Flip `feature_corpus_compiles`'
-     `cargo check` → `cargo test` with `--emit-tests` for one profile, then `verify.ts`'s
-     per-schema probe, so a matrix-"supported" verdict means "round-trips", not "compiles".
-     This flip shares the `verify.ts` / `feature_corpus_compiles` surface with item 2's wasm
-     gate — land the two together.
+   - **c6 — matrix-driven execution (the F3 frontier).** The corpus half is flipped:
+     `feature_corpus_compiles` runs the default profile with `--emit-tests` + `cargo test`, so
+     every constructible corpus construct must round-trip in CI. Remaining: the same flip for
+     `verify.ts`'s per-schema probe (so the matrix-"supported" verdict itself means
+     "round-trips"), and the preserve/json profiles once their emitted-test surface is validated
+     at corpus breadth. The verify.ts flip shares its surface with item 2's wasm gate — land the
+     two together.
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
      over irregular encodings) — needs minted *encodings*, not just values; the only at-scale test
      of those high-stakes flags.
