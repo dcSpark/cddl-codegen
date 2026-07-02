@@ -41,18 +41,22 @@ impl cbor_event::se::Serialize for NullableOptionalField {
         )?;
         if let Some(field) = &self.field0 {
             match field {
-                Some(x) => serializer.write_unsigned_integer_sz(
-                    *x,
-                    fit_sz(
+                Some(x) => {
+                    serializer.write_unsigned_integer_sz(
                         *x,
-                        self.encodings
-                            .as_ref()
-                            .map(|encs| encs.field0_encoding)
-                            .unwrap_or_default(),
-                    ),
-                ),
-                None => serializer.write_special(cbor_event::Special::Null),
-            }?;
+                        fit_sz(
+                            *x,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.field0_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
         }
         self.encodings
             .as_ref()

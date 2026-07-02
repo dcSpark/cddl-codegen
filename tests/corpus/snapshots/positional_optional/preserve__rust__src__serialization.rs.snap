@@ -25,18 +25,22 @@ impl cbor_event::se::Serialize for PositionalOptional {
                 .to_len_sz(1),
         )?;
         match &self.uint {
-            Some(x) => serializer.write_unsigned_integer_sz(
-                *x,
-                fit_sz(
+            Some(x) => {
+                serializer.write_unsigned_integer_sz(
                     *x,
-                    self.encodings
-                        .as_ref()
-                        .map(|encs| encs.uint_encoding)
-                        .unwrap_or_default(),
-                ),
-            ),
-            None => serializer.write_special(cbor_event::Special::Null),
-        }?;
+                    fit_sz(
+                        *x,
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.uint_encoding)
+                            .unwrap_or_default(),
+                    ),
+                )?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)

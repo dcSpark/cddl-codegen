@@ -1434,7 +1434,7 @@ impl Foo2 {
     }
 
     pub fn new(index_0: u64, opt_text: Option<TaggedText>) -> Self {
-        Self(cddl_lib::Foo2::new(index_0, opt_text.clone().into()))
+        Self(cddl_lib::Foo2::new(index_0, opt_text))
     }
 }
 

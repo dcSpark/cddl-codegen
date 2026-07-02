@@ -1878,6 +1878,12 @@ impl ConceptualRustType {
             // `Rust(ident)` (only reserved aliases unwrap to the inner rust type).
             Self::Alias(ident, ty) => match ident {
                 AliasIdent::Reserved(_) => ty.from_wasm_boundary_clone(types, expr, can_fail),
+                // An alias of an optional is exposed transparently as `Option<Wrapper>`, so the
+                // reverse boundary must map through the Option (mirroring the `Self::Optional`
+                // arm below) rather than a blanket `Into` — else wasm E0277 on the composite inner.
+                AliasIdent::Rust(_) if matches!(&**ty, Self::Optional(_)) => {
+                    ty.from_wasm_boundary_clone(types, expr, can_fail)
+                }
                 AliasIdent::Rust(_) => vec![
                     ToWasmBoundaryOperations::Code(expr_cloned),
                     ToWasmBoundaryOperations::Into,
@@ -2034,6 +2040,13 @@ impl ConceptualRustType {
                 AliasIdent::Rust(_) => {
                     if self.is_copy(types) {
                         primitive_impl()
+                    } else if matches!(&**ty, Self::Optional(_)) {
+                        // An alias of an optional (`x = inner / null`) is exposed transparently as
+                        // `Option<Wrapper>` (a `pub type`), NOT a newtype wrapper, so it must
+                        // convert THROUGH the Option (`.map(Into::into)`). A blanket `.into()` here
+                        // has no `From<Option<Inner>>` impl when the inner needs a wrapper
+                        // conversion (named collection / data-enum), producing wasm E0277/E0308.
+                        ty.to_wasm_boundary(types, expr, is_ref)
                     } else {
                         format!("{expr}.clone().into()")
                     }

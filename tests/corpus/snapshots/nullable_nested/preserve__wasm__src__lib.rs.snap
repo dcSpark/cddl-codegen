@@ -31,7 +31,7 @@ impl NullableMapValue {
 
     /// Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
     pub fn insert(&mut self, key: u64, value: Option<u64>) -> MaybeUint {
-        self.0.insert(key, value.into()).flatten()
+        self.0.insert(key, value).flatten()
     }
 
     /// Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
@@ -83,7 +83,7 @@ impl NullableOptionalField {
     }
 
     pub fn set_field0(&mut self, field0: Option<u64>) {
-        self.0.field0 = Some(field0.into())
+        self.0.field0 = Some(field0)
     }
 
     /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).

@@ -22,4 +22,5 @@ pub fn export_schemas() {
     gen_json_schema!(cddl_lib::Choice);
     gen_json_schema!(cddl_lib::Holder);
     gen_json_schema!(cddl_lib::Nested);
+    gen_json_schema!(cddl_lib::NewtypeViaParens);
 }

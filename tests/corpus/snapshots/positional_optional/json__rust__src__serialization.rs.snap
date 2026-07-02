@@ -18,9 +18,13 @@ impl cbor_event::se::Serialize for PositionalOptional {
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_array(cbor_event::Len::Len(1))?;
         match &self.uint {
-            Some(x) => serializer.write_unsigned_integer(*x),
-            None => serializer.write_special(cbor_event::Special::Null),
-        }?;
+            Some(x) => {
+                serializer.write_unsigned_integer(*x)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
         Ok(serializer)
     }
 }

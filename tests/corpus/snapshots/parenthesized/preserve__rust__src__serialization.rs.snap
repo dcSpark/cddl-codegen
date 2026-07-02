@@ -84,16 +84,7 @@ impl cbor_event::se::Serialize for Holder {
             ),
         )?;
         self.ref_choice.serialize(serializer)?;
-        serializer.write_unsigned_integer_sz(
-            self.ref_newtype,
-            fit_sz(
-                self.ref_newtype,
-                self.encodings
-                    .as_ref()
-                    .map(|encs| encs.ref_newtype_encoding)
-                    .unwrap_or_default(),
-            ),
-        )?;
+        self.ref_newtype.serialize(serializer)?;
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -117,10 +108,7 @@ impl Deserialize for Holder {
                 .map_err(|e: DeserializeError| e.annotate("ref_basic"))?;
             let ref_choice =
                 Choice::deserialize(raw).map_err(|e: DeserializeError| e.annotate("ref_choice"))?;
-            let (ref_newtype, ref_newtype_encoding) = raw
-                .unsigned_integer_sz()
-                .map_err(Into::<DeserializeError>::into)
-                .map(|(x, enc)| (x, Some(enc)))
+            let ref_newtype = NewtypeViaParens::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("ref_newtype"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
@@ -136,7 +124,6 @@ impl Deserialize for Holder {
                 encodings: Some(HolderEncoding {
                     len_encoding,
                     ref_basic_encoding,
-                    ref_newtype_encoding,
                 }),
             })
         })()
@@ -218,5 +205,33 @@ impl Deserialize for Nested {
             })
         })()
         .map_err(|e| e.annotate("Nested"))
+    }
+}
+
+impl cbor_event::se::Serialize for NewtypeViaParens {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_unsigned_integer_sz(
+            self.inner,
+            fit_sz(
+                self.inner,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_encoding)
+                    .unwrap_or_default(),
+            ),
+        )
+    }
+}
+
+impl Deserialize for NewtypeViaParens {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+        Ok(Self {
+            inner,
+            encodings: Some(NewtypeViaParensEncoding { inner_encoding }),
+        })
     }
 }

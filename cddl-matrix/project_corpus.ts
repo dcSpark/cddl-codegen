@@ -169,7 +169,12 @@ const srcText = [...new Glob("**/*.rs").scanSync({ cwd: SRC })].map(f => readFil
 const driftE: string[] = [];   // note status disagrees with the matrix support verdict
 const staleF: string[] = [];   // unknown id / bad status
 const driftG: string[] = [];   // code_anchor not found in src/ (self-invalidating evidence broke)
+const noteIds = new Set<string>();
 for (const n of notes) {
+  // duplicate note ids are a silent last-wins collapse in `noteById` (the rendered rationale for the
+  // earlier note is dropped with no signal) — mirror the feature-axis cover dup check at line ~89.
+  if (noteIds.has(n.id)) staleF.push(`duplicate note for \`${n.id}\` — the render keeps only the last`);
+  noteIds.add(n.id);
   if (!universe.has(n.id)) { staleF.push(`unknown note id \`${n.id}\``); continue; }
   if (n.status !== "partial" && n.status !== "unsupported") { staleF.push(`\`${n.id}\`: bad status \`${n.status}\``); continue; }
   const sup = supportById.get(n.id);

@@ -12,7 +12,6 @@ use std::collections::BTreeMap;
 pub struct HolderEncoding {
     pub len_encoding: LenEncoding,
     pub ref_basic_encoding: Option<cbor_event::Sz>,
-    pub ref_newtype_encoding: Option<cbor_event::Sz>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -20,4 +19,9 @@ pub struct NestedEncoding {
     pub len_encoding: LenEncoding,
     pub a_encoding: Option<cbor_event::Sz>,
     pub b_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NewtypeViaParensEncoding {
+    pub inner_encoding: Option<cbor_event::Sz>,
 }

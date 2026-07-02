@@ -25,9 +25,13 @@ impl cbor_event::se::Serialize for NullableOptionalField {
         serializer.write_unsigned_integer(self.pre)?;
         if let Some(field) = &self.field0 {
             match field {
-                Some(x) => serializer.write_unsigned_integer(*x),
-                None => serializer.write_special(cbor_event::Special::Null),
-            }?;
+                Some(x) => {
+                    serializer.write_unsigned_integer(*x)?;
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
         }
         Ok(serializer)
     }

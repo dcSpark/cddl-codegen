@@ -43,6 +43,16 @@ export function loadTomlArray(rel: string, key: string): any[] {
       `${rel}: expected a non-empty [[${key}]] array-of-tables ` +
         `(top-level keys found: ${Object.keys(doc).join(", ") || "none"})`,
     );
+  // The check above only catches a WHOLE-file mis-key. A typo'd table appended to an already-valid
+  // file (e.g. [[featuer]] after a real [[feature]]) leaves `doc[key]` non-empty, so its rows are
+  // dropped silently. Each loader reads exactly one array-of-tables key, so any other top-level key
+  // is a typo — reject it. (annotations/corpus is multi-key and is read via loadToml, not here.)
+  const unexpected = Object.keys(doc).filter(k => k !== key);
+  if (unexpected.length)
+    throw new Error(
+      `${rel}: unexpected top-level key(s) [${unexpected.join(", ")}] — only [[${key}]] is read here; ` +
+        `a typo'd table name would otherwise contribute zero rows with every gate green`,
+    );
   return rows;
 }
 

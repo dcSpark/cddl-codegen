@@ -604,12 +604,18 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         }
         // a field nesting a NAMED generated type: mint an instance of that type recursively
         ConceptualRustType::Rust(ident) => mint_struct(types, ident, depth),
-        _ => materialize_at(
-            types,
-            ty,
-            valid_measure(ty.config.bounds.unwrap_or((None, None))),
-            depth,
-        ),
+        _ => {
+            let bounds = ty.config.bounds.unwrap_or((None, None));
+            // A length-measured type (array/map/text/bytes) minted at length 0 never serializes or
+            // deserializes its elements, so a type whose every non-empty value is broken passes the
+            // round-trip gate vacuously. Mint a single element when unbounded; bounded types already
+            // carry a >=1 min (or a real max) via `valid_measure`.
+            let measure = match measure_kind(ty) {
+                Some(MeasureKind::Len) if bounds == (None, None) => 1,
+                _ => valid_measure(bounds),
+            };
+            materialize_at(types, ty, measure, depth)
+        }
     }
 }
 
@@ -684,8 +690,19 @@ fn mint_struct(
         }
         // transparent aliases: an empty map/vec is valid for `*`-occurrence tables/arrays, and the
         // alias's associated `new()` resolves to the underlying map type's constructor
+        // ponytail: named tables mint empty (one-entry minting needs the struct's insert API);
+        // inline `{ * k => v }` map *fields* already mint one entry via materialize_at, so the map
+        // element wire path is still exercised there. Named-table standalone element coverage is a
+        // known residual (see TESTING_ROADMAP).
         RustStructType::Table { .. } => Some(format!("{name}::new()")),
-        RustStructType::Array { .. } => Some("vec![]".to_owned()),
+        RustStructType::Array { element_type } => {
+            // mint one element so the element serialize/deserialize path runs; fall back to empty
+            // (valid for `*`) when the element isn't cheaply mintable.
+            Some(match valid_value_at(types, element_type, depth + 1) {
+                Some(e) => format!("vec![{e}; 1]"),
+                None => "vec![]".to_owned(),
+            })
+        }
         RustStructType::Extern | RustStructType::RawBytesType => None,
     }
 }
