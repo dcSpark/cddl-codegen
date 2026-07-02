@@ -27,8 +27,17 @@
 //! baseline); one case per choice/c-enum variant. This is the
 //! "output is right, not just unchanged" oracle (TESTING_ROADMAP item 1): a serialize/deserialize
 //! disagreement fails here even when snapshots and compile gates stay green. It deliberately
-//! shares the generator's IR, so it cannot catch IR-level bugs (wrong bounds computed at parse
-//! time) — that is the spec-anchored oracles' job (golden hex / conformance validation).
+//! shares the generator's IR, so on its own it cannot catch IR-level bugs (wrong bounds computed at
+//! parse time) — that is the spec-anchored oracles' job (golden hex / conformance validation).
+//!
+//! **Conformance oracle add-on (`--emit-tests-conformance`).** When enabled, each round-trip case
+//! gets one extra line right after its `bytes` are computed: `cddl_conformance::validate(&bytes,
+//! "<rule>")`, validating the minted bytes against the SOURCE `.cddl` rule via the `cddl` crate's
+//! independent decode+constraint path. This closes the IR-bug residual: when an IR miscompile mints
+//! a spec-violating value (e.g. the `0...10` exclusive-range bug minting `11`), the round-trip
+//! asserts it green but the conformance validator rejects it. It shares the fork's PARSER with the
+//! generator, so it catches wrong VALUES, not fork-level misparses (same caveat as
+//! `tests/deser_test_conformance.rs`, whose helpers it reuses).
 //!
 //! Deliberately scoped to the cheap cases (the first slice — see `tests/TESTING_ROADMAP.md` c6):
 //! valid values are minted from compile-time literals, so any field that can't be cheaply
@@ -40,7 +49,7 @@ use crate::intermediate::{
     ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, RustField,
     RustRecord, RustStructType, RustType,
 };
-use crate::utils::convert_to_snake_case;
+use crate::utils::{convert_to_camel_case, convert_to_snake_case};
 
 type Bounds = (Option<i128>, Option<i128>);
 
@@ -79,14 +88,23 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             ));
         }
 
+        // `--emit-tests-conformance`: the source rule name to validate this type's minted bytes
+        // against (None when off, when the type isn't a top-level rule, or when its name can't be
+        // faithfully reversed — see `conformance_rule_name`).
+        let conf = cli
+            .emit_tests_conformance
+            .then(|| conformance_rule_name(types, ident))
+            .flatten();
+        let conf = conf.as_deref();
+
         let roundtrip = match rust_struct.variant() {
-            RustStructType::Record(record) => record_roundtrip(types, &name, record),
+            RustStructType::Record(record) => record_roundtrip(types, &name, record, conf),
             RustStructType::TypeChoice { variants }
             | RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants)
+                choice_roundtrip(types, &name, variants, conf)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
-                wrapper_roundtrip(types, &name, wrapped, *min_max)
+                wrapper_roundtrip(types, &name, wrapped, *min_max, conf)
             }
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
@@ -116,14 +134,52 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
     if fns.is_empty() {
         return None;
     }
+    // `--emit-tests-conformance`: the sub-module the emitted `cddl_conformance::validate(..)` calls
+    // resolve to. It reuses the shared oracle helpers appended at crate root from
+    // `tests/deser_test_conformance.rs` (do NOT duplicate the validator logic) and reads the source
+    // spec the IR-conformance gate copies next to the crate's Cargo.toml. Emitted whenever the flag
+    // is on (harmless + `dead_code`-allowed if a fixture minted no round-trip cases). See that file
+    // for the oracle's strength (independent decode+constraint path) and caveats (shares the fork's
+    // PARSER; validator has known gaps like unenforced `uint .size`).
+    let conformance_mod = if cli.emit_tests_conformance {
+        "    #[allow(dead_code)]\n    mod cddl_conformance {\n        pub fn validate(bytes: &[u8], root_rule: &str) {\n            let spec = crate::cddl_oracle_load_spec(\"cddl_conformance_source.cddl\");\n            crate::assert_cddl_conforms(&spec, root_rule, bytes);\n        }\n    }\n"
+    } else {
+        ""
+    };
     // `to_cbor_bytes`/`from_cbor_bytes` are trait methods (serialization::{ToCBORBytes,
     // Deserialize}); `use super::*` alone doesn't bring traits into scope in a standalone crate
     // (the integration harness happens to append `use serialization::*;` to lib.rs, which masked
     // this), so import the serialization surface explicitly.
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{conformance_mod}{}\n}}\n",
         fns.join("\n")
     ))
+}
+
+/// The source CDDL rule name to validate `ident`'s minted bytes against under
+/// `--emit-tests-conformance`, or `None` if this type can't be soundly conformance-checked. Only a
+/// top-level rule qualifies (a synthesized struct — embedded record, inline group — has no spec rule
+/// to root the validator against). The rule name is recovered as `convert_to_snake_case(ident)` and
+/// only accepted when `convert_to_camel_case` of it round-trips back to the exact ident, so a lossy
+/// reversal (dashed/acronym names the corpus doesn't use) is skipped loudly rather than pointed at a
+/// rule that doesn't exist.
+fn conformance_rule_name(
+    types: &IntermediateTypes,
+    ident: &crate::intermediate::RustIdent,
+) -> Option<String> {
+    if !types.is_toplevel_rule(ident) {
+        return None;
+    }
+    let name = ident.to_string();
+    let snake = convert_to_snake_case(&name);
+    if convert_to_camel_case(&snake) != name {
+        eprintln!(
+            "cddl-codegen --emit-tests-conformance: cannot recover a source rule name for {name} \
+             (snake_case reversal is not faithful) — no conformance oracle for this type"
+        );
+        return None;
+    }
+    Some(snake)
 }
 
 // ============================================================================================
@@ -131,11 +187,16 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
 // value cases, each pushed through the full wire cycle and asserted byte-identical.
 // ============================================================================================
 
-/// The shared wire-cycle emission for a list of `(value_expr, label)` cases.
-fn roundtrip_body(name: &str, cases: Vec<(String, String)>) -> Option<String> {
+/// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
+/// CDDL rule name for the `--emit-tests-conformance` oracle (`None` when off): when set, each case
+/// validates its minted `bytes` against the spec right after computing them.
+fn roundtrip_body(name: &str, cases: Vec<(String, String)>, conf: Option<&str>) -> Option<String> {
     if cases.is_empty() {
         return None;
     }
+    let conf_line = conf
+        .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
+        .unwrap_or_default();
     let blocks: Vec<String> = cases
         .into_iter()
         .map(|(expr, label)| {
@@ -143,7 +204,7 @@ fn roundtrip_body(name: &str, cases: Vec<(String, String)>) -> Option<String> {
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
-        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");
+{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");
     }}"
             )
@@ -162,7 +223,12 @@ fn record_ctor_can_fail(record: &RustRecord) -> bool {
 }
 
 /// Record round-trip: a valid baseline, plus one case per optional field with that field present.
-fn record_roundtrip(types: &IntermediateTypes, name: &str, record: &RustRecord) -> Option<String> {
+fn record_roundtrip(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+    conf: Option<&str>,
+) -> Option<String> {
     let ctor_fields: Vec<&RustField> = record
         .fields
         .iter()
@@ -226,7 +292,7 @@ fn record_roundtrip(types: &IntermediateTypes, name: &str, record: &RustRecord) 
             break;
         }
     }
-    roundtrip_body(name, cases)
+    roundtrip_body(name, cases, conf)
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -235,6 +301,7 @@ fn choice_roundtrip(
     types: &IntermediateTypes,
     name: &str,
     variants: &[EnumVariant],
+    conf: Option<&str>,
 ) -> Option<String> {
     let mut cases = Vec::new();
     for variant in variants {
@@ -272,7 +339,7 @@ fn choice_roundtrip(
             format!("variant {}", variant.name),
         ));
     }
-    roundtrip_body(name, cases)
+    roundtrip_body(name, cases, conf)
 }
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
@@ -282,6 +349,7 @@ fn wrapper_roundtrip(
     name: &str,
     wrapped: &RustType,
     min_max: Option<Bounds>,
+    conf: Option<&str>,
 ) -> Option<String> {
     let inner = match min_max {
         Some(mm) => materialize(types, wrapped, valid_measure(mm)),
@@ -301,6 +369,7 @@ fn wrapper_roundtrip(
             format!("{name}::new({inner}){unwrap}"),
             "baseline".to_owned(),
         )],
+        conf,
     )
 }
 

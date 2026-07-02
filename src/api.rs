@@ -59,6 +59,17 @@ pub fn with_types<R>(
                 .into(),
         );
     }
+    // The conformance oracle is a per-round-trip-case add-on to the --emit-tests module; without
+    // --emit-tests there is no module to add the validation calls to. Reject the combination up
+    // front rather than silently emit nothing (mirrors the canonical/preserve rule above).
+    if cli.emit_tests_conformance && !cli.emit_tests {
+        return Err(
+            "--emit-tests-conformance=true requires --emit-tests=true: the conformance oracle adds \
+             a validation call to each emitted round-trip case, so there is nothing to add without \
+             the generated-test module"
+                .into(),
+        );
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();

@@ -83,30 +83,25 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      table-map sort sites can be swapped to the wrong RFC 8949 rule with every behavioral test still
      green (only the codegen-time struct sort is pinned, `intermediate.rs`); add a mixed-major-key
      table fixture (e.g. int keys 256 and -1) with a hex-pinned expected-bytes vector.
-   - **IR-bug oracle at breadth (the residual that closes the oracle-inversion theme).** The emitted
-     harness proves the encoder and decoder agree with *each other*, but its minted value is derived
-     from the SAME IR as the code under test — so an IR-level miscompile (a bound/member computed
-     wrong at parse time) mints a spec-violating value and then asserts it round-trips *green*. Live
-     example: `tests/corpus/exclusive_range.cddl` (`0...10`) mints `ExclusiveRange::new(11)` and
-     asserts "must deserialize" in CI, though 11 is out of spec. The cheap closing composition —
-     recorded nowhere until now — is to validate every minted byte string against the fixture's
-     SOURCE `.cddl` using the already-pinned `cddl` validator (`CDDL_ORACLE_DEP`, the same one
-     `deser_test_conformance.rs` uses), with the known IR-bug fixtures (`exclusive_range`,
-     `occurrence`, `inline_group` — all ledgered in `cddl-matrix/ROADMAP.md`) on an explicit
-     expected-fail list so a *new* IR miscompile turns a green cell red. Cost trade-off (why it is
-     manual/local under the CI freeze, not auto-wired): it adds the heavy `cddl` dep to every corpus
-     test crate — same reason the conformance oracle is wired only into `preserve-encodings` today.
-     Caveat: shares the fork's parser with the generator (see the conformance-oracle caveat), so it
-     catches wrong *values*, not fork-level misparses.
    - **Minter coverage:** top-level transparent Table/Array alias round-trips (named Table/Array
      types currently mint empty — `emit_tests.rs`, `mint_struct`'s Table arm — so a named
      collection's element wire path isn't exercised standalone; inline `{ * k => v }` / `[* T]`
-     *fields* now mint one entry/element); the reserved `Int` extern (a `primitives.cddl` `int`
-     resolves to `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a
-     real record surface — special-case the constructible `Int` enum in the minter); non-primitive
-     map keys; optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it
-     targeted is fixed; a construct-reject would guard regression + still fails on the
-     *standalone* bounded-`nint`-newtype bug — see the ledger).
+     *fields* now mint one entry/element). This is now the last thing blocking the IR-bug conformance
+     oracle (`--emit-tests-conformance`, `ir_conformance_corpus`) from catching the `occurrence`
+     bug: `[+ uint]` / `[2*5 uint]` become transparent top-level array aliases the minter emits **no
+     round-trip test** for, so there is nothing to conformance-validate (the `cddl` validator *does*
+     enforce occurrence counts — verified — so a minted out-of-count array would be caught the moment
+     these aliases mint). Also here: the reserved `Int` extern (a `primitives.cddl` `int` resolves to
+     `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a real record
+     surface — special-case the constructible `Int` enum in the minter); non-primitive map keys;
+     optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it targeted is
+     fixed; a construct-reject would guard regression + still fails on the *standalone*
+     bounded-`nint`-newtype bug — see the ledger).
+   - **Decorrelated conformance parser.** The IR-bug conformance oracle (`--emit-tests-conformance`)
+     shares the dcSpark `cddl` fork's *parser* with the generator, so a fork-level misparse escapes it
+     (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.
+     Decorrelating the parser (an anweiss rev, the ruby `cddl` gem already wired into
+     `cddl-matrix/verify.ts`, or a ciborium structural differential) would harden both oracles at once.
 
 2. **Compile the generated *wasm* crate in the systematic gates.** *(compile foundation built + CI-wired;
    the remaining frontiers are behavioural (round-trip) coverage and the red-cell backlog below.)* The wasm

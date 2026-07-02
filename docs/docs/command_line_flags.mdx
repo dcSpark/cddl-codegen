@@ -223,6 +223,22 @@ cddl-codegen --input=example --output=export --emit-tests true
 
 <br/><br/>
 
+:::info `--emit-tests-conformance`
+Adds an independent conformance oracle to every `--emit-tests` round-trip case. Right after a case computes its CBOR bytes, a `cddl_conformance::validate(&bytes, "<rule>")` call validates them against the **source `.cddl` rule** using the [`cddl`](https://github.com/dcSpark/cddl) crate's validator — a decode + constraint-evaluation path independent of the generated encoder/decoder.
+
+Because the round-trip harness mints its values from the *same* IR as the code under test, an IR-level miscompile (a bound or member computed wrong at parse time) mints a spec-violating value and then asserts it round-trips green. This oracle closes that gap: the validator rejects the out-of-spec bytes even though the round-trip agrees with itself.
+
+Requires `--emit-tests`. The generated test crate then needs the `cddl` dependency and the source spec on disk next to its `Cargo.toml` as `cddl_conformance_source.cddl` (the shared oracle helpers from `tests/deser_test_conformance.rs` — `cddl_oracle_load_spec` / `assert_cddl_conforms` — must also be in scope). It shares the fork's *parser* with the generator, so it catches wrong **values**, not fork-level misparses, and the validator has known gaps (e.g. it does not enforce `uint .size` and cannot evaluate `.size`/ranges on signed `int`s). Intended for the maintainer's manual/local IR-conformance sweep, not everyday generation.
+
+**Possible values:** true, false<br></br>
+**Default:** false
+```bash
+cddl-codegen --input=example --output=export --emit-tests true --emit-tests-conformance true
+```
+:::
+
+<br/><br/>
+
 :::info `--deserialize-depth-limit`
 Opt-in recursion depth guard for the generated deserializers. Generated composite deserializers are recursive-descent, so a recursive type (e.g. `tree = [value: uint, children: [* tree]]`, Plutus-style data) has no intrinsic depth bound: maliciously deep CBOR recurses until the thread's stack overflows and the process **aborts (SIGABRT — uncatchable, not a returnable error)**.
 
