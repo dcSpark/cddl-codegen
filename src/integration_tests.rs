@@ -706,6 +706,43 @@ fn golden_hex() {
 }
 
 #[test]
+fn golden_hex_preserve() {
+    // Known-answer preserve-encodings vectors: irregular RFC 8949 §3 encodings (non-minimal
+    // header arguments, indefinite/chunked items, map key order) hand-derived as raw hex —
+    // deliberately NOT built with the tests/deser_test cbor_event helpers, which share the
+    // write_*_sz layer with the generated code (see tests/golden_hex_preserve/tests.rs).
+    run_test(
+        "golden_hex_preserve",
+        &["--wasm=false", "--preserve-encodings=true"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
+fn golden_hex_canonical() {
+    // Known-answer canonical-form vectors: the same irregular-encoding family re-encoded to
+    // hand-derived RFC 8949 §4.2 minimal bytes — the independent check on cbor_event's
+    // Sz::canonical() header-minimality core (see tests/golden_hex_canonical/tests.rs).
+    run_test(
+        "golden_hex_canonical",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn comment_dsl() {
     run_test(
         "comment-dsl",

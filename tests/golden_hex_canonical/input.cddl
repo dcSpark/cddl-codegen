@@ -1,0 +1,20 @@
+; Canonical-form golden known-answer vectors. The byte strings in tests.rs are hand-derived from
+; RFC 8949 §4.2.1/§4.2.2 (preferred/minimal-length arguments, definite-length re-framing),
+; independent of the generator AND of the tests/deser_test cbor_event helpers — in particular of
+; cbor_event's Sz::canonical(), which is the header-minimality core the generated canonical path
+; itself trusts. A bug there corrupts the canonical suite's expected bytes and the generated output
+; identically; these raw spec-anchored vectors are the independent check.
+;
+; Same type shapes as tests/golden_hex_preserve (the two suites assert the two halves of the same
+; contract: preserve keeps an irregular encoding, canonical minimizes it).
+
+pair = [a: uint, b: uint]
+
+strs = [s: tstr, v: bstr]
+
+kv = { a: uint, b: uint }
+
+uint_seq   = [* uint]
+seq_holder = [xs: uint_seq]
+
+tagged_one = #6.11([x: uint])

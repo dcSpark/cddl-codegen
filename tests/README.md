@@ -69,6 +69,26 @@ raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't r
 A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
 *wasm* crate and `cargo test`ed there (`tests/core/tests_wasm.rs` keeps the hook itself exercised).
 
+### Spec-anchored golden vectors (`tests/golden_hex*`)
+
+Three fixtures assert exact CBOR bytes hand-derived from RFC 8949 rather than built with any
+encoding helper — the only oracle class that catches a *symmetric* encode+decode bug (both sides
+wrong in compensating ways round-trips green everywhere else):
+
+- **`tests/golden_hex`** — default flags; RFC 8949 Appendix A known-answer vectors, both
+  directions. Coverage map: [`tests/golden_hex/COVERAGE.md`](golden_hex/COVERAGE.md), projected and
+  CI-drift-gated by `cddl-matrix/project_golden_hex.ts`.
+- **`tests/golden_hex_preserve`** — `--preserve-encodings`; irregular §3 encodings (non-minimal
+  header arguments, indefinite/chunked items, map key order) must re-encode byte-identically.
+- **`tests/golden_hex_canonical`** — `--canonical-form`; the same irregular inputs must re-encode
+  to hand-derived §4.2 minimal bytes (and those bytes must be a canonical fixed point).
+
+The preserve/canonical suites' *other* byte assertions are built with `tests/deser_test`'s
+cbor_event helpers — the same `write_*_sz` primitives the generated code encodes with — so these
+raw-hex sets are the independent spec anchor for those modes. The projection validates every
+golden byte array in all three dirs (two-digit `0x??` literals, exactly one well-formed CBOR item)
+and hard-fails otherwise; regenerate + commit `COVERAGE.md` after editing any of them.
+
 ## Generated-test harness (`--emit-tests`, `src/emit_tests.rs`)
 
 The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
