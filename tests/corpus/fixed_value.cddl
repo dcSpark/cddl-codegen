@@ -1,1 +1,3 @@
-fixed_fields = [a: uint, b: "marker", c: 5]
+; `d`'s fixed text value contains a `"` and a `\`, which must be escaped when interpolated into the
+; emitted Rust string literals (else rustfmt rejects the generated source at generation time).
+fixed_fields = [a: uint, b: "marker", c: 5, d: "he\"llo\\world"]

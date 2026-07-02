@@ -16,10 +16,11 @@ impl cbor_event::se::Serialize for FixedFields {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_array(cbor_event::Len::Len(4))?;
         serializer.write_unsigned_integer(self.a)?;
         serializer.write_text("marker")?;
         serializer.write_unsigned_integer(5u64)?;
+        serializer.write_text("he\"llo\\world")?;
         Ok(serializer)
     }
 }
@@ -28,7 +29,7 @@ impl Deserialize for FixedFields {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
         let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(3)?;
+        read_len.read_elems(4)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
             let a = Ok(raw.unsigned_integer()? as u64)
@@ -57,6 +58,18 @@ impl Deserialize for FixedFields {
                 Ok(())
             })()
             .map_err(|e| e.annotate("c"))?;
+            (|| -> Result<_, DeserializeError> {
+                let d_value = raw.text()?;
+                if d_value != "he\"llo\\world" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(d_value),
+                        expected: Key::Str(String::from("he\"llo\\world")),
+                    }
+                    .into());
+                }
+                Ok(())
+            })()
+            .map_err(|e| e.annotate("d"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

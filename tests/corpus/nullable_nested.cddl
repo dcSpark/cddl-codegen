@@ -8,3 +8,15 @@
 maybe_uint = uint / null
 nullable_map_value = { * uint => maybe_uint }
 nullable_optional_field = [pre: uint, ? field0: maybe_uint]
+
+; Nullable of a COMPOSITE inner (a named collection / a data-enum), not just a primitive. The wasm
+; boundary must map THROUGH the Option (the inner needs a wrapper conversion): a blanket `.into()`
+; has no `From<Option<Inner>>` and the rust serialize must not double-return `serializer`. These
+; exercise the struct-field, map-value and array-element roles for a composite nullable inner.
+nums_arr = [* uint]
+data_enum = uint / text
+maybe_coll = nums_arr / null
+maybe_denum = data_enum / null
+nullable_coll_field = [c: maybe_coll]
+nullable_denum_field = [d: maybe_denum]
+nullable_coll_map = { * uint => maybe_coll }

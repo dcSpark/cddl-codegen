@@ -14,4 +14,5 @@ pub struct FixedFieldsEncoding {
     pub a_encoding: Option<cbor_event::Sz>,
     pub b_encoding: StringEncoding,
     pub c_encoding: Option<cbor_event::Sz>,
+    pub d_encoding: StringEncoding,
 }

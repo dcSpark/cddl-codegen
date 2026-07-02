@@ -14,4 +14,8 @@ use crate::error::*;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
+pub type Bools = Vec<bool>;
+
+pub type Floats = Vec<f64>;
+
 pub type Nums = Vec<u64>;

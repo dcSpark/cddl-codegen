@@ -12,6 +12,238 @@ use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
+impl cbor_event::se::Serialize for DataEnum {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            DataEnum::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+            DataEnum::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for DataEnum {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                _ => Err(DeserializeError::new(
+                    "DataEnum",
+                    DeserializeFailure::NoVariantMatched,
+                )),
+            }
+        })()
+        .map_err(|e| e.annotate("DataEnum"))
+    }
+}
+
+impl cbor_event::se::Serialize for NullableCollField {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        match &self.c {
+            Some(x) => {
+                serializer.write_array_sz(
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.c_encoding)
+                        .unwrap_or_default()
+                        .to_len_sz(x.len() as u64),
+                )?;
+                for (i, element) in x.iter().enumerate() {
+                    let c_elem_encoding = self
+                        .encodings
+                        .as_ref()
+                        .and_then(|encs| encs.c_elem_encodings.get(i))
+                        .cloned()
+                        .unwrap_or_default();
+                    serializer
+                        .write_unsigned_integer_sz(*element, fit_sz(*element, c_elem_encoding))?;
+                }
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.c_encoding)
+                    .unwrap_or_default()
+                    .end(serializer)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NullableCollField {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (c, c_encoding, c_elem_encodings) = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                    true => {
+                        let mut c_arr = Vec::new();
+                        let len = raw.array_sz()?;
+                        let c_encoding = len.into();
+                        let mut c_elem_encodings = Vec::new();
+                        while match len {
+                            cbor_event::LenSz::Len(n, _) => (c_arr.len() as u64) < n,
+                            cbor_event::LenSz::Indefinite => true,
+                        } {
+                            if let cbor_event::LenSz::Indefinite = len {
+                                if raw.cbor_type()? == cbor_event::Type::Special {
+                                    match raw.special()? {
+                                        cbor_event::Special::Break => break,
+                                        _ => {
+                                            return Err(
+                                                DeserializeFailure::EndingBreakMissing.into()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            let (c_elem, c_elem_encoding) =
+                                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                            c_arr.push(c_elem);
+                            c_elem_encodings.push(c_elem_encoding);
+                        }
+                        Result::<_, DeserializeError>::Ok((c_arr, c_encoding, c_elem_encodings))
+                            .map(|(x, c_encoding, c_elem_encodings)| {
+                                (Some(x), c_encoding, c_elem_encodings)
+                            })?
+                    }
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        (None, LenEncoding::default(), Vec::new())
+                    }
+                })
+            })()
+            .map_err(|e| e.annotate("c"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NullableCollField {
+                c,
+                encodings: Some(NullableCollFieldEncoding {
+                    len_encoding,
+                    c_encoding,
+                    c_elem_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NullableCollField"))
+    }
+}
+
+impl cbor_event::se::Serialize for NullableDenumField {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        match &self.d {
+            Some(x) => {
+                x.serialize(serializer)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NullableDenumField {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let d = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                    true => Some(DataEnum::deserialize(raw)?),
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        None
+                    }
+                })
+            })()
+            .map_err(|e| e.annotate("d"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NullableDenumField {
+                d,
+                encodings: Some(NullableDenumFieldEncoding { len_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("NullableDenumField"))
+    }
+}
+
 impl cbor_event::se::Serialize for NullableOptionalField {
     fn serialize<'se, W: Write>(
         &self,
