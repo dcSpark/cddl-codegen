@@ -54,6 +54,7 @@ changing the *runtime behaviour* of generated code usually means editing `static
 ## Git workflow
 
 - New features should be built on master directly instead of branching unless justified (ex: a worktree)
+- Commit unsigned to avoid GPG prompts
 
 ## Build & verify
 
@@ -62,8 +63,7 @@ There are multiple sources of verifications steps that are useful to know if a f
 - Traditional build tools: `cargo fmt`, `clippy`, build
 - Full test suite: `tests/README.md`
 
-**CI is feature-frozen — make NO modifications to the CI flow.** CI minutes cost real money, so
-`.github/workflows/build.yml` accepts no new jobs, steps, gates, or expansions of existing runs.
+**CI is feature-frozen — make NO modifications to the CI flow.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or expansions of existing runs.
 The only acceptable CI changes are fixes to things that break due to refactoring
 
 This repo follows test-driven development (TDD).
@@ -79,7 +79,7 @@ A lot of components of this library have markdown files following two different 
 1. `README.md` which stores the *current* state of the project. It shouldn't contain historical notes, unless important for backwards-compatibility
 2. `ROADMAP.md` which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
 
-Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to audit for correctness (important for our test-driven development)
+Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
 
 Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped.
 
