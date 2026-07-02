@@ -561,6 +561,90 @@ fn wasm_matrix_compiles() {
     );
 }
 
+/// Compile gate for `--wasm-list-macro` / `--wasm-conversions-macro`. The emitted code references
+/// a user-supplied macro (`impl_wasm_list!` invocations replace each list wrapper's inline
+/// struct/accessor/conversion block), so it can't compile standalone and was previously
+/// snapshot-only — a malformed invocation emission (wrong arg order, wrong `needs_into`/`is_copy`
+/// values, an unreachable combination) is a semantic fact a source snapshot can't judge. This
+/// wires in `tests/wasm-macro-crate` — real macro definitions matching the emitted signature,
+/// written so each of those wrong-emission classes fails to compile (see its README) — the same
+/// way extern-deps wires `tests/extern-dep-crate`, and `cargo check`s the generated wasm crate
+/// under both flag combinations the snapshot suite pins (`snapshot_tests::wasm_list_macro`).
+#[test]
+fn wasm_list_macro_compiles() {
+    use std::str::FromStr;
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "list_macro",
+            &["--wasm-list-macro=wasm_macro_crate::impl_wasm_list"][..],
+        ),
+        // combined: list wrappers use impl_wasm_list! (which emits its own conversions) while
+        // non-list wrappers use impl_wasm_conversions! — compile-proves the two don't double-emit.
+        (
+            "list_and_conversions_macro",
+            &[
+                "--wasm-list-macro=wasm_macro_crate::impl_wasm_list",
+                "--wasm-conversions-macro=wasm_macro_crate::impl_wasm_conversions",
+            ][..],
+        ),
+    ];
+    let test_path = std::path::PathBuf::from_str("tests/wasm-list-macro").unwrap();
+    // own scratch target (shared across the two cases) so parallel tests don't collide
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_list_macro_{:016x}",
+        checkout_hash()
+    ));
+    for (label, options) in cases {
+        let out = test_path.join(format!("export_{label}"));
+        let _ = std::fs::remove_dir_all(&out);
+        let gen_out = std::process::Command::new("cargo")
+            .args(["run", "--"])
+            .arg(format!(
+                "--input={}",
+                test_path.join("input.cddl").to_str().unwrap()
+            ))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=true")
+            .args(*options)
+            .output()
+            .unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{label}: generation failed\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        // vacuous-pass guard: the gate only gates the macro path if the flag actually collapsed
+        // the list wrappers into invocations (5 at landing; see the fixture's header comment).
+        let lib = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+        let n_invocations = lib.matches("impl_wasm_list!(").count();
+        assert!(
+            n_invocations >= 5,
+            "{label}: only {n_invocations} impl_wasm_list! invocations emitted (expected >= 5) — \
+             the flag stopped collapsing list wrappers, so this gate no longer gates the macro path"
+        );
+        // wire in the real macro definitions the emitted invocations reference
+        let mut cargo_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(out.join("wasm/Cargo.toml"))
+            .unwrap();
+        cargo_toml
+            .write_all(b"wasm-macro-crate = { path = \"../../../wasm-macro-crate\" }\n")
+            .unwrap();
+        std::mem::drop(cargo_toml);
+        let check = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(out.join("wasm"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "{label}: cargo check failed\n{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tracked wasm-ABI SEMANTIC gaps (compile-green but not ideal).
 //
