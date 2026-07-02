@@ -1,0 +1,26 @@
+; Preserve-encodings golden known-answer vectors. The byte strings in tests.rs are hand-derived
+; from RFC 8949 §3 (integer/length/tag argument forms, indefinite-length items), independent of
+; the generator AND of the tests/deser_test cbor_event helpers: the preserve/canonical suites
+; build their expected bytes with the same cbor_event write_*_sz primitives the generated code
+; encodes with, so a symmetric bug in that shared layer corrupts expected and actual identically
+; and still round-trips green. Raw spec-anchored hex breaks that circularity for the preserve path.
+;
+; Coverage: non-minimal integer/length/tag header arguments (the 1/2/4/8-byte forms of values that
+; fit smaller), indefinite-length strings/arrays/maps (incl. chunked strings), and map key order.
+
+; non-minimal uint arguments + array framing
+pair = [a: uint, b: uint]
+
+; indefinite / non-minimal-length text and byte strings
+strs = [s: tstr, v: bstr]
+
+; struct map: indefinite framing, non-minimal count, key order, key/value header arguments
+kv = { a: uint, b: uint }
+
+; homogeneous array (the `*` occurrence): bare [* uint] generates a plain Vec alias with no
+; serialization methods, so wrap it in a record to get a testable struct
+uint_seq   = [* uint]
+seq_holder = [xs: uint_seq]
+
+; tag header argument forms (tag 11: minimal head 0xcb, wider heads 0xd8/0xd9 + argument)
+tagged_one = #6.11([x: uint])
