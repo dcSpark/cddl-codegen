@@ -66,6 +66,27 @@ Each test generates a crate via the CLI (`cargo run`), appends hand-written roun
 (`tests/deser_test` + each dir's `tests.rs`), then compiles and runs it — plus a wasm build and a
 json-schema build where applicable. Each config (`preserve`, `canonical`, `json`, multifile,
 raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't redundant.
+A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
+*wasm* crate and `cargo test`ed there (`tests/core/tests_wasm.rs` keeps the hook itself exercised).
+
+## Generated-test harness (`--emit-tests`, `src/emit_tests.rs`)
+
+The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
+per-type **round-trip** tests (IR-derived cases — baseline, bound boundaries, one per choice
+variant, each optional field present — asserted byte-identical through the full wire cycle) and
+**bounded-reject** tests. Values are minted deterministically from each type's IR (no
+proptest/`Arbitrary` deps in generated crates); unmintable shapes are skipped with a logged
+notice. Two consumers run it in CI: `integration_tests::emit_tests_execute` (the rich
+preserve-encodings fixture, with emitted-test count floors) and `feature_corpus_compiles`'
+default profile (below). This is the "output is right, not just unchanged" oracle — it caught two
+snapshot-blessed miscompiles (`.ne` bounds, preserve-encodings default-field serialization) on
+its first corpus sweep. It shares the generator's IR, so IR-level bugs (wrong bounds computed at
+parse time) are the spec-anchored oracles' job (`tests/golden_hex/`).
+
+The corpus gate `feature_corpus_compiles` `cargo check`s every `tests/corpus/*.cddl` crate (rust +
+wasm + json-gen) under all three profiles, and under the **default profile** additionally
+generates with `--emit-tests` and `cargo test`s the rust crate — so a corpus construct must
+round-trip, not just compile.
 
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
