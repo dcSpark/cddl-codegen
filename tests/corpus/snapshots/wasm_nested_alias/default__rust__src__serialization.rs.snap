@@ -55,8 +55,15 @@ impl Deserialize for OptHolder {
                         cbor_event::Len::Indefinite => true,
                     } {
                         if raw.cbor_type()? == cbor_event::Type::Special {
-                            assert_eq!(raw.special()?, cbor_event::Special::Break);
-                            break;
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                                }
+                                cbor_event::Len::Indefinite => match raw.special()? {
+                                    cbor_event::Special::Break => break,
+                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                                },
+                            }
                         }
                         f_arr.push(raw.unsigned_integer()? as u64);
                     }

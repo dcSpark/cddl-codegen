@@ -2992,7 +2992,7 @@ impl GenerationScope {
                             None,
                         ),
                     };
-                    deser_loop.push_block(make_deser_loop_break_check());
+                    deser_loop.push_block(make_deser_loop_break_check("len", cli));
                     if let Some(plain_len_check) = plain_len_check {
                         deser_loop.line(plain_len_check);
                     }
@@ -3145,7 +3145,7 @@ impl GenerationScope {
                         }
                         let mut deser_loop =
                             make_deser_loop(&len_var, &format!("({table_var}.len() as u64)"), cli);
-                        deser_loop.push_block(make_deser_loop_break_check());
+                        deser_loop.push_block(make_deser_loop_break_check(&len_var, cli));
                         let mut key_config = DeserializeConfig::new(&key_var_name);
                         key_config.deserializer_name_overload = config.deserializer_name_overload;
                         let mut value_config = DeserializeConfig::new(&value_var_name);
@@ -4467,11 +4467,27 @@ fn make_deser_loop(len_var: &str, len_expr: &str, cli: &Cli) -> Block {
     ))
 }
 
-fn make_deser_loop_break_check() -> Block {
+fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
+    // Mirror the map deserializer's break handling (see the `Type::Special` arm in the
+    // record-map codegen): a Special where an element is expected is graceful `Err`, never a
+    // panic. The naive `assert_eq!(special, Break)` was a DoS — hostile bytes like a
+    // definite-length array holding a `null` (`0x81 0xf6`) aborted the process instead of
+    // returning an error to the untrusted-input parser this library's consumers rely on.
     let mut break_check = Block::new("if raw.cbor_type()? == cbor_event::Type::Special");
-    // TODO: read special and go back 1 character
-    break_check.line("assert_eq!(raw.special()?, cbor_event::Special::Break);");
-    break_check.line("break;");
+    let mut len_match = Block::new(format!("match {len_var}"));
+    len_match.line(format!(
+        "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
+        cbor_event_len_n("_", cli)
+    ));
+    let mut indef_match = Block::new(format!(
+        "{} => match raw.special()?",
+        cbor_event_len_indef(cli)
+    ));
+    indef_match.line("cbor_event::Special::Break => break,");
+    indef_match.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+    indef_match.after(",");
+    len_match.push_block(indef_match);
+    break_check.push_block(len_match);
     break_check
 }
 

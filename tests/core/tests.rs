@@ -178,6 +178,20 @@ mod tests {
         let table_arr_members_break = [map_def(3), vec![BREAK]].concat();
         let table_arr_members_break_err = TableArrMembers::from_cbor_bytes(&table_arr_members_break).unwrap_err();
         assert!(table_arr_members_break_err.to_string().contains("Break while reading definite length sequence"), "{table_arr_members_break_err}");
+
+        // Regression (fuzz-found DoS): the *collection* element loop (`[* uint]`, `{* uint => uint}`),
+        // distinct from the struct-map path above, once did `assert_eq!(special, Break)` on ANY special
+        // in element position — so a definite-length collection holding a non-Break special (e.g. a
+        // `null`, `0x81 0xf6`) aborted the process instead of returning an error to the untrusted-input
+        // parser this library's consumers rely on. It must now be a graceful Err. is_ok() baselines
+        // differ only in the offending element, so a reject can't pass for the wrong reason.
+        // WrapperList = [ * uint ] ; @newtype
+        assert!(WrapperList::from_cbor_bytes(&[arr_def(1), cbor_int(1, cbor_event::Sz::Inline)].concat()).is_ok());
+        let wrapper_list_null_elem = WrapperList::from_cbor_bytes(&[arr_def(1), vec![NULL]].concat()).unwrap_err();
+        assert!(wrapper_list_null_elem.to_string().contains("Break while reading definite length sequence"), "{wrapper_list_null_elem}");
+        // WrapperTable = { * uint => uint }: same loop, null fed in key position.
+        let wrapper_table_null_key = WrapperTable::from_cbor_bytes(&[map_def(1), vec![NULL], cbor_int(2, cbor_event::Sz::Inline)].concat()).unwrap_err();
+        assert!(wrapper_table_null_key.to_string().contains("Break while reading definite length sequence"), "{wrapper_table_null_key}");
     }
 
     // exercise the shipped Display formatting in error.rs (DeserializeError::fmt_indent and
