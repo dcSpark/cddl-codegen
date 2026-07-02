@@ -947,7 +947,42 @@ fn corpus_occurrence_bounds_enforced() {
     unimplemented!(
         "[+ uint] and [2*5 uint] emit bare Vec<u64> with no length validation in serialize or \
          deserialize. Add bounds enforcement, re-bless the occurrence corpus snapshots, then assert \
-         here that an empty / 6-element vector is rejected, and remove #[ignore]."
+         here that an empty / 6-element vector is rejected, and remove #[ignore]. Follow-up once \
+         enforcement exists: an emit-tests reject case + putting occurrence under the \
+         ir_conformance_corpus oracle (see TESTING_ROADMAP's reject-side item)."
+    );
+}
+
+/// A named collection with a Special-class (major-type-7) KEY panics generation: the map-key
+/// assert in `IntermediateTypes::new_type` (src/intermediate.rs, `ConceptualRustType::Map` arm)
+/// was deliberately kept when the sibling ARRAY-element assert was relaxed (2a50524) because a
+/// Special-class key is ambiguous with the break byte for indefinite maps and named special-key
+/// maps had no round-trip coverage proving them safe.
+#[test]
+#[ignore = "Special-class map keys panic generation: `bkeys = { * bool => uint }` referenced as a field hits the map-key assert at src/intermediate.rs (ConceptualRustType::Map arm). Relaxing it needs the same definite-vs-indefinite analysis as 2a50524 plus an executed round-trip fixture."]
+fn corpus_special_map_key_supported() {
+    unimplemented!(
+        "`bkeys = {{ * bool => uint }}; holder = [b: bkeys]` panics at the map-key Special assert. \
+         Mirror the array fix (2a50524): prove the definite-length path reads exactly n entries \
+         with no break interception, decide the indefinite-case behavior, relax the assert, add a \
+         corpus fixture whose emit-tests round-trip executes a special-keyed map, then assert both \
+         here and remove #[ignore]."
+    );
+}
+
+/// Float fields under `--preserve-encodings` abort generation (`unimplemented!` at the
+/// generation.rs float serialize arm), which is why no corpus fixture can hold a float in a
+/// struct field (the corpus runs every fixture under the preserve profile) and why the float
+/// element wire path has no executed preserve/canonical coverage.
+#[test]
+#[ignore = "float --preserve-encodings is unimplemented: any float struct field aborts generation under the flag (generation.rs 'preserve_encodings is not implemented for float'). Implementing it unblocks float corpus fixtures (see homogeneous_array.cddl's comment) and float KAT vectors."]
+fn preserve_encodings_supports_floats() {
+    unimplemented!(
+        "a float struct field + --preserve-encodings=true panics generation. Implement float \
+         encoding preservation (half/single/double header forms are the preserve axis; canonical \
+         is smallest-form-that-round-trips per RFC 8949 §4.2.1), add a float field to a preserve \
+         fixture + hand-derived golden-hex vectors (major type 7 heads 0xf9/0xfa/0xfb), then \
+         assert here and remove #[ignore]."
     );
 }
 
