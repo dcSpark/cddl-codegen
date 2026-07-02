@@ -134,6 +134,10 @@ pub(crate) enum MintValue {
     },
     /// a named table minted empty: `Ident::new()`
     TableEmpty { ident: String },
+    /// the reserved `Int` prelude extern (a bare CDDL `int`): rust `Ident::new_uint(value)` for the
+    /// non-negative baseline. Its wasm twin exposes a single `Ident::new(value as i64)` ctor, so the
+    /// wasm renderer keys off this variant rather than the generic wrapper/record shapes.
+    IntExtern { ident: String, value: i128 },
 }
 
 /// Render a `MintValue` as the rust-crate API expression string. This reproduces, byte-for-byte,
@@ -192,6 +196,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             )
         }
         MintValue::TableEmpty { ident } => format!("{ident}::new()"),
+        MintValue::IntExtern { ident, value } => format!("{ident}::new_uint({value})"),
     }
 }
 
@@ -1012,6 +1017,14 @@ pub(crate) fn mint_struct(
                 count: 1,
             })
         }
+        // the reserved `int` prelude resolves to the hand-written `Int` extern (static prelude):
+        // mint its non-negative baseline through `Int::new_uint`. A bare CDDL `int` carries no
+        // bounds, so `0` is always in range. Every OTHER extern references user-supplied code the
+        // generated crate can't construct — a loud skip at the caller.
+        RustStructType::Extern if name == "Int" => Some(MintValue::IntExtern {
+            ident: name,
+            value: 0,
+        }),
         RustStructType::Extern | RustStructType::RawBytesType => None,
     }
 }
