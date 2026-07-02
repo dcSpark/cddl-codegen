@@ -633,6 +633,21 @@ fn wasm_list_macro_compiles() {
             "{label}: only {n_invocations} impl_wasm_list! invocations emitted (expected >= 5) — \
              the flag stopped collapsing list wrappers, so this gate no longer gates the macro path"
         );
+        // symmetric vacuous-pass guard for the conversions half: the combined case's docstring claims
+        // BOTH flag combinations are compile-gated, but only the list count was asserted — a
+        // regression of --wasm-conversions-macro back to inline From/AsRef would still compile green.
+        // The fixture emits 2 conversions invocations (list=5, conv=2).
+        if options
+            .iter()
+            .any(|o| o.contains("--wasm-conversions-macro="))
+        {
+            let n_conv = lib.matches("impl_wasm_conversions!(").count();
+            assert!(
+                n_conv >= 2,
+                "{label}: only {n_conv} impl_wasm_conversions! invocations emitted (expected >= 2) — \
+                 the flag stopped collapsing non-list wrappers, so the conversions-macro path is ungated"
+            );
+        }
         // wire in the real macro definitions the emitted invocations reference
         let mut cargo_toml = std::fs::OpenOptions::new()
             .append(true)
@@ -1013,8 +1028,26 @@ fn comment_dsl() {
 
 /// The dcSpark `cddl` fork (already this crate's parser dep) as a test dependency of a *generated*
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
-/// Pinned to the same rev as Cargo.toml so the two never diverge.
+/// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
+/// so a routine cddl bump that updates only Cargo.toml can't silently leave the oracle on a stale rev.
 const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"d6cad9ee99f732e2ecb330a373c6a68f4e2860b7\" }\n";
+
+#[test]
+fn cddl_oracle_dep_rev_matches_cargo_toml() {
+    let cargo_toml = include_str!("../Cargo.toml");
+    // the git-dep line (not the `repository = ".../cddl-codegen"` line, which also contains the URL)
+    let rev = cargo_toml
+        .lines()
+        .find(|l| l.contains("dcSpark/cddl\"") && l.contains("rev = \""))
+        .and_then(|l| l.split("rev = \"").nth(1))
+        .and_then(|s| s.split('"').next())
+        .expect("could not find the dcSpark/cddl git-dep rev in Cargo.toml");
+    assert!(
+        CDDL_ORACLE_DEP.contains(rev),
+        "CDDL_ORACLE_DEP is out of sync with Cargo.toml's cddl rev ({rev}) — update the const so the \
+         generated-crate conformance oracle validates against the same fork/rev as the generator's parser"
+    );
+}
 
 #[test]
 fn preserve_encodings() {

@@ -98,6 +98,12 @@ function cborItems(b: Uint8Array, label: string): [number, number][] {
     if (i >= b.length) die(`walked past the end at offset ${i}`);
     const start = i, ib = b[i], ai = ib & 0x1f, mt = ib >> 5;
     if (ai >= 28 && ai <= 30) die(`reserved additional-info ${ai} at offset ${i}`);
+    // ai=31 (indefinite / break) is well-formed only on the string/array/map majors (2-5). On
+    // uint/nint (0/1) and tag (6) it is not legal CBOR; on major 7 it is the break byte, valid ONLY
+    // inside an indefinite container (the container loops below consume it), never as a standalone
+    // item. Rejecting it here keeps a malformed head from minting a bogus `enc.majorN.indef` cell.
+    if (ai === 31 && (mt <= 1 || mt === 6 || mt === 7))
+      die(`additional-info 31 (indefinite/break) is not well-formed on major type ${mt} at offset ${i}`);
     i += 1;
     if (ai === 24) i += 1; else if (ai === 25) i += 2; else if (ai === 26) i += 4; else if (ai === 27) i += 8;
     need(i);
