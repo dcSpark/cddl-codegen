@@ -217,6 +217,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             )
         }
         MintValue::TableEmpty { ident } => format!("{}::new()", sc(ident)),
+        MintValue::IntExtern { ident, value } => format!("{}::new_uint({value})", sc(ident)),
     }
 }
 
@@ -224,6 +225,7 @@ fn map_key_expr(key: &MapKey) -> String {
     match key {
         MapKey::Int(p) => format!("__i as {p}"),
         MapKey::Str => "__i.to_string()".to_owned(),
+        MapKey::Bytes => "vec![__i as u8]".to_owned(),
         MapKey::Bool => "__i == 1".to_owned(),
     }
 }
@@ -300,6 +302,15 @@ fn wasm_named(
         }
         RustStructType::GroupChoice { variants, .. } => {
             wasm_choice_value(types, &name, variants, true, mv, scoped, cli)
+        }
+        // the reserved `Int` extern crosses the wasm boundary as a wrapper with a single
+        // `Int::new(x: i64)` ctor (dispatches to `new_uint`/`new_nint` on sign); mint the
+        // non-negative baseline. Every other extern references user code with no wasm ctor.
+        RustStructType::Extern if name == "Int" => {
+            let MintValue::IntExtern { value, .. } = mv else {
+                return None;
+            };
+            Some(format!("Int::new({value})"))
         }
         // `@newtype`/tag wrappers (and named table/array wrappers) export NO wasm `new`, but every
         // wasm wrapper carries `From<cddl_lib::Native>` (see `add_conversion_methods`). Build the arg
@@ -452,6 +463,7 @@ fn map_key_literal(key: &MapKey, i: i128) -> String {
     match key {
         MapKey::Int(p) => format!("{i} as {p}"),
         MapKey::Str => format!("{i}.to_string()"),
+        MapKey::Bytes => format!("vec![{i} as u8]"),
         MapKey::Bool => format!("{i} == 1"),
     }
 }
