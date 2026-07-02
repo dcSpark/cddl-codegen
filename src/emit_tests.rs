@@ -750,8 +750,22 @@ fn wrapper_construct_reject(
     wrapped: &RustType,
     min_max: Bounds,
 ) -> Option<String> {
-    let kind = measure_kind(wrapped)?;
-    let cases = bound_cases(types, wrapped, min_max, kind == MeasureKind::Len);
+    // A bounded nint wrapper stores the inner as a u64 MAGNITUDE (`m = |v + 1|`) and its `new()`
+    // checks the nint-transformed bounds (`generation.rs` applies `nint_bounds_to_u64`). The
+    // out-of-bounds direction is inverted in value space, so synthesize the boundary cases directly
+    // in magnitude space: the transformed bounds, measured like a length (magnitude has a floor of 0,
+    // so a "below min" case below 0 is dropped by `materialize`). `measure_kind` deliberately excludes
+    // N64 (the standalone nint field/target direction is genuinely inverted), so handle it here.
+    let (eff_bounds, is_len) = if matches!(
+        wrapped.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) {
+        (nint_bounds_to_u64(min_max), true)
+    } else {
+        let kind = measure_kind(wrapped)?;
+        (min_max, kind == MeasureKind::Len)
+    };
+    let cases = bound_cases(types, wrapped, eff_bounds, is_len);
     if !cases.iter().any(|(_, accept, _)| !accept) {
         return None; // bound == type domain: no constructible out-of-bounds value
     }
@@ -1109,8 +1123,10 @@ fn materialize_at(
                     prim: *p,
                 })
             }
-            // nint stored values are non-negative u64 magnitudes; valid_measure keeps them in range
-            Primitive::N64 => Some(MintValue::Int {
+            // nint stored values are non-negative u64 magnitudes. A "below min" boundary case can
+            // ask for magnitude -1 (e.g. a `.le -1` wrapper whose magnitude floor is 0); that isn't
+            // representable in the u64 backing type, so drop it rather than render `new(-1)`.
+            Primitive::N64 => (measure >= 0).then_some(MintValue::Int {
                 value: measure,
                 prim: Primitive::N64,
             }),
