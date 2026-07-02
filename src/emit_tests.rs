@@ -3,7 +3,8 @@
 //! Everything here is derived from each type's IR at generation time — there are no hand-authored
 //! value lists. The per-IR-shape derivation rules below are the single maintained surface, and any
 //! type/field/variant they can't mint is skipped with an `eprintln!`, never a silently-weakened
-//! test.
+//! test. The one deliberate weakening — an unbounded collection whose element can't be minted is
+//! minted EMPTY (its element wire path goes unexercised) so recursion can terminate — is loud too.
 //!
 //! **Reject half** — for every type carrying a bounded (`RangeCheck`) field, a `#[test]` that
 //! pushes a field out of bounds and asserts the generated code rejects it. Two shapes, mirroring
@@ -598,7 +599,8 @@ fn bound_cases(
 }
 
 /// Named-struct minting recursion cap: deep enough for realistic nesting (e.g. a record holding a
-/// tagged wrapper holding a record), finite for self-recursive types (which get a loud skip).
+/// tagged wrapper holding a record), finite for self-recursive types (whose unbounded tail is
+/// minted empty at the cap, with a loud notice; any other capped mint gets the caller's loud skip).
 const MAX_MINT_DEPTH: u8 = 4;
 
 /// A valid in-range Rust value expression for `ty`, or `None` if it can't be cheaply minted.
@@ -643,15 +645,24 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
                 // EMPTY, so terminate the mint with an empty collection rather than failing the
                 // whole enclosing type. This ONLY applies to the unbounded case: a bounded
                 // collection needs its exact length materialized, so it stays a loud `None`, and a
-                // broken (non-`None`) element still surfaces normally above.
-                unbounded_len.then(|| empty_collection(ty)).flatten()
+                // broken (non-`None`) element still surfaces normally above. Announce the
+                // degradation (module invariant: never a SILENTLY-weakened test) — this
+                // collection's element wire path goes unexercised.
+                let fallback = unbounded_len.then(|| empty_collection(ty)).flatten();
+                if fallback.is_some() {
+                    eprintln!(
+                        "cddl-codegen --emit-tests: unbounded collection element not cheaply mintable (recursion cap or unsupported element shape) — minted empty; its element wire path is unexercised"
+                    );
+                }
+                fallback
             })
         }
     }
 }
 
 /// Mint a valid instance of a NAMED generated struct, recursing into its fields (depth-capped so
-/// self-recursive types return `None` and get the caller's loud skip instead of infinite mint).
+/// recursion terminates: at the cap this returns `None`, which an enclosing unbounded collection
+/// absorbs by minting empty — loudly — while any other enclosing mint gets the caller's loud skip).
 fn mint_struct(
     types: &IntermediateTypes,
     ident: &crate::intermediate::RustIdent,
