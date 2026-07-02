@@ -942,15 +942,29 @@ fn corpus_occurrence_bounds_enforced() {
     );
 }
 
-/// `[(uint, tstr)]` generates a 1-field struct (`read_elems(1)`) — the `tstr` member is silently
-/// dropped: data loss that parses, compiles, snapshots, and round-trips green.
+/// `[(uint, tstr)]` must keep BOTH spliced members. This regressed member-dropping data loss for
+/// years (a 1-field `InlineGroup { index_0 }` / `read_elems(1)` that parsed, compiled, and
+/// round-tripped green) until the cddl-fork AST bump (c505d38) fixed the group's shape. The corpus
+/// snapshots pin the fixed form; this asserts on the COMMITTED snapshots so a regression can't
+/// slip back in via an unreviewed re-bless (the snapshot suite alone would happily pin the
+/// 1-field form again).
 #[test]
-#[ignore = "inline-group splice drops members: [(uint, tstr)] emits a 1-field struct, silently losing tstr. Pinned by tests/corpus/snapshots/inline_group; ledgered in cddl-matrix/ROADMAP.md."]
 fn corpus_inline_group_members_kept() {
-    unimplemented!(
-        "[(uint, tstr)] generates InlineGroup {{ index_0: u64 }} and never reads the tstr. Flatten \
-         inline-group entries into the record, re-bless the inline_group corpus snapshots, then \
-         assert here that both members round-trip, and remove #[ignore]."
+    let lib = std::fs::read_to_string(
+        "tests/corpus/snapshots/inline_group/default__rust__src__lib.rs.snap",
+    )
+    .expect("inline_group lib snapshot missing");
+    assert!(
+        lib.contains("index_0") && lib.contains("index_1"),
+        "inline_group snapshot no longer keeps both spliced members — the [(uint, tstr)] member-drop bug is back"
+    );
+    let ser = std::fs::read_to_string(
+        "tests/corpus/snapshots/inline_group/default__rust__src__serialization.rs.snap",
+    )
+    .expect("inline_group serialization snapshot missing");
+    assert!(
+        ser.contains("read_elems(2)"),
+        "inline_group deserializer no longer reads 2 elements — the [(uint, tstr)] member-drop bug is back"
     );
 }
 
