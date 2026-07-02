@@ -147,14 +147,11 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
        Corpus- and matrix-breadth wasm round-trip coverage is otherwise wired: `feature_corpus_compiles`
        `cargo test`s the wasm crate under the default profile (not just `cargo check`), and `verify.ts`
        runs the wasm oracle by default (opt out with `--no-wasm` / `VERIFY_WASM=0`).
-     - **Two pre-existing `core`-fixture findings the wasm gate has to route around** (surfaced building the
-       wasm execution gate; neither is a wasm bug, both are latent rust-side sharp edges). (1) `core`'s
-       hand-written `tests::docs` / `tests::no_alias` source-inspection tests read `lib.rs` and truncate at
-       the FIRST `#[cfg(test)]` — brittle now that an emitted module can precede them; a delimiter that
-       anchors on the specific hand-written module would be robust. (2) `core`'s `TypeChoice` is wire-ambiguous
+     - **A pre-existing `core`-fixture finding the wasm gate routes around** (surfaced building the wasm
+       execution gate; not a wasm bug, a latent rust-side sharp edge). `core`'s `TypeChoice` is wire-ambiguous
        (uint `0` collides with the fixed `i0` variant), so the rust `--emit-tests` value-equality oracle
-       false-fails on it. Both are why `emit_wasm_tests_execute` `cargo test`s only the *wasm* crate (which
-       builds the rust crate as a non-test dep). The wasm oracle sidesteps (2) by reading accessors on the
+       false-fails on it. That's why `emit_wasm_tests_execute` `cargo test`s only the *wasm* crate (which
+       builds the rust crate as a non-test dep). The wasm oracle sidesteps it by reading accessors on the
        freshly-built value, not the post-wire one.
      - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
        remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
