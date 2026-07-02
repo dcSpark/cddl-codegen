@@ -3,7 +3,10 @@
 > **GENERATED** by `cddl-matrix/project_corpus.ts` — do not hand-edit. Status (✅/➕/➖/⚠️) is the
 > execution-grounded matrix support verdict joined with the corpus overlay (canonical fixture, nuance
 > notes, findings) in `cddl-matrix/annotations/corpus/cddl_codegen.toml`. Regenerate after changing
-> either; CI fails on overlay drift (a note/cover that contradicts the matrix or the fixtures).
+> either; CI fails on overlay drift: a cover whose fixture stops exercising its construct, a note that
+> contradicts the matrix support verdict, or a stale id/fixture/anchor. A cover on a construct the
+> matrix marks not-supported is a SUPPORT SEAM — annotated on the row, reported by the validator, not
+> (yet) fatal.
 
 Tracks which CDDL constructs the snapshot **corpus** (`tests/corpus/*.cddl`) exercises, what's
 supported-but-untested (a corpus gap to fill), and what the generator does **not** support (the
