@@ -1314,6 +1314,49 @@ mod tests {
     }
 
     #[test]
+    fn custom_serialization_rejects_wrong_tag() {
+        // the custom read hook owns the WHOLE tagged2 field (nothing upstream checks the tag),
+        // and the write hook re-encodes tag 9 unconditionally — so accepting any other tag would
+        // break the preserve-fidelity invariant the fuzz harness asserts over this exact type
+        // (accepted input must re-encode byte-identically: tag-10 in, tag-9 out).
+        let bad_tag_bytes = vec![
+            arr_def(5),
+                cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], StringLenSz::Indefinite(vec![(1, Sz::Inline); 4])),
+                cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], StringLenSz::Indefinite(vec![(1, Sz::Inline); 4])),
+                cbor_str_sz("baadd00d", StringLenSz::Len(Sz::Inline)),
+                cbor_tag(9),
+                    cbor_bytes_sz(vec![0xDE, 0xAD, 0xBE, 0xEF], StringLenSz::Indefinite(vec![(1, Sz::Inline); 4])),
+                cbor_tag(10), // tagged2 is #6.9(uint) — tag 10 must be REJECTED
+                    cbor_str_sz("10241024", StringLenSz::Len(Sz::Inline))
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let err = StructWithCustomSerialization::from_cbor_bytes(&bad_tag_bytes).unwrap_err();
+        assert!(
+            format!("{:?}", err).contains("TagMismatch"),
+            "wrong tag must fail as TagMismatch, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn custom_serialization_fresh_value_hex_boundary_len() {
+        // a FRESH value (StringEncoding::Canonical) whose `overridden` field is 12..=23 bytes:
+        // the hex text is 2n chars, so sizing the text header from the BYTE length picks a
+        // width that cannot hold 2n (canonical(16) = Inline, but the text is 32 chars) and
+        // to_cbor_bytes panics with InvalidLenPassed. The hook must size for the text length.
+        let v = StructWithCustomSerialization::new(
+            vec![0xCA, 0xFE, 0xF0, 0x0D],
+            vec![0x03, 0x01, 0x04, 0x01],
+            vec![0xAB; 16],
+            vec![0xDE, 0xAD, 0xBE, 0xEF],
+            1024,
+        );
+        let bytes = v.to_cbor_bytes();
+        let back = StructWithCustomSerialization::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(back.to_cbor_bytes(), bytes);
+        assert_eq!(back.overridden, vec![0xAB; 16]);
+    }
+
+    #[test]
     fn wrapper_table() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
         for def_enc in &def_encodings {
