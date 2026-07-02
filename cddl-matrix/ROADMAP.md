@@ -195,6 +195,17 @@ from a degenerate example.**
   identical CBOR, works). Caught loudly by the rustfmt fail-loud gate at generation time. Surfaced while
   authoring the canonical `mixed_len_keys` ordering fixture; related member-key notes:
   `draft/cddl-bareword-member-key-bug.md`.
+- **Untrusted length-prefix over-allocation (DoS, unfixed).** An ~11-byte input claiming a huge
+  string/bytes/array length (e.g. `0x7b` text + `00 00 00 00 80 00 e8 00` ≈ 2 GB) makes `from_cbor_bytes`
+  attempt a ~2 GB `Vec::with_capacity` before reading any payload — an OOM abort in every consumer parsing
+  untrusted chain data. The allocation is inside the `cbor_event` dependency's length-prefixed readers
+  (`text_sz`/`bytes_sz`/array pre-size), not this generator's emitted code, so the fix is dependency-level
+  (reserve incrementally, or cap the pre-allocation against remaining input) rather than a codegen change —
+  hence unfixed here. Surfaced by `fuzz/` (the adversarial-CBOR target); it has no cargo-test crash-replay
+  because an OOM/stack-overflow kills the test process — the fuzz process boundary is the only oracle for
+  this class (same reason deep-nesting recursion isn't a normal test). Sibling panic in the same fuzz
+  session — the collection-loop `assert_eq!(special, Break)` abort on `0x81 0xf6` — **was** codegen-owned
+  and is fixed (graceful `Err`; regression in `tests/core` `structural_rejects`).
 
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
