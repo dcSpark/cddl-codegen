@@ -62,6 +62,16 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub emit_tests: bool,
 
+    /// Opt-in recursion depth guard for generated deserializers. When set to N, every generated
+    /// composite `deserialize` acquires an RAII depth guard and returns a graceful
+    /// `DeserializeError` (never overflows the stack) once nesting exceeds N. OFF by default: a
+    /// depth limit necessarily rejects spec-valid documents deeper than N, so cddl-codegen must not
+    /// invent a data limit the spec doesn't have. Enable it when parsing untrusted input, where an
+    /// unbounded recursive type (e.g. `tree = [value: uint, children: [* tree]]`) would otherwise
+    /// let hostile deeply-nested CBOR overflow the stack and abort the process.
+    #[clap(long, value_parser, value_name = "DEPTH")]
+    pub deserialize_depth_limit: Option<u32>,
+
     /// Tags types with sonSchema derives and generates a crate to export them
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub json_schema_export: bool,

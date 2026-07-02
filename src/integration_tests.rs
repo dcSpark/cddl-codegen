@@ -1440,3 +1440,127 @@ fn extern_deps() {
         &["extern-dep-crate = { path = \"../../../extern-dep-crate\" }"],
     );
 }
+
+/// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
+/// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
+/// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses
+/// until the stack overflows and the process **aborts (SIGABRT, uncatchable by `catch_unwind`)**, a
+/// DoS on any consumer parsing untrusted chain data. There is deliberately no default guard (a depth
+/// limit rejects spec-valid documents), so this gate proves the opt-in flag turns that abort into a
+/// graceful `DeserializeError` while leaving valid, bounded documents unaffected.
+///
+/// Four assertions, mirroring the design contract:
+/// (a) generate the recursive fixture WITH `--deserialize-depth-limit=64 --emit-tests=true`;
+/// (b) a hostile 100_000-deep instance, built programmatically from the array-header prefix, is
+///     REJECTED (`from_cbor_bytes` returns `Err` naming the depth limit) — process alive. This is the
+///     input that SIGABRTs with the flag OFF (verified manually; an aborting test is never committed);
+/// (c) the emitted `--emit-tests` round-trip module (values are shallow, well under the cap) still
+///     passes under the flag — the same `cargo test` run that executes (b);
+/// (d) the guard line is ABSENT from output generated WITHOUT the flag — the cheap text-level proof
+///     of the byte-identical-default requirement (the snapshot suite proves the rest).
+#[test]
+fn deserialize_depth_limit_guards_recursion() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from_str("tests/corpus/recursive.cddl").unwrap();
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_depth_limit_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    // (a) generate WITH the guard + emitted tests
+    let out_on = scratch.join("on");
+    let gen_on = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out_on.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--deserialize-depth-limit=64")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_on.status.success(),
+        "generation (guard on) failed\n{}",
+        String::from_utf8_lossy(&gen_on.stderr)
+    );
+
+    // sanity: the guard acquisition line was actually emitted into the recursive deserializer
+    let ser_on = std::fs::read_to_string(out_on.join("rust/src/serialization.rs")).unwrap();
+    assert!(
+        ser_on.contains("DepthGuard::acquire(64usize)?"),
+        "guard-on output is missing the depth-guard acquisition — the flag emitted nothing"
+    );
+
+    // (b) append a hostile-deep reject test. Built from raw CBOR: each nested tree is
+    // `array(2), uint 0, array(1)` (0x82 0x00 0x81); the leaf's children is the empty `array(0)`
+    // (0x80). 100_000 levels overflows the stack with the flag OFF — here it must return Err, not
+    // abort. Written into the generated crate's tests/ so it has the full public API in scope.
+    std::fs::create_dir_all(out_on.join("rust/tests")).unwrap();
+    std::fs::write(
+        out_on.join("rust/tests/hostile_depth.rs"),
+        r#"use cddl_lib::Tree;
+use cddl_lib::serialization::Deserialize;
+
+#[test]
+fn hostile_deep_rejects_without_aborting() {
+    let mut bytes = Vec::new();
+    for _ in 0..100_000u32 {
+        bytes.extend_from_slice(&[0x82, 0x00, 0x81]); // array(2), uint 0, array(1)
+    }
+    bytes.extend_from_slice(&[0x82, 0x00, 0x80]); // leaf: array(2), uint 0, array(0)
+    match Tree::from_cbor_bytes(&bytes) {
+        Ok(_) => panic!("hostile deep input should be rejected by the depth guard, got Ok"),
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("depth"),
+                "expected a depth-limit failure, got: {msg}"
+            );
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // (b) + (c): `cargo test` runs BOTH the emitted round-trip module (shallow valid values —
+    // the flag must not perturb them) AND the hostile reject test above. If the guard were absent
+    // this run would abort (signal 6) instead of reporting a normal test result.
+    let test_on = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out_on.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        test_on.status.success(),
+        "guard-on crate tests failed (or aborted)\n{}\n{}",
+        String::from_utf8_lossy(&test_on.stdout),
+        String::from_utf8_lossy(&test_on.stderr)
+    );
+
+    // (d) default-off must not emit the guard anywhere — the cheap byte-identical-default check.
+    let out_off = scratch.join("off");
+    let gen_off = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out_off.to_str().unwrap()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_off.status.success(),
+        "generation (guard off) failed\n{}",
+        String::from_utf8_lossy(&gen_off.stderr)
+    );
+    let ser_off = std::fs::read_to_string(out_off.join("rust/src/serialization.rs")).unwrap();
+    assert!(
+        !ser_off.contains("DepthGuard"),
+        "guard-off output must not carry any DepthGuard runtime or acquisition (default-off is byte-identical to today)"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}

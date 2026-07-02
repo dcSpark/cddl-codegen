@@ -218,6 +218,15 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      the fuzz crate has no compile-rot check despite a ~5s stable-toolchain `cargo check` (a probe
      rename or scrape-regex break silently rots the repo's sole OOM/stack-overflow oracle) — add it as
      a documented manual/local step, not a workflow job.
+   - **Recursive-spec stack-overflow fuzzing (now reachable).** `fuzz/generate.sh` fuzzes only the
+     non-recursive preserve spec, so its stack-overflow oracle is structurally blind to unbounded
+     recursion. Now that a terminable recursive corpus fixture exists (`tests/corpus/recursive.cddl`)
+     and `--deserialize-depth-limit` gives it a *graceful* failure mode, add a recursive spec to the
+     fuzz seed set in both configurations: unguarded (the fuzzer should reproduce the SIGABRT the
+     depth-limit flag documents and guards) and with `--deserialize-depth-limit` set (a hostile-deep
+     input must return `DeserializeFailure::DepthLimitExceeded`, never abort). The
+     `deserialize_depth_limit_guards_recursion` integration test pins the graceful path for one
+     hand-built hostile vector; the fuzzer is what exercises it at breadth.
    - **`corpus_detect` dsl-prose residual (LOW).** On a directive-leading comment line the detector
      credits every later `@word` via `matchAll`, which doesn't mirror `comment_ast`'s sequential parse
      (`@doc` prose runs to the next `@`; other directives stop at the first non-directive token) — a
@@ -247,23 +256,6 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
   preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
   expected-fail list; longer-term, a profile axis on the matrix annotation schema.
-- **Recursive-deserializer depth guard (product/security decision — no default is obviously right).**
-  Terminable recursive types (e.g. `tree = [value: uint, children: [* tree]]`, Plutus-style data)
-  generate and compile, but the generated recursive-descent deserializer has NO depth bound: ~200k-deep
-  hostile CBOR overflows the stack and **SIGABRTs (exit 134, uncatchable by `catch_unwind`)** — a DoS
-  on any consumer parsing untrusted chain data. Adding a guard is genuinely ambiguous on three axes,
-  and the pieces interact, so it needs a maintainer call rather than a default:
-  (a) *enforcement locus* — a thread-local recursion counter in `static/` runtime vs a depth param
-  threaded through every generated `deserialize` vs an OS stack-size / `stacker`-style growable stack;
-  each has a different blast radius on the stable generic `Vec<T>` / nested-type emission path;
-  (b) *limit* — any fixed cap (128? 1024?) rejects legitimately deep valid documents, and making it
-  configurable adds API surface to every generated deserializer;
-  (c) *error contract* — returning a `DeserializeError` (graceful) changes the generated error contract
-  and must thread through every recursive call site; today it aborts uncatchably.
-  Coverage prerequisite (mechanical, do regardless of the guard call): there is **zero** positive
-  recursion coverage in any layer — add a terminable recursive corpus fixture + matrix row so the
-  compile/round-trip path is exercised, and a recursive fuzzed spec (`fuzz/generate.sh` fuzzes only the
-  non-recursive preserve spec, so its stack-overflow oracle is structurally unreachable today).
 - **Top-level tagged / parenthesized *primitive* alias: auto-wrap vs opt-in (API-policy decision).**
   `tagged = #6.42(text)` (and any single-type tag/parens wrapper of a primitive) emits
   `pub type Tagged = String` that DROPS the tag from the wire on its own standalone API (`to/from_cbor_bytes`
