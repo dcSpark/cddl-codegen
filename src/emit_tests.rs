@@ -21,7 +21,9 @@
 //! **Round-trip half** — for every type we can mint, a `#[test]` that constructs IR-derived value
 //! cases and asserts the full wire cycle is byte-identical (`value → to_cbor_bytes →
 //! from_cbor_bytes → to_cbor_bytes == bytes`). Cases per shape: a valid baseline; each optional
-//! field additionally present (records); one case per choice/c-enum variant. This is the
+//! field additionally present (records); one mandatory nullable (`T / null`) field additionally
+//! set to `Some(inner)` (records — so the present-value wire path runs, not just the `None`
+//! baseline); one case per choice/c-enum variant. This is the
 //! "output is right, not just unchanged" oracle (TESTING_ROADMAP item 1): a serialize/deserialize
 //! disagreement fails here even when snapshots and compile gates stay green. It deliberately
 //! shares the generator's IR, so it cannot catch IR-level bugs (wrong bounds computed at parse
@@ -206,6 +208,21 @@ fn record_roundtrip(types: &IntermediateTypes, name: &str, record: &RustRecord) 
                 "cddl-codegen --emit-tests: {name}.{} optional-present case not cheaply mintable — skipped",
                 f.name
             ),
+        }
+    }
+    // A MANDATORY nullable (`T / null` -> `Option<T>`) field mints its degenerate `None` in the
+    // baseline (`valid_value` yields `None` for any `Optional`), so the `Some(inner)` serialize /
+    // deserialize direction stays compile-locked but never executed. Add ONE case exercising it —
+    // first mintable nullable field, no combinatorics — so the composite-inner wire path runs.
+    for f in record.fields.iter().filter(|f| !f.optional) {
+        if let ConceptualRustType::Optional(inner) = f.rust_type.resolve_alias_shallow()
+            && let Some(x) = valid_value(types, inner)
+        {
+            cases.push((
+                format!("{{ let mut v = {base}; v.{} = Some({x}); v }}", f.name),
+                format!("nullable `{}` present", f.name),
+            ));
+            break;
         }
     }
     roundtrip_body(name, cases)
