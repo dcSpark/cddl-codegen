@@ -144,7 +144,10 @@ and hard-fails otherwise; regenerate + commit `COVERAGE.md` after editing any of
 
 The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
 per-type **round-trip** tests (IR-derived cases — baseline, bound boundaries, one per choice
-variant, each optional field present — asserted byte-identical through the full wire cycle) and
+variant, each optional field present — asserted byte-identical through the full wire cycle, and
+— outside preserve-encodings, where wire-populated encoding fields legitimately differ — the
+deserialized value asserted `Debug`-equal to the minted original: byte-identity alone is a fixed
+point for an information-losing projection serializer, so it can't see that miscompile class) and
 **bounded-reject** tests. Values are minted deterministically from each type's IR (no
 proptest/`Arbitrary` deps in generated crates); unmintable shapes are skipped with a logged
 notice. Two consumers run it in CI: `integration_tests::emit_tests_execute` (the rich

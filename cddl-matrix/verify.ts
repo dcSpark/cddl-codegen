@@ -9,6 +9,13 @@
  * model: the ruby `cddl` reference decides example validity; the rust `cddl` crate only corroborates
  * (ruby-accepts-but-rust-rejects is a recorded parser limitation).
  *
+ * The cddl-codegen probe is EXECUTION-GATED (TESTING_ROADMAP item 1 / c6): generation runs with
+ * `--emit-tests=true` and "supported" requires `cargo test` of the generated crate to PASS — the
+ * IR-minted round-trip/reject tests must execute green, not merely compile. So the matrix's
+ * "supported" verdict means "round-trips" wherever the type mints a test surface (recorded per probe
+ * as `minted`; unmintable shapes — transparent aliases, pure c-enums — fall back to the compile
+ * verdict, and their evidence says so instead of claiming a round-trip).
+ *
  * Exit codes: 0 PASS · 1 hard failure (gate) · 2 HARNESS failure (broken environment / oracle paths /
  * repeated timeouts — verdicts were not trustworthy, so no verdict files were (re)written).
  *
@@ -37,10 +44,11 @@ const profileNewerThanTarget = (p: string | undefined) =>
 const CONFLICT_ALLOWLIST: Record<string, string> = {};
 
 // Features whose generated code REFERENCES user-supplied items (an extern type, a raw-bytes impl, a
-// custom ser/deser fn), so the crate cannot compile STANDALONE — by design. The compile-gate would
-// false-negative them; they ARE supported (integration-tested where the user code is provided). Exempt =
-// compile result ignored, support from generation exit only. Reason cites the integration test that DOES
-// cover them, so the exemption isn't blind.
+// custom ser/deser fn), so the crate cannot compile STANDALONE — by design (and a crate that can't
+// compile can't run its emitted tests either). The execution-gate would false-negative them; they ARE
+// supported (integration-tested where the user code is provided). Exempt = compile/test results ignored,
+// support from generation exit only. Reason cites the integration test that DOES cover them, so the
+// exemption isn't blind.
 const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "ext.extern": "requires a user-provided extern type; integration-tested in tests/extern-deps",
   "ext.raw_bytes": "requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes",
@@ -54,12 +62,13 @@ interface Derived {
 }
 interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
-  ruby: number; rust: number; codegen: number; compile: number;
+  ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean;
 }
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
   parser_limitation: boolean; contradiction: boolean; example: string;
-  codegen: number; compile: number; support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
+  codegen: number; compile: number; test: number; minted: boolean;
+  support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
 }
 interface AltCoverage {
   abnf_alternatives: string[]; feature_rows: string[]; covered: string[]; uncovered: string[]; modeled: boolean;
@@ -299,13 +308,23 @@ function runProbe(cmd: string[], cwd?: string, env?: Record<string, string>, tim
   return exit;
 }
 
-// COMPILE-GATE: `cargo check` the generated crate. The generator exiting 0 is NOT enough — it can emit
-// non-compiling Rust (e.g. `x = any` -> `pub type X = Any;`, a type defined nowhere), which the exit-code
-// probe over-credits as "supported". Mirrors integration_tests::feature_corpus_compiles (rust-only,
-// shared CARGO_TARGET_DIR). Caller invokes only when generation (`cargo run`) succeeded.
+// COMPILE (classification only): `cargo check` the generated crate. Run when `cargo test` FAILED, to
+// split "generates but does not compile" (e.g. `x = any` -> `pub type X = Any;`, a type defined
+// nowhere) from "compiles but the emitted tests fail". Mirrors
+// integration_tests::feature_corpus_compiles (rust-only, shared CARGO_TARGET_DIR).
 function runCompile(timeoutS = PROBE_TIMEOUT): number {
   return runProbe(
     ["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
+    CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
+  );
+}
+
+// EXECUTION-GATE: `cargo test` the generated crate — compiles the lib AND runs the `--emit-tests`
+// round-trip/reject module (strictly stronger than `cargo check`). Caller invokes only when
+// generation succeeded.
+function runTest(timeoutS = PROBE_TIMEOUT): number {
+  return runProbe(
+    ["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
     CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
   );
 }
@@ -316,20 +335,48 @@ function runCompile(timeoutS = PROBE_TIMEOUT): number {
 const cleanOut = () => rmSync(ccOut, { recursive: true, force: true });
 function runCodegen(): number {
   cleanOut();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR);
+  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR);
 }
 
-// [ruby, rust, codegen-generate, codegen-compile]. compile is -2 when generation didn't succeed (n/a).
-function oracles(example: string): [number, number, number, number] {
+// The full cddl-codegen probe: generate (with --emit-tests) -> `cargo test`. On the green path a single
+// `cargo test` suffices (its success implies the lib compiles, recorded as compile 0); only a test
+// FAILURE pays for the extra `cargo check` that classifies it. -2 = not reached (n/a).
+// `minted` = the emitted lib actually contains the generated-test module; without it a `cargo test`
+// pass is vacuous (transparent aliases / pure c-enums mint nothing, by design — skipped loudly by the
+// emitter), so the verdict evidence must not claim "round-trips" for those.
+interface CodegenProbe { gen: number; compile: number; test: number; minted: boolean }
+function probeCodegen(): CodegenProbe {
+  const gen = runCodegen();
+  if (gen !== 0) return { gen, compile: -2, test: -2, minted: false };
+  const libPath = join(ccOut, "rust", "src", "lib.rs");
+  const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
+  const test = runTest();
+  const compile = test === 0 ? 0 : runCompile();
+  return { gen, compile, test, minted };
+}
+
+// The cddl-codegen half of the support verdict, shared by the feature / per-cell / control-op loops so
+// the "supported means round-trips" semantics can't drift apart between them.
+function codegenVerdict(p: CodegenProbe): { supported: boolean; detail: string } {
+  if (p.gen === 0 && p.test === 0)
+    return { supported: true, detail: p.minted ? "exit 0; compiles; round-trips" : "exit 0; compiles (no minted round-trip surface)" };
+  if (p.gen === 0 && p.compile !== 0)
+    return { supported: false, detail: `generates but does not compile (cargo check exit ${p.compile})` };
+  if (p.gen === 0)
+    return { supported: false, detail: `compiles but emitted round-trip tests fail (cargo test exit ${p.test})` };
+  if (p.gen === 101) return { supported: false, detail: "panic (exit 101)" };
+  return { supported: false, detail: `rejected at parse/lex (exit ${p.gen})` };
+}
+
+// [ruby, rust, codegen probe].
+function oracles(example: string): [number, number, CodegenProbe] {
   writeFileSync(probeFile, example + "\n");
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
-  const c = runCodegen();
-  const comp = c === 0 ? runCompile() : -2;
-  return [a, b, c, comp];
+  return [a, b, probeCodegen()];
 }
 
-function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, codegenExit: number, compileExit: number): Derived {
+function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, cg: CodegenProbe): Derived {
   const valid_a = rubyExit === 0;
   const valid_b = rustExit === 0;
   // CDDL_CODEGEN is a vendor profile: cddl-codegen IS the spec authority, so the ruby/rust reference
@@ -338,18 +385,20 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
   const isVendor = profile === "CDDL_CODEGEN";
   const spec_valid = isVendor ? true : valid_a;
   const parser_limitation = !isVendor && valid_a && !valid_b;
-  // COMPILE-GATED support: "supported" requires generation AND a compiling crate. Generation-only
-  // (exit 0 but cargo check fails) is a false positive — recorded distinctly so the gap is visible.
-  // EXEMPT features (user-supplied code) skip the compile bit — they can't compile standalone by design.
+  // EXECUTION-GATED support: "supported" requires generation AND a passing `cargo test` (the emitted
+  // round-trip/reject module). Generation-only, or compiles-but-fails-round-trip, are false positives —
+  // each recorded distinctly so the gap class is visible.
+  // EXEMPT features (user-supplied code) skip the compile/test bits — they can't compile standalone by design.
   const compileExempt = Object.hasOwn(COMPILE_GATE_EXEMPT, featureId);
   let support: string, support_detail: string;
-  if (codegenExit === 0 && (compileExempt || compileExit === 0)) {
+  if (compileExempt && cg.gen === 0) {
     support = "supported";
-    support_detail = compileExempt ? `exit 0; standalone-compile N/A (${COMPILE_GATE_EXEMPT[featureId]})` : "exit 0; compiles";
+    support_detail = `exit 0; standalone-compile N/A (${COMPILE_GATE_EXEMPT[featureId]})`;
+  } else {
+    const v = codegenVerdict(cg);
+    support = v.supported ? "supported" : "unsupported";
+    support_detail = v.detail;
   }
-  else if (codegenExit === 0) { support = "unsupported"; support_detail = `generates but does not compile (cargo check exit ${compileExit})`; }
-  else if (codegenExit === 101) { support = "unsupported"; support_detail = "panic (exit 101)"; }
-  else { support = "unsupported"; support_detail = `rejected at parse/lex (exit ${codegenExit})`; }
   const out_of_profile = spec_valid && support !== "supported" && profileNewerThanTarget(profile);
   let status: string;
   if (!spec_valid) status = Object.hasOwn(CONFLICT_ALLOWLIST, featureId) ? "uncertain" : "spec_invalid";
@@ -358,31 +407,35 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
   return { valid_a, valid_b, spec_valid, parser_limitation, support, support_detail, out_of_profile, status };
 }
 
-// Warm the shared compile target ONCE (deps build here; per-probe `cargo check` is then incremental and
-// fits PROBE_TIMEOUT). Without this the first probe's check would eat the whole dep build and risk a
-// spurious timeout -> false "does not compile". A trivial valid spec is enough to pull in the deps.
+// Warm the shared compile target ONCE (deps + the libtest harness build here; per-probe `cargo test`
+// is then incremental and fits PROBE_TIMEOUT). Without this the first probe's test would eat the whole
+// dep build and risk a spurious timeout -> false "does not round-trip". A trivial valid spec that MINTS
+// a round-trip test is enough to pull in the deps and the test-profile artifacts.
 //
 // The warm-up doubles as the HARNESS SELF-TEST: it runs a known-good spec through the full
-// generate+compile pipeline, so any failure here is by definition environmental (the generator itself
+// generate+test pipeline, so any failure here is by definition environmental (the generator itself
 // doesn't build, cargo/registry/disk trouble). It MUST abort: cargo exits 101 for a compile error of
 // the generator exactly like a per-feature panic, so an unhealthy harness would otherwise record every
 // feature as "panic (exit 101)"/unsupported and still print PASS (no hard-fail term inspects probe
 // exits). Both halves get the warm timeout — a cold full generator build can exceed PROBE_TIMEOUT.
+// The warm spec must also MINT tests (assert below): a warm-up whose `cargo test` runs zero emitted
+// tests would silently stop self-testing the execution half of the pipeline.
 writeFileSync(probeFile, "warm = [uint, tstr]\n");
 cleanOut();
-const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-const warmCompile = warmGen === 0 ? runExit(["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
-if (warmGen !== 0 || warmCompile !== 0) {
-  console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, compile exit ${warmCompile}). The environment is unhealthy; no probes were run and nothing was written.`);
+const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+const warmLib = warmGen === 0 ? readFileSync(join(ccOut, "rust", "src", "lib.rs"), "utf8") : "";
+const warmTest = warmGen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tests")) {
+  console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, cargo test exit ${warmTest}, minted=${warmLib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
   process.exit(2);
 }
 
 const probe_results: ProbeResult[] = [];
 for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-  const [a, b, c, comp] = oracles(f.example);
+  const [a, b, cg] = oracles(f.example);
   const profile = f.profile ?? "RFC8610";
-  const d = derive(f.id, profile, a, b, c, comp);
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: c, compile: comp, ...d });
+  const d = derive(f.id, profile, a, b, cg);
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, ...d });
 }
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
@@ -407,15 +460,16 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   // only probe support where the nesting is spec-valid (ruby accepts); a spec-disallowed cell isn't
   // valid CDDL, so "does cddl-codegen support it" is meaningless.
-  const cg = a === 0 ? runCodegen() : -2;
-  const cgComp = cg === 0 ? runCompile() : -2;   // compile-gate the cell too (same false-positive class)
-  const support = a === 0 ? (cg === 0 && cgComp === 0 ? "supported" : "unsupported") : null;
+  const cg = a === 0 ? probeCodegen() : { gen: -2, compile: -2, test: -2, minted: false };
+  // execution-gate the cell too (same false-positive class as the feature axis)
+  const support = a === 0 ? (codegenVerdict(cg).supported ? "supported" : "unsupported") : null;
   const observed = a === 0 ? "allowed" : "disallowed";
   const parser_limitation = a === 0 && b !== 0;  // directional, matching the feature-level definition (ruby accepts, rust rejects)
   const contradiction = observed !== c.spec;
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
-    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!, codegen: cg, compile: cgComp, support,
+    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!,
+    codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, support,
   });
 }
 
@@ -424,7 +478,7 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
-interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; example: string }
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; example: string }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
 // ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
 // simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
@@ -435,19 +489,15 @@ const controlop_missing_example = control_ops.filter(co => !co.example).map(co =
 const controlop_uncorroborated: string[] = [];
 const controlop_support: ControlOpSupport[] = [];
 for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-  const [a, b, c, comp] = oracles(co.example!);
+  const [a, b, cg] = oracles(co.example!);
   // ANY nonzero ruby exit means the reference did not confirm the example is valid CDDL — not just
   // 65 (EX_DATAERR). Keying on 65 alone hid exit-1 cases (malformed controllers, valid examples of
   // ops ruby rejects with a different code) — 3 of the 5 historical malformed forms among them. The
   // exit code is recorded per id so a malformed-example regression stays distinguishable from the
   // unimplemented-op noise this list is expected to carry.
   if (a !== 0) controlop_uncorroborated.push(`${co.id} (ruby exit ${a})`);
-  const supported = c === 0 && comp === 0;
-  const detail = supported ? "exit 0; compiles"
-    : c === 0 ? `generates but does not compile (cargo check exit ${comp})`
-    : c === 101 ? "panic (exit 101)"
-    : `rejected at parse/lex (exit ${c})`;
-  controlop_support.push({ id: co.id, name: co.name, support: supported ? "supported" : "unsupported", detail, ruby: a, rust: b, codegen: c, compile: comp, example: co.example! });
+  const v = codegenVerdict(cg);
+  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, example: co.example! });
 }
 
 // Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
@@ -478,9 +528,13 @@ const annoLines: string[] = [
   "# to regenerate. Each row is the result of running the feature's minimal `example` through:",
   "#   ruby  cddl ... generate 1            (spec-validity A, authoritative / reference)",
   "#   rust  cddl compile-cddl              (spec-validity B, corroborating only)",
-  "#   cddl-codegen --input=... --wasm=false (generate the crate) THEN `cargo check` it (the COMPILE-GATE).",
-  "#     support = generates AND compiles. exit 0 alone is NOT enough: `x = any` generates `pub type X =",
-  "#     Any;` (a type defined nowhere) which fails to compile -> unsupported, not a false 'supported'.",
+  "#   cddl-codegen --input=... --wasm=false --emit-tests=true (generate the crate) THEN `cargo test` it",
+  "#     (the EXECUTION-GATE: the emitted IR-minted round-trip/reject tests must PASS — strictly",
+  "#     stronger than compiling). support = generates AND compiles AND round-trips. exit 0 alone is",
+  "#     NOT enough: `x = any` generates `pub type X = Any;` (a type defined nowhere) which fails to",
+  "#     compile -> unsupported, not a false 'supported'. A type that mints no test surface",
+  "#     (transparent alias / pure c-enum) falls back to the compile verdict and its evidence says",
+  "#     'no minted round-trip surface' instead of claiming a round-trip.",
   "# status: supported | unsupported | out_of_profile | uncertain.",
   "#   out_of_profile = the feature's grammar profile is NEWER than cddl-codegen's TARGET profile AND",
   "#         cddl-codegen rejects it (it is outside what the tool targets, NOT a gap within it).",
@@ -517,7 +571,8 @@ for (const pr of probe_results) {
 annoLines.push("# --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---");
 annoLines.push("");
 for (const c of containment_corroboration.filter(c => c.support !== null)) {
-  const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}` : "";
+  const roundtrips = c.test === 0 ? (c.minted ? "ok" : "n/a (nothing minted)") : "fail";
+  const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}; round-trips=${roundtrips}` : "";
   const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(c.id)}`);

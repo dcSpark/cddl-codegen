@@ -21,7 +21,10 @@
 //!
 //! **Round-trip half** — for every type we can mint, a `#[test]` that constructs IR-derived value
 //! cases and asserts the full wire cycle is byte-identical (`value → to_cbor_bytes →
-//! from_cbor_bytes → to_cbor_bytes == bytes`). Cases per shape: a valid baseline; each optional
+//! from_cbor_bytes → to_cbor_bytes == bytes`) AND — outside preserve-encodings — that the
+//! deserialized value `Debug`-equals the minted original (byte-identity alone is blind to
+//! projection miscompiles: a serializer that loses information idempotently is a fixed point of
+//! the wire cycle; see `roundtrip_body`). Cases per shape: a valid baseline; each optional
 //! field additionally present (records); one mandatory nullable (`T / null`) field additionally
 //! set to `Some(inner)` (records — so the present-value wire path runs, not just the `None`
 //! baseline); one case per choice/c-enum variant. This is the
@@ -68,7 +71,9 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
     for (ident, rust_struct) in types.rust_structs() {
         let name = ident.to_string();
         let reject = match rust_struct.variant() {
-            RustStructType::Record(record) => record_deser_reject(types, &name, record),
+            RustStructType::Record(record) => {
+                record_deser_reject(types, &name, record, !cli.preserve_encodings)
+            }
             RustStructType::TypeChoice { variants }
             | RustStructType::GroupChoice { variants, .. } => {
                 choice_construct_reject(types, &name, variants)
@@ -97,14 +102,19 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             .flatten();
         let conf = conf.as_deref();
 
+        // value-equality is meaningless under preserve-encodings: `back` carries encoding structs
+        // populated from the wire while the minted value has ctor defaults (see roundtrip_body).
+        let value_eq = !cli.preserve_encodings;
         let roundtrip = match rust_struct.variant() {
-            RustStructType::Record(record) => record_roundtrip(types, &name, record, conf),
+            RustStructType::Record(record) => {
+                record_roundtrip(types, &name, record, conf, value_eq)
+            }
             RustStructType::TypeChoice { variants }
             | RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants, conf)
+                choice_roundtrip(types, &name, variants, conf, value_eq)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
-                wrapper_roundtrip(types, &name, wrapped, *min_max, conf)
+                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, value_eq)
             }
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
@@ -195,7 +205,20 @@ fn conformance_rule_name(
 /// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
 /// CDDL rule name for the `--emit-tests-conformance` oracle (`None` when off): when set, each case
 /// validates its minted `bytes` against the spec right after computing them.
-fn roundtrip_body(name: &str, cases: Vec<(String, String)>, conf: Option<&str>) -> Option<String> {
+///
+/// `value_eq` additionally asserts the deserialized VALUE equals the minted original (via derived
+/// `Debug`, since generated types don't derive `PartialEq`). Byte-identity alone can't see an
+/// information-losing serializer that is a projection (e.g. one that writes a constant: the wrong
+/// bytes deserialize to the wrong value, which re-serializes to the same wrong bytes — a fixed
+/// point; mutation-verified against exactly that). Off under `--preserve-encodings`: `back`'s
+/// encoding fields are populated from the wire while the minted value carries ctor defaults, so
+/// their `Debug`s legitimately differ even when the wire cycle is perfect.
+fn roundtrip_body(
+    name: &str,
+    cases: Vec<(String, String)>,
+    conf: Option<&str>,
+    value_eq: bool,
+) -> Option<String> {
     if cases.is_empty() {
         return None;
     }
@@ -205,11 +228,16 @@ fn roundtrip_body(name: &str, cases: Vec<(String, String)>, conf: Option<&str>) 
     let blocks: Vec<String> = cases
         .into_iter()
         .map(|(expr, label)| {
+            let value_eq_line = if value_eq {
+                format!("\n        assert_eq!(format!(\"{{:?}}\", back), format!(\"{{:?}}\", v), \"{name} ({label}): deserialized value must equal the minted original\");")
+            } else {
+                String::new()
+            };
             format!(
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
-{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");
+{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{value_eq_line}
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");
     }}"
             )
@@ -233,6 +261,7 @@ fn record_roundtrip(
     name: &str,
     record: &RustRecord,
     conf: Option<&str>,
+    value_eq: bool,
 ) -> Option<String> {
     let ctor_fields: Vec<&RustField> = record
         .fields
@@ -297,7 +326,7 @@ fn record_roundtrip(
             break;
         }
     }
-    roundtrip_body(name, cases, conf)
+    roundtrip_body(name, cases, conf, value_eq)
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -307,6 +336,7 @@ fn choice_roundtrip(
     name: &str,
     variants: &[EnumVariant],
     conf: Option<&str>,
+    value_eq: bool,
 ) -> Option<String> {
     let mut cases = Vec::new();
     for variant in variants {
@@ -344,7 +374,7 @@ fn choice_roundtrip(
             format!("variant {}", variant.name),
         ));
     }
-    roundtrip_body(name, cases, conf)
+    roundtrip_body(name, cases, conf, value_eq)
 }
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
@@ -355,6 +385,7 @@ fn wrapper_roundtrip(
     wrapped: &RustType,
     min_max: Option<Bounds>,
     conf: Option<&str>,
+    value_eq: bool,
 ) -> Option<String> {
     let inner = match min_max {
         Some(mm) => materialize(types, wrapped, valid_measure(mm)),
@@ -375,6 +406,7 @@ fn wrapper_roundtrip(
             "baseline".to_owned(),
         )],
         conf,
+        value_eq,
     )
 }
 
@@ -393,6 +425,7 @@ fn record_deser_reject(
     types: &IntermediateTypes,
     name: &str,
     record: &RustRecord,
+    value_eq: bool,
 ) -> Option<String> {
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
     let ctor_fields: Vec<&RustField> = record
@@ -456,12 +489,19 @@ fn record_deser_reject(
         }
         for (expr, accept, label) in cases {
             if accept {
+                let value_eq_line = if value_eq {
+                    format!(
+                        "\n        assert_eq!(format!(\"{{:?}}\", back), format!(\"{{:?}}\", v), \"{name}.{field} {label}: deserialized value must equal the minted original\");"
+                    )
+                } else {
+                    String::new()
+                };
                 blocks.push(format!(
                     "    {{
         let mut v = mk();
         v.{field} = {expr};
         let bytes = v.to_cbor_bytes();
-        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name}.{field} {label} must deserialize\");
+        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name}.{field} {label} must deserialize\");{value_eq_line}
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name}.{field} {label} must round-trip\");
     }}"
                 ));

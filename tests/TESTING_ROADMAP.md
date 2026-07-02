@@ -28,10 +28,12 @@ wasm), and round-trips. The historical verdict meant only "rust generates and ru
 which is why real bugs (inverted `nint` bound, wasm `get`/`add` type mismatch, JSON-schema turbofish)
 shipped green. The Tier-1 items below are the remaining missing pieces of that oracle:
 
-- **Correctness** ✅ (depth) / open (breadth) — the emitted round-trip harness (item 1) turns
-  "output didn't change" into "output is right" for every ctor-mintable type, executed in CI via
-  `integration_tests::emit_tests_execute`. The remaining frontier is breadth: running it across
-  the whole corpus/matrix surface (the c6 flip) so the matrix verdict itself means "round-trips".
+- **Correctness** ✅ (depth + default-profile breadth) — the emitted round-trip harness (item 1)
+  turns "output didn't change" into "output is right" for every ctor-mintable type, executed in CI
+  via `integration_tests::emit_tests_execute`, across the corpus (`feature_corpus_compiles` runs
+  `--emit-tests` + `cargo test`), and across the matrix (`verify.ts` is execution-gated, so the
+  matrix "supported" verdict itself means "round-trips" for every minting shape). The remaining
+  breadth frontier is the preserve/json profiles and the unminted shapes (minter coverage, item 1).
 - **Coverage (compile)** ✅ — the generated **wasm** crate is now compiled by systematic gates:
   `feature_corpus_compiles` (`--wasm=true`, checks both crates) and the **wasm-ABI matrix**
   (`wasm_matrix_compiles`, 80 enumerated cells). See item 2. The remaining coverage frontier is
@@ -46,7 +48,9 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 1. **Grow the emitted round-trip harness toward matrix-driven execution.** The `--emit-tests`
    module emits both halves per type — IR-derived round-trip cases (baseline, bound boundaries,
    one per choice variant, each optional field present; every case asserted byte-identical through
-   the full wire cycle) and the bounded reject tests — and is executed in CI by
+   the full wire cycle AND — outside preserve-encodings — `Debug`-equal to the minted original, since
+   byte-identity alone is a fixed point for information-losing projection miscompiles;
+   mutation-verified against a constant-writing serializer) and the bounded reject tests — and is executed in CI by
    `integration_tests::emit_tests_execute` (which also floor-asserts the emitted-test counts so
    emission can't silently shrink). Values are minted **deterministically from each type's IR**
    rather than via emitted `proptest`/`Arbitrary` impls, to keep generated crates dependency-free
@@ -58,13 +62,15 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    (and led to fixing) two miscompiles that snapshots + compile gates had blessed: the `.ne`
    unsatisfiable-bound window, and preserve-encodings map records writing default-valued fields
    the header didn't count (corrupt CBOR on any freshly-constructed defaulted value). Remaining:
-   - **c6 — matrix-driven execution (the F3 frontier).** The corpus half is flipped:
-     `feature_corpus_compiles` runs the default profile with `--emit-tests` + `cargo test`, so
-     every constructible corpus construct must round-trip in CI. Remaining: the same flip for
-     `verify.ts`'s per-schema probe (so the matrix-"supported" verdict itself means
-     "round-trips"), and the preserve/json profiles once their emitted-test surface is validated
-     at corpus breadth. The verify.ts flip shares its surface with item 2's wasm gate — land the
-     two together.
+   - **c6 — matrix-driven execution (the F3 frontier): profiles remaining.** Both halves of the
+     flip are in: `feature_corpus_compiles` runs the default profile with `--emit-tests` +
+     `cargo test` (CI), and `verify.ts`'s per-feature / per-cell / per-control-op probes are
+     execution-gated (manual, per the CI freeze) — the matrix "supported" verdict means
+     "round-trips" wherever the type mints a test surface, with a per-probe `minted` bit so
+     unminted shapes are labeled "no minted round-trip surface" rather than credited. Remaining:
+     the preserve/json profiles once their emitted-test surface is validated at corpus breadth
+     (verify.ts probes default flags only — the "supported is silently a default-profile fact"
+     decision below).
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
      over irregular encodings). Spec-anchored *known-answer* vectors now exist
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
@@ -79,7 +85,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      surface — special-case the constructible `Int` enum in the minter); non-primitive map keys;
      optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it targeted is
      fixed; a construct-reject would guard regression + still fails on the *standalone*
-     bounded-`nint`-newtype bug — see the ledger).
+     bounded-`nint`-newtype bug — see the ledger). Scale note from the verify.ts flip: ~30 of the
+     ~70 supported matrix probes mint nothing (transparent aliases — `x = uint`, `x = [* uint]`,
+     tables, bounded aliases like `g = [2*5 uint]` — plus pure c-enums and the `Int` gap), so their
+     execution verdict falls back to compile; a standalone mint surface for transparent
+     bounded/newtype-able aliases is the highest-leverage minter extension (it would also execute
+     the standalone bounds class the `nint` ledger entry tracks).
    - **Decorrelated conformance parser.** The IR-bug conformance oracle (`--emit-tests-conformance`)
      shares the dcSpark `cddl` fork's *parser* with the generator, so a fork-level misparse escapes it
      (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.
@@ -117,7 +128,9 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      needed). A representative sample of the shape axis is now executed at the wasm boundary via the
      `tests_wasm.rs` hook (`tests/core/tests_wasm.rs`, `tests/canonical/tests_wasm.rs`: construct through the
      wrapper API, round-trip CBOR, read every accessor back); the remaining frontier is upgrading the
-     *per-cell grid verdict* compile → round-trip, which depends on item 1's harness.
+     *per-cell grid verdict* compile → round-trip. Item 1's `--emit-tests` harness mints into the *rust*
+     crate only, which doesn't exercise this bug class (it lives in the wasm wrapper API) — the upgrade
+     needs a wasm-side minted surface (an emitted `tests_wasm.rs`-style module per cell).
      - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
        remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
        can't represent nested `Option<Option<T>>`, so a nullable value (`T / null` → `Option<T>`) at a

@@ -4,9 +4,13 @@
 # to regenerate. Each row is the result of running the feature's minimal `example` through:
 #   ruby  cddl ... generate 1            (spec-validity A, authoritative / reference)
 #   rust  cddl compile-cddl              (spec-validity B, corroborating only)
-#   cddl-codegen --input=... --wasm=false (generate the crate) THEN `cargo check` it (the COMPILE-GATE).
-#     support = generates AND compiles. exit 0 alone is NOT enough: `x = any` generates `pub type X =
-#     Any;` (a type defined nowhere) which fails to compile -> unsupported, not a false 'supported'.
+#   cddl-codegen --input=... --wasm=false --emit-tests=true (generate the crate) THEN `cargo test` it
+#     (the EXECUTION-GATE: the emitted IR-minted round-trip/reject tests must PASS — strictly
+#     stronger than compiling). support = generates AND compiles AND round-trips. exit 0 alone is
+#     NOT enough: `x = any` generates `pub type X = Any;` (a type defined nowhere) which fails to
+#     compile -> unsupported, not a false 'supported'. A type that mints no test surface
+#     (transparent alias / pure c-enum) falls back to the compile verdict and its evidence says
+#     'no minted round-trip surface' instead of claiming a round-trip.
 # status: supported | unsupported | out_of_profile | uncertain.
 #   out_of_profile = the feature's grammar profile is NEWER than cddl-codegen's TARGET profile AND
 #         cddl-codegen rejects it (it is outside what the tool targets, NOT a gap within it).
@@ -28,12 +32,12 @@
 [[support]]
 id = "assigng.extend"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "assignt.extend"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "dsl.custom_deserialize"
@@ -43,7 +47,7 @@ evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references a use
 [[support]]
 id = "dsl.custom_json"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "dsl.custom_serialize"
@@ -53,27 +57,27 @@ evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references a use
 [[support]]
 id = "dsl.doc"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "dsl.name"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "dsl.newtype"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "dsl.no_alias"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "dsl.used_as_key"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 
 [[support]]
 id = "ext.extern"
@@ -88,17 +92,17 @@ evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (requires a user-
 [[support]]
 id = "genericarg.multiple"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "genericarg.type"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "genericarg.type1"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "genericparm.group"
@@ -108,42 +112,42 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "genericparm.multiple"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "genericparm.type"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "group.choice"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "grpchoice.sequence"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "grpent.groupname"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "grpent.inline_group"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "grpent.member"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "memberkey.bareword"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "memberkey.cut"
@@ -153,32 +157,32 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "memberkey.type1"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "memberkey.value"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "occur.bounded"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "occur.one_or_more"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "occur.optional"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "occur.zero_or_more"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.any"
@@ -188,47 +192,47 @@ evidence = "probe: cddl-codegen generates but does not compile (cargo check exit
 [[support]]
 id = "prelude.b64legacy"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.b64url"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bigfloat"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bigint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bignint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.biguint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bool"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bstr"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.bytes"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.cbor-any"
@@ -238,7 +242,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.decfrac"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.eb16"
@@ -258,7 +262,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.encoded-cbor"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.false"
@@ -268,7 +272,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.float"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.float16"
@@ -283,7 +287,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.float32"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.float32-64"
@@ -293,22 +297,22 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.float64"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.int"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.integer"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.mime-message"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.nil"
@@ -318,7 +322,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.nint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.null"
@@ -328,27 +332,27 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.number"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.regexp"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.tdate"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.text"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.time"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.true"
@@ -358,12 +362,12 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.tstr"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.uint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.undefined"
@@ -373,37 +377,37 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "prelude.unsigned"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.uri"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "rangeop.exclusive"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "rangeop.inclusive"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "type.choice"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "type.enum"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "type1.ctlop"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "type2.any"
@@ -413,7 +417,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "type2.array"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "type2.choice_from_group"
@@ -438,17 +442,17 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "type2.map"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.parenthesized"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.tag"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "type2.tag_head_type"
@@ -458,7 +462,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok (out of profil
 [[support]]
 id = "type2.typename"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.unwrap"
@@ -490,17 +494,17 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "contain.array-element.grpent.groupname"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.grpent.inline_group"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.type.choice"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.type2.array"
@@ -515,7 +519,7 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.array-element.type2.tag"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.type2.unwrap"
@@ -525,22 +529,22 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.array-element.type2.value"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.value.number"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.value.text"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.cbor-payload.type.choice"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.cbor-payload.type2.array"
@@ -555,12 +559,12 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.cbor-payload.type2.tag"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.choice-member.prelude.null"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.choice-member.type2.array"
@@ -575,7 +579,7 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.choice-member.type2.tag"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.generic-arg.type2.map"
@@ -585,17 +589,17 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.map-key.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=fail"
 
 [[support]]
 id = "contain.map-key.type2.tag"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=fail"
 
 [[support]]
 id = "contain.map-value.type.choice"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-value.type2.array"
@@ -610,7 +614,7 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.map-value.type2.tag"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-value.type2.unwrap"
@@ -620,7 +624,7 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.occurrence-target.grpent.inline_group"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.type2.array"
@@ -635,17 +639,17 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.tag-content.type.choice"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.tag-content.type2.array"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.tag-content.type2.map"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.tag-content.type2.tag"
@@ -722,7 +726,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.cbor"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.cborseq"
@@ -732,7 +736,7 @@ evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); rub
 [[support]]
 id = "ctl.default"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.det"
@@ -742,7 +746,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.eq"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.feature"
@@ -752,12 +756,12 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.ge"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.gt"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.h32"
@@ -792,17 +796,17 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.le"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.lt"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.ne"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.oid"
@@ -837,7 +841,7 @@ evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); rub
 [[support]]
 id = "ctl.size"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.within"

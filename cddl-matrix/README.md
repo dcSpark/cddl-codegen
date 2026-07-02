@@ -17,8 +17,10 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
 > consumer-query contract). The matrix is **fully scaled and gate-green**: 92 features across all axes
-> (incl. the `CDDL_CODEGEN` vendor profile), **compile-gated** execution-grounded support **per-feature,
-> per-cell (role × feature), AND per-control-op** (all 37 IANA ops probed). **Both flagship projections are
+> (incl. the `CDDL_CODEGEN` vendor profile), **execution-gated** support **per-feature,
+> per-cell (role × feature), AND per-control-op** (all 37 IANA ops probed) — "supported" means the
+> generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
+> it generates and compiles. **Both flagship projections are
 > fully wired and now *generate* their hand docs:** `golden_hex` (encoding axis) and the corpus feature-axis
 > projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md` (the original north-star target,
 > now subsumed; `corpus_detect.ts` + `annotations/corpus/`). Any "seed / only `type2` worked" or "renderer
@@ -81,7 +83,7 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 | `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live**; each cell carries an `example` that `verify.ts` also probes for **per-cell tool support** | nesting (C) |
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
 | `control_examples.toml` | minimal probe `example` per IANA control op (the CSV is byte-pinned, so examples live here); joined onto the control-op axis by `lib.ts` and probed by `verify.ts` for **per-control-op support** | control-op |
-| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict; keyed by a **`ctl.<name>`** id it is the **per-control-op** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). **Support is compile-gated**: `verify.ts` requires the generated crate to *compile* (`cargo check`), not just that cddl-codegen exits 0 — catching false positives like `x = any` that generate non-compiling Rust. | — |
+| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict; keyed by a **`ctl.<name>`** id it is the **per-control-op** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). **Support is execution-gated**: `verify.ts` generates with `--emit-tests=true` and requires the crate's IR-minted round-trip/reject tests to *pass* (`cargo test`), not just that cddl-codegen exits 0 — catching non-compiling emissions (`x = any` → `pub type X = Any;`, a type defined nowhere) AND compiles-but-miscompiled round-trips. Types that mint no test surface (transparent aliases, pure c-enums) fall back to the compile verdict, with evidence saying so. | — |
 
 **3. Generated view — `matrix.json`** (produced by `build_matrix.ts`) joins the overlay with the native
 sources into one universal artifact for downstream/cross-language consumption. Imported axes are
