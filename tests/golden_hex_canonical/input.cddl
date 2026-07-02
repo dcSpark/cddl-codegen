@@ -27,3 +27,11 @@ npair = [n: nint, m: nint]
 ; tests/canonical's mixed_len_keys_ordering_rule. Wrapped in a record.
 uint_table   = { * uint => text }
 table_holder = [t: uint_table]
+
+; cross-major keys: `int` spans uint (major 0) and nint (major 1), the ONLY cell where the
+; documented RFC 7049 §3.9 length-first key order and RFC 8949 §4.2.1 pure-bytewise order
+; DISAGREE (single-major minimal heads grow with length, so the rules coincide there):
+; -1 = 0x20 (1 byte) sorts before 256 = 0x19 0x01 0x00 (3 bytes) under length-first, but
+; after it under bytewise (0x19 < 0x20). The uint_table vectors above can't discriminate.
+int_table  = { * int => text }
+int_holder = [it: int_table]

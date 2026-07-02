@@ -8,10 +8,10 @@
 // NOTE on map-key ordering: this project's --canonical-form implements RFC 7049 §3.9 "Canonical
 // CBOR" key order (length-first, then bytewise — documented in docs/docs/command_line_flags.mdx),
 // not RFC 8949 §4.2.1's pure bytewise order. For keys of a SINGLE major type in minimal form the
-// two rules coincide (head bytes grow with encoded length), so the table vectors below pin the
-// sort exists, sorts CANONICAL key bytes (not preserved ones), and tie-breaks bytewise — but the
-// cross-major cell that discriminates length-first from bytewise (e.g. -1 vs 256 in one table)
-// is blocked on the int-/enum-keyed-table compile bugs ledgered in cddl-matrix/ROADMAP.md.
+// two rules coincide (head bytes grow with encoded length), so the uint_table vectors pin that
+// the sort exists, sorts CANONICAL key bytes (not preserved ones), and tie-breaks bytewise; the
+// int_table vector pins the cross-major cell where the two rules DISAGREE (-1 vs 256), the only
+// vector that discriminates length-first from bytewise.
 //
 // Each vector decodes an IRREGULAR (but valid) encoding and asserts four things:
 //   * value anchor — a decoded field equals the value hand-read from the input bytes (identity
@@ -201,6 +201,38 @@ mod golden_hex_canonical {
             assert_eq!(d.t.len(), 2);
             assert_eq!(d.t.get(&10u64).map(|s| s.as_str()), Some("a"));
             assert_eq!(d.t.get(&11u64).map(|s| s.as_str()), Some("b"));
+        }
+    );
+
+    // cross-major keys — the length-first vs bytewise DISCRIMINATOR. Canonical key bytes:
+    // -1 -> 0x20 (major 1, argument 0 inline; 1 byte), 256 -> 0x19 0x01 0x00 (major 0, 2-byte
+    // argument; 3 bytes). RFC 7049 §3.9 length-first (the documented rule): -1 sorts FIRST.
+    // RFC 8949 §4.2.1 bytewise would sort 256 first (0x19 < 0x20) — a bytewise sort, or a sort
+    // of signed VALUES (-1 < 256 coincides here, so the anchor also checks both lookups), flips
+    // this vector. Irregular input: indefinite map, keys in the OPPOSITE (bytewise) order, both
+    // arguments non-minimal (256 as 8-byte 0x1b, -1 as 1-byte-argument 0x38 0x00), so
+    // canonicalization must reorder AND minimize.
+    kat_canonical!(
+        canon_table_cross_major_key_order_length_first,
+        IntHolder,
+        &[
+            0x81, 0xbf, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x61, 0x70, 0x38,
+            0x00, 0x61, 0x6e, 0xff,
+        ],
+        &[
+            0x81, 0xa2, 0x20, 0x61, 0x6e, 0x19, 0x01, 0x00, 0x61, 0x70,
+        ],
+        |d: &IntHolder| {
+            assert_eq!(d.it.len(), 2);
+            // new_nint takes the WIRE magnitude: -1 is |−1 + 1| = 0
+            assert_eq!(
+                d.it.get(&Int::new_nint(0)).map(|s| s.as_str()),
+                Some("n")
+            );
+            assert_eq!(
+                d.it.get(&Int::new_uint(256)).map(|s| s.as_str()),
+                Some("p")
+            );
         }
     );
 

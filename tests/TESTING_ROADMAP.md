@@ -70,20 +70,10 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
      indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers); the
      remaining frontier is minted *encodings* at scale (not just hand-picked ones), the only
-     at-scale test of those high-stakes flags. One hardening refinement remains (value anchors,
-     nint vectors, and the runtime table-sort KATs landed in the sibling suites — the table
-     vectors pin that the sort exists, sorts CANONICAL key bytes rather than preserved ones, and
-     tie-breaks bytewise, each mutation-verified red): the *cross-major discriminating cell* —
-     length-first (RFC 7049 §3.9, the documented rule) vs pure-bytewise (RFC 8949 §4.2.1) key
-     order only diverge across mixed major types (single-major minimal-form head bytes grow with
-     length, so the rules provably coincide there — e.g. `-1` = `0x20`/1 byte sorts before
-     `256` = `0x19 0x01 0x00`/3 bytes under length-first but after it under bytewise). A table
-     whose key type spans majors is required, and both in-profile shapes are blocked by
-     generator compile bugs (ledgered in `cddl-matrix/ROADMAP.md`): `{ * int => text }` (the
-     reserved `Int` enum is never emitted for a table-key-only reference) and a
-     `uint / nint ; @used_as_key` choice key under `--preserve-encodings` (missing import in
-     `cbor_encodings.rs` + a `.cloned()` ambiguity). Fix either bug, then add the `-1`/`256`
-     hex-pinned vector (hand-derive per RFC 8949 — a wrong KAT is a wrong oracle).
+     at-scale test of those high-stakes flags. (The hand-picked KAT axis itself is closed: value
+     anchors, nint vectors, the runtime table-sort pins, and the cross-major `-1`/`256`
+     length-first-vs-bytewise discriminator all live in the sibling suites, each
+     mutation-verified red.)
    - **Minter coverage:** the reserved `Int` extern (a `primitives.cddl` `int` resolves to
      `Extern` and mints nothing, so that fixture emits zero round-trip tests despite a real record
      surface — special-case the constructible `Int` enum in the minter); non-primitive map keys;
