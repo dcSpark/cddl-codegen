@@ -61,8 +61,11 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      at corpus breadth. The verify.ts flip shares its surface with item 2's wasm gate — land the
      two together.
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
-     over irregular encodings) — needs minted *encodings*, not just values; the only at-scale test
-     of those high-stakes flags.
+     over irregular encodings). Spec-anchored *known-answer* vectors now exist
+     (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
+     indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers); the
+     remaining frontier is minted *encodings* at scale (not just hand-picked ones), the only
+     at-scale test of those high-stakes flags.
    - **Minter coverage:** top-level transparent Table/Array alias round-trips; non-primitive map
      keys; optionally an `--emit-tests` `nint` construct-reject case (the inverted-bound bug it
      targeted is fixed; a construct-reject would guard regression + still fails on the
@@ -89,7 +92,10 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them.
    - **Behavioural frontier (compile → round-trip).** The verdict is *compile* only, so a cell can be green
      while emitting a semantically wrong same-type conversion (an identity `.into()` where a transform was
-     needed). Upgrade the verdict compile → round-trip once item 1's harness lands (depends on item 1).
+     needed). A representative sample of the shape axis is now executed at the wasm boundary via the
+     `tests_wasm.rs` hook (`tests/core/tests_wasm.rs`, `tests/canonical/tests_wasm.rs`: construct through the
+     wrapper API, round-trip CBOR, read every accessor back); the remaining frontier is upgrading the
+     *per-cell grid verdict* compile → round-trip, which depends on item 1's harness.
      - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
        remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
        can't represent nested `Option<Option<T>>`, so a nullable value (`T / null` → `Option<T>`) at a
@@ -184,15 +190,6 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
   `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
   chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
-- **cddl-crate conformance oracle** (RECOMMENDATIONS #9 — accept or reject explicitly; it is in
-  neither the do-list nor the not-worth-it list today). The `cddl` crate is already a dependency,
-  so validating every serialized value against the source `.cddl`
-  (`validate_cbor_from_slice(spec, bytes)`) inside the fixtures' `deser_test` helpers would give
-  every existing and future round-trip a second, *independent* oracle nearly for free — it fails
-  on exactly the enforcement class (occurrence counts, range bounds) that generator+test shared
-  assumptions can't catch. Caveats to weigh: the rust validator has known gaps (a fail is a strong
-  signal, a pass is weak), and the ruby `cddl` gem (already an oracle in `cddl-matrix/verify.ts`)
-  could serve the same role out-of-process at higher cost.
 - **Five documented flag values with zero coverage at any oracle level** — no test generates with
   `--annotate-fields=false` (selects a whole different deserialization/error-emission mode, 13+
   branch sites in generation.rs incl. the code's own acknowledged-tricky preserve-encodings
@@ -209,16 +206,6 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
   preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
   expected-fail list; longer-term, a profile axis on the matrix annotation schema.
-- **Adversarial CBOR bytes into generated deserializers** (RECOMMENDATIONS #8 + #5 — accept or
-  reject explicitly; currently in neither list). The robustness layer covers malformed CDDL into
-  the *generator*; hostile bytes into `from_cbor_bytes` — the untrusted input this library's
-  consumers actually parse (chain data) — have no systematic coverage, and item 1 will not add any
-  (it generates valid values by construction). A panic (vs `Err`), over-allocation, or stack
-  overflow on deep nesting in generated code or the `static/` runtime is a DoS in every consumer
-  and is invisible to every current and planned layer. Cheapest acceptance: one `cargo-fuzz`
-  target over a rich generated crate's `from_cbor_bytes`, seeded from the golden vectors, plus a
-  committed crash-replay test; note `catch_unwind`-based harnesses cannot observe stack overflow,
-  so the fuzz process boundary is the only oracle for that case.
 
 ## Explicitly not worth it (decided, not overlooked)
 
