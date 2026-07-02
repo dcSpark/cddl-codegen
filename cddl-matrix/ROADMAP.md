@@ -61,7 +61,8 @@ heavy `verify.ts` oracle probe is still run manually (see Remaining).
   (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role
   floor), so it needs the cargo toolchain like `verify.ts`. **(CI)**
-- `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check.
+- `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check; `--check` is
+  the CI mode (fails on a stale committed COVERAGE.md without rewriting it). **(CI)**
 - `bun run project_robustness.ts` — projects the support verdict into the robustness-catalog fixtures
   (`tests/matrix_{supported,panic}/*.cddl`); `--check` is the drift gate. Pure
   `matrix.json` read (no cargo/oracles), so it's a fast CI gate. **(CI)**

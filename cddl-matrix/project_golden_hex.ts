@@ -45,8 +45,11 @@ const renderValue = (v: unknown): string => {
 const headClass = (b: number): [number, string] => {
   const mt = b >> 5, ai = b & 0x1f;
   if (ai < 24) return [mt, mt === 7 ? "simple_imm" : "imm"];
-  if (mt === 7) return [mt, { 24: "ai24", 25: "float16", 26: "float32", 27: "float64", 31: "break" }[ai]!];
-  return [mt, { 24: "ai24", 25: "ai25", 26: "ai26", 27: "ai27", 31: "indef" }[ai]!];
+  const form = mt === 7
+    ? { 24: "ai24", 25: "float16", 26: "float32", 27: "float64", 31: "break" }[ai]
+    : { 24: "ai24", 25: "ai25", 26: "ai26", 27: "ai27", 31: "indef" }[ai];
+  if (!form) throw new Error(`reserved additional-info ${ai} in head byte 0x${b.toString(16).padStart(2, "0")} — not legal CBOR`);
+  return [mt, form];
 };
 const cellId = (b: number) => { const [mt, form] = headClass(b); return `enc.major${mt}.${form}`; };
 
@@ -57,30 +60,51 @@ const grid = (await Bun.file(`${HERE}/matrix.json`).json() as { encodings: { id:
 const cells = new Set(grid.map(e => e.id).filter(id => LEAF_FORMS.has(id.split(".").at(-1)!)));
 
 // --- asserted test bytes (file order preserved) ---
+// Name and bytes are captured from the SAME kat! invocation (never paired positionally across two
+// independent scans — an `&[…]` in a $value expression or a comment must not steal a pairing slot),
+// comments are stripped from the invocation body, and the byte text must tokenize COMPLETELY into
+// two-digit `0x??` literals. This projection certifies "vector X is asserted by test Y", so any
+// deviation is a hard error, not a silently-wrong doc.
 const src = await Bun.file(`${GOLDEN}/tests.rs`).text();
-const names = [...src.matchAll(/kat!\(\s*(\w+)/g)].map(m => m[1]);
-const arrays = [...src.matchAll(/&\[([0-9a-fx,\s]*?)\]/g)].map(m => m[1]);
-const tests = new Map<string, Uint8Array>(
-  names.map((n, i) => [n, Uint8Array.from([...arrays[i].matchAll(/0x([0-9a-fA-F]{2})/g)].map(m => parseInt(m[1], 16)))]),
-);
+const katCalls = [...src.matchAll(/kat!\(\s*(\w+)\s*,([\s\S]*?)\)\s*;/g)];
+if (!katCalls.length) throw new Error("no kat!(…) invocations found in tests.rs — the extraction contract broke");
+const tests = new Map<string, Uint8Array>();
+for (const [, name, rawBody] of katCalls) {
+  if (tests.has(name)) throw new Error(`duplicate kat! test name \`${name}\` — the second would silently shadow the first`);
+  const body = rawBody.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, ""); // comments are not arguments
+  const arrays = [...body.matchAll(/&\[([^\]]*)\]/g)];
+  if (!arrays.length) throw new Error(`kat!(${name}): no \`&[…]\` byte-array argument found`);
+  const text = arrays[arrays.length - 1][1]; // the expected bytes are the macro's LAST argument
+  const residue = text.replace(/0x[0-9a-fA-F]{2}/g, "").replace(/[,\s]/g, "");
+  if (residue)
+    throw new Error(`kat!(${name}): byte array contains non-\`0xNN\` content (\`${residue}\`) — write two-digit 0x literals only (no decimal, no single-digit)`);
+  tests.set(name, Uint8Array.from([...text.matchAll(/0x([0-9a-fA-F]{2})/g)].map(m => parseInt(m[1], 16))));
+}
 const toHex = (b: Uint8Array, s: number, e: number) =>
   [...b.slice(s, e)].map(x => x.toString(16).padStart(2, "0")).join("");
 
 // Yield (start,end) of EVERY encoded CBOR item, nested included — match whole items, never payload bytes.
-function cborItems(b: Uint8Array): [number, number][] {
+// Bounds-checked: extraction garbage must surface as a named error, never as an infinite loop on an
+// unterminated indefinite head or as phantom out-of-bounds spans that fabricate cell credit.
+function cborItems(b: Uint8Array, name: string): [number, number][] {
   const spans: [number, number][] = [];
+  const die = (msg: string): never => { throw new Error(`kat!(${name}): ${msg} — the asserted bytes are not one well-formed CBOR item`); };
+  const need = (i: number) => { if (i > b.length) die(`truncated item (needs byte ${i}, have ${b.length})`); };
   const beInt = (from: number, to: number) => { let n = 0; for (let k = from; k < to; k++) n = n * 256 + b[k]; return n; };
   function walk(i: number): number {
+    if (i >= b.length) die(`walked past the end at offset ${i}`);
     const start = i, ib = b[i], ai = ib & 0x1f, mt = ib >> 5;
+    if (ai >= 28 && ai <= 30) die(`reserved additional-info ${ai} at offset ${i}`);
     i += 1;
     if (ai === 24) i += 1; else if (ai === 25) i += 2; else if (ai === 26) i += 4; else if (ai === 27) i += 8;
+    need(i);
     const arg = ai < 24 ? ai : null;
     if (mt === 2 || mt === 3) {
-      if (ai === 31) { while (b[i] !== 0xff) i = walk(i); i += 1; }
-      else i += arg ?? beInt(start + 1, i);
+      if (ai === 31) { while (b[i] !== 0xff) { if (i >= b.length) die("unterminated indefinite string"); i = walk(i); } i += 1; }
+      else { i += arg ?? beInt(start + 1, i); need(i); }
     } else if (mt === 4 || mt === 5) {
       const mult = mt === 4 ? 1 : 2;
-      if (ai === 31) { while (b[i] !== 0xff) i = walk(i); i += 1; }
+      if (ai === 31) { while (b[i] !== 0xff) { if (i >= b.length) die("unterminated indefinite container"); i = walk(i); } i += 1; }
       else { const n = arg ?? beInt(start + 1, i); for (let k = 0; k < n * mult; k++) i = walk(i); }
     } else if (mt === 6) {
       i = walk(i);
@@ -88,13 +112,14 @@ function cborItems(b: Uint8Array): [number, number][] {
     spans.push([start, i]);
     return i;
   }
-  walk(0);
+  const end = walk(0);
+  if (end !== b.length) die(`trailing bytes after the top-level item (consumed ${end} of ${b.length})`);
   return spans;
 }
 
 // every distinct item encoding each test asserts, and which test(s) assert it
 const testItems = new Map<string, Set<string>>(
-  [...tests].map(([n, b]) => [n, new Set(cborItems(b).map(([s, e]) => toHex(b, s, e)))]),
+  [...tests].map(([n, b]) => [n, new Set(cborItems(b, n).map(([s, e]) => toHex(b, s, e)))]),
 );
 const coveringTests = (hexn: string) => [...testItems].filter(([, items]) => items.has(hexn)).map(([n]) => n);
 // a cell is covered if any test asserts an item whose head lands in it (item heads are always real heads)
@@ -103,7 +128,20 @@ const cellsCovered = new Set(
 );
 
 // --- the join: human notes keyed by hex or cell ---
+// Schema-validated on load: the design pitch is that the hand-authored judgment half gets
+// mechanically cross-checked, so a malformed row (typo'd status, both/neither key, duplicate key)
+// must be a hard error — every downstream comparison is an exact string match that would otherwise
+// silently render the vector as ➖ and desync the summary counts.
 const notes = notesToml.note as Note[];
+const seenNoteKeys = new Set<string>();
+for (const n of notes) {
+  if (!!n.hex === !!n.cell) throw new Error(`overlay note must key EXACTLY one of hex/cell: ${JSON.stringify(n)}`);
+  if (n.status !== "redundant" && n.status !== "out_of_scope")
+    throw new Error(`overlay note \`${n.hex ?? n.cell}\`: bad status \`${n.status}\` (redundant | out_of_scope)`);
+  const key = n.hex ? `hex:${n.hex.toLowerCase()}` : `cell:${n.cell}`;
+  if (seenNoteKeys.has(key)) throw new Error(`duplicate overlay note for ${key} — the join would keep only the last`);
+  seenNoteKeys.add(key);
+}
 const noteByHex = new Map(notes.filter(n => n.hex).map(n => [n.hex!.toLowerCase(), n]));
 const noteByCell = new Map(notes.filter(n => n.cell).map(n => [n.cell!, n]));
 
@@ -129,12 +167,18 @@ for (const [c, n] of noteByCell) {
   if (!cells.has(c)) drift.push(`stale note: cell \`${c}\` is not a legal grid cell`);
   else if (n.status === "out_of_scope" && cellsCovered.has(c))
     drift.push(`contradiction: \`${c}\` is annotated out_of_scope but a test exercises it`);
+  else if (n.status === "redundant" && !cellsCovered.has(c))
+    drift.push(`contradiction: cell \`${c}\` is annotated redundant but no test covers it (the documented rule: the cell MUST be covered)`);
 }
 for (const v of vectors) {
   if (v.note?.status === "redundant" && !cellsCovered.has(v.cell))
     drift.push(`contradiction: \`${v.hexn}\` is annotated redundant but its cell \`${v.cell}\` is not covered by any test`);
   if (v.note?.status === "out_of_scope" && v.covered)
     drift.push(`contradiction: \`${v.hexn}\` is annotated out_of_scope but ${v.tests.join(", ")} exercises it`);
+  // a HEX-keyed redundant note on a vector that is itself directly asserted is a dead row (a
+  // CELL-keyed redundant note legitimately coexists with covered siblings, so only hex-keyed here)
+  if (noteByHex.get(v.hexn)?.status === "redundant" && v.covered)
+    drift.push(`stale note: \`${v.hexn}\` is annotated redundant (intentionally untested) but ${v.tests.join(", ")} covers it — delete the note`);
 }
 const unexplained = vectors.filter(v => !v.covered && !v.note);
 
@@ -224,8 +268,25 @@ else if (unexplained.length) w(`- ⚠️ ${unexplained.length} uncovered vector(
 else w("- ✅ All notes resolve to a real vector/cell and agree with the derived coverage. No drift.");
 w();
 
-await Bun.write(OUT, L.join("\n"));
-console.log(`wrote ${OUT.replace(`${HERE}/../`, "")}`);
+const content = L.join("\n");
+const OUT_REL = OUT.replace(`${HERE}/../`, "");
 console.log(`  ${cov} covered, ${red} redundant, ${oos} N/A, ${unexplained.length} unexplained; ${drift.length} drift issue(s)`);
 for (const d of drift) console.log("  DRIFT:", d);
+if (process.argv.includes("--check")) {
+  // CI mode: never write — fail if the committed doc is stale relative to tests.rs + the overlay
+  // (without this, the script would silently regenerate the doc in the runner's checkout and the
+  // "CI fails on drift" claim would only cover note contradictions and ➕ rows, not staleness).
+  const existing = (await Bun.file(OUT).exists()) ? await Bun.file(OUT).text() : "";
+  if (existing !== content) {
+    console.log(`SNAPSHOT DRIFT: ${OUT_REL} is stale vs tests.rs + the overlay — run \`bun run project_golden_hex.ts\` and commit the diff.`);
+    process.exit(1);
+  }
+  console.log(`check OK: ${OUT_REL} is current`);
+} else if (drift.length) {
+  // a contradicted overlay must not rewrite the committed doc with the claims that just failed
+  console.log(`SKIPPED writing ${OUT_REL} (drift — the committed doc is left untouched)`);
+} else {
+  await Bun.write(OUT, content);
+  console.log(`wrote ${OUT_REL}`);
+}
 process.exit(drift.length || unexplained.length ? 1 : 0);

@@ -1,7 +1,7 @@
 # cddl-codegen support notes for the CBOR ENCODING axis, keyed by master id.
 # This is the NON-DERIVABLE half of tests/golden_hex/COVERAGE.md: the human rationale for why a
 # given RFC 8949 Appendix A vector is or isn't exercised by a golden test. The mechanical half
-# (covered / uncovered / which test) is DERIVED by project_golden_hex.py from the actual test bytes;
+# (covered / uncovered / which test) is DERIVED by project_golden_hex.ts from the actual test bytes;
 # this file is joined in to produce the rendered map. Keep consumer judgment here, out of the spec master.
 #
 # A note keys to EITHER a single vector (`hex`, byte-exact RFC 8949 App. A encoding) OR a whole
@@ -18,11 +18,6 @@
 # note describes — same anchor rule as the rest of the matrix.
 
 # ---- redundant: same encoding path as a covered sibling, deliberately not re-tested ----
-
-[[note]]
-hex = "1819"   # uint 25
-status = "redundant"
-reason = "same 1-byte uint8 path (head 0x18) as 24, covered by triple_boundary_23_24"
 
 [[note]]
 hex = "29"     # nint -10

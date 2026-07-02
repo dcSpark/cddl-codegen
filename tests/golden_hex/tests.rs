@@ -11,6 +11,10 @@
 // Coverage spans every CBOR major type the generator emits under default flags:
 //   0 unsigned, 1 negative, 2 bytes, 3 text, 4 array, 5 map, 6 tag, 7 simple (bool/null) + float.
 //
+// AUTHORING CONVENTION: write `expected` bytes as two-digit `0x??` literals only (no decimal, no
+// single-digit hex). cddl-matrix/project_golden_hex.ts extracts these arrays to build the coverage
+// map and hard-fails on any other spelling.
+//
 // Coverage map vs the full RFC 8949 Appendix A table (what's covered, what isn't, and why):
 //   tests/golden_hex/COVERAGE.md
 #[cfg(test)]
