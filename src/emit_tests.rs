@@ -613,11 +613,22 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
             // deserializes its elements, so a type whose every non-empty value is broken passes the
             // round-trip gate vacuously. Mint a single element when unbounded; bounded types already
             // carry a >=1 min (or a real max) via `valid_measure`.
-            let measure = match measure_kind(ty) {
-                Some(MeasureKind::Len) if bounds == (None, None) => 1,
-                _ => valid_measure(bounds),
+            let unbounded_len =
+                matches!(measure_kind(ty), Some(MeasureKind::Len)) && bounds == (None, None);
+            let measure = if unbounded_len {
+                1
+            } else {
+                valid_measure(bounds)
             };
-            materialize_at(types, ty, measure, depth)
+            materialize_at(types, ty, measure, depth).or_else(|| {
+                // An unbounded (`*`-occurrence, lower bound 0) collection whose element can't be
+                // minted — e.g. a self-recursive element that hits the depth cap — is still valid
+                // EMPTY, so terminate the mint with an empty collection rather than failing the
+                // whole enclosing type. This ONLY applies to the unbounded case: a bounded
+                // collection needs its exact length materialized, so it stays a loud `None`, and a
+                // broken (non-`None`) element still surfaces normally above.
+                unbounded_len.then(|| empty_collection(ty)).flatten()
+            })
         }
     }
 }
@@ -707,6 +718,18 @@ fn mint_struct(
             })
         }
         RustStructType::Extern | RustStructType::RawBytesType => None,
+    }
+}
+
+/// An empty value expression for a collection `ty` (valid for a 0-lower-bound `*`-occurrence).
+/// `Default::default()` covers every collection representation an inline map field can take
+/// (`BTreeMap`, or the preserve-encodings `OrderedHashMap`, both `Default`), inferred from the
+/// constructor-argument position; `vec![]` is the clearer form for arrays.
+fn empty_collection(ty: &RustType) -> Option<String> {
+    match ty.resolve_alias_shallow() {
+        ConceptualRustType::Array(_) => Some("vec![]".to_owned()),
+        ConceptualRustType::Map(_, _) => Some("Default::default()".to_owned()),
+        _ => None,
     }
 }
 
