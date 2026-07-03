@@ -74,11 +74,6 @@ Rules:
   the appropriate tier yourself; CI won't catch what fast doesn't cover.
 - **Run multi-minute gates in the foreground** with an extended tool timeout (up to 10 min), never
   detached into background monitors — detached runs strand their results when the agent stops.
-- The manual gates that share a per-checkout scratch root (`ir_conformance_corpus`,
-  `wasm_matrix_roundtrips`, `feature_corpus_roundtrips_nondefault_profiles`) serialize concurrent
-  same-checkout runs on an advisory lock, so a second invocation waits for the first rather than
-  clobbering its crates — don't be surprised by the printed "waiting for it to finish" message
-  (`acquire_scratch_lock` in `src/tests/integration_tests.rs`).
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
