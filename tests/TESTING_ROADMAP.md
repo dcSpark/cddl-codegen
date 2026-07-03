@@ -213,24 +213,6 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
    divergence/crash into the snapshot corpus (review once, commit). Complements the real on-chain
    differential (item 3): synthetic breadth vs real-world depth.
-   - **Existing `fuzz/` rot residuals (the harness is manual-only — CI cost policy).** The seed
-     corpus now harvests all three golden-hex suites (default + preserve + canonical — done in
-     `generate.sh`), and the fuzz crate's compile-rot is guarded by `check.ts`'s `full` tier
-     (`fuzz_compile_rot` gate: run `fuzz/generate.sh` iff `fuzz/generated` is absent or
-     `--refresh-fuzz`, then `cargo check` the fuzz crate) — a probe rename or scrape-regex break that
-     rots the repo's sole OOM/stack-overflow oracle now fails a local `full` run. One gap remains: the
-     22-type probe list in `fuzz_targets/from_cbor_bytes.rs` is hand-synced against the generated
-     crate's `impl Deserialize` set with no drift guard (a new `input.cddl` rule is silently unfuzzed)
-     — derive or assert it from that set in `generate.sh`.
-   - **Recursive-spec stack-overflow fuzzing (now reachable).** `fuzz/generate.sh` fuzzes only the
-     non-recursive preserve spec, so its stack-overflow oracle is structurally blind to unbounded
-     recursion. Now that a terminable recursive corpus fixture exists (`tests/corpus/recursive.cddl`)
-     and `--deserialize-depth-limit` gives it a *graceful* failure mode, add a recursive spec to the
-     fuzz seed set in both configurations: unguarded (the fuzzer should reproduce the SIGABRT the
-     depth-limit flag documents and guards) and with `--deserialize-depth-limit` set (a hostile-deep
-     input must return `DeserializeFailure::DepthLimitExceeded`, never abort). The
-     `deserialize_depth_limit_guards_recursion` integration test pins the graceful path for one
-     hand-built hostile vector; the fuzzer is what exercises it at breadth.
    - **`ir_conformance_corpus` scratch-dir concurrency (LOW).** The gate's scratch root is keyed by
      a hash of the checkout path, which isolates different checkouts but not two concurrent runs
      from the SAME checkout — overlapping runs clobber each other's generated crates and fail with

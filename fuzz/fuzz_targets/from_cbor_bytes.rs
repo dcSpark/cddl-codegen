@@ -29,30 +29,12 @@ macro_rules! probe {
     )+};
 }
 
+// `probe_all` is DERIVED by fuzz/generate.sh from the generated crate's `impl Deserialize for <T>`
+// set — so a new rule in the fuzzed spec is fuzzed with zero manual edits here (drift is impossible,
+// not merely detected). generate.sh floors the extracted count so a rotted regex can't silently
+// shrink the set. Included in item position (the well-supported use of include!).
+include!(concat!(env!("CARGO_MANIFEST_DIR"), "/generated/probe_list.in"));
+
 fuzz_target!(|data: &[u8]| {
-    probe!(
-        data,
-        cddl_lib::Foo,
-        cddl_lib::Bar,
-        cddl_lib::TableArrMembers,
-        cddl_lib::Enums,
-        cddl_lib::DeeplyNested,
-        cddl_lib::String64,
-        cddl_lib::String1632,
-        cddl_lib::TypeChoice,
-        cddl_lib::NonOverlappingTypeChoiceAll,
-        cddl_lib::GroupChoice,
-        cddl_lib::PlainArrays,
-        cddl_lib::CborInCbor,
-        cddl_lib::SignedInts,
-        cddl_lib::MapWithDefaults,
-        cddl_lib::ArrayOptFields,
-        cddl_lib::Bounds,
-        cddl_lib::BoundsGroupChoice,
-        cddl_lib::OverlappingInlined,
-        cddl_lib::EnumOptEmbedFields,
-        cddl_lib::StructWithCustomSerialization,
-        cddl_lib::WrapperTable,
-        cddl_lib::WrapperList,
-    );
+    probe_all(data);
 });
