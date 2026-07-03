@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -24,7 +24,12 @@ impl cbor_event::se::Serialize for A {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -51,11 +56,7 @@ impl SerializeEmbeddedGroup for A {
                 .unwrap_or_default()
                 .to_str_len_sz(self.b.len() as u64),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -732,7 +733,12 @@ impl cbor_event::se::Serialize for Basic {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -759,11 +765,7 @@ impl SerializeEmbeddedGroup for Basic {
                 .unwrap_or_default()
                 .to_str_len_sz(self.index_1.len() as u64),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -1382,7 +1384,12 @@ impl cbor_event::se::Serialize for BytesUint {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -1409,11 +1416,7 @@ impl SerializeEmbeddedGroup for BytesUint {
                     .unwrap_or_default(),
             ),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -1479,7 +1482,12 @@ impl cbor_event::se::Serialize for C {
                 .unwrap_or_default()
                 .to_len_sz(3),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -1500,11 +1508,7 @@ impl SerializeEmbeddedGroup for C {
         )?;
         self.x.serialize(serializer)?;
         self.y.serialize(serializer)?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -1950,7 +1954,12 @@ impl cbor_event::se::Serialize for Ed {
                     },
                 ),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -1989,11 +1998,7 @@ impl SerializeEmbeddedGroup for Ed {
                     .to_str_len_sz(field.len() as u64),
             )?;
         }
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -2087,7 +2092,12 @@ impl cbor_event::se::Serialize for Ee {
                     },
                 ),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -2136,11 +2146,7 @@ impl SerializeEmbeddedGroup for Ee {
                     .unwrap_or_default(),
             ),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -2864,7 +2870,12 @@ impl cbor_event::se::Serialize for First {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -2893,11 +2904,7 @@ impl SerializeEmbeddedGroup for First {
                     .unwrap_or_default(),
             ),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -4692,7 +4699,12 @@ impl cbor_event::se::Serialize for Plain {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -4722,11 +4734,7 @@ impl SerializeEmbeddedGroup for Plain {
             ),
         )?;
         self.e.serialize(serializer)?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -4894,7 +4902,12 @@ impl cbor_event::se::Serialize for Second {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -4921,11 +4934,7 @@ impl SerializeEmbeddedGroup for Second {
                     .unwrap_or_default(),
             ),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
@@ -6059,7 +6068,12 @@ impl cbor_event::se::Serialize for Three {
                 .unwrap_or_default()
                 .to_len_sz(3),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -6096,11 +6110,7 @@ impl SerializeEmbeddedGroup for Three {
                 .unwrap_or_default()
                 .to_str_len_sz(self.index_2.len() as u64),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 

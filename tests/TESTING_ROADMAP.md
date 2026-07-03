@@ -80,12 +80,18 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
      over irregular encodings). Spec-anchored *known-answer* vectors now exist
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
-     indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers); the
-     remaining frontier is minted *encodings* at scale (not just hand-picked ones), the only
-     at-scale test of those high-stakes flags. (The hand-picked KAT axis itself is closed: value
+     indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers).
+     (The hand-picked KAT axis itself is closed: value
      anchors, nint vectors, the runtime table-sort pins, and the cross-major `-1`/`256`
      length-first-vs-bytewise discriminator all live in the sibling suites, each
      mutation-verified red.)
+     Remaining known gap the at-scale fidelity oracle surfaced (SKIP-ledgered in
+     `feature_corpus_roundtrips_nondefault_profiles`): an *indefinite-length* container whose
+     elements/keys are CBOR major type 7 (bool) can't deserialize — `make_deser_loop_break_check`
+     peeks only `cbor_type()`, so a special element is indistinguishable from the `0xff` break
+     (a byte-level peek needs a `BufRead` bound the type-erased choice closures can't carry).
+     Closing it means either threading a real byte peek through the deserializer or restructuring
+     the loop to consume-and-dispatch the special.
    - **Minter coverage:** the shapes with no standalone mint surface — transparent aliases
      (`x = uint`, `x = [* uint]`), named tables/arrays (orphan-rule: no standalone `Serialize`),
      bounded aliases like `g = [2*5 uint]`, and pure c-enums — get their execution coverage

@@ -143,8 +143,12 @@ pub fn emit_generated_wasm_tests(types: &IntermediateTypes, cli: &Cli) -> Option
     if fns.is_empty() {
         return None;
     }
+    // Bring the rust twin's serialization trait into scope so `rust_v.to_cbor_bytes()` resolves as
+    // a method regardless of which trait provides it — `ToCBORBytes` under default flags, `Serialize`
+    // under `--preserve-encodings`/`--canonical-form` (a fully-qualified `ToCBORBytes::` path fails
+    // to compile under preserve, where that trait doesn't exist).
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n    use cddl_lib::serialization::*;\n{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -641,7 +645,7 @@ fn wasm_wrapper_roundtrip(
     Some(format!(
         "    {{
         let rust_v = {rust_build};
-        let bytes = cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&rust_v);
+        let bytes = rust_v.to_cbor_bytes();
         let wasm_v = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes\");
         assert_eq!(wasm_v.to_cbor_bytes(), bytes, \"{name}: wasm wire round-trip must be byte-identical\");
     }}"
@@ -660,7 +664,7 @@ fn roundtrip_body(name: &str, wasm_build: &str, rust_build: &str, readbacks: &[S
         let wasm_v = {wasm_build};
         let rust_v = {rust_build};
         let bytes = wasm_v.to_cbor_bytes();
-        assert_eq!(bytes, cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&rust_v), \"{name}: wasm-built and rust-built bytes must match (ctor conversion)\");
+        assert_eq!(bytes, rust_v.to_cbor_bytes(), \"{name}: wasm-built and rust-built bytes must match (ctor conversion)\");
         let back = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes\");
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name}: wasm wire round-trip must be byte-identical\");{rb}
     }}"
@@ -685,7 +689,7 @@ fn roundtrip_case(
         let wasm_v = {wasm_build};
         let rust_v = {rust_build};
         let bytes = wasm_v.to_cbor_bytes();
-        assert_eq!(bytes, cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&rust_v), \"{name}::{var}: wasm-built and rust-built bytes must match (new_{var} conversion)\");
+        assert_eq!(bytes, rust_v.to_cbor_bytes(), \"{name}::{var}: wasm-built and rust-built bytes must match (new_{var} conversion)\");
         let back = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes ({var})\");
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name}::{var}: wasm wire round-trip must be byte-identical\");{rb}
     }}"

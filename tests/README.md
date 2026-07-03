@@ -206,6 +206,28 @@ never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or r
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
+### Encoding-fidelity oracle (`--emit-tests` × `--preserve-encodings`)
+
+The round-trip harness above feeds `from_cbor_bytes` only the generator's *own* canonical output, so
+the "decode an irregular encoding and preserve it" direction — the whole point of
+`--preserve-encodings` — went untested at scale (only the hand-picked `tests/golden_hex_preserve/`
+KATs covered it). When both flags are set, each round-trip case now also runs an **encoding-fidelity**
+block: a self-contained, deterministic CBOR mutator (`static/emit_tests_encoding_fidelity.rs`, spliced
+into the emitted test module via `include_str!`) derives six whole-tree irregular re-encodings of the
+minted value's canonical bytes — `widen_step`/`widen_max` (non-minimal header widths),
+`indef_containers`, `chunk_strings`, `reverse_maps`, and `everything` (all composed) — and asserts each
+decodes and re-encodes byte-identically. Whole-tree (not per-position) because a single dropped
+encoding-capture fails the whole variant anyway; identity variants are skipped so the loop never
+asserts vacuously. With `--canonical-form` also set it adds the canonical **differential** (every
+encoding canonicalizes to the same bytes) plus a per-case canonical fixed point — the KATs stay the
+spec anchor for *what* the canonical bytes are; this layer buys breadth. Types with user-supplied
+`@custom_serialize`/`@custom_deserialize` are excluded (their wire format isn't the generated
+serializer's). The emitted mutator ships a `#[test] encoding_mutator_self_check` pinning each mutation
+class against hand-derived RFC 8949 bytes *and* pinning `variants()` end-to-end on a composite input
+(the vacuity guard). Executions: `emit_tests_execute` (local, with a fidelity-assertion floor) and
+`feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
+differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
+
 ### wasm-crate test module (`--emit-tests` + `--wasm=true`, `src/emit_tests_wasm.rs`)
 
 With `--wasm=true`, `--emit-tests` also emits a `#[cfg(test)] mod cddl_generated_wasm_tests` into the

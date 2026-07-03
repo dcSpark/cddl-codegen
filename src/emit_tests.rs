@@ -261,19 +261,27 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
 
         // value-equality is meaningless under preserve-encodings: `back` carries encoding structs
         // populated from the wire while the minted value has ctor defaults (see roundtrip_body).
-        let value_eq = !cli.preserve_encodings;
+        // The encoding-fidelity oracle asserts the GENERATED preserve contract, so it must not run
+        // on a type whose wire format is (partly) user-supplied via `@custom_serialize` /
+        // `@custom_deserialize`: a hand-written custom deserializer that rejects a valid irregular
+        // encoding is the user's choice, not a generator bug. Round-trip/value-eq assertions still
+        // run (the custom baseline round-trips); only the mutated-variant assertions are gated off.
+        let uses_custom = struct_uses_custom_ser(types, rust_struct);
+        let rt = RtEmit {
+            value_eq: !cli.preserve_encodings,
+            preserve: cli.preserve_encodings && !uses_custom,
+            canonical: cli.canonical_form && !uses_custom,
+        };
         let roundtrip = match rust_struct.variant() {
-            RustStructType::Record(record) => {
-                record_roundtrip(types, &name, record, conf, value_eq)
-            }
+            RustStructType::Record(record) => record_roundtrip(types, &name, record, conf, rt),
             RustStructType::TypeChoice { variants } => {
-                choice_roundtrip(types, &name, variants, false, conf, value_eq)
+                choice_roundtrip(types, &name, variants, false, conf, rt)
             }
             RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants, true, conf, value_eq)
+                choice_roundtrip(types, &name, variants, true, conf, rt)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
-                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, value_eq)
+                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, rt)
             }
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
@@ -320,12 +328,21 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
     } else {
         ""
     };
+    // `--preserve-encodings`: the self-contained CBOR mutator whose `variants()` the round-trip loop
+    // calls (spliced verbatim, no external append needed, so it works at corpus breadth). Only
+    // meaningful under preserve — the encoding-fidelity assertions the loop emits are keyed on the
+    // same flag. See the file header for the mutation classes and self-check.
+    let fidelity_mod = if cli.preserve_encodings {
+        include_str!("../static/emit_tests_encoding_fidelity.rs")
+    } else {
+        ""
+    };
     // `to_cbor_bytes`/`from_cbor_bytes` are trait methods (serialization::{ToCBORBytes,
     // Deserialize}); `use super::*` alone doesn't bring traits into scope in a standalone crate
     // (the integration harness happens to append `use serialization::*;` to lib.rs, which masked
     // this), so import the serialization surface explicitly.
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{conformance_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{conformance_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -356,6 +373,78 @@ fn conformance_rule_name(
     Some(snake)
 }
 
+/// True if any part of this type's wire format is user-supplied (`@custom_serialize` /
+/// `@custom_deserialize`) — at the type level, or on any embedded field / choice variant / inner
+/// type. Used to gate OFF the encoding-fidelity oracle, whose contract is the *generated*
+/// serializer's (a picky hand-written custom deserializer legitimately rejects valid irregular
+/// encodings). Bounded: it does not recurse into a referenced named struct's fields (only that
+/// struct's own type-level config), so it can't cycle; a custom field buried under a named-type
+/// reference would surface as a fidelity failure to triage rather than a false-negative skip.
+fn struct_uses_custom_ser(
+    types: &IntermediateTypes,
+    rust_struct: &crate::intermediate::RustStruct,
+) -> bool {
+    let cfg = rust_struct.config();
+    if cfg.custom_serialize.is_some() || cfg.custom_deserialize.is_some() {
+        return true;
+    }
+    match rust_struct.variant() {
+        RustStructType::Record(record) => record
+            .fields
+            .iter()
+            .any(|f| field_uses_custom_ser(types, f)),
+        RustStructType::Wrapper { wrapped, .. } => type_uses_custom_ser(types, wrapped),
+        RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
+            variants.iter().any(|v| match &v.data {
+                EnumVariantData::RustType(ty) => type_uses_custom_ser(types, ty),
+                EnumVariantData::Inlined(record) => record
+                    .fields
+                    .iter()
+                    .any(|f| field_uses_custom_ser(types, f)),
+            })
+        }
+        _ => false,
+    }
+}
+
+fn field_uses_custom_ser(types: &IntermediateTypes, field: &RustField) -> bool {
+    field.rule_metadata.custom_serialize.is_some()
+        || field.rule_metadata.custom_deserialize.is_some()
+        || type_uses_custom_ser(types, &field.rust_type)
+}
+
+fn type_uses_custom_ser(types: &IntermediateTypes, ty: &RustType) -> bool {
+    fn walk(types: &IntermediateTypes, ct: &ConceptualRustType) -> bool {
+        match ct {
+            ConceptualRustType::Alias(ident, inner) => {
+                types
+                    .type_aliases()
+                    .get(ident)
+                    .and_then(|a| a.rule_metadata.as_ref())
+                    .map(|m| m.custom_serialize.is_some() || m.custom_deserialize.is_some())
+                    .unwrap_or(false)
+                    || walk(types, inner)
+            }
+            ConceptualRustType::Optional(t) | ConceptualRustType::Array(t) => {
+                walk(types, &t.conceptual_type)
+            }
+            ConceptualRustType::Map(k, v) => {
+                walk(types, &k.conceptual_type) || walk(types, &v.conceptual_type)
+            }
+            // a referenced named struct: check only its type-level custom-ser config (no field
+            // recursion — bounded, cycle-free)
+            ConceptualRustType::Rust(ident) => types
+                .rust_struct(ident)
+                .map(|s| {
+                    s.config().custom_serialize.is_some() || s.config().custom_deserialize.is_some()
+                })
+                .unwrap_or(false),
+            ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => false,
+        }
+    }
+    walk(types, &ty.conceptual_type)
+}
+
 // ============================================================================================
 // ROUND-TRIP half. Each fn returns the body of one `roundtrip_<type>` test: a set of IR-derived
 // value cases, each pushed through the full wire cycle and asserted byte-identical.
@@ -372,15 +461,37 @@ fn conformance_rule_name(
 /// point; mutation-verified against exactly that). Off under `--preserve-encodings`: `back`'s
 /// encoding fields are populated from the wire while the minted value carries ctor defaults, so
 /// their `Debug`s legitimately differ even when the wire cycle is perfect.
+///
+/// `preserve` appends the encoding-fidelity block: each of the mutator's irregular re-encodings of
+/// the canonical `bytes` must decode and (preserve) re-encode byte-identically. `canonical`
+/// additionally hoists a per-case canonical baseline, asserts it's a fixed point, and asserts every
+/// variant canonicalizes to it (the encoding-invariance differential). See
+/// `static/emit_tests_encoding_fidelity.rs`.
+///
+/// The per-case emission flags, bundled (`value_eq` — assert the deserialized value equals the
+/// minted original; `preserve`/`canonical` — the encoding-fidelity block above). `preserve`/
+/// `canonical` are already gated off for custom-serialized types by the caller.
+#[derive(Clone, Copy)]
+struct RtEmit {
+    value_eq: bool,
+    preserve: bool,
+    canonical: bool,
+}
+
 fn roundtrip_body(
     name: &str,
     cases: Vec<(String, String)>,
     conf: Option<&str>,
-    value_eq: bool,
+    rt: RtEmit,
 ) -> Option<String> {
     if cases.is_empty() {
         return None;
     }
+    let RtEmit {
+        value_eq,
+        preserve,
+        canonical,
+    } = rt;
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
         .unwrap_or_default();
@@ -392,12 +503,39 @@ fn roundtrip_body(
             } else {
                 String::new()
             };
+            // encoding-fidelity: only under --preserve-encodings (the assertion is meaningless
+            // otherwise — non-preserve serializers normalize on re-encode).
+            let fidelity = if preserve {
+                // canonical: the differential (all encodings canonicalize identically) + a
+                // per-case fixed point. Under plain preserve, only the byte-identity assertion.
+                let (canon_hoist, canon_assert) = if canonical {
+                    (
+                        format!(
+                            "\n        let canonical_baseline = v.to_canonical_cbor_bytes();\n        assert_eq!({name}::from_cbor_bytes(&canonical_baseline).unwrap().to_canonical_cbor_bytes(), canonical_baseline, \"{name} ({label}): canonical bytes must be a fixed point\");"
+                        ),
+                        format!(
+                            "\n            assert_eq!(back.to_canonical_cbor_bytes(), canonical_baseline, \"{name} ({label})/{{mut_label}}: canonicalization must be encoding-invariant\");"
+                        ),
+                    )
+                } else {
+                    (String::new(), String::new())
+                };
+                format!(
+                    "{canon_hoist}
+        for (mut_label, mutated) in cddl_encoding_fidelity::variants(&bytes) {{
+            let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));
+            assert_eq!(back.to_cbor_bytes(), mutated, \"{name} ({label})/{{mut_label}}: preserve-encodings must re-encode irregular input byte-identically\");{canon_assert}
+        }}"
+                )
+            } else {
+                String::new()
+            };
             format!(
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
 {conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{value_eq_line}
-        assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");
+        assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");{fidelity}
     }}"
             )
         })
@@ -420,7 +558,7 @@ fn record_roundtrip(
     name: &str,
     record: &RustRecord,
     conf: Option<&str>,
-    value_eq: bool,
+    rt: RtEmit,
 ) -> Option<String> {
     let ctor_fields: Vec<&RustField> = record
         .fields
@@ -489,7 +627,7 @@ fn record_roundtrip(
             break;
         }
     }
-    roundtrip_body(name, cases, conf, value_eq)
+    roundtrip_body(name, cases, conf, rt)
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -500,7 +638,7 @@ fn choice_roundtrip(
     variants: &[EnumVariant],
     group_choice: bool,
     conf: Option<&str>,
-    value_eq: bool,
+    rt: RtEmit,
 ) -> Option<String> {
     let mut cases = Vec::new();
     for variant in variants {
@@ -538,7 +676,7 @@ fn choice_roundtrip(
             format!("variant {}", variant.name),
         ));
     }
-    roundtrip_body(name, cases, conf, value_eq)
+    roundtrip_body(name, cases, conf, rt)
 }
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
@@ -549,7 +687,7 @@ fn wrapper_roundtrip(
     wrapped: &RustType,
     min_max: Option<Bounds>,
     conf: Option<&str>,
-    value_eq: bool,
+    rt: RtEmit,
 ) -> Option<String> {
     // Tag-aware, same as mint_struct's Wrapper arm: a semantically-enforced tag (e.g. tdate) gets a
     // valid literal so this standalone round-trip stays consistent with the aggregate-record mint.
@@ -574,7 +712,7 @@ fn wrapper_roundtrip(
         inner: Box::new(inner),
         can_fail: min_max.is_some(),
     });
-    roundtrip_body(name, vec![(base, "baseline".to_owned())], conf, value_eq)
+    roundtrip_body(name, vec![(base, "baseline".to_owned())], conf, rt)
 }
 
 /// Mirrors a choice-variant ctor's per-arg fallibility (`generation.rs` per-variant `can_fail`):
