@@ -91,7 +91,10 @@ Rules:
     - review of implementation/plan
     - any problem deemed very hard
 
-Creating a workflow with many parallel Fable agents needs permission to run
+For workflows:
+- Do NOT run a workflow with many parallel Fable agents unless explicit permission is given. Fable jobs are almost always better done inline
+- Permission to run a workflow with Fable is different for permission to run a multi-Fable workflow
+- Generally avoid running tests at the same time in parallel agent (can happen if not careful using parallel Opus 4.8 agents for implementation)
 
 ## Markdown formatting
 

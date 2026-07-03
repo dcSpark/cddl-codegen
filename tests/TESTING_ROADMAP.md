@@ -180,20 +180,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
      `run_test` fixtures + item 7's `--package-json` run.
 
-### Tier 2 — project-specific, highest signal (when data sourcing is feasible)
-
-3. **Real on-chain CBOR corpus + differential vs the sibling libraries.** *(medium)* This is the
-   Cardano `cddl-codegen`; real blocks/txs are the richest fuzz seeds and the existing hand-written
-   sibling libs make cross-implementation differential testing nearly free. Higher signal than any
-   synthetic data.
-
-4. **Wire-format back-compat + generated-API semver.** *(medium each)* For a serialization tool
-   these are correctness contracts the snapshot suite doesn't cover: (a) bytes written by an older
-   generator still deserialize under newer generated code (pin a few `(spec, bytes)` vectors);
-   (b) `cargo-semver-checks` against a golden generated crate so a renamed field / changed
-   signature surfaces as a reviewed API break.
-
-### Tier 3 — validation & process (opportunistic)
+### Tier 2 — validation & process (opportunistic)
 
 5. **`cargo-mutants`** scoped to the emit core (`--file 'src/generation*'`), run manually/locally
    (a full-tier gate at most; never fast). The defining technique for a codegen tool — proves the suite *catches*
