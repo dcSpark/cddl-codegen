@@ -2290,3 +2290,172 @@ fn all_supported_constructs_generate_all_profiles() {
         failures.join("\n")
     );
 }
+
+/// Behavioural companion to `feature_corpus_compiles`: run the corpus's `--emit-tests` round-trip
+/// suite under the NON-default profiles. `feature_corpus_compiles` runs `--emit-tests` + `cargo
+/// test` ONLY under the default profile; preserve/json are `cargo check`-only there, so the
+/// emitted round-trip/reject tests have never RUN at corpus breadth under either flag. This gate
+/// generates every corpus fixture with `--emit-tests=true` under the preserve and json profiles
+/// and `cargo test`s the rust AND wasm crates (mirroring the default-profile half of
+/// `feature_corpus_compiles`), executing the emitted `cddl_generated_tests` /
+/// `cddl_generated_wasm_tests` modules — a construct must round-trip byte-identically under the
+/// flag, not merely compile.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze
+/// (`feature_corpus_compiles` stays byte-for-byte the always-on compile floor; this is the manual
+/// round-trip verdict on top). `cargo test` per fixture × two profiles × two crates is materially
+/// heavier than the CI gate's per-profile `cargo check`. Run it with
+/// `cargo test --bin cddl-codegen feature_corpus_roundtrips_nondefault_profiles -- --ignored`.
+///
+/// `SKIP` holds `(profile, fixture)` cells whose emitted test surface is a KNOWN structural gap
+/// under that profile (a whole feature class the emitter/minter can't yet faithfully round-trip
+/// under the flag), each with a reason. Four-state verdict per cell (same as the wasm-matrix
+/// gates): a red NON-skip cell fails (a real emitter/minter miscompile to fix, or deliberately
+/// SKIP-list with a reason); a SKIP cell that now passes fails the resurfaced guard (the gap
+/// closed — take it off SKIP). The per-profile emitted-module floor keeps the execution half from
+/// going vacuous if emission silently shrinks.
+#[test]
+#[ignore]
+fn feature_corpus_roundtrips_nondefault_profiles() {
+    use std::str::FromStr;
+
+    // Same as `feature_corpus_compiles`: references user-supplied @custom_serialize functions, so
+    // its crate can't build standalone under any profile.
+    const COMPILE_SKIP: &[&str] = &["dsl_custom"];
+
+    // (profile, fixture stem, reason) — cells whose emitted round-trip surface is a known
+    // structural gap under that profile. Empirically discovered; a resurfaced guard fails the gate
+    // if any starts passing so the list can't rot.
+    const SKIP: &[(&str, &str, &str)] = &[];
+
+    // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
+    // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).
+    fn module_floor(profile: &str) -> usize {
+        match profile {
+            "preserve" => 38,
+            "json" => 38,
+            _ => 0,
+        }
+    }
+
+    let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
+
+    // Non-default profiles only (default is already emit-tests + cargo test in CI). Derived from
+    // ALL_PROFILES so a new profile can't silently escape this round-trip gate.
+    let profiles: Vec<&super::Profile> = super::ALL_PROFILES
+        .iter()
+        .filter(|(p, _)| *p != "default")
+        .collect();
+
+    // Own scratch dir + one shared target so cbor_event/wasm-bindgen/the libtest harness build once.
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_corpus_roundtrip_profiles_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![]; // red NON-skip cells — real findings
+    let mut resurfaced = vec![]; // SKIP cells that now pass — remove them
+    let mut emitted_modules: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
+    for input in &entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        if COMPILE_SKIP.contains(&stem) {
+            continue;
+        }
+        for (profile, extra) in &profiles {
+            let label = format!("{stem}/{profile}");
+            let skipped = SKIP.iter().any(|(p, s, _)| p == profile && s == &stem);
+            let out = root.join(format!("{stem}__{profile}"));
+            let gen_out = tool_cmd("cargo")
+                .args(["run", "--"])
+                .arg(format!("--input={}", input.to_str().unwrap()))
+                .arg(format!("--output={}", out.to_str().unwrap()))
+                .arg("--wasm=true")
+                .arg("--emit-tests=true")
+                .args(*extra)
+                .output()
+                .unwrap();
+            if !gen_out.status.success() {
+                // A generation failure is "red". Only a NON-skip one fails the gate; a skip cell
+                // that still fails is red-as-expected (never counts as resurfaced).
+                if !skipped {
+                    failures.push(format!(
+                        "{label}: generation failed\n{}",
+                        String::from_utf8_lossy(&gen_out.stderr)
+                    ));
+                }
+                continue;
+            }
+            if std::fs::read_to_string(out.join("rust/src/lib.rs"))
+                .unwrap_or_default()
+                .contains("mod cddl_generated_tests")
+            {
+                *emitted_modules.entry(profile).or_default() += 1;
+            }
+            // `cargo test` the rust then wasm crate — mirrors the default-profile half of
+            // feature_corpus_compiles, but under this profile's flags. A cell PASSES only if both
+            // crates test green (and neither is missing).
+            let mut cell_red: Option<String> = None;
+            for crate_sub in ["rust", "wasm"] {
+                let crate_dir = out.join(crate_sub);
+                if !crate_dir.exists() {
+                    cell_red = Some(format!(
+                        "{label} ({crate_sub}): crate dir missing — the fixture is no longer being round-trip-gated"
+                    ));
+                    break;
+                }
+                let test = tool_cmd("cargo")
+                    .arg("test")
+                    .current_dir(&crate_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                if !test.status.success() {
+                    cell_red = Some(format!(
+                        "{label} ({crate_sub}): cargo test failed\n{}\n{}",
+                        String::from_utf8_lossy(&test.stdout),
+                        String::from_utf8_lossy(&test.stderr)
+                    ));
+                    break;
+                }
+            }
+            match (skipped, cell_red) {
+                (false, Some(detail)) => failures.push(detail),
+                (true, None) => resurfaced.push(label),
+                _ => {} // (false,None)=green as expected; (true,Some)=red as expected
+            }
+            // Free the per-fixture crate dir as we go (keep the shared target) — the machine runs
+            // near disk-full, and 43 fixtures × 2 profiles of generated crates add up.
+            let _ = std::fs::remove_dir_all(&out);
+        }
+    }
+    // execution-half vacuous-pass guard, per profile.
+    for (profile, _) in &profiles {
+        let n = emitted_modules.get(*profile).copied().unwrap_or(0);
+        let floor = module_floor(profile);
+        assert!(
+            n >= floor,
+            "only {n} corpus fixtures emitted a generated-test module under {profile} (expected >= {floor}) — emit_tests coverage shrank"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        resurfaced.is_empty(),
+        "these SKIP-listed corpus cells now round-trip under their profile — remove them from SKIP (the gap closed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "corpus fixtures failed to round-trip under a non-default profile:\n\n{}",
+        failures.join("\n\n")
+    );
+}

@@ -16,7 +16,8 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 | `full` | `bun run check.ts full` | `ci` + every manual-only gate | ~9 min |
 
 `ci` is "what a PR would face" — run it before every push. `full` additionally runs the gates CI
-can't (the two `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus`,
+can't (the four `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
+`all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`,
 `cddl-matrix/verify.ts`, `corpus_detect.ts`, and the fuzz-crate compile-rot check) — run it before
 shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
