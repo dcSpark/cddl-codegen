@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 #![allow(
@@ -162,6 +162,11 @@ impl NullableCollMap {
             .flatten()
     }
 
+    /// Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).
+    pub fn has(&self, key: u64) -> bool {
+        self.0.get(&key).is_some()
+    }
+
     pub fn keys(&self) -> Vec<u64> {
         self.0.keys().copied().collect::<Vec<_>>()
     }
@@ -252,6 +257,11 @@ impl NullableMapValue {
         self.0.get(&key).copied().flatten()
     }
 
+    /// Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).
+    pub fn has(&self, key: u64) -> bool {
+        self.0.get(&key).is_some()
+    }
+
     pub fn keys(&self) -> Vec<u64> {
         self.0.keys().copied().collect::<Vec<_>>()
     }
@@ -302,6 +312,11 @@ impl NullableOptionalField {
     /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
     pub fn field0(&self) -> MaybeUint {
         self.0.field0.flatten()
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_field0(&self) -> bool {
+        self.0.field0.is_some()
     }
 
     pub fn new(pre: u64) -> Self {

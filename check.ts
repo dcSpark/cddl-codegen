@@ -260,12 +260,6 @@ const REGISTRY: Gate[] = [
     desc: "fuzz crate compile-rot check (generate.sh iff needed, then cargo check)" },
 
   // --- tracked-failing IOU stubs: known-failing #[ignore] tests, NEVER executed (shown as STUB) ---
-  { id: "stub_wasm_optional_nullable_field_three_state_fidelity", tier: "full", kind: "stub",
-    ignoredTest: "wasm_optional_nullable_field_three_state_fidelity",
-    desc: "IOU: wasm optional-nullable field three-state fidelity (generator-side flatten loss)" },
-  { id: "stub_wasm_enum_nullable_variant_three_state_fidelity", tier: "full", kind: "stub",
-    ignoredTest: "wasm_enum_nullable_variant_three_state_fidelity",
-    desc: "IOU: wasm double-nested enum-variant three-state fidelity (as_variant getter skipped)" },
   { id: "stub_preserve_encodings_supports_floats", tier: "full", kind: "stub",
     ignoredTest: "preserve_encodings_supports_floats",
     desc: "IOU: floats under --preserve-encodings (pre-existing unimplemented! in generation.rs)" },
