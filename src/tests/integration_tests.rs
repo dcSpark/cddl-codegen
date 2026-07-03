@@ -2833,6 +2833,147 @@ fn js_d_ts_merge() {
     assert!(merged.contains("export interface FooJSON"), "{merged}");
 }
 
+/// End-to-end validation of the shipped `--package-json --json-schema-export` consumer pipeline
+/// (`generation.rs`'s `export` copy block + `static/package_json_schemas.json`). It generates a small
+/// fixture with those flags and runs the SHIPPED `npm run rust:build-nodejs` script VERBATIM in the
+/// output dir — `wasm-pack build --target=nodejs` -> `js:ts-json-gen` (json-gen `cargo +stable run`
+/// -> `run-json2ts.js` -> `json-ts-types.js`) -> `wasm-pack pack`. Running the script line itself
+/// (its `cd`/`;` shell shape, its dependency pins, its `cargo +stable`) is the point: replicating the
+/// steps in Rust would let the script rot. This is also the ONLY layer that exercises `#[wasm_bindgen]`
+/// macro-expansion -> real wasm-pack `.d.ts` -> the JS-side `.d.ts` merge end-to-end; the systematic
+/// wasm gates `cargo check` on the host target and can't see any of it. Each output assert pins one
+/// stage of the pipeline actually running (see `tests/README.md` § "package_json_pipeline").
+///
+/// Note: the script builds the GENERATED crate with the user's `+stable` toolchain, not the repo pin —
+/// faithful to the shipped consumer experience, so a `+stable` failure here is a real finding about
+/// shipped output, not a test bug to paper over.
+#[test]
+fn package_json_pipeline() {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests/package-json").unwrap();
+    // gitignored (tests/*/export*/); regenerated each run.
+    let export = test_path.join("export");
+
+    // The shipped `rust:build-nodejs` needs node+npm+wasm-pack, PLUS a rustup `stable` toolchain (the
+    // `js:ts-json-gen` script hardcodes `cargo +stable run`). House pattern: assert in CI (its fast
+    // tier never reaches this test, but keep the pattern), eprintln+return locally.
+    let rustup_stable = std::process::Command::new("rustup")
+        .args(["run", "stable", "cargo", "--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !(tool_exists("node") && tool_exists("npm") && tool_exists("wasm-pack") && rustup_stable) {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "node, npm, wasm-pack and a rustup `stable` toolchain are required to run \
+             package_json_pipeline in CI"
+        );
+        eprintln!(
+            "skipping package_json_pipeline: need node+npm+wasm-pack + a rustup `stable` toolchain"
+        );
+        return;
+    }
+
+    // Generate the shipped layout: everything under `export/rust/{rust,wasm}`, plus `export/package.json`
+    // and `export/scripts/`.
+    let _ = std::fs::remove_dir_all(&export);
+    let generate = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/package-json/input.cddl")
+        .arg("--output=tests/package-json/export")
+        .arg("--wasm=true")
+        .arg("--package-json=true")
+        .arg("--json-serde-derives=true")
+        .arg("--json-schema-export=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!(
+            "generate stderr:\n{}",
+            String::from_utf8_lossy(&generate.stderr)
+        );
+    }
+    assert!(generate.status.success());
+
+    // Layout sanity: pins `generation.rs`'s `--package-json` copy block (the three shipped files).
+    assert!(
+        export.join("package.json").exists(),
+        "no export/package.json"
+    );
+    assert!(
+        export.join("scripts/run-json2ts.js").exists(),
+        "no export/scripts/run-json2ts.js"
+    );
+    assert!(
+        export.join("scripts/json-ts-types.js").exists(),
+        "no export/scripts/json-ts-types.js"
+    );
+
+    // `npm install` the pinned devDeps (rimraf/cross-env/json-schema-to-typescript), mirroring
+    // js_schema_to_ts.
+    let npm_install = std::process::Command::new("npm")
+        .args(["install", "--silent", "--no-audit", "--no-fund"])
+        .current_dir(&export)
+        .output()
+        .unwrap();
+    if !npm_install.status.success() {
+        eprintln!(
+            "npm install stderr:\n{}",
+            String::from_utf8_lossy(&npm_install.stderr)
+        );
+    }
+    assert!(npm_install.status.success());
+
+    // THE assertion: run the shipped script verbatim. Strip RUSTFLAGS for the same reason `tool_cmd`
+    // does — the nested `cargo +stable` builds the generated crate, which legitimately over-imports,
+    // and CI injects `-D warnings` into the job env. ~20s cold here (wasm-pack build + a small nested
+    // cargo build); give the tool an extended timeout.
+    let build = std::process::Command::new("npm")
+        .args(["run", "rust:build-nodejs"])
+        .current_dir(&export)
+        .env_remove("RUSTFLAGS")
+        .output()
+        .unwrap();
+    if !build.status.success() {
+        eprintln!(
+            "rust:build-nodejs stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&build.stdout),
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
+    assert!(build.status.success());
+
+    // Output asserts, each pinning one stage actually ran:
+    // wasm-pack build ran -> its `.d.ts` (filename derived from the crate name, the default
+    // `cddl_lib_wasm` since we pass no --lib-name).
+    let dts_path = export.join("rust/wasm/pkg/cddl_lib_wasm.d.ts");
+    assert!(dts_path.exists(), "no wasm-pack .d.ts at {dts_path:?}");
+    // json-gen `cargo +stable run` wrote schemas.
+    let schemas_dir = export.join("rust/wasm/json-gen/schemas");
+    let schema_count = std::fs::read_dir(&schemas_dir)
+        .unwrap_or_else(|e| panic!("json-gen wrote no schemas dir {schemas_dir:?}: {e}"))
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+        .count();
+    assert!(
+        schema_count > 0,
+        "json-gen produced no schema files in {schemas_dir:?}"
+    );
+    // run-json2ts.js + json-ts-types.js merged the REAL wasm-pack output (not a hand-written fixture):
+    // to_json_value()'s `any` got specialized AND the JSON interface got appended.
+    let dts = std::fs::read_to_string(&dts_path).unwrap();
+    println!("merged wasm-pack d.ts:\n{dts}");
+    assert!(dts.contains("to_json_value(): FooJSON;"), "{dts}");
+    assert!(dts.contains("export interface FooJSON"), "{dts}");
+    // wasm-pack pack ran.
+    let has_tgz = std::fs::read_dir(export.join("rust/wasm/pkg"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|e| e.path().extension().and_then(|x| x.to_str()) == Some("tgz"));
+    assert!(has_tgz, "wasm-pack pack produced no .tgz in the pkg dir");
+}
+
 #[test]
 fn json_preserve() {
     use std::str::FromStr;

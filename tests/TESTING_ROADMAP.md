@@ -57,17 +57,7 @@ is still a default-profile claim — the "Profile axis" pending decision below.
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
 
-3. **Output-validate `--json-schema-export` end-to-end.** *(small)* Still open: the full
-   `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack). This is also the only
-   layer that would exercise `#[wasm_bindgen]` macro-expansion / `.d.ts` / JS-surface concerns —
-   the systematic wasm gates `cargo check` on the host target and can't see them; today the few
-   hand-written `run_test` fixtures' wasm-pack builds are the sole coverage. The rest of the json
-   surface is covered: the in-process schema-vs-serde check, the `.d.ts` merge, and json-gen's
-   `export_schemas()` execution for scalar AND generic-backed newtypes (`integration_tests::json`
-   / `json_preserve`; `tests/corpus/newtype_generic.cddl` under the `json` profile of
-   `feature_corpus_compiles`), plus `run-json2ts.js` via `integration_tests::js_schema_to_ts`.
-
-4. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
+3. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
    the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
    role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
@@ -76,7 +66,7 @@ is still a default-profile claim — the "Profile axis" pending decision below.
    corpus differential (see `draft/testing-recommendations/RECOMMENDATIONS.md`): synthetic breadth vs
    real-world depth.
 
-5. **Small independent residuals (low).**
+4. **Small independent residuals (low).**
    - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
      fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
      `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
@@ -113,8 +103,8 @@ Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call.
 - **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
   float under the `json` profile; `OrderedHashMap` JSON **serde** (a map-bearing json fixture —
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
-  `tests/corpus/newtype_generic.cddl`, see the `--json-schema-export` item above — this remaining
-  serde half is a genuine snapshot chore); re-enabling `bool_wrapper` JSON newtype (blocked on
+  `tests/corpus/newtype_generic.cddl` (its `json` profile in `feature_corpus_compiles`) — this
+  remaining serde half is a genuine snapshot chore); re-enabling `bool_wrapper` JSON newtype (blocked on
   generator issue #223).
 - **Profile axis on the matrix annotation schema.** The generation-breadth and round-trip-breadth
   halves of "supported is a per-profile fact" are now covered by manual gates — the supported
