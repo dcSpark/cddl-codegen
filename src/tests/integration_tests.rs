@@ -17,6 +17,81 @@ fn checkout_hash() -> u64 {
     h.finish()
 }
 
+/// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
+/// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second
+/// deletes the first's fixtures/target mid-run (observed for `ir_conformance_corpus`). An advisory
+/// flock on a sibling lock file serializes them while KEEPING the path-keyed root — so the
+/// shared-cargo-target amortization that path-keying buys survives (a PID/random key would defeat
+/// target reuse). The OS releases the lock on process death, so there is no stale-lock failure
+/// mode. Returns the held lock; keep the returned handle alive for the whole gate (drop it and the
+/// lock releases).
+///
+/// `scratch_name` is the scratch root's dir name (e.g. `cddl_codegen_ir_conformance_<hash>`); the
+/// lock file is its SIBLING `temp_dir()/<scratch_name>.lock`, never inside the root (the root gets
+/// `remove_dir_all`'d; unlinking a held lock file would let a third run acquire a fresh inode while
+/// an earlier run still holds the old one).
+#[must_use = "the lock releases when the returned handle is dropped — bind it for the whole gate"]
+fn acquire_scratch_lock(scratch_name: &str) -> std::fs::File {
+    let lock_path = std::env::temp_dir().join(format!("{scratch_name}.lock"));
+    let file = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .unwrap_or_else(|e| panic!("cannot open scratch lock file {lock_path:?}: {e}"));
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => {
+            eprintln!(
+                "another run of this gate from this checkout is active — waiting for it to finish \
+                 (scratch root for {scratch_name:?} is shared; concurrent runs would clobber each \
+                 other's crates). This is expected: same-checkout runs serialize on {lock_path:?}."
+            );
+            file.lock()
+                .unwrap_or_else(|e| panic!("cannot acquire scratch lock {lock_path:?}: {e}"));
+        }
+        Err(std::fs::TryLockError::Error(e)) => {
+            panic!("cannot acquire scratch lock {lock_path:?}: {e}")
+        }
+    }
+    file
+}
+
+/// The one branch of `acquire_scratch_lock` worth a runnable check: a held lock is observed as
+/// contended by an independent handle to the same file, and releases when dropped. (A whole-gate
+/// two-process race isn't worth the machinery — this pins the advisory-flock semantics the gates
+/// rely on.)
+#[test]
+fn acquire_scratch_lock_serializes() {
+    let name = format!("cddl_codegen_scratch_lock_test_{:016x}", checkout_hash());
+    let lock_path = std::env::temp_dir().join(format!("{name}.lock"));
+    let _ = std::fs::remove_file(&lock_path);
+
+    let held = acquire_scratch_lock(&name);
+
+    // An independent handle to the SAME file must see the lock as held (advisory flock is per
+    // open-file-description, so this is a genuine second acquirer, not a re-lock of `held`).
+    let contender = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
+    assert!(
+        matches!(contender.try_lock(), Err(std::fs::TryLockError::WouldBlock)),
+        "a second handle should observe the lock as held while the first is alive"
+    );
+
+    // Release the first lock; the contender can now take it.
+    std::mem::drop(held);
+    assert!(
+        contender.try_lock().is_ok(),
+        "the lock should be acquirable once the first handle is dropped"
+    );
+    std::mem::drop(contender);
+    let _ = std::fs::remove_file(&lock_path);
+}
+
 fn tool_exists(bin: &str) -> bool {
     std::process::Command::new(bin)
         .arg("--version")
@@ -698,10 +773,9 @@ fn wasm_matrix_roundtrips() {
 
     // Own scratch dir (distinct from wasm_matrix_compiles) + one shared target so cbor_event/
     // wasm-bindgen/the libtest harness build once, then each tiny crate tests incrementally.
-    let root = std::env::temp_dir().join(format!(
-        "cddl_codegen_wasm_matrix_rt_{:016x}",
-        checkout_hash()
-    ));
+    let scratch_name = format!("cddl_codegen_wasm_matrix_rt_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
+    let root = std::env::temp_dir().join(&scratch_name);
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
@@ -1619,10 +1693,11 @@ fn ir_conformance_corpus() {
 
     let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
 
-    let root = std::env::temp_dir().join(format!(
-        "cddl_codegen_ir_conformance_{:016x}",
-        checkout_hash()
-    ));
+    let scratch_name = format!("cddl_codegen_ir_conformance_{:016x}", checkout_hash());
+    // Hold this for the whole gate: same-checkout concurrent runs serialize on it instead of
+    // deleting each other's crates via the `remove_dir_all` below.
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
@@ -2712,10 +2787,12 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
         .collect();
 
     // Own scratch dir + one shared target so cbor_event/wasm-bindgen/the libtest harness build once.
-    let root = std::env::temp_dir().join(format!(
+    let scratch_name = format!(
         "cddl_codegen_corpus_roundtrip_profiles_{:016x}",
         checkout_hash()
-    ));
+    );
+    let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
+    let root = std::env::temp_dir().join(&scratch_name);
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 

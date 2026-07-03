@@ -92,13 +92,6 @@ is still a default-profile claim — the "Profile axis" pending decision below.
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
-   - **`ir_conformance_corpus` scratch-dir concurrency.** The gate's scratch root is keyed by
-     a hash of the checkout path, which isolates different checkouts but not two concurrent runs
-     from the SAME checkout — overlapping runs clobber each other's generated crates and fail with
-     confusing unrelated-fixture errors (observed live; solo runs are clean). Any fix trades against
-     the shared-cargo-cache amortization that path-keying buys (a PID key defeats target-dir reuse;
-     a lock serializes but keeps the cache) — pick deliberately, or at minimum have the gate detect
-     a concurrent sibling and fail fast with a clear message.
    - **`corpus_detect` dsl-prose residual.** On a directive-leading comment line the detector
      credits every later `@word` via `matchAll`, which doesn't mirror `comment_ast`'s sequential parse
      (`@doc` prose runs to the next `@`; other directives stop at the first non-directive token) — a

@@ -320,7 +320,11 @@ cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture   #
 For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-conformance`, appends
 `CDDL_ORACLE_DEP` + the shared oracle helpers, copies the fixture in as
 `cddl_conformance_source.cddl`, and `cargo test`s the crate under one shared `CARGO_TARGET_DIR` (so
-`cddl` compiles once). Two curated lists, each empirically justified:
+`cddl` compiles once). The scratch root is keyed by checkout path and wiped at start, so the gate
+holds an advisory lock (`acquire_scratch_lock`) for its whole run: a second invocation from the same
+checkout waits for the first (printing a grep-stable "waiting for it to finish" message) rather than
+`remove_dir_all`ing its crates mid-run — same-checkout concurrent runs serialize while the shared
+target cache is preserved. Two curated lists, each empirically justified:
 
 - **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
   `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed
