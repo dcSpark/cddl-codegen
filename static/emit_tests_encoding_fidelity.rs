@@ -330,23 +330,66 @@ mod cddl_encoding_fidelity {
     /// Six whole-tree irregular re-encodings of `input` (a minted value's canonical bytes), one per
     /// mutation class. Variants byte-identical to the input (nothing mutatable for that class) are
     /// skipped, so the emitted loop never asserts vacuously on a no-op.
+    ///
+    /// The input is parsed ONCE and every class emits from the shared item tree (the per-class
+    /// `Cfg`s mirror the `widen_step`/… builders the self-check pins byte-for-byte).
     pub fn variants(input: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
-        let builders: [(&'static str, fn(&[u8]) -> Vec<u8>); 6] = [
-            ("widen_step", widen_step),
-            ("widen_max", widen_max),
-            ("indef_containers", indef_containers),
-            ("chunk_strings", chunk_strings),
-            ("reverse_maps", reverse_maps),
-            ("everything", everything),
+        let (item, _) = parse_item(input, 0);
+        let classes: [(&'static str, Cfg); 6] = [
+            (
+                "widen_step",
+                Cfg {
+                    widen: Widen::Step,
+                    ..OFF
+                },
+            ),
+            (
+                "widen_max",
+                Cfg {
+                    widen: Widen::Max,
+                    ..OFF
+                },
+            ),
+            ("indef_containers", Cfg { indef: true, ..OFF }),
+            ("chunk_strings", Cfg { chunk: true, ..OFF }),
+            (
+                "reverse_maps",
+                Cfg {
+                    reverse: true,
+                    ..OFF
+                },
+            ),
+            (
+                "everything",
+                Cfg {
+                    widen: Widen::Step,
+                    indef: true,
+                    chunk: true,
+                    chunk_fallback: true,
+                    reverse: true,
+                },
+            ),
         ];
         let mut out = Vec::new();
-        for (label, f) in builders {
-            let m = f(input);
+        for (label, cfg) in classes {
+            let mut m = Vec::new();
+            emit_item(&mut m, &item, &cfg);
             if m != input {
                 out.push((label, m));
             }
         }
         out
+    }
+
+    /// `variants` with the named mutation classes filtered out. The generated loop uses this when
+    /// the type reaches a variable-length container of major-type-7 elements/keys (bool/null/float),
+    /// whose indefinite re-encode the generated break-check can't round-trip — the generator passes
+    /// the affected class labels so this mutator stays type-blind.
+    pub fn variants_filtered(input: &[u8], exclude: &[&str]) -> Vec<(&'static str, Vec<u8>)> {
+        variants(input)
+            .into_iter()
+            .filter(|(label, _)| !exclude.contains(label))
+            .collect()
     }
 
     #[test]

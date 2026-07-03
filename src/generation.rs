@@ -4313,7 +4313,13 @@ fn create_serialize_impls(
                 end_len(
                     &mut ser_func,
                     "serializer",
-                    use_this_encoding.unwrap_or_default(),
+                    use_this_encoding.expect(
+                        "preserve-encodings embedded serialize: the array/map head was written from \
+                         `use_this_encoding` (always Some under preserve — see the len_encoding_var \
+                         caller), so its ending break must reference the same length-encoding \
+                         variable; a None here would emit a free-floating `.end(serializer, ..)` on \
+                         no receiver — an uncompilable generated crate",
+                    ),
                     true,
                     cli,
                 );

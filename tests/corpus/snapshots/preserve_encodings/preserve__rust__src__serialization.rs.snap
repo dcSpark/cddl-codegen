@@ -1675,6 +1675,53 @@ impl Deserialize for CborInCbor {
     }
 }
 
+impl cbor_event::se::Serialize for CustomFieldHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        self.nested.serialize(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for CustomFieldHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let nested = StructWithCustomSerialization::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("nested"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CustomFieldHolder {
+                nested,
+                encodings: Some(CustomFieldHolderEncoding { len_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("CustomFieldHolder"))
+    }
+}
+
 impl cbor_event::se::Serialize for DeeplyNested {
     fn serialize<'se, W: Write>(
         &self,

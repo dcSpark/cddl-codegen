@@ -212,5 +212,12 @@ struct_with_custom_serialization = [
   tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]
 
+; A record that only REFERENCES a named struct whose FIELDS carry @custom_serialize (the struct
+; itself has no type-level custom-ser). The encoding-fidelity oracle must exclude this holder too:
+; feeding irregular re-encodings through the nested struct's custom deserializer (which rejects any
+; non-indefinite-chunked bytes) would panic. Guards emit_tests's reachable-custom-ser walk against
+; regressing to a type-level-only check.
+custom_field_holder = [ nested: struct_with_custom_serialization ]
+
 wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
