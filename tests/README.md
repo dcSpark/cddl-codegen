@@ -148,10 +148,12 @@ itself). A **failure is a strong signal** (our bytes don't match the spec the ge
 from); a **pass is weak** — the validator has known gaps (it does not enforce `uint .size`, and
 mishandles `.size`-aliased element types inside arrays) AND it is *not fully decorrelated*: it parses
 the `.cddl` with the same dcSpark `cddl` fork at the same pinned rev as the generator's own front end
-(`CDDL_ORACLE_DEP`), so a fork-level misparse escapes it. It is therefore a *second* oracle, never the
-sole one; decorrelating the parser (anweiss rev / the ruby `cddl` gem in verify.ts / a ciborium
-structural differential) is a TESTING_ROADMAP item. Because the validator validates against a spec's first type rule only, the helper
-prepends a synthetic root aliasing the rule under test.
+(`CDDL_ORACLE_DEP`), so a **fork-level misparse** (grammar/AST bug that corrupts generator IR and this
+oracle's spec-interpretation identically) escapes it. That specific gap is now covered by a *lineage*-
+decorrelated second sweep — the harness-side ruby `cddl` gem in `ir_conformance_corpus` (below), which
+shares no parser with the fork — but this rust oracle's own caveat still holds: it remains a *second*
+oracle, never the sole one. Because the validator validates against a spec's first type rule only, the
+helper prepends a synthetic root aliasing the rule under test.
 
 It's wired into the `preserve-encodings` fixture (the richest hand-written round-trip surface, and the
 one whose whole point — irregular definite/indefinite encodings — most needs an independent structural
@@ -340,6 +342,36 @@ For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-con
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
 so a silent no-op sweep can't pass.
+
+**Decorrelated (ruby `cddl` gem) second oracle.** The rust oracle above shares the dcSpark fork's
+parser with the generator, so a **fork misparse** (which corrupts generator IR and the oracle's spec
+reading identically) mints well-formed-but-spec-wrong bytes and passes green. To catch that class this
+gate re-validates the *same* minted bytes through the ruby `cddl` gem — the RFC author's reference
+tool, sharing no parser, decoder, language, or lineage with the fork. The bridge is a dump hook: with
+`--emit-tests`, when `CDDL_CODEGEN_DUMP_MINTED` names a directory each round-trip case writes its bytes
+to `<rule>__case<i>.cbor` (pure `std`, inert when the var is unset, no CLI flag — see
+`emit_tests.rs::roundtrip_body`); the gate points it at a per-fixture dir, then sweeps in sorted order,
+invoking `<gem> <synthetic-rooted-spec> validate <case.cbor>` (the gem targets a spec's first rule, so
+the same `__cddl_oracle_root = <rule>` trick aims it). The gem is **harness-side only** — never a crate
+dep, so shipped output stays ruby-free. Teeth and posture:
+
+- **`RUBY_EXPECTED_FAIL`** — fixtures the gem diverges on for a documented, non-bug reason (a gem
+  construct gap the fork legitimately supports; e.g. `nested_group`, whose bare top-level GROUP rule
+  `inner = (a, b)` cddl-codegen serializes as an array but the gem won't validate as an instance type).
+  Each entry is anchored with a justification. A divergence is *signal*: an unledgered one is either a
+  gem gap to record here **with a reason**, or — the class this oracle exists to catch — a fork misparse
+  minting spec-violating bytes. **Investigate before ledgering.** A ledgered fixture that stops diverging
+  turns the gate RED (stale entry), mirroring `EXPECTED_FAIL`.
+- **Negative control** — after the sweep, one known-good case is truncated (final byte dropped =
+  guaranteed malformed) and the gem *must* reject it; a gem invocation that exits 0 regardless of input
+  can never pass the gate.
+- **Case floor** — a minimum total swept-case count, so a dump hook that silently stops firing fails
+  rather than shrinking to a vacuous no-op.
+- **SKIPPED when absent** — gem discovery mirrors `verify.ts`'s `resolveRubyCddl` (`RUBY_CDDL` env pin,
+  fail-loud if the pin is bad; else the gem-dir probe — never `$PATH`/`which cddl`, which is the
+  unrelated *rust* `cddl`). When no gem is found the sweep prints one grep-stable line
+  `RUBY ORACLE: SKIPPED (...)` and the rust half still gates: absence must **not** fail the gate, so the
+  full tier stays runnable on a fresh machine. Install locally with `gem install --user-install cddl`.
 
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
