@@ -165,6 +165,79 @@ fn unsupported_construct_panic_catalog() {
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
 
+/// Expect-reject scorecard — the THIRD generation-outcome catalog, over `tests/matrix_reject/*.cddl`
+/// (projected by `cddl-matrix/project_robustness.ts`). These are constructs the matrix marks off-limits
+/// that mint NO test elsewhere: non-panic `unsupported` rows (parse-rejected control ops like
+/// `ctl.cborseq`/`ctl.oid`/`ctl.sdnv`; generates-but-doesn't-compile shapes like `prelude.any`) plus the
+/// `out_of_profile` rows (which can themselves be panic-class, e.g. `type2.tag_head_type`). The catalog
+/// is heterogeneous by construction — under this generate-only pass a parse-reject records
+/// `error (graceful)`, a generates-but-doesn't-compile row records `ok`, an out-of-profile panic records
+/// `PANIC` — so the drift assertion is the snapshot itself, not a uniform outcome.
+///
+/// PURPOSE: catch a parser/codegen change that SILENTLY makes a rejected construct parse — the exact
+/// thing a past cddl-fork bump did to 14 control ops — which flips a committed `error (graceful)` row to
+/// `ok` and surfaces here as a snapshot diff in the DEFAULT `cargo test` suite, instead of waiting for a
+/// manual verify.ts run. The `project_robustness.ts --check` cross-check independently pins each row's
+/// expected label to its matrix evidence class, so a re-bless that hides such a flip fails that gate.
+///
+/// Generate-only (no `cargo check`), matching the matrix probe's flags (--wasm=false, default profile).
+#[test]
+fn unsupported_construct_reject_catalog() {
+    let dir = std::path::Path::new("tests/matrix_reject");
+    let mut inputs: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    inputs.sort();
+    assert!(
+        !inputs.is_empty(),
+        "no reject fixtures in {dir:?} (run `bun run project_robustness.ts`)"
+    );
+
+    let mut catalog = String::from(
+        "# generator outcome per matrix off-limits (reject-class) construct — a SCORECARD, not a contract.\n\
+         # Heterogeneous by design: parse-rejected rows record `error (graceful)`, generates-but-doesn't-\n\
+         # compile rows record `ok` (generate-only can't see the later failure), out-of-profile panics record\n\
+         # `PANIC`. A row flipping `error (graceful)` -> `ok` means a rejected construct started PARSING (the\n\
+         # cddl-fork-bump regression class) — investigate, don't blindly re-bless. project_robustness.ts --check\n\
+         # pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.\n\n",
+    );
+    // hook restored (and lock released) before the possibly-panicking snapshot assertion below
+    with_thread_silenced_panics(|| {
+        for path in &inputs {
+            let id = path.file_stem().unwrap().to_str().unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "matrix_reject_unused",
+                "--wasm",
+                "false",
+            ]);
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::api::generated_strings(&cli)
+            }));
+            let label = match outcome {
+                Ok(Ok(_)) => "ok",
+                Ok(Err(_)) => "error (graceful)",
+                Err(_) => "PANIC",
+            };
+            catalog.push_str(&format!("{id:34} {label}\n"));
+        }
+    });
+
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(
+        std::env::current_dir()
+            .unwrap()
+            .join("tests/matrix_reject/snapshots"),
+    );
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| insta::assert_snapshot!("catalog", catalog));
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");

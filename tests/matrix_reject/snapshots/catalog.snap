@@ -1,0 +1,18 @@
+---
+source: src/tests/robustness_tests.rs
+expression: catalog
+---
+# generator outcome per matrix off-limits (reject-class) construct — a SCORECARD, not a contract.
+# Heterogeneous by design: parse-rejected rows record `error (graceful)`, generates-but-doesn't-
+# compile rows record `ok` (generate-only can't see the later failure), out-of-profile panics record
+# `PANIC`. A row flipping `error (graceful)` -> `ok` means a rejected construct started PARSING (the
+# cddl-fork-bump regression class) — investigate, don't blindly re-bless. project_robustness.ts --check
+# pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.
+
+ctl.cborseq                        error (graceful)
+ctl.oid                            error (graceful)
+ctl.sdnv                           error (graceful)
+ctl.sdnvseq                        error (graceful)
+prelude.any                        ok
+type2.tag_head_type                PANIC
+value.bytes                        error (graceful)

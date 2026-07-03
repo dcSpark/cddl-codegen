@@ -524,9 +524,18 @@ with a ROADMAP entry — never silently.
 review the new fixtures, run the gate. Prune cells whose emission duplicates an existing one — the
 projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) to one representative role.
 
-> Sibling system: `tests/matrix_{supported,panic}/` (projected by `cddl-matrix/project_robustness.ts`,
+> Sibling system: `tests/matrix_{supported,panic,reject}/` (projected by `cddl-matrix/project_robustness.ts`,
 > driven by `src/tests/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
-> "does a construct *generate*?" rather than "does its wasm *compile*?".
+> "does a construct *generate*?" rather than "does its wasm *compile*?". Three generation-outcome
+> catalogs, one per matrix verdict class: **supported** (`all_supported_constructs_generate` — must
+> generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics),
+> and **reject** (`unsupported_construct_reject_catalog` — the rows the matrix marks off-limits that mint
+> no other test: parse-rejected control ops, generates-but-doesn't-compile shapes like `prelude.any`, and
+> out-of-profile constructs). The reject catalog's payoff is catching a parser/codegen change that
+> *silently* makes a rejected construct parse — the exact regression a past cddl-fork bump caused for 14
+> control ops — as a snapshot diff in the default `cargo test` run instead of only on a manual verify.ts
+> sweep; `project_robustness.ts --check` independently pins each reject row's expected label to its matrix
+> evidence class, so a re-bless can't quietly launder such a flip.
 
 ## Coverage
 
