@@ -63,6 +63,9 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 - New features should be built on master directly instead of branching unless justified (ex: a worktree)
 - Commit unsigned to avoid GPG prompts
+- Agent worktrees can be cut a few commits behind master. If you're an agent working in a worktree,
+  first verify your task's referenced commits are ancestors (`git merge-base --is-ancestor <sha> HEAD`)
+  and merge master in if not — file:line references in your task spec assume master's tip.
 
 ## Build & verify
 
