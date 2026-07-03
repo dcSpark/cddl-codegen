@@ -2170,3 +2170,123 @@ fn hostile_deep_rejects_without_aborting() {
 
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// Breadth companion to `robustness_tests::all_supported_constructs_generate`: run the matrix
+/// supported-catalog generation check under ALL THREE `ALL_PROFILES` (default / preserve / json),
+/// not just default. "Supported" is otherwise silently a default-profile fact — a construct can
+/// generate cleanly bare yet abort under `--preserve-encodings` (the float `unimplemented!` class)
+/// or the json flags. Generation-only (in-process `generated_strings`, no compile), so it stays
+/// cheap enough to run every fixture × both wasm modes × three profiles.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze (the default
+/// profile is already covered by the always-on `all_supported_constructs_generate`). Run it with
+/// `cargo test --bin cddl-codegen all_supported_constructs_generate_all_profiles -- --ignored`.
+///
+/// `EXPECTED_FAIL` pins the known per-profile generation failures with a reason each (the default
+/// profile has none — every supported construct generates there). Four-state verdict per
+/// (profile, fixture), mirroring the wasm-matrix SKIP pattern: a NON-expected failure fails the
+/// gate (a real regression, or deliberately add it here with a reason); an EXPECTED failure that
+/// now generates fine fails the gate as "resurfaced" (remove it — the gap closed), so the list
+/// can't rot.
+#[test]
+#[ignore]
+fn all_supported_constructs_generate_all_profiles() {
+    use crate::cli::Cli;
+    use clap::Parser;
+
+    // (profile, fixture stem, reason) — constructs that FAIL to generate under a non-default
+    // profile. The default profile has no entries: `all_supported_constructs_generate` already
+    // proves every fixture generates there. A cell fails "as expected" if generation errors OR
+    // panics under EITHER wasm mode for that (profile, fixture). Only preserve has entries today,
+    // and both are the SAME float `unimplemented!` class (generation.rs "preserve_encodings is not
+    // implemented for float"): `number = int / float` and `time` (a float epoch). Tracked by the
+    // `preserve_encodings_supports_floats` stub; when that lands, these clear and become resurfaced.
+    const EXPECTED_FAIL: &[(&str, &str, &str)] = &[
+        (
+            "preserve",
+            "prelude.number",
+            "number = int / float; float aborts generation under --preserve-encodings \
+             (generation.rs 'preserve_encodings is not implemented for float'). See the \
+             preserve_encodings_supports_floats stub.",
+        ),
+        (
+            "preserve",
+            "prelude.time",
+            "time is a float epoch; float aborts generation under --preserve-encodings \
+             (generation.rs 'preserve_encodings is not implemented for float'). See the \
+             preserve_encodings_supports_floats stub.",
+        ),
+    ];
+
+    let dir = std::path::Path::new("tests/matrix_supported");
+    let mut inputs: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    inputs.sort();
+    assert!(
+        !inputs.is_empty(),
+        "no supported fixtures in {dir:?} (run `bun run project_robustness.ts`)"
+    );
+
+    let profiles = super::ALL_PROFILES;
+    let mut failures = Vec::new(); // non-expected generation failures — real regressions
+    let mut resurfaced = Vec::new(); // EXPECTED_FAIL cells that now generate — remove them
+    for path in &inputs {
+        let id = path.file_stem().unwrap().to_str().unwrap();
+        for (profile, extra) in profiles {
+            let expected = EXPECTED_FAIL
+                .iter()
+                .find(|(p, i, _)| p == profile && i == &id)
+                .map(|(_, _, reason)| *reason);
+            // A construct "fails under this profile" if generation errors/panics under EITHER wasm
+            // mode (the float `unimplemented!` class aborts in core generation regardless of wasm;
+            // running both modes keeps the wasm-binding emission path in scope like the default gate).
+            let mut fail_detail: Option<String> = None;
+            for wasm in ["false", "true"] {
+                let mut args = vec![
+                    "cddl-codegen",
+                    "--input",
+                    path.to_str().unwrap(),
+                    "--output",
+                    "matrix_supported_profiles_unused",
+                    "--wasm",
+                    wasm,
+                ];
+                args.extend(extra.iter().copied());
+                let cli = Cli::parse_from(args);
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::api::generated_strings(&cli)
+                })) {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        fail_detail = Some(format!("{id}/{profile} (--wasm {wasm}): error: {e}"));
+                        break;
+                    }
+                    Err(_) => {
+                        fail_detail = Some(format!("{id}/{profile} (--wasm {wasm}): PANIC"));
+                        break;
+                    }
+                }
+            }
+            match (expected, fail_detail) {
+                (Some(_), None) => resurfaced.push(format!("{id}/{profile}")),
+                (None, Some(detail)) => failures.push(detail),
+                _ => {} // (Some,Some)=red as expected; (None,None)=green as expected
+            }
+        }
+    }
+    assert!(
+        resurfaced.is_empty(),
+        "these EXPECTED_FAIL supported constructs now generate — remove them from EXPECTED_FAIL \
+         (the gap closed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "matrix-supported constructs failed to generate under a non-default profile (regression, \
+         or deliberately add to EXPECTED_FAIL with a reason):\n{}",
+        failures.join("\n")
+    );
+}
