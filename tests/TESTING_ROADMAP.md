@@ -72,9 +72,11 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      "round-trips" wherever the type mints a test surface, with a per-probe `minted` bit and, for
      shapes with no standalone surface, an `embedded` bit set by the synthetic-holder re-probe (the
      Minter-coverage bullet below), so evidence reads "round-trips when embedded" rather than the
-     bare "no minted round-trip surface". Remaining: the preserve/json profiles once their
-     emitted-test surface is validated at corpus breadth (verify.ts probes default flags only — the
-     "supported is silently a default-profile fact" decision below).
+     bare "no minted round-trip surface". The preserve/json emitted-test surface now RUNS at corpus
+     breadth via the manual `feature_corpus_roundtrips_nondefault_profiles` gate (`--emit-tests` +
+     `cargo test` for both profiles, rust + wasm). Remaining: `verify.ts`'s matrix probes still
+     exercise the default flags only — extending the matrix "supported" verdict to a per-profile
+     axis (the pending-decision entry below) is the longer-term frontier.
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
      over irregular encodings). Spec-anchored *known-answer* vectors now exist
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
@@ -281,12 +283,17 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
   `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
   chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
-- **"Supported" is silently a default-profile fact.** verify.ts probes default flags only, and the
-  supported-catalog gate (`all_supported_constructs_generate`) runs the default profile — so a
-  supported-construct × preserve/json failure is caught only where a corpus fixture isolates that
-  construct, and flag-specific failures are a proven class (floats hit `unimplemented!` under
-  preserve). Cheapest: run the supported catalog under all three profiles with a small per-profile
-  expected-fail list; longer-term, a profile axis on the matrix annotation schema.
+- **Profile axis on the matrix annotation schema.** The generation-breadth and round-trip-breadth
+  halves of "supported is a per-profile fact" are now covered by manual gates — the supported
+  catalog generates under all three profiles (`all_supported_constructs_generate_all_profiles`,
+  with a per-profile expected-fail list), and the corpus `--emit-tests` round-trip suite runs under
+  preserve/json (`feature_corpus_roundtrips_nondefault_profiles`). What remains is the matrix's OWN
+  verdict: `verify.ts` probes the default flags only, so a matrix `status = "supported"` annotation
+  is still a default-profile claim. The frontier is a per-profile axis on the matrix annotation
+  schema (a construct's verdict recorded per profile), so a supported-construct × preserve/json
+  regression surfaces as a matrix-drift diff rather than only inside those two manual gates.
+  Flag-specific failures are a proven class (floats hit `unimplemented!` under preserve — see the
+  `preserve_encodings_supports_floats` stub).
 - **Tag-drop residue for exotic single-type tag inners (auto-wrap coverage gap).** Top-level tag rules
   auto-wrap into a tag-writing/tag-checking newtype whenever the inner is a primitive/named type
   (`tagged = #6.42(text)`) or a `bytes .cbor T` wrapper (`#6.20(bytes .cbor foo)`) — closing the

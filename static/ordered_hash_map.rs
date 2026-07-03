@@ -1,8 +1,20 @@
 use core::hash::Hash;
 
-#[derive(Clone, Debug, Default, Hash, Ord, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Hash, Ord, Eq, PartialEq, PartialOrd)]
 pub struct OrderedHashMap<K, V>(linked_hash_map::LinkedHashMap<K, V>) where
     K : Hash + Eq + Ord;
+
+// An empty ordered map is always constructible, so `Default` must not require `K: Default` /
+// `V: Default` the way `#[derive(Default)]` over a generic struct would. This mirrors
+// `std::collections::BTreeMap`/`HashMap` (empty-map default, no element bounds) so a table whose
+// KEY type isn't `Default` — e.g. a generated `@used_as_key` enum under `--preserve-encodings`,
+// where tables become `OrderedHashMap` and enum keys don't derive `Default` — can still be
+// `Default::default()`ed (as the emitted round-trip tests mint struct fields).
+impl<K, V> Default for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<K, V> std::ops::Deref for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     type Target = linked_hash_map::LinkedHashMap<K, V>;
