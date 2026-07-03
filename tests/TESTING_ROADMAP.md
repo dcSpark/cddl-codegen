@@ -32,8 +32,9 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
   turns "output didn't change" into "output is right" for every ctor-mintable type, executed in CI
   via `integration_tests::emit_tests_execute`, across the corpus (`feature_corpus_compiles` runs
   `--emit-tests` + `cargo test`), and across the matrix (`verify.ts` is execution-gated, so the
-  matrix "supported" verdict itself means "round-trips" for every minting shape). The remaining
-  breadth frontier is the preserve/json profiles and the unminted shapes (minter coverage, item 1).
+  matrix "supported" verdict itself means "round-trips" for every minting shape, and the shapes with
+  no standalone surface round-trip at their embed site via verify.ts's synthetic-holder fallback). The
+  remaining breadth frontier is the preserve/json profiles (minter coverage, item 1).
 - **Coverage (compile + round-trip)** ✅ — the generated **wasm** crate is compiled by systematic gates
   (`feature_corpus_compiles` `--wasm=true`; the **wasm-ABI matrix** `wasm_matrix_compiles`, 80 enumerated
   cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
@@ -68,11 +69,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      flip are in: `feature_corpus_compiles` runs the default profile with `--emit-tests` +
      `cargo test` (CI), and `verify.ts`'s per-feature / per-cell / per-control-op probes are
      execution-gated (manual, per the CI freeze) — the matrix "supported" verdict means
-     "round-trips" wherever the type mints a test surface, with a per-probe `minted` bit so
-     unminted shapes are labeled "no minted round-trip surface" rather than credited. Remaining:
-     the preserve/json profiles once their emitted-test surface is validated at corpus breadth
-     (verify.ts probes default flags only — the "supported is silently a default-profile fact"
-     decision below).
+     "round-trips" wherever the type mints a test surface, with a per-probe `minted` bit and, for
+     shapes with no standalone surface, an `embedded` bit set by the synthetic-holder re-probe (the
+     Minter-coverage bullet below), so evidence reads "round-trips when embedded" rather than the
+     bare "no minted round-trip surface". Remaining: the preserve/json profiles once their
+     emitted-test surface is validated at corpus breadth (verify.ts probes default flags only — the
+     "supported is silently a default-profile fact" decision below).
    - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
      over irregular encodings). Spec-anchored *known-answer* vectors now exist
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
@@ -82,14 +84,19 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      anchors, nint vectors, the runtime table-sort pins, and the cross-major `-1`/`256`
      length-first-vs-bytewise discriminator all live in the sibling suites, each
      mutation-verified red.)
-   - **Minter coverage:** a standalone mint surface for transparent bounded/newtype-able aliases is
-     the highest-leverage remaining minter extension. From the verify.ts flip, a large slice of the
-     ~70 supported matrix probes mint nothing standalone — transparent aliases (`x = uint`,
-     `x = [* uint]`, tables, bounded aliases like `g = [2*5 uint]`) plus pure c-enums — so their
-     execution verdict falls back to compile. A standalone mint would also execute the standalone
-     bounds class the `nint` ledger entry tracks (the construct-reject on named bounded-`nint`
-     newtypes is already emitted; the residual is the *transparent-alias* bounded surface, which has
-     no named struct to hang a `new()`/round-trip on).
+   - **Minter coverage:** the shapes with no standalone mint surface — transparent aliases
+     (`x = uint`, `x = [* uint]`), named tables/arrays (orphan-rule: no standalone `Serialize`),
+     bounded aliases like `g = [2*5 uint]`, and pure c-enums — get their execution coverage
+     PROBE-SIDE, from `verify.ts`'s embed fallback: when the base probe mints nothing, it re-probes
+     the rule wrapped in a synthetic record holder (`__probe_holder = [0, <rule>]`) and `cargo test`s
+     that crate, so the type's serialize/deserialize runs at its EMBED site — the only wire path these
+     shapes have (a transparent alias has no `new()`/round-trip of its own to exercise). Evidence then
+     reads "round-trips when embedded". A STANDALONE generated API for these aliases (a `new()` +
+     round-trip on the alias itself, which would also give the `nint` ledger entry's transparent-alias
+     bounded surface a named struct to hang assertions on) would require generator surface changes
+     nobody has asked for; until such a consumer need exists, embedding is the wire path and the probe
+     covers it. The remaining probe-side frontier is carrying the same embed fallback into the
+     preserve/json profiles when those profiles' emitted-test surface is validated at corpus breadth.
    - **Decorrelated conformance parser.** The IR-bug conformance oracle (`--emit-tests-conformance`)
      shares the dcSpark `cddl` fork's *parser* with the generator, so a fork-level misparse escapes it
      (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.

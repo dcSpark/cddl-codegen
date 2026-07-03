@@ -109,13 +109,17 @@ Remaining:
 
 Support is execution-gated: the probe generates with `--emit-tests=true` AND runs `cargo test`, so
 "supported" means *accept + compiles + the IR-minted round-trip and bounded-reject tests pass* wherever the
-type mints a test surface (a per-probe `minted` bit keeps the evidence honest — transparent aliases, pure
-c-enums, prelude scalar typedefs and the `Int` extern mint nothing and fall back to the compile verdict,
-which also caught `x = any`). Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode, round-trip,
-enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for minting
-shapes; still deferred: the **encode vs decode** direction (a round-trip conflates them — splitting needs
-per-direction reference vectors, not just self-consistency) and execution for the unminted shapes (the
-minter-coverage items in `tests/TESTING_ROADMAP.md`). Q4 stays blocked on that directional split.
+type mints a test surface (a per-probe `minted` bit keeps the evidence honest — `x = any` mints nothing
+AND fails to compile, so it stays unsupported). Shapes with no STANDALONE surface — transparent aliases,
+bounded/newtype-able aliases, named tables/arrays, pure c-enums — are re-probed wrapped in a synthetic
+record holder (`__probe_holder = [0, <rule>]`, per-probe `embedded` bit) so their embed-site wire path (the
+only one they have) runs, and the evidence reads "round-trips when embedded"; the embed only UPGRADES
+evidence, never downgrades a verdict. Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode,
+round-trip, enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for
+both minting and embed-covered shapes; still deferred: the **encode vs decode** direction (a round-trip
+conflates them — splitting needs per-direction reference vectors, not just self-consistency), and carrying
+the embed fallback into the preserve/json profiles (the minter-coverage item in
+`tests/TESTING_ROADMAP.md`). Q4 stays blocked on that directional split.
 
 **Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not

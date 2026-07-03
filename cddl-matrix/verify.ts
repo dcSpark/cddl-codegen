@@ -13,8 +13,13 @@
  * `--emit-tests=true` and "supported" requires `cargo test` of the generated crate to PASS — the
  * IR-minted round-trip/reject tests must execute green, not merely compile. So the matrix's
  * "supported" verdict means "round-trips" wherever the type mints a test surface (recorded per probe
- * as `minted`; unmintable shapes — transparent aliases, pure c-enums — fall back to the compile
- * verdict, and their evidence says so instead of claiming a round-trip).
+ * as `minted`). Shapes with no STANDALONE mint surface — transparent aliases, bounded/newtype-able
+ * aliases, named tables/arrays (orphan-rule: no standalone Serialize), pure c-enums — get an EMBED
+ * FALLBACK: the probe re-runs with a synthetic record holder wrapping the rule
+ * (`__probe_holder = [0, <rule>]`) so the type's ONLY wire path (its embed site) executes, and the
+ * evidence reads "round-trips when embedded" (recorded per probe as `embedded`). The fallback only
+ * UPGRADES evidence — a synthetic that can't generate (generic rule, panic) or can't round-trip falls
+ * back to the compile verdict, so "supported" is never overstated.
  *
  * By DEFAULT the cddl-codegen probe ALSO runs a wasm oracle: it regenerates each example with
  * `--wasm=true --emit-tests=true` and `cargo test`s the generated wasm crate (the emitted
@@ -71,6 +76,10 @@ interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
   ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean;
   minted_wasm?: boolean; wasm_roundtrips?: number;
+  // Embed-fallback outcome (feature/control-op loops only, when the base probe minted nothing):
+  // true = round-trips inside a synthetic record holder; false = holder minted but round-trip failed;
+  // undefined = not applicable (base already minted) or the synthetic was un-embeddable/failed to generate.
+  embedded?: boolean;
 }
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
@@ -442,6 +451,66 @@ function wasmEvidence(minted_wasm?: boolean, wasm_roundtrips?: number, exempt = 
     : `; wasm crate failed to compile (cargo test exit ${wasm_roundtrips})`;
 }
 
+// --- EMBED FALLBACK for shapes with no STANDALONE mint surface -----------------------------------
+// A large class of supported shapes mints NO standalone round-trip test: a transparent alias emits a
+// bare `pub type` with no methods; a bounded/newtype-able alias (`g = [2*5 uint]`), a named Table/Array
+// struct, and a pure c-enum have no standalone `Serialize` impl (the orphan rule forbids one for a type
+// the crate doesn't own the wire contract of standalone). Their ONLY wire path is at an EMBED site —
+// where a record field of that type serializes/deserializes through the enclosing struct. So when the
+// base probe minted nothing, RE-PROBE with a synthetic record holder that wraps the probed rule
+// (`__probe_holder = [0, <rule>]` — the leading literal forces a 2+ element heterogeneous record so the
+// existing record minter fires, never a collapsed single-field alias). Evidence then reads "round-trips
+// when embedded", which is honest: it round-trips at the only wire path these shapes have.
+//
+// A standalone mint surface would need generator surface changes nobody has asked for; this closes the
+// coverage PROBE-SIDE with zero generator changes. The synthetic re-probe can ONLY UPGRADE evidence: a
+// synthetic that fails to generate (a generic rule needing type args, a panic) or fails to mint/round-trip
+// falls back to the base compile verdict, LOUDLY logged, and never downgrades a previously-supported probe.
+const HOLDER_RULE = "__probe_holder";
+
+// The probed rule = the FIRST rule defined in the example (the identifier before the first `=`, `/=`, or
+// `//=`). A generic rule head (`foo<a> = …`) can't be referenced without type arguments, so it is not
+// embeddable — detected by the `<…>` after the name and skipped with a recorded reason.
+function firstRuleName(example: string): { name: string; generic: boolean } | null {
+  for (const raw of example.split(/\r\n|\r|\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith(";")) continue;
+    const m = line.match(/^([A-Za-z@_$][A-Za-z0-9@_$.-]*)\s*(<[^=]*>)?\s*(\/\/=|\/=|=)(?![=>])/);
+    if (m) return { name: m[1], generic: m[2] !== undefined };
+  }
+  return null;
+}
+
+// Runs ONLY when the base probe generated but minted no standalone surface (gen 0, minted false).
+// Returns embedded=true iff the synthetic holder minted AND its `cargo test` round-trips green;
+// embedded stays undefined on any skip/failure (kept the compile verdict). Every path logs one loud
+// `[embed]` line so a skip or a failed embed is visible in the run output, not silent.
+function embedFallback(id: string, example: string, cg: CodegenProbe): boolean | undefined {
+  if (cg.gen !== 0 || cg.minted) return undefined; // not applicable — base already mints (or didn't generate)
+  const log = (note: string) => console.log(`  [embed] ${id}: ${note}`);
+  const rule = firstRuleName(example);
+  if (!rule) { log("no parseable rule head; embed skipped (kept compile verdict)"); return undefined; }
+  if (rule.generic) { log(`generic rule '${rule.name}' needs type args; not embeddable (kept compile verdict)`); return undefined; }
+  writeFileSync(probeFile, `${example}\n${HOLDER_RULE} = [0, ${rule.name}]\n`);
+  const gen = runCodegen();
+  if (gen !== 0) { log(`synthetic holder failed to generate (cargo run exit ${gen}); kept compile verdict`); return undefined; }
+  const libPath = join(ccOut, "rust", "src", "lib.rs");
+  const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
+  if (!minted) { log("synthetic holder minted no test surface; kept compile verdict"); return undefined; }
+  const test = runTest();
+  if (test === 0) { log(`round-trips when embedded in ${HOLDER_RULE}`); return true; }
+  log(`embedded round-trip FAILED (cargo test exit ${test}); kept compile verdict`);
+  return false;
+}
+
+// Evidence-text upgrade: when the type round-trips embedded, replace the honest-but-weak compile clause
+// with the embedded round-trip clause. Any other embed outcome (skipped / failed) leaves the base
+// evidence untouched so support is never overstated.
+function embedDetail(detail: string, embedded?: boolean): string {
+  if (embedded !== true) return detail;
+  return detail.replace("compiles (no minted round-trip surface)", "compiles; round-trips when embedded (synthetic record holder)");
+}
+
 // [ruby, rust, codegen probe].
 function oracles(example: string): [number, number, CodegenProbe] {
   writeFileSync(probeFile, example + "\n");
@@ -523,7 +592,10 @@ for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1
   const [a, b, cg] = oracles(f.example);
   const profile = f.profile ?? "RFC8610";
   const d = derive(f.id, profile, a, b, cg);
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, ...d });
+  // Embed fallback (evidence-only): re-probe unmintable shapes wrapped in a synthetic record holder so
+  // their embed-site wire path executes. Never changes `d.support` — only enriches the evidence text.
+  const embedded = embedFallback(f.id, f.example, cg);
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, embedded, ...d });
 }
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
@@ -567,7 +639,7 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
-interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; example: string }
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
 // ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
 // simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
@@ -586,7 +658,11 @@ for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id 
   // unimplemented-op noise this list is expected to carry.
   if (a !== 0) controlop_uncorroborated.push(`${co.id} (ruby exit ${a})`);
   const v = codegenVerdict(cg);
-  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, example: co.example! });
+  // Same embed fallback as the feature loop (trivial generalization — control-op examples are single
+  // named rules): an op whose annotated type mints no standalone surface (`.cbor`, `.ge` -> a bounded
+  // alias) round-trips at its embed site, upgrading the evidence without touching the support verdict.
+  const embedded = embedFallback(co.id, co.example!, cg);
+  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example! });
 }
 
 // Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
@@ -621,9 +697,12 @@ const annoLines: string[] = [
   "#     (the EXECUTION-GATE: the emitted IR-minted round-trip/reject tests must PASS — strictly",
   "#     stronger than compiling). support = generates AND compiles AND round-trips. exit 0 alone is",
   "#     NOT enough: `x = any` generates `pub type X = Any;` (a type defined nowhere) which fails to",
-  "#     compile -> unsupported, not a false 'supported'. A type that mints no test surface",
-  "#     (transparent alias / pure c-enum) falls back to the compile verdict and its evidence says",
-  "#     'no minted round-trip surface' instead of claiming a round-trip.",
+  "#     compile -> unsupported, not a false 'supported'. A type that mints no STANDALONE test surface",
+  "#     (transparent alias / bounded-or-newtype-able alias / named table or array / pure c-enum) is",
+  "#     RE-PROBED wrapped in a synthetic record holder (`__probe_holder = [0, <rule>]`) so its embed-",
+  "#     site wire path runs: evidence then reads 'round-trips when embedded (synthetic record holder)'.",
+  "#     If the synthetic can't generate (a generic rule needing type args) or can't round-trip, the",
+  "#     evidence stays 'no minted round-trip surface' — the embed only ever UPGRADES it.",
   "# status: supported | unsupported | out_of_profile | uncertain.",
   "#   out_of_profile = the feature's grammar profile is NEWER than cddl-codegen's TARGET profile AND",
   "#         cddl-codegen rejects it (it is outside what the tool targets, NOT a gap within it).",
@@ -644,7 +723,7 @@ const annoLines: string[] = [
   "",
 ];
 for (const pr of probe_results) {
-  let ev = `probe: cddl-codegen ${pr.support_detail ?? "exit " + pr.codegen}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
+  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
   if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
@@ -674,7 +753,7 @@ for (const c of containment_corroboration.filter(c => c.support !== null)) {
 annoLines.push("# --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---");
 annoLines.push("");
 for (const co of controlop_support) {
-  const ev = `probe (control-op): cddl-codegen ${co.detail}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
+  const ev = `probe (control-op): cddl-codegen ${embedDetail(co.detail, co.embedded)}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(co.id)}`);
   annoLines.push(`status = ${tomlStr(co.support)}`);
@@ -729,6 +808,10 @@ const report = {
     prelude_names: prelude_names.length,
     supported: probe_results.filter(pr => pr.status === "supported").length,
     unsupported: probe_results.filter(pr => pr.status === "unsupported").length,
+    // How many probes upgraded from compile-only to embedded-round-trip evidence via the synthetic
+    // holder (feature loop + control-op loop). A drop toward zero signals the embed fallback rotted.
+    embedded_upgraded: probe_results.filter(pr => pr.embedded === true).length,
+    embedded_upgraded_controlops: controlop_support.filter(c => c.embedded === true).length,
     out_of_profile: out_of_profile.length,
     uncertain: uncertain.length,
     fabricated: fabricated.length,
@@ -757,6 +840,7 @@ console.log(`features probed     : ${s.features}`);
 console.log(`target profile      : ${CDDL_CODEGEN_TARGET_PROFILE} (out-of-profile features excluded from gaps)`);
 console.log(`ABNF productions    : ${s.abnf_productions}  prelude names: ${s.prelude_names}`);
 console.log(`support (codegen)   : supported=${s.supported} unsupported=${s.unsupported} out_of_profile=${s.out_of_profile} uncertain=${s.uncertain}`);
+console.log(`embed-fallback      : ${s.embedded_upgraded} feature probe(s) + ${s.embedded_upgraded_controlops} control-op(s) upgraded compile-only -> round-trips-when-embedded`);
 console.log(`control-op support  : supported=${s.controlop_supported} unsupported=${s.controlop_unsupported} (of ${s.control_ops}; missing example=${s.controlop_missing_example})`);
 console.log(`reconcile (BIDIRECTIONAL grammar lint):`);
 console.log(`  forward  (source->feature): type2 alternatives covered ${s.type2_covered}/${s.type2_alternatives} (uncovered=${s.type2_uncovered})`);

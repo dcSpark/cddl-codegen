@@ -2,12 +2,12 @@
   "annotations": {
     "cddl_codegen": [
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "assigng.extend",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "assignt.extend",
         "status": "supported"
       },
@@ -97,7 +97,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; ruby=ok rust=ok",
         "id": "grpchoice.sequence",
         "status": "supported"
       },
@@ -112,7 +112,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; ruby=ok rust=ok",
         "id": "grpent.member",
         "status": "supported"
       },
@@ -127,7 +127,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "memberkey.type1",
         "status": "supported"
       },
@@ -137,22 +137,22 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "occur.bounded",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "occur.one_or_more",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "occur.optional",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "occur.zero_or_more",
         "status": "supported"
       },
@@ -192,17 +192,17 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.bool",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.bstr",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.bytes",
         "status": "supported"
       },
@@ -242,7 +242,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.float",
         "status": "supported"
       },
@@ -257,7 +257,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.float32",
         "status": "supported"
       },
@@ -267,12 +267,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.float64",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; ruby=ok rust=ok",
         "id": "prelude.int",
         "status": "supported"
       },
@@ -292,7 +292,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.nint",
         "status": "supported"
       },
@@ -317,7 +317,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.text",
         "status": "supported"
       },
@@ -332,12 +332,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.tstr",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "prelude.uint",
         "status": "supported"
       },
@@ -357,12 +357,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "rangeop.exclusive",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "rangeop.inclusive",
         "status": "supported"
       },
@@ -372,7 +372,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "type.enum",
         "status": "supported"
       },
@@ -412,12 +412,12 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "type2.map",
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "type2.parenthesized",
         "status": "supported"
       },
@@ -432,7 +432,7 @@
         "status": "out_of_profile"
       },
       {
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
         "id": "type2.typename",
         "status": "supported"
       },
@@ -467,7 +467,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; ruby=ok rust=ok",
         "id": "contain.array-element.grpent.inline_group",
         "status": "supported"
       },
@@ -582,7 +582,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; ruby=ok rust=ok",
         "id": "contain.map-value.type2.tag",
         "status": "supported"
       },
@@ -592,7 +592,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group",
         "status": "supported"
       },
@@ -617,7 +617,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; ruby=ok rust=ok",
         "id": "contain.tag-content.type2.map",
         "status": "supported"
       },
@@ -692,7 +692,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ruby=ok rust=ok",
         "id": "ctl.cbor",
         "status": "supported"
       },
@@ -722,7 +722,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles (no minted round-trip surface); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ruby=ok rust=ok",
         "id": "ctl.ge",
         "status": "supported"
       },
