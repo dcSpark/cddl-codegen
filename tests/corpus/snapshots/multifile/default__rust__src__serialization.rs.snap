@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -52,11 +52,8 @@ impl Deserialize for Everything {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if let cbor_event::Len::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     bars_arr.push(Bar::deserialize(raw)?);
@@ -72,11 +69,8 @@ impl Deserialize for Everything {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if let cbor_event::Len::Indefinite = table_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let table_key = raw.unsigned_integer()? as u64;

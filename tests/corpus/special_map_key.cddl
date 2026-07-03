@@ -1,9 +1,10 @@
 ; Map KEYS in the Special CBOR class (bool — major type 7) share their major type with the
 ; indefinite-length break byte (0xff). A stale IR assert rejected any named table with such a key
 ; at generation time; the definite-length map loop reads exactly n entries and never inspects for
-; a break (`make_deser_loop_break_check` gates on the INDEFINITE case only), so a bool-keyed table
-; is deserializable. The indefinite case remains a pre-existing limitation shared with special
-; ELEMENTS: the break check consumes the special key and errors EndingBreakMissing.
+; a break (`make_deser_loop_break_check` gates on the INDEFINITE case only), and the indefinite map
+; loop probes the break with the non-consuming `special_break()` so a bool key is read normally —
+; so a bool-keyed table is deserializable in both framings (indefinite covered by the
+; golden_hex_preserve bool_table_indef KAT).
 bkeys = { * bool => uint }
 ; referencing the named special-key table as a record field is the shape that hit the assert
 ; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire

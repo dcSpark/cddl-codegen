@@ -81,19 +81,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
      indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers).
      (The hand-picked KAT axis itself is closed: value
-     anchors, nint vectors, the runtime table-sort pins, and the cross-major `-1`/`256`
-     length-first-vs-bytewise discriminator all live in the sibling suites, each
-     mutation-verified red.)
-     Remaining known gap the at-scale fidelity oracle surfaced: an *indefinite-length* container
-     whose elements/keys are CBOR major type 7 (bool) can't deserialize —
-     `make_deser_loop_break_check` peeks only `cbor_type()`, so a special element is
-     indistinguishable from the `0xff` break (a byte-level peek needs a `BufRead` bound the
-     type-erased choice closures can't carry). The oracle sidesteps this at EMISSION time — it omits
-     the two container-reframing variant classes (`indef_containers`, `everything`) for any type
-     reaching such a container (`emit_tests::SPECIAL_VAR_CONTAINER_EXCLUDED`), so the generated suite
-     stays green while the definite-framing classes still run. Closing the gap for real (so those
-     two classes can run too) means either threading a real byte peek through the deserializer or
-     restructuring the loop to consume-and-dispatch the special.
+     anchors, nint vectors, the runtime table-sort pins, the cross-major `-1`/`256`
+     length-first-vs-bytewise discriminator, and the indefinite-length bool array/bool-keyed map
+     vectors all live in the sibling suites, each mutation-verified red. The at-scale fidelity
+     oracle runs every variant class — including the two container-reframing ones — on
+     major-type-7-bearing containers too, since the generated break-check probes the `0xff` break
+     with the non-consuming `special_break()`.)
    - **Minter coverage:** the shapes with no standalone mint surface — transparent aliases
      (`x = uint`, `x = [* uint]`), named tables/arrays (orphan-rule: no standalone `Serialize`),
      bounded aliases like `g = [2*5 uint]`, and pure c-enums — get their execution coverage

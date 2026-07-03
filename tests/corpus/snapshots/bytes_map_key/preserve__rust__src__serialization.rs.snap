@@ -108,11 +108,10 @@ impl Deserialize for BytesKeyHolder {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = named_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (named_key, named_key_encoding) = raw
@@ -149,11 +148,10 @@ impl Deserialize for BytesKeyHolder {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = inline_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (inline_key, inline_key_encoding) = raw

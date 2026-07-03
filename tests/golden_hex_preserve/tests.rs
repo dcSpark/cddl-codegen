@@ -289,4 +289,32 @@ mod golden_hex_preserve {
             assert_eq!(d.x, 5);
         }
     );
+
+    // ---- indefinite container of major-type-7 (bool) elements/keys ----
+    // The deserialize-loop break-check peeks `cbor_type()` and only reads the 0xff break when the
+    // next item is genuinely a break (`special_break`, non-consuming) — a bool element (0xf4/0xf5)
+    // shares major type 7 with the break but must fall through to `bool::deserialize`. Hand-derived
+    // from RFC 8949 §3: false = 0xf4, true = 0xf5, indefinite array 0x9f … 0xff.
+    // Outer holder is a 1-element array (0x81) wrapping the inner indefinite `[_ false, true]`.
+    kat_preserve!(
+        bool_seq_indef,
+        BoolSeqHolder,
+        &[0x81, 0x9f, 0xf4, 0xf5, 0xff],
+        |d: &BoolSeqHolder| {
+            assert_eq!(d.bs, vec![false, true]);
+        }
+    );
+    // indefinite MAP with bool KEYS: the map break-check peeks the key type, so a bool key
+    // (0xf4/0xf5) must reach the key deserializer, not be read as the 0xff break.
+    // 1-element holder (0x81) wrapping bf { false: "a", true: "b" } ff.
+    kat_preserve!(
+        bool_table_indef,
+        BoolTableHolder,
+        &[0x81, 0xbf, 0xf4, 0x61, 0x61, 0xf5, 0x61, 0x62, 0xff],
+        |d: &BoolTableHolder| {
+            assert_eq!(d.bt.len(), 2);
+            assert_eq!(d.bt.get(&false).map(|s| s.as_str()), Some("a"));
+            assert_eq!(d.bt.get(&true).map(|s| s.as_str()), Some("b"));
+        }
+    );
 }

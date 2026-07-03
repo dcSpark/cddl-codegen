@@ -417,16 +417,16 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // Array element types and map KEY types in the Special CBOR class (bool / null /
-        // float16-32-64 / simple, major type 7) is tricky here because they share their
-        // major type with the indefinite-length break byte (`0xff`), so a naive loop can't tell
-        // "read another item" from "stop at the break".
-        // `make_deser_loop_break_check` (generation.rs) gates that ambiguity check on the INDEFINITE case only:
-        // a definite-length collection reads exactly `n` items and never inspects for a break, so a
-        // named `[* float64]` / `{ * bool => uint }` used as a record field deserializes
-        // correctly (covered by the homogeneous_array / special_map_key corpus round-trips). The
-        // indefinite case remains a pre-existing, code-commented limitation there — the break
-        // check consumes the special element/key and errors with EndingBreakMissing rather than
-        // aborting — not something an assert here needs to guard.
+        // float16-32-64 / simple, major type 7) share their major type with the
+        // indefinite-length break byte (`0xff`), so a naive loop can't tell "read another item"
+        // from "stop at the break". `make_deser_loop_break_check` (generation.rs) handles this
+        // correctly in both framings: a definite-length collection reads exactly `n` items and
+        // never inspects for a break, and the indefinite case uses the non-consuming
+        // `special_break()` probe so a bool/null/float element/key is left in place and read
+        // normally while only the real `0xff` break stops the loop. So a named `[* float64]` /
+        // `{ * bool => uint }`, definite OR indefinite, deserializes correctly (covered by the
+        // homogeneous_array / special_map_key corpus round-trips and the golden_hex_preserve KATs)
+        // — not something an assert here needs to guard.
         resolved
     }
 

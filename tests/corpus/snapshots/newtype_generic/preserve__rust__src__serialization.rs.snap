@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -53,11 +53,8 @@ impl Deserialize for WrappedArr {
             cbor_event::LenSz::Indefinite => true,
         } {
             if let cbor_event::LenSz::Indefinite = len {
-                if raw.cbor_type()? == cbor_event::Type::Special {
-                    match raw.special()? {
-                        cbor_event::Special::Break => break,
-                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                    }
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
                 }
             }
             let (inner_elem, inner_elem_encoding) =
@@ -128,11 +125,8 @@ impl Deserialize for WrappedMap {
             cbor_event::LenSz::Indefinite => true,
         } {
             if let cbor_event::LenSz::Indefinite = inner_len {
-                if raw.cbor_type()? == cbor_event::Type::Special {
-                    match raw.special()? {
-                        cbor_event::Special::Break => break,
-                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                    }
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
                 }
             }
             let (inner_key, inner_key_encoding) =

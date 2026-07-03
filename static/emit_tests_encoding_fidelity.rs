@@ -381,17 +381,6 @@ mod cddl_encoding_fidelity {
         out
     }
 
-    /// `variants` with the named mutation classes filtered out. The generated loop uses this when
-    /// the type reaches a variable-length container of major-type-7 elements/keys (bool/null/float),
-    /// whose indefinite re-encode the generated break-check can't round-trip — the generator passes
-    /// the affected class labels so this mutator stays type-blind.
-    pub fn variants_filtered(input: &[u8], exclude: &[&str]) -> Vec<(&'static str, Vec<u8>)> {
-        variants(input)
-            .into_iter()
-            .filter(|(label, _)| !exclude.contains(label))
-            .collect()
-    }
-
     #[test]
     fn encoding_mutator_self_check() {
         // ---- per-builder pins (hand-derived RFC 8949 bytes) ----

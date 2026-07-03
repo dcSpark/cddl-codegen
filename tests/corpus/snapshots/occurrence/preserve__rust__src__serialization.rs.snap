@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -116,11 +116,8 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::LenSz::Indefinite => true,
                 } {
                     if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let (o_elem, o_elem_encoding) =
@@ -149,11 +146,8 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::LenSz::Indefinite => true,
                 } {
                     if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let (b_elem, b_elem_encoding) =
@@ -183,11 +177,10 @@ impl Deserialize for OccurrenceHolder {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (inline_bounded_elem, inline_bounded_elem_encoding) = raw

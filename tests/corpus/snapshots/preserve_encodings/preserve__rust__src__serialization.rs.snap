@@ -1096,11 +1096,8 @@ impl Deserialize for Bounds {
                     cbor_event::LenSz::Indefinite => true,
                 } {
                     if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let (a_elem, a_elem_encoding) =
@@ -1131,11 +1128,10 @@ impl Deserialize for Bounds {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = b_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (b_key, b_key_encoding) =
@@ -1850,120 +1846,266 @@ impl Deserialize for DeeplyNested {
         read_len.read_elems(1)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
-            let (data, data_encoding, data_key_encodings, data_value_encodings) = (|| -> Result<_, DeserializeError> {
-                let mut data_table = OrderedHashMap::new();
-                let data_len = raw.map_sz()?;
-                let data_encoding = data_len.into();
-                let mut data_key_encodings = BTreeMap::new();
-                let mut data_value_encodings = BTreeMap::new();
-                while match data_len { cbor_event::LenSz::Len(n, _) => (data_table.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
-                    if let cbor_event::LenSz::Indefinite = data_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+            let (data, data_encoding, data_key_encodings, data_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut data_table = OrderedHashMap::new();
+                    let data_len = raw.map_sz()?;
+                    let data_encoding = data_len.into();
+                    let mut data_key_encodings = BTreeMap::new();
+                    let mut data_value_encodings = BTreeMap::new();
+                    while match data_len {
+                        cbor_event::LenSz::Len(n, _) => (data_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if let cbor_event::LenSz::Indefinite = data_len {
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
-                    }
-                    let (data_key, data_key_tag_encoding, data_key_encoding) = match raw.tag_sz()? {
-                        (14, tag_enc) => raw.bytes_sz().map(|(bytes, enc)| (bytes, Some(tag_enc), StringEncoding::from(enc)))?,
-                        (tag, _enc) => return Err(DeserializeFailure::TagMismatch{ found: tag, expected: 14 }.into()),
-                    };
-                    let mut data_value_table = OrderedHashMap::new();
-                    let data_value_len = raw.map_sz()?;
-                    let data_value_encoding = data_value_len.into();
-                    let mut data_value_key_encodings = BTreeMap::new();
-                    let mut data_value_value_encodings = BTreeMap::new();
-                    while match data_value_len { cbor_event::LenSz::Len(n, _) => (data_value_table.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
-                        if let cbor_event::LenSz::Indefinite = data_value_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        let (data_key, data_key_tag_encoding, data_key_encoding) =
+                            match raw.tag_sz()? {
+                                (14, tag_enc) => raw.bytes_sz().map(|(bytes, enc)| {
+                                    (bytes, Some(tag_enc), StringEncoding::from(enc))
+                                })?,
+                                (tag, _enc) => {
+                                    return Err(DeserializeFailure::TagMismatch {
+                                        found: tag,
+                                        expected: 14,
+                                    }
+                                    .into())
+                                }
+                            };
+                        let mut data_value_table = OrderedHashMap::new();
+                        let data_value_len = raw.map_sz()?;
+                        let data_value_encoding = data_value_len.into();
+                        let mut data_value_key_encodings = BTreeMap::new();
+                        let mut data_value_value_encodings = BTreeMap::new();
+                        while match data_value_len {
+                            cbor_event::LenSz::Len(n, _) => (data_value_table.len() as u64) < n,
+                            cbor_event::LenSz::Indefinite => true,
+                        } {
+                            if let cbor_event::LenSz::Indefinite = data_value_len {
+                                if raw.cbor_type()? == cbor_event::Type::Special
+                                    && raw.special_break()?
+                                {
+                                    break;
                                 }
                             }
-                        }
-                        let (data_value_key, data_value_key_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-                        let mut data_value_value_table = OrderedHashMap::new();
-                        let data_value_value_len = raw.map_sz()?;
-                        let data_value_value_encoding = data_value_value_len.into();
-                        let mut data_value_value_key_encodings = BTreeMap::new();
-                        let mut data_value_value_value_encodings = BTreeMap::new();
-                        while match data_value_value_len { cbor_event::LenSz::Len(n, _) => (data_value_value_table.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
-                            if let cbor_event::LenSz::Indefinite = data_value_value_len {
-                                if raw.cbor_type()? == cbor_event::Type::Special {
-                                    match raw.special()? {
-                                        cbor_event::Special::Break => break,
-                                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            let (data_value_key, data_value_key_encoding) =
+                                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                            let mut data_value_value_table = OrderedHashMap::new();
+                            let data_value_value_len = raw.map_sz()?;
+                            let data_value_value_encoding = data_value_value_len.into();
+                            let mut data_value_value_key_encodings = BTreeMap::new();
+                            let mut data_value_value_value_encodings = BTreeMap::new();
+                            while match data_value_value_len {
+                                cbor_event::LenSz::Len(n, _) => {
+                                    (data_value_value_table.len() as u64) < n
+                                }
+                                cbor_event::LenSz::Indefinite => true,
+                            } {
+                                if let cbor_event::LenSz::Indefinite = data_value_value_len {
+                                    if raw.cbor_type()? == cbor_event::Type::Special
+                                        && raw.special_break()?
+                                    {
+                                        break;
                                     }
                                 }
-                            }
-                            let (data_value_value_key, data_value_value_key_tag_encoding, data_value_value_key_encoding) = match raw.tag_sz()? {
-                                (9, tag_enc) => raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
-                                (tag, _enc) => return Err(DeserializeFailure::TagMismatch{ found: tag, expected: 9 }.into()),
-                            };
-                            let mut data_value_value_value_arr = Vec::new();
-                            let len = raw.array_sz()?;
-                            let data_value_value_value_encoding = len.into();
-                            let mut data_value_value_value_elem_encodings = Vec::new();
-                            while match len { cbor_event::LenSz::Len(n, _) => (data_value_value_value_arr.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
-                                if let cbor_event::LenSz::Indefinite = len {
-                                    if raw.cbor_type()? == cbor_event::Type::Special {
-                                        match raw.special()? {
-                                            cbor_event::Special::Break => break,
-                                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                                let (
+                                    data_value_value_key,
+                                    data_value_value_key_tag_encoding,
+                                    data_value_value_key_encoding,
+                                ) = match raw.tag_sz()? {
+                                    (9, tag_enc) => raw
+                                        .unsigned_integer_sz()
+                                        .map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
+                                    (tag, _enc) => {
+                                        return Err(DeserializeFailure::TagMismatch {
+                                            found: tag,
+                                            expected: 9,
+                                        }
+                                        .into())
+                                    }
+                                };
+                                let mut data_value_value_value_arr = Vec::new();
+                                let len = raw.array_sz()?;
+                                let data_value_value_value_encoding = len.into();
+                                let mut data_value_value_value_elem_encodings = Vec::new();
+                                while match len {
+                                    cbor_event::LenSz::Len(n, _) => {
+                                        (data_value_value_value_arr.len() as u64) < n
+                                    }
+                                    cbor_event::LenSz::Indefinite => true,
+                                } {
+                                    if let cbor_event::LenSz::Indefinite = len {
+                                        if raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
                                         }
                                     }
-                                }
-                                let (data_value_value_value_elem, data_value_value_value_elem_tag_encoding, data_value_value_value_elem_encoding, data_value_value_value_elem_elem_encodings) = match raw.tag_sz()? {
-                                    (18, tag_enc) => {
-                                        let mut data_value_value_value_elem_arr = Vec::new();
-                                        let len = raw.array_sz()?;
-                                        let data_value_value_value_elem_encoding = len.into();
-                                        let mut data_value_value_value_elem_elem_encodings = Vec::new();
-                                        while match len { cbor_event::LenSz::Len(n, _) => (data_value_value_value_elem_arr.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
-                                            if let cbor_event::LenSz::Indefinite = len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special {
-                                                    match raw.special()? {
-                                                        cbor_event::Special::Break => break,
-                                                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                                    let (
+                                        data_value_value_value_elem,
+                                        data_value_value_value_elem_tag_encoding,
+                                        data_value_value_value_elem_encoding,
+                                        data_value_value_value_elem_elem_encodings,
+                                    ) = match raw.tag_sz()? {
+                                        (18, tag_enc) => {
+                                            let mut data_value_value_value_elem_arr = Vec::new();
+                                            let len = raw.array_sz()?;
+                                            let data_value_value_value_elem_encoding = len.into();
+                                            let mut data_value_value_value_elem_elem_encodings =
+                                                Vec::new();
+                                            while match len {
+                                                cbor_event::LenSz::Len(n, _) => {
+                                                    (data_value_value_value_elem_arr.len() as u64)
+                                                        < n
+                                                }
+                                                cbor_event::LenSz::Indefinite => true,
+                                            } {
+                                                if let cbor_event::LenSz::Indefinite = len {
+                                                    if raw.cbor_type()? == cbor_event::Type::Special
+                                                        && raw.special_break()?
+                                                    {
+                                                        break;
                                                     }
                                                 }
+                                                let (
+                                                    data_value_value_value_elem_elem,
+                                                    data_value_value_value_elem_elem_encoding,
+                                                ) = raw.text_sz().map(|(s, enc)| {
+                                                    (s, StringEncoding::from(enc))
+                                                })?;
+                                                data_value_value_value_elem_arr
+                                                    .push(data_value_value_value_elem_elem);
+                                                data_value_value_value_elem_elem_encodings.push(
+                                                    data_value_value_value_elem_elem_encoding,
+                                                );
                                             }
-                                            let (data_value_value_value_elem_elem, data_value_value_value_elem_elem_encoding) = raw.text_sz().map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-                                            data_value_value_value_elem_arr.push(data_value_value_value_elem_elem);
-                                            data_value_value_value_elem_elem_encodings.push(data_value_value_value_elem_elem_encoding);
+                                            (
+                                                data_value_value_value_elem_arr,
+                                                Some(tag_enc),
+                                                data_value_value_value_elem_encoding,
+                                                data_value_value_value_elem_elem_encodings,
+                                            )
                                         }
-                                        (data_value_value_value_elem_arr, Some(tag_enc), data_value_value_value_elem_encoding, data_value_value_value_elem_elem_encodings)
-                                    },
-                                    (tag, _enc) => return Err(DeserializeFailure::TagMismatch{ found: tag, expected: 18 }.into()),
-                                };
-                                data_value_value_value_arr.push(data_value_value_value_elem);
-                                data_value_value_value_elem_encodings.push((data_value_value_value_elem_tag_encoding, data_value_value_value_elem_encoding, data_value_value_value_elem_elem_encodings));
+                                        (tag, _enc) => {
+                                            return Err(DeserializeFailure::TagMismatch {
+                                                found: tag,
+                                                expected: 18,
+                                            }
+                                            .into())
+                                        }
+                                    };
+                                    data_value_value_value_arr.push(data_value_value_value_elem);
+                                    data_value_value_value_elem_encodings.push((
+                                        data_value_value_value_elem_tag_encoding,
+                                        data_value_value_value_elem_encoding,
+                                        data_value_value_value_elem_elem_encodings,
+                                    ));
+                                }
+                                let (
+                                    data_value_value_value,
+                                    data_value_value_value_encoding,
+                                    data_value_value_value_elem_encodings,
+                                ) = (
+                                    data_value_value_value_arr,
+                                    data_value_value_value_encoding,
+                                    data_value_value_value_elem_encodings,
+                                );
+                                if data_value_value_table
+                                    .insert(data_value_value_key, data_value_value_value)
+                                    .is_some()
+                                {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Uint(
+                                        data_value_value_key.into(),
+                                    ))
+                                    .into());
+                                }
+                                data_value_value_key_encodings.insert(
+                                    data_value_value_key,
+                                    (
+                                        data_value_value_key_tag_encoding,
+                                        data_value_value_key_encoding,
+                                    ),
+                                );
+                                data_value_value_value_encodings.insert(
+                                    data_value_value_key,
+                                    (
+                                        data_value_value_value_encoding,
+                                        data_value_value_value_elem_encodings,
+                                    ),
+                                );
                             }
-                            let (data_value_value_value, data_value_value_value_encoding, data_value_value_value_elem_encodings) = (data_value_value_value_arr, data_value_value_value_encoding, data_value_value_value_elem_encodings);
-                            if data_value_value_table.insert(data_value_value_key, data_value_value_value).is_some() {
-                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(data_value_value_key.into())).into());
+                            let (
+                                data_value_value,
+                                data_value_value_encoding,
+                                data_value_value_key_encodings,
+                                data_value_value_value_encodings,
+                            ) = (
+                                data_value_value_table,
+                                data_value_value_encoding,
+                                data_value_value_key_encodings,
+                                data_value_value_value_encodings,
+                            );
+                            if data_value_table
+                                .insert(data_value_key, data_value_value)
+                                .is_some()
+                            {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(
+                                    data_value_key.into(),
+                                ))
+                                .into());
                             }
-                            data_value_value_key_encodings.insert(data_value_value_key, (data_value_value_key_tag_encoding, data_value_value_key_encoding));
-                            data_value_value_value_encodings.insert(data_value_value_key, (data_value_value_value_encoding, data_value_value_value_elem_encodings));
+                            data_value_key_encodings
+                                .insert(data_value_key, data_value_key_encoding);
+                            data_value_value_encodings.insert(
+                                data_value_key,
+                                (
+                                    data_value_value_encoding,
+                                    data_value_value_key_encodings,
+                                    data_value_value_value_encodings,
+                                ),
+                            );
                         }
-                        let (data_value_value, data_value_value_encoding, data_value_value_key_encodings, data_value_value_value_encodings) = (data_value_value_table, data_value_value_encoding, data_value_value_key_encodings, data_value_value_value_encodings);
-                        if data_value_table.insert(data_value_key, data_value_value).is_some() {
-                            return Err(DeserializeFailure::DuplicateKey(Key::Uint(data_value_key.into())).into());
+                        let (
+                            data_value,
+                            data_value_encoding,
+                            data_value_key_encodings,
+                            data_value_value_encodings,
+                        ) = (
+                            data_value_table,
+                            data_value_encoding,
+                            data_value_key_encodings,
+                            data_value_value_encodings,
+                        );
+                        if data_table.insert(data_key.clone(), data_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
                         }
-                        data_value_key_encodings.insert(data_value_key, data_value_key_encoding);
-                        data_value_value_encodings.insert(data_value_key, (data_value_value_encoding, data_value_value_key_encodings, data_value_value_value_encodings));
+                        data_key_encodings
+                            .insert(data_key.clone(), (data_key_tag_encoding, data_key_encoding));
+                        data_value_encodings.insert(
+                            data_key.clone(),
+                            (
+                                data_value_encoding,
+                                data_value_key_encodings,
+                                data_value_value_encodings,
+                            ),
+                        );
                     }
-                    let (data_value, data_value_encoding, data_value_key_encodings, data_value_value_encodings) = (data_value_table, data_value_encoding, data_value_key_encodings, data_value_value_encodings);
-                    if data_table.insert(data_key.clone(), data_value).is_some() {
-                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from("some complicated/unsupported type"))).into());
-                    }
-                    data_key_encodings.insert(data_key.clone(), (data_key_tag_encoding, data_key_encoding));
-                    data_value_encodings.insert(data_key.clone(), (data_value_encoding, data_value_key_encodings, data_value_value_encodings));
-                }
-                Ok((data_table, data_encoding, data_key_encodings, data_value_encodings))
-            })().map_err(|e| e.annotate("data"))?;
+                    Ok((
+                        data_table,
+                        data_encoding,
+                        data_key_encodings,
+                        data_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("data"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -1980,7 +2122,8 @@ impl Deserialize for DeeplyNested {
                     data_value_encodings,
                 }),
             })
-        })().map_err(|e| e.annotate("DeeplyNested"))
+        })()
+        .map_err(|e| e.annotate("DeeplyNested"))
     }
 }
 
@@ -4301,11 +4444,10 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (arr_u64_elem, arr_u64_elem_encoding) =
@@ -4332,11 +4474,10 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = map_text_to_u64_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let (map_text_to_u64_key, map_text_to_u64_key_encoding) = raw
@@ -4899,11 +5040,8 @@ impl Deserialize for PlainArrays {
                     cbor_event::LenSz::Indefinite => true,
                 } {
                     if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     multi_read_len.read_elems(2)?;
@@ -5788,14 +5926,10 @@ impl Deserialize for TableArrMembers {
                                             cbor_event::LenSz::Indefinite => true,
                                         } {
                                             if let cbor_event::LenSz::Indefinite = len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special {
-                                                    match raw.special()? {
-                                                        cbor_event::Special::Break => break,
-                                                        _ => return Err(
-                                                            DeserializeFailure::EndingBreakMissing
-                                                                .into(),
-                                                        ),
-                                                    }
+                                                if raw.cbor_type()? == cbor_event::Type::Special
+                                                    && raw.special_break()?
+                                                {
+                                                    break;
                                                 }
                                             }
                                             let (arr_elem, arr_elem_encoding) = raw
@@ -5832,14 +5966,10 @@ impl Deserialize for TableArrMembers {
                                             cbor_event::LenSz::Indefinite => true,
                                         } {
                                             if let cbor_event::LenSz::Indefinite = len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special {
-                                                    match raw.special()? {
-                                                        cbor_event::Special::Break => break,
-                                                        _ => return Err(
-                                                            DeserializeFailure::EndingBreakMissing
-                                                                .into(),
-                                                        ),
-                                                    }
+                                                if raw.cbor_type()? == cbor_event::Type::Special
+                                                    && raw.special_break()?
+                                                {
+                                                    break;
                                                 }
                                             }
                                             arr2_arr.push(Foo::deserialize(raw)?);
@@ -5877,16 +6007,10 @@ impl Deserialize for TableArrMembers {
                                         cbor_event::LenSz::Indefinite => true,
                                     } {
                                         if let cbor_event::LenSz::Indefinite = table_len {
-                                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                                match raw.special()? {
-                                                    cbor_event::Special::Break => break,
-                                                    _ => {
-                                                        return Err(
-                                                            DeserializeFailure::EndingBreakMissing
-                                                                .into(),
-                                                        )
-                                                    }
-                                                }
+                                            if raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
                                             }
                                         }
                                         let (table_key, table_key_encoding) = raw
@@ -6366,15 +6490,10 @@ impl Deserialize for TypeChoice {
                             cbor_event::LenSz::Indefinite => true,
                         } {
                             if let cbor_event::LenSz::Indefinite = len {
-                                if raw.cbor_type()? == cbor_event::Type::Special {
-                                    match raw.special()? {
-                                        cbor_event::Special::Break => break,
-                                        _ => {
-                                            return Err(
-                                                DeserializeFailure::EndingBreakMissing.into()
-                                            )
-                                        }
-                                    }
+                                if raw.cbor_type()? == cbor_event::Type::Special
+                                    && raw.special_break()?
+                                {
+                                    break;
                                 }
                             }
                             let (arr_u64_elem, arr_u64_elem_encoding) =
@@ -6462,11 +6581,8 @@ impl Deserialize for WrapperList {
             cbor_event::LenSz::Indefinite => true,
         } {
             if let cbor_event::LenSz::Indefinite = len {
-                if raw.cbor_type()? == cbor_event::Type::Special {
-                    match raw.special()? {
-                        cbor_event::Special::Break => break,
-                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                    }
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
                 }
             }
             let (inner_elem, inner_elem_encoding) =
@@ -6534,11 +6650,8 @@ impl Deserialize for WrapperTable {
             cbor_event::LenSz::Indefinite => true,
         } {
             if let cbor_event::LenSz::Indefinite = inner_len {
-                if raw.cbor_type()? == cbor_event::Type::Special {
-                    match raw.special()? {
-                        cbor_event::Special::Break => break,
-                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                    }
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
                 }
             }
             let (inner_key, inner_key_encoding) =
