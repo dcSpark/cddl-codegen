@@ -1,0 +1,69 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, Copy)]
+pub struct TaggedDefault(u64);
+
+impl TaggedDefault {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for TaggedDefault {
+    fn from(inner: u64) -> Self {
+        TaggedDefault::new(inner)
+    }
+}
+
+impl serde::Serialize for TaggedDefault {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for TaggedDefault {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for TaggedDefault {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TaggedDefault")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<TaggedDefault> for u64 {
+    fn from(wrapper: TaggedDefault) -> Self {
+        wrapper.0
+    }
+}

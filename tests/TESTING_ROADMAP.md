@@ -32,7 +32,7 @@ execution-gated, with an embed-site fallback for shapes that mint no standalone 
 generated wasm crate is compiled AND round-tripped by the same systematic gates; and malformed
 emission is a hard generator error. Their living documentation is `tests/README.md` (suite-side)
 and `cddl-matrix/README.md` (probe-side). One north-star frontier remains: the matrix's own verdict
-is still a default-profile claim — the "Profile axis" pending decision below.
+is still a default-profile claim — next-steps item 2 below.
 
 ## Recommended next steps, in priority order
 
@@ -52,12 +52,30 @@ is still a default-profile claim — the "Profile axis" pending decision below.
    `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
    baseline survivor map.
 
-2. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
+2. **Per-emission-profile axis on the matrix annotation schema.** The generation-breadth and
+   round-trip-breadth halves of "supported is a per-profile fact" are covered by manual gates —
+   the supported catalog generates under all three profiles
+   (`all_supported_constructs_generate_all_profiles`, with a per-profile expected-fail list), and
+   the corpus `--emit-tests` round-trip suite runs under preserve/json
+   (`feature_corpus_roundtrips_nondefault_profiles`). But the matrix's OWN verdict is still a
+   default-flags claim (`verify.ts` probes default only), and the coverage delta is real: the
+   generate-all-profiles gate is generate-only, and the corpus gate covers corpus fixtures only —
+   matrix constructs outside the corpus get no preserve/json *execution* verification. Record a
+   per-profile verdict on the annotation schema so a supported-construct × preserve/json regression
+   surfaces as a matrix-drift diff; this subsumes carrying `verify.ts`'s embed-site fallback (see
+   `cddl-matrix/README.md`) per profile. Flag-specific failures are a proven class (floats hit
+   `unimplemented!` under preserve — see the `preserve_encodings_supports_floats` stub). Scoping
+   decisions, made: (a) probe preserve/json only for constructs whose default verdict is supported
+   (unsupported-at-default is unsupported everywhere; keeps the ~156-probe wall time from tripling);
+   (b) name the axis distinctly from the existing CDDL *language*-profile field (e.g. `emission`),
+   which `verify.ts`/`features/*.toml` already call `profile`.
+
+3. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
 
-3. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
+4. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
    the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
    role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
@@ -66,73 +84,53 @@ is still a default-profile claim — the "Profile axis" pending decision below.
    corpus differential (see `draft/testing-recommendations/RECOMMENDATIONS.md`): synthetic breadth vs
    real-world depth.
 
-4. **Small independent residuals (low).**
+5. **Small independent residuals (low).**
+   - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
+     `#6.n(5)` — the tag is irrelevant). Generation aborts in `intermediate.rs`
+     (`should not expose Fixed type in member, only needed for serializaiton: Fixed(Uint(5))`)
+     because a `Fixed` conceptual type has no standalone member representation. Support it (a
+     one-field wrapper that stores nothing and re-emits the constant on serialize) or reject it
+     gracefully; either flips the panic. Distinct from tag handling — a bare literal never reaches
+     the tag-wrapping arms. (The two tag-inner variants that DID silently drop the tag through a
+     `pub type` alias — a `.default`-carrying inner `#6.n(uint .default 5)` and a range that
+     collapses exactly onto a rust primitive `#6.n(uint .le 255)` — now auto-wrap like the
+     primitive/`.cbor` arms; pinned by `tests/corpus/tagged_default_inner.cddl` and
+     `tests/corpus/tagged_ranged_inner.cddl`.)
    - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
      fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
      `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
+   - **`bool_wrapper` JSON newtype** — blocked on generator bug #223 (bool newtype does not
+     compile); the commented-out rule in `tests/json/input.cddl` carries the issue link. Unblocks
+     only by fixing the generator.
+   - **Single-field bareword-keyed map structs panic generation** (`plain = { t: uint }` —
+     `parse_group`'s table detection only survives value-keys or 2+ fields; pinned by
+     `tests/robustness/single_bareword_map_field.cddl`). Support it (a 1-field struct) or reject
+     gracefully; either flips the pinned PANIC entry.
+   - **Keyless map entries panic instead of erroring** (`{ bytes, uint }` — rejected by design,
+     "map fields need keys", but via `panic!`; pinned by `tests/robustness/map_entry_no_key.cddl`).
+     Unlike the bareword case above the rejection itself is correct — the work is only a graceful
+     error. If support ever lands instead, add the `@name` coverage promised in
+     `tests/comment-dsl/tests.rs`.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-## Pending decisions (maintainer call — blocks the related test, not on effort)
-
-Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call.
-
-- **MSRV / OS matrix for GENERATED code.** Generated crates pin no MSRV and are only ever built on
-  the dev/CI platform; whether to declare + test a minimum rustc (and a second OS) for generated
-  output is a policy call. Do-or-decline; currently in no living doc, recorded here so it's a
-  decision rather than an oversight.
-- **`example/` specs + docs-vs-behavior conformance.** `example/` is consumed by zero tests, and
-  `comment_dsl.mdx` / `output_format.mdx` have no behavioral conformance check (comment_dsl has a
-  name-level forward lint in `cddl-matrix/verify.ts` only). Decide: wire `example/` into a
-  compile-gate and spot-check the documented output claims, or drop/trim `example/`.
-- **Snapshot-only corpus policy.** A ~5-line `feature_corpus_compiles` skip-list would unblock
-  *snapshot* coverage of the extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes
-  (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`) emit paths — they emit undefined user-supplied types so they
-  can't `cargo check` standalone (extern is exercised only via `tests/extern-deps`; raw-bytes via
-  `tests/raw-bytes` — wasm boundary executed by its `tests_wasm.rs` — and the wasm-matrix
-  `rawbytes__*` cells, which splice the in-repo defs). The gap is *snapshot* coverage of those emit
-  paths; introduces a "snapshot-only corpus" concept the docs don't have yet.
-- **Stubbed `no_key_group` comment-dsl test.** The only test of the no-key-group emit path is
-  commented out (`tests/comment-dsl/tests.rs`); writing a real assertion first needs identifying
-  which CDDL construct actually routes through that path (and whether it's reachable at all).
-- **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
-  float under the `json` profile; `OrderedHashMap` JSON **serde** (a map-bearing json fixture —
-  `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
-  `tests/corpus/newtype_generic.cddl` (its `json` profile in `feature_corpus_compiles`) — this
-  remaining serde half is a genuine snapshot chore); re-enabling `bool_wrapper` JSON newtype (blocked on
-  generator issue #223).
-- **Profile axis on the matrix annotation schema.** The generation-breadth and round-trip-breadth
-  halves of "supported is a per-profile fact" are now covered by manual gates — the supported
-  catalog generates under all three profiles (`all_supported_constructs_generate_all_profiles`,
-  with a per-profile expected-fail list), and the corpus `--emit-tests` round-trip suite runs under
-  preserve/json (`feature_corpus_roundtrips_nondefault_profiles`). What remains is the matrix's OWN
-  verdict: `verify.ts` probes the default flags only, so a matrix `status = "supported"` annotation
-  is still a default-profile claim. The frontier is a per-profile axis on the matrix annotation
-  schema (a construct's verdict recorded per profile), so a supported-construct × preserve/json
-  regression surfaces as a matrix-drift diff rather than only inside those two manual gates. This
-  also subsumes carrying `verify.ts`'s embed-site fallback (see `cddl-matrix/README.md`) per
-  profile. Flag-specific failures are a proven class (floats hit `unimplemented!` under preserve —
-  see the `preserve_encodings_supports_floats` stub).
-- **Tag-drop residue for exotic single-type tag inners (auto-wrap coverage gap).** Top-level tag rules
-  auto-wrap into a tag-writing/tag-checking newtype whenever the inner is a primitive/named type
-  (`tagged = #6.42(text)`) or a `bytes .cbor T` wrapper (`#6.20(bytes .cbor foo)`) — closing the
-  standalone-API tag-drop for every shape the corpus and standard prelude exercise. Three untested,
-  exotic inner shapes still fall through to a tag-carrying `pub type` alias whose standalone
-  `to/from_cbor_bytes` drops the tag: a `.default`-carrying inner (`#6.n(uint .default 5)`), a range that
-  collapses exactly onto a Rust primitive with no residual bound (a ranged inner that *does* carry a bound
-  already wraps), and a bare literal inner (`#6.n(5)` — and top-level fixed-value types are a separate
-  documented limitation anyway). None appear in any fixture; the cheapest close is to add a corpus fixture
-  isolating each and route its `parse_type` arm through `new_wrapper` (mirroring the primitive/`.cbor`
-  arms). Parenthesized *non-tag* aliases (`basic = (uint)`) are intentionally left transparent — parens
-  have no CBOR effect, so `@newtype` stays the opt-in there.
-
 ## Explicitly not worth it (decided, not overlooked)
 
+- MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
+  hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
+  output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer
+  reports an MSRV or platform break (dep-driven MSRV creep is the one real vector).
+- A docs-vs-behavior conformance harness for `comment_dsl.mdx` / `output_format.mdx` (snippet
+  extraction + output spot-checks): emitted output is already pinned by the snapshot corpus and
+  DSL-name drift by the `cddl-matrix/verify.ts` forward lint; a doc-snippet system is heavy
+  machinery for prose drift that review catches at its actual rate. (The `example/`-half of this
+  decision — gating the getting-started command — was accepted and shipped as
+  `integration_tests::getting_started_example`.)
 - Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
   *combinations* worth testing; revisit only if a flag-interaction bug actually slips through.
   Every individual flag *value* now appears in some profile or test: the five that previously

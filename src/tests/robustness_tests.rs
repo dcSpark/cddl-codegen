@@ -6,8 +6,9 @@
 //! previously-graceful input newly panic (shows up as a snapshot diff), and when a current panic
 //! is fixed its entry flips (re-bless then).
 //!
-//! NB: every input currently records `ok` or `error (graceful)` — a `PANIC` here is a regression:
-//! the generator must reject malformed input with a clean error, never `panic!`/`assert!`.
+//! NB: a NEW `PANIC` is a regression — the generator must reject malformed input with a clean
+//! error, never `panic!`/`assert!`. A committed `PANIC` entry is a tracked-known rejection whose
+//! fixture comments say why it's pinned (e.g. `map_entry_no_key`); making it graceful is a fix.
 //! The catalog deliberately records only the outcome *category*
 //! (not panic messages/line numbers) so it stays stable across refactors that don't change behaviour.
 
@@ -250,7 +251,7 @@ fn input_robustness_catalog() {
     assert!(!inputs.is_empty(), "no robustness inputs in {:?}", dir);
 
     let mut catalog = String::from(
-        "# generator outcome per malformed/edge input\n# PANIC = regression: malformed input must error gracefully, never panic\n\n",
+        "# generator outcome per malformed/edge input\n# A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry\n# is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.\n\n",
     );
     // hook restored (and lock released) before the possibly-panicking snapshot assertion below
     with_thread_silenced_panics(|| {

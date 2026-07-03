@@ -1,0 +1,65 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for TaggedRanged {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag_sz(
+            42u64,
+            fit_sz(
+                42u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.inner as u64,
+            fit_sz(
+                self.inner as u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_encoding)
+                    .unwrap_or_default(),
+            ),
+        )
+    }
+}
+
+impl Deserialize for TaggedRanged {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+            (42, tag_enc) => raw
+                .unsigned_integer_sz()
+                .map(|(x, enc)| (x as u8, Some(tag_enc), Some(enc)))?,
+            (tag, _enc) => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 42,
+                }
+                .into())
+            }
+        };
+        Ok(Self {
+            inner,
+            encodings: Some(TaggedRangedEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            }),
+        })
+    }
+}

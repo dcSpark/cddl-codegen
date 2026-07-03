@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 macro_rules! gen_json_schema {
@@ -28,6 +28,7 @@ pub fn export_schemas() {
     gen_json_schema!(cddl_lib::NintWrapper);
     gen_json_schema!(cddl_lib::StrWrapper);
     gen_json_schema!(cddl_lib::StructWrapper);
+    gen_json_schema!(cddl_lib::TableHolder);
     gen_json_schema!(cddl_lib::U64Wrapper);
     gen_json_schema!(cddl_lib::U8Wrapper);
 }

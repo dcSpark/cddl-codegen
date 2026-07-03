@@ -1,0 +1,9 @@
+; A single-type tag wrapper whose inner carries a `.default` (`#6.42(uint .default 5)`).
+; Like the bare `tagged = #6.42(text)` case, this AUTO-WRAPS into a tag-writing/tag-checking newtype
+; rather than a transparent `pub type` alias — an alias's standalone `to/from_cbor_bytes` would drop
+; the tag from the wire (a CBOR conformance bug). The `.default` itself is dropped inside the wrapper:
+; a default substitutes for an *absent* value, and a standalone tagged value is always present, so it
+; has no meaning here (and the preserve-encoding path has no struct field to hang its per-field
+; default-present tracking off). Serialize therefore writes `write_tag(42)` then the plain inner
+; value; deserialize rejects a wrong tag with `DeserializeFailure::TagMismatch`.
+tagged_default = #6.42(uint .default 5)

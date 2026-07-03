@@ -1,0 +1,32 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod c;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use cbor_encodings::BazEncoding;
+use extern_dep_crate::error::*;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Baz {
+    pub index_1: u64,
+    pub encodings: Option<BazEncoding>,
+}
+
+impl Baz {
+    pub fn new(index_1: u64) -> Self {
+        Self {
+            index_1,
+            encodings: None,
+        }
+    }
+}

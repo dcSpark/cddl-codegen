@@ -106,7 +106,10 @@ const WHOLE_PROGRAM_LABELS: &[&str] = &[
     "preserve_encodings",
     "canonical",
     "json",
+    "json_float",
     "multifile",
+    "extern_deps",
+    "raw_bytes",
 ];
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every
@@ -199,8 +202,36 @@ fn whole_program() {
                 &["--json-serde-derives=true", "--json-schema-export=true"],
             ),
         ),
+        // float JSON emission — split from `json` (that fixture also runs under json_preserve,
+        // and preserve-encodings is unimplemented for floats; same reason floats can't be corpus
+        // entries, whose snapshots span all three profiles).
+        (
+            "json_float",
+            "tests/json-float/input.cddl",
+            (
+                "json",
+                &["--json-serde-derives=true", "--json-schema-export=true"],
+            ),
+        ),
         // directory input — exercises the multi-file scope/module codegen path.
         ("multifile", "tests/multifile/inputs", ("default", &[])),
+        // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)
+        // emit paths: they reference user-supplied types so their output can't compile standalone
+        // (behavioral coverage is their integration fixtures), but this suite never compiles —
+        // it's where their emitted source gets pinned. Same profile pairings the integration
+        // tests use.
+        (
+            "extern_deps",
+            "tests/extern-deps/inputs",
+            (
+                "preserve",
+                &[
+                    "--preserve-encodings=true",
+                    "--common-import-override=extern_dep_crate",
+                ],
+            ),
+        ),
+        ("raw_bytes", "tests/raw-bytes/input.cddl", ("default", &[])),
     ];
     for (label, input, profile) in cases {
         snapshot_input(

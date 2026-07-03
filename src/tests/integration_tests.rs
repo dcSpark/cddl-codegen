@@ -924,6 +924,69 @@ fn feature_corpus_compiles() {
     );
 }
 
+/// Pins the documented first-run experience in `docs/docs/getting_started.mdx`: that doc tells a new
+/// user to run `cargo run -- --input=example/test.cddl --output=export` (and the release-binary
+/// variant) as their very first command, so `example/test.cddl` must always generate a crate that
+/// actually compiles — a silent break here is the worst kind of docs rot (it greets every newcomer).
+/// This runs that command VERBATIM (no extra flags, so the test can't drift from what the doc
+/// promises — wasm is emitted by default, so the wasm crate is gated too), generating into
+/// `example/export` just like the doc, then `cargo check`s BOTH the generated rust crate and the
+/// generated wasm crate. One shared `CARGO_TARGET_DIR` (the `feature_corpus_compiles`
+/// pattern) so the deps build once. Hand-rolled rather than `run_test` on purpose: `run_test`
+/// requires a `tests.rs` round-trip fixture, and `example/` deliberately ships only the spec (its
+/// round-trip coverage is `--emit-tests`' job) — so this gate is generate + check, nothing appended.
+#[test]
+fn getting_started_example() {
+    let input = std::path::Path::new("example/test.cddl");
+    assert!(
+        input.exists(),
+        "{input:?} is the spec docs/docs/getting_started.mdx runs verbatim — it must exist"
+    );
+    let out = std::path::Path::new("example/export");
+
+    // Scratch target dir so cbor_event & wasm-bindgen build once for both crate checks below.
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_getting_started_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    // The documented command, verbatim.
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation from {input:?} failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    for crate_sub in ["rust", "wasm"] {
+        let crate_dir = out.join(crate_sub);
+        assert!(
+            crate_dir.exists(),
+            "no {crate_sub} crate at {crate_dir:?} — generation stopped emitting it"
+        );
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(&crate_dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "cargo check failed for the {crate_sub} crate generated from {input:?}:\n{}\n{}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The wasm-ABI matrix compile-gate. `cddl-matrix/project_wasm_matrix.ts` enumerates the cross-product
 /// {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` — one minimal fixture per
 /// cell. This generates each `--wasm=true` and `cargo check`s the wasm crate (which pulls the rust crate
@@ -2661,6 +2724,21 @@ fn json() {
         &[],
         false,
         // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
+        &["jsonschema = { version = \"0.46\", default-features = false }"],
+    );
+}
+
+/// Float JSON serde/schema, split from `json` because that fixture also runs under
+/// `json_preserve` and preserve-encodings is unimplemented for floats.
+#[test]
+fn json_float() {
+    run_test(
+        "json-float",
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+        None,
+        &[],
+        &[],
+        false,
         &["jsonschema = { version = \"0.46\", default-features = false }"],
     );
 }

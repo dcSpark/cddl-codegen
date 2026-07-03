@@ -1,0 +1,43 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use cbor_encodings::FooEncoding;
+use extern_dep_crate::error::*;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use extern_dep_crate::sub::module::UintTypedef;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Foo {
+    pub uint_typedef: UintTypedef,
+    pub index_1: String,
+    pub index_2: Vec<u8>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<FooEncoding>,
+}
+
+impl Foo {
+    pub fn new(uint_typedef: UintTypedef, index_1: String, index_2: Vec<u8>) -> Self {
+        Self {
+            uint_typedef,
+            index_1,
+            index_2,
+            encodings: None,
+        }
+    }
+}

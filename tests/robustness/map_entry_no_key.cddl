@@ -1,0 +1,8 @@
+; map entries without keys are rejected by design ("map fields need keys"), currently via panic.
+; Pins that rejection: decaying to a silently-wrong `ok` is a regression; flipping to
+; `error (graceful)` is a fix (re-bless). If keyless maps ever become supported, add the
+; @name coverage promised in tests/comment-dsl/tests.rs.
+no_key_map = {
+    bytes, ; @name address
+    uint   ; @name checksum
+}

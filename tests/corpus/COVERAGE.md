@@ -129,7 +129,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.eb64url` | ➖ | eb64url | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone type panics — same Fixed-type gap as `true`/`null` (fails as a struct member too).  [`should not expose Fixed type in member`] |
-| `prelude.float` | ⚠️ | float | de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)  [`preserve_encodings is not implemented for float`] |
+| `prelude.float` | ⚠️ | float | de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve; float JSON emission is covered by tests/json-float/ + its whole_program snapshot instead)  [`preserve_encodings is not implemented for float`] |
 | `prelude.float16` | ➖ | float16 | no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work).  [`should be handled by the alias system instead`] |
 | `prelude.float16-32` | ➖ | float16-32 | the float16/float32 choice alias isn't handled by the float alias system (it includes the unsupported float16); panics even as a member.  [`should be handled by the alias system instead`] |
 | `prelude.float32` | ⚠️ | float32 | works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float32]` compiles default, fails preserve)  [`preserve_encodings is not implemented for float`] |
@@ -302,7 +302,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 - Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 45
+- Corpus fixtures: 47
 
 **Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

@@ -1,5 +1,9 @@
-Example + unit tests for all supported serialization + deserialization features are inside of `test.cddl`.
+# example
 
-Move `serialization_unit_tests.rs` to the generated `/export/` directory generated from running cddl-codegen on `test.cddl`, or alternatively copy the code into the generated `export/serialization.rs` to function as unit tests.
+`test.cddl` is the getting-started example spec. It's the spec run verbatim by the commands in
+[`docs/docs/getting_started.mdx`](../docs/docs/getting_started.mdx) (and pinned by the
+`getting_started_example` integration test).
 
-To run unit tests run `cargo test` from the `/export/` directory.
+To get round-trip unit tests for the generated output, generate with the `--emit-tests` flag — it
+emits per-type round-trip and reject tests into the generated crate. (This replaces an older manual
+workflow of copying hand-written unit tests into the export directory.)

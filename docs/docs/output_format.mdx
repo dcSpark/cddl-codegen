@@ -13,7 +13,7 @@ sidebar_position: 4
 
 **Not every type gets its own (de)serialization in `serialization.rs`.** Some constructs carry their CBOR framing at the point of *use* rather than as a standalone impl on the type:
 
-- **Type aliases** — homogeneous arrays (`-> Vec`), tables (`-> BTreeMap`), plain aliases (`foo = bar`), and tag-wrapped primitives (`tagged = #6.42(text) -> String`) are (de)serialized through the aliased type.
+- **Type aliases** — homogeneous arrays (`-> Vec`), tables (`-> BTreeMap`), and plain aliases (`foo = bar`) are (de)serialized through the aliased type. (Top-level single-type *tag* rules like `tagged = #6.42(text)` are NOT aliases — they auto-wrap into a tag-writing/tag-checking newtype; see `current_capacities`.)
 - **C-style enums** — all-fixed-value choices (`foo = 0 / 1 / 2`) are encoded *inline wherever they are used*, not via an `impl` on the enum.
 
 So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.

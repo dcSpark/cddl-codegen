@@ -377,7 +377,7 @@ reason = "group socket plug (//=) is parsed but ignored — same socket-strippin
 [[note]]
 id = "prelude.float"
 status = "partial"
-reason = "de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve)"
+reason = "de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve; float JSON emission is covered by tests/json-float/ + its whole_program snapshot instead)"
 code_anchor = "preserve_encodings is not implemented for float"
 
 [[note]]

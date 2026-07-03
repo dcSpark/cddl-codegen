@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 #![allow(clippy::too_many_arguments)]
@@ -506,6 +506,21 @@ impl schemars::JsonSchema for StructWrapper {
         <U64Wrapper as schemars::JsonSchema>::inline_schema()
     }
 }
+
+pub type Table = BTreeMap<String, u64>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct TableHolder {
+    pub t: Table,
+}
+
+impl TableHolder {
+    pub fn new(t: Table) -> Self {
+        Self { t }
+    }
+}
+
+pub type TextList = Vec<String>;
 
 #[derive(Clone, Debug, Copy)]
 pub struct U64Wrapper(u64);

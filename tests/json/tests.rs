@@ -109,6 +109,21 @@ mod tests {
         }
     }
 
+    // map JSON serde: `Table` is BTreeMap under the plain json profile and OrderedHashMap under
+    // json_preserve — the same test compiles against both, covering both maps' serde impls
+    #[test]
+    fn table_holder() {
+        let mut t = Table::new();
+        t.insert("a".to_owned(), 1);
+        t.insert("b".to_owned(), 2);
+        let holder = TableHolder::new(t);
+        let json = serde_json::to_string_pretty(&holder).unwrap();
+        let from_json: TableHolder = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, serde_json::to_string_pretty(&from_json).unwrap());
+        assert_eq!(from_json.t.get("a"), Some(&1));
+        assert_eq!(from_json.t.get("b"), Some(&2));
+    }
+
     // Negative half of the wrapper tests above (which never feed one invalid input): each reject
     // is asserted on an error-message SUBSTRING, not bare is_err(), so a rejection can't pass for
     // the wrong reason (e.g. a parse hiccup instead of the bound). The is_ok() baselines are the
@@ -157,7 +172,7 @@ mod tests {
         assert_json_reject::<StructWrapper>("\"5\"", "invalid type");
     }
 
-    // Item 7a (TESTING_ROADMAP.md): each type emits a hand-written `impl JsonSchema` alongside its
+    // Each type emits a hand-written `impl JsonSchema` alongside its
     // serde impl, and json-gen ships those schemas. The two are generated independently, so they can
     // silently disagree — a gap the round-trip tests above can't see (they only check that serde is
     // self-consistent). Validate a concrete value of every exported type against `schema_for!(T)`
@@ -191,6 +206,9 @@ mod tests {
         check!(CustomWrapper, CustomWrapper::new(1234));
         check!(Int, Int::new_uint(u64::MAX));
         check!(Int, Int::new_nint(499));
+        let mut table = Table::new();
+        table.insert("a".to_owned(), 1);
+        check!(TableHolder, TableHolder::new(table));
     }
 
     // The negative counterpart of schemas_validate_serialization, which is positive-only: a schema
@@ -228,5 +246,7 @@ mod tests {
         check_rejects!(I64Wrapper, serde_json::json!("nope"));
         check_rejects!(NintWrapper, serde_json::json!("nope"));
         check_rejects!(StructWrapper, serde_json::json!("nope"));
+        // ...and object-shaped forms reject a wrong-typed field
+        check_rejects!(TableHolder, serde_json::json!({"t": {"a": "nope"}}));
     }
 }
