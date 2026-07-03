@@ -49,8 +49,8 @@
 
 use crate::cli::Cli;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, RustField,
-    RustRecord, RustStructType, RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
+    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
 };
 use crate::utils::{convert_to_camel_case, convert_to_snake_case};
 
@@ -267,10 +267,30 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
         // encoding is the user's choice, not a generator bug. Round-trip/value-eq assertions still
         // run (the custom baseline round-trips); only the mutated-variant assertions are gated off.
         let uses_custom = struct_uses_custom_ser(types, rust_struct);
+        // A variable-length container of major-type-7 (bool/null/float) elements/keys can't have its
+        // indefinite-length re-encode round-tripped by the generated break-check, so the two
+        // container-reframing fidelity variants are filtered out at emission — LOUDLY — rather than
+        // shipping a suite that can never pass. The definite-framing variants still run.
+        let fidelity_exclude: &'static [&'static str] = if cli.preserve_encodings
+            && !uses_custom
+            && struct_has_special_var_container(types, rust_struct)
+        {
+            eprintln!(
+                "cddl-codegen --emit-tests: {name} reaches a variable-length array/map of \
+                 major-type-7 (bool/null/float) elements/keys — the generated indefinite-length \
+                 break-check can't distinguish such an element/key from the 0xff break, so the \
+                 encoding-fidelity oracle omits the {SPECIAL_VAR_CONTAINER_EXCLUDED:?} variant \
+                 classes for this type (definite-framing classes still run)"
+            );
+            SPECIAL_VAR_CONTAINER_EXCLUDED
+        } else {
+            &[]
+        };
         let rt = RtEmit {
             value_eq: !cli.preserve_encodings,
             preserve: cli.preserve_encodings && !uses_custom,
             canonical: cli.canonical_form && !uses_custom,
+            fidelity_exclude,
         };
         let roundtrip = match rust_struct.variant() {
             RustStructType::Record(record) => record_roundtrip(types, &name, record, conf, rt),
@@ -374,15 +394,22 @@ fn conformance_rule_name(
 }
 
 /// True if any part of this type's wire format is user-supplied (`@custom_serialize` /
-/// `@custom_deserialize`) — at the type level, or on any embedded field / choice variant / inner
-/// type. Used to gate OFF the encoding-fidelity oracle, whose contract is the *generated*
-/// serializer's (a picky hand-written custom deserializer legitimately rejects valid irregular
-/// encodings). Bounded: it does not recurse into a referenced named struct's fields (only that
-/// struct's own type-level config), so it can't cycle; a custom field buried under a named-type
-/// reference would surface as a fidelity failure to triage rather than a false-negative skip.
-fn struct_uses_custom_ser(
+/// `@custom_deserialize`) — at the type level, or on any field / choice variant / inner type
+/// reachable through the type's fields (including through named-struct references). Used to gate
+/// OFF the encoding-fidelity oracle, whose contract is the *generated* serializer's (a picky
+/// hand-written custom deserializer legitimately rejects valid irregular encodings, so a container
+/// embedding such a struct must be excluded too). Bounded and cycle-safe: a `visited` set of the
+/// named structs already entered stops recursion at the first repeat, so a recursive type
+/// terminates.
+fn struct_uses_custom_ser(types: &IntermediateTypes, rust_struct: &RustStruct) -> bool {
+    let mut visited = std::collections::BTreeSet::new();
+    struct_uses_custom_ser_inner(types, rust_struct, &mut visited)
+}
+
+fn struct_uses_custom_ser_inner(
     types: &IntermediateTypes,
-    rust_struct: &crate::intermediate::RustStruct,
+    rust_struct: &RustStruct,
+    visited: &mut std::collections::BTreeSet<RustIdent>,
 ) -> bool {
     let cfg = rust_struct.config();
     if cfg.custom_serialize.is_some() || cfg.custom_deserialize.is_some() {
@@ -392,29 +419,48 @@ fn struct_uses_custom_ser(
         RustStructType::Record(record) => record
             .fields
             .iter()
-            .any(|f| field_uses_custom_ser(types, f)),
-        RustStructType::Wrapper { wrapped, .. } => type_uses_custom_ser(types, wrapped),
+            .any(|f| field_uses_custom_ser(types, f, visited)),
+        RustStructType::Wrapper { wrapped, .. } => type_uses_custom_ser(types, wrapped, visited),
+        RustStructType::Table { domain, range } => {
+            type_uses_custom_ser(types, domain, visited)
+                || type_uses_custom_ser(types, range, visited)
+        }
+        RustStructType::Array { element_type, .. } => {
+            type_uses_custom_ser(types, element_type, visited)
+        }
         RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
             variants.iter().any(|v| match &v.data {
-                EnumVariantData::RustType(ty) => type_uses_custom_ser(types, ty),
+                EnumVariantData::RustType(ty) => type_uses_custom_ser(types, ty, visited),
                 EnumVariantData::Inlined(record) => record
                     .fields
                     .iter()
-                    .any(|f| field_uses_custom_ser(types, f)),
+                    .any(|f| field_uses_custom_ser(types, f, visited)),
             })
         }
         _ => false,
     }
 }
 
-fn field_uses_custom_ser(types: &IntermediateTypes, field: &RustField) -> bool {
+fn field_uses_custom_ser(
+    types: &IntermediateTypes,
+    field: &RustField,
+    visited: &mut std::collections::BTreeSet<RustIdent>,
+) -> bool {
     field.rule_metadata.custom_serialize.is_some()
         || field.rule_metadata.custom_deserialize.is_some()
-        || type_uses_custom_ser(types, &field.rust_type)
+        || type_uses_custom_ser(types, &field.rust_type, visited)
 }
 
-fn type_uses_custom_ser(types: &IntermediateTypes, ty: &RustType) -> bool {
-    fn walk(types: &IntermediateTypes, ct: &ConceptualRustType) -> bool {
+fn type_uses_custom_ser(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    visited: &mut std::collections::BTreeSet<RustIdent>,
+) -> bool {
+    fn walk(
+        types: &IntermediateTypes,
+        ct: &ConceptualRustType,
+        visited: &mut std::collections::BTreeSet<RustIdent>,
+    ) -> bool {
         match ct {
             ConceptualRustType::Alias(ident, inner) => {
                 types
@@ -423,32 +469,170 @@ fn type_uses_custom_ser(types: &IntermediateTypes, ty: &RustType) -> bool {
                     .and_then(|a| a.rule_metadata.as_ref())
                     .map(|m| m.custom_serialize.is_some() || m.custom_deserialize.is_some())
                     .unwrap_or(false)
-                    || walk(types, inner)
+                    || walk(types, inner, visited)
             }
             ConceptualRustType::Optional(t) | ConceptualRustType::Array(t) => {
-                walk(types, &t.conceptual_type)
+                walk(types, &t.conceptual_type, visited)
             }
             ConceptualRustType::Map(k, v) => {
-                walk(types, &k.conceptual_type) || walk(types, &v.conceptual_type)
+                walk(types, &k.conceptual_type, visited) || walk(types, &v.conceptual_type, visited)
             }
-            // a referenced named struct: check only its type-level custom-ser config (no field
-            // recursion — bounded, cycle-free)
-            ConceptualRustType::Rust(ident) => types
-                .rust_struct(ident)
-                .map(|s| {
-                    s.config().custom_serialize.is_some() || s.config().custom_deserialize.is_some()
-                })
-                .unwrap_or(false),
+            // a referenced named struct: recurse into its fields too (a field-level
+            // `@custom_serialize` on an embedded struct's field is still on THIS type's wire), guard
+            // against cycles with `visited`.
+            ConceptualRustType::Rust(ident) => {
+                if !visited.insert(ident.clone()) {
+                    return false;
+                }
+                types
+                    .rust_struct(ident)
+                    .map(|s| struct_uses_custom_ser_inner(types, s, visited))
+                    .unwrap_or(false)
+            }
             ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => false,
         }
     }
-    walk(types, &ty.conceptual_type)
+    walk(types, &ty.conceptual_type, visited)
+}
+
+/// Mutation classes the encoding-fidelity oracle must NOT emit for a type reaching a
+/// variable-length array/map of major-type-7 (bool/null/float) elements or keys: the generated
+/// indefinite-length deserialize loop's break-check reads `cbor_type()` alone, so a major-7
+/// element/key is indistinguishable from the `0xff` break (EndingBreakMissing). Only the two
+/// classes that reframe containers as indefinite are affected; the width/chunk/reverse classes
+/// keep definite framing and stay in.
+const SPECIAL_VAR_CONTAINER_EXCLUDED: &[&str] = &["indef_containers", "everything"];
+
+/// True if a variable-length array/map reachable from this type (through its fields / variants /
+/// inner types, including named-struct references) has a major-type-7-typed element or key —
+/// bool/null/undefined/float, all CBOR major type 7. Used to filter the `indef_containers` /
+/// `everything` fidelity variants OUT for such a type (see `SPECIAL_VAR_CONTAINER_EXCLUDED`): the
+/// break-check can't round-trip an indefinite container of major-7 elements/keys, so emitting those
+/// variants would generate a suite that can never pass. Bounded and cycle-safe via a `visited` set,
+/// like `struct_uses_custom_ser`.
+fn struct_has_special_var_container(types: &IntermediateTypes, rust_struct: &RustStruct) -> bool {
+    let mut visited = std::collections::BTreeSet::new();
+    struct_special_var_container_inner(types, rust_struct, &mut visited)
+}
+
+fn struct_special_var_container_inner(
+    types: &IntermediateTypes,
+    rust_struct: &RustStruct,
+    visited: &mut std::collections::BTreeSet<RustIdent>,
+) -> bool {
+    match rust_struct.variant() {
+        RustStructType::Record(record) => record
+            .fields
+            .iter()
+            .any(|f| type_special_var_container(types, &f.rust_type, visited)),
+        RustStructType::Wrapper { wrapped, .. } => {
+            type_special_var_container(types, wrapped, visited)
+        }
+        // the struct itself is a variable-length container: a major-7 element/key is the hazard
+        RustStructType::Array { element_type, .. } => {
+            is_special_wire_type(types, element_type)
+                || type_special_var_container(types, element_type, visited)
+        }
+        RustStructType::Table { domain, range } => {
+            is_special_wire_type(types, domain)
+                || type_special_var_container(types, domain, visited)
+                || type_special_var_container(types, range, visited)
+        }
+        RustStructType::TypeChoice { variants } | RustStructType::GroupChoice { variants, .. } => {
+            variants.iter().any(|v| match &v.data {
+                EnumVariantData::RustType(ty) => type_special_var_container(types, ty, visited),
+                EnumVariantData::Inlined(record) => record
+                    .fields
+                    .iter()
+                    .any(|f| type_special_var_container(types, &f.rust_type, visited)),
+            })
+        }
+        _ => false,
+    }
+}
+
+fn type_special_var_container(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    visited: &mut std::collections::BTreeSet<RustIdent>,
+) -> bool {
+    fn walk(
+        types: &IntermediateTypes,
+        ct: &ConceptualRustType,
+        visited: &mut std::collections::BTreeSet<RustIdent>,
+    ) -> bool {
+        match ct {
+            // a variable-length homogeneous container: a major-7 element/key is the hazard. Only the
+            // KEY of a map is peeked by the break-check (values are read positionally after a key),
+            // so only the key's specialness matters — but recurse into the value for nested
+            // containers.
+            ConceptualRustType::Array(elem) => {
+                is_special_wire_type(types, elem) || walk(types, &elem.conceptual_type, visited)
+            }
+            ConceptualRustType::Map(k, v) => {
+                is_special_wire_type(types, k)
+                    || walk(types, &k.conceptual_type, visited)
+                    || walk(types, &v.conceptual_type, visited)
+            }
+            ConceptualRustType::Optional(t) => walk(types, &t.conceptual_type, visited),
+            ConceptualRustType::Alias(_, inner) => walk(types, inner, visited),
+            ConceptualRustType::Rust(ident) => {
+                if !visited.insert(ident.clone()) {
+                    return false;
+                }
+                types
+                    .rust_struct(ident)
+                    .map(|s| struct_special_var_container_inner(types, s, visited))
+                    .unwrap_or(false)
+            }
+            ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => false,
+        }
+    }
+    walk(types, &ty.conceptual_type, visited)
+}
+
+/// True if a value of this type serializes to a CBOR major-type-7 head (bool / null / float): the
+/// class that shares its major type with the `0xff` indefinite-length break. `Optional` counts
+/// because a `None` writes `null`. Newtype `Wrapper`s are followed to their wrapped type. Deeper
+/// named-struct references (choices, records) are NOT chased here — a major-7 element buried under
+/// one would surface as a fidelity failure to triage rather than a silent skip, matching the
+/// custom-ser bound.
+fn is_special_wire_type(types: &IntermediateTypes, ty: &RustType) -> bool {
+    match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(Primitive::Bool)
+        | ConceptualRustType::Primitive(Primitive::F32)
+        | ConceptualRustType::Primitive(Primitive::F64) => true,
+        ConceptualRustType::Fixed(FixedValue::Null)
+        | ConceptualRustType::Fixed(FixedValue::Bool(_))
+        | ConceptualRustType::Fixed(FixedValue::Float(_)) => true,
+        // `T / null` -> Option<T>; a None writes null (major 7)
+        ConceptualRustType::Optional(_) => true,
+        ConceptualRustType::Rust(ident) => types
+            .rust_struct(ident)
+            .map(|s| match s.variant() {
+                RustStructType::Wrapper { wrapped, .. } => is_special_wire_type(types, wrapped),
+                _ => false,
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 // ============================================================================================
 // ROUND-TRIP half. Each fn returns the body of one `roundtrip_<type>` test: a set of IR-derived
 // value cases, each pushed through the full wire cycle and asserted byte-identical.
 // ============================================================================================
+
+/// Per-case emission flags, bundled. See `roundtrip_body` for what each one emits.
+#[derive(Clone, Copy)]
+struct RtEmit {
+    value_eq: bool,
+    preserve: bool,
+    canonical: bool,
+    /// fidelity mutation-class labels to filter OUT (see `SPECIAL_VAR_CONTAINER_EXCLUDED`); empty
+    /// for the common case.
+    fidelity_exclude: &'static [&'static str],
+}
 
 /// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
 /// CDDL rule name for the `--emit-tests-conformance` oracle (`None` when off): when set, each case
@@ -465,19 +649,9 @@ fn type_uses_custom_ser(types: &IntermediateTypes, ty: &RustType) -> bool {
 /// `preserve` appends the encoding-fidelity block: each of the mutator's irregular re-encodings of
 /// the canonical `bytes` must decode and (preserve) re-encode byte-identically. `canonical`
 /// additionally hoists a per-case canonical baseline, asserts it's a fixed point, and asserts every
-/// variant canonicalizes to it (the encoding-invariance differential). See
-/// `static/emit_tests_encoding_fidelity.rs`.
-///
-/// The per-case emission flags, bundled (`value_eq` — assert the deserialized value equals the
-/// minted original; `preserve`/`canonical` — the encoding-fidelity block above). `preserve`/
-/// `canonical` are already gated off for custom-serialized types by the caller.
-#[derive(Clone, Copy)]
-struct RtEmit {
-    value_eq: bool,
-    preserve: bool,
-    canonical: bool,
-}
-
+/// variant canonicalizes to it (the encoding-invariance differential). `fidelity_exclude` (usually
+/// empty) filters mutation classes out for types the oracle can't faithfully assert (see
+/// `SPECIAL_VAR_CONTAINER_EXCLUDED`). See `static/emit_tests_encoding_fidelity.rs`.
 fn roundtrip_body(
     name: &str,
     cases: Vec<(String, String)>,
@@ -491,6 +665,7 @@ fn roundtrip_body(
         value_eq,
         preserve,
         canonical,
+        fidelity_exclude,
     } = rt;
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
@@ -520,9 +695,28 @@ fn roundtrip_body(
                 } else {
                     (String::new(), String::new())
                 };
+                // The container-reframing variants (indefinite framing) are filtered out for types
+                // reaching a variable-length container of major-type-7 elements/keys — the generated
+                // break-check can't round-trip them (see SPECIAL_VAR_CONTAINER_EXCLUDED).
+                let (variants_call, exclude_comment) = if fidelity_exclude.is_empty() {
+                    ("cddl_encoding_fidelity::variants(&bytes)".to_owned(), String::new())
+                } else {
+                    let list = fidelity_exclude
+                        .iter()
+                        .map(|s| format!("\"{s}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (
+                        format!("cddl_encoding_fidelity::variants_filtered(&bytes, &[{list}])"),
+                        format!(
+                            "\n        // {} filtered out: this type reaches a variable-length container of major-type-7\n        // (bool/null/float) elements/keys, whose indefinite re-encode the generated break-check can't round-trip.",
+                            fidelity_exclude.join(", ")
+                        ),
+                    )
+                };
                 format!(
-                    "{canon_hoist}
-        for (mut_label, mutated) in cddl_encoding_fidelity::variants(&bytes) {{
+                    "{exclude_comment}{canon_hoist}
+        for (mut_label, mutated) in {variants_call} {{
             let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));
             assert_eq!(back.to_cbor_bytes(), mutated, \"{name} ({label})/{{mut_label}}: preserve-encodings must re-encode irregular input byte-identically\");{canon_assert}
         }}"

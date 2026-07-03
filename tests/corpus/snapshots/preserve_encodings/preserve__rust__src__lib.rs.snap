@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 #![allow(clippy::too_many_arguments)]
@@ -18,9 +18,9 @@ use crate::ordered_hash_map::OrderedHashMap;
 use crate::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
-    BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, DeeplyNestedEncoding,
-    EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding,
-    MapWithDefaultsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
+    BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
+    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
+    HashEncoding, MapWithDefaultsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
     SignedIntsEncoding, String1632Encoding, String64Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -341,6 +341,21 @@ impl CborInCbor {
 }
 
 pub type CustomBytes = Vec<u8>;
+
+#[derive(Clone, Debug)]
+pub struct CustomFieldHolder {
+    pub nested: StructWithCustomSerialization,
+    pub encodings: Option<CustomFieldHolderEncoding>,
+}
+
+impl CustomFieldHolder {
+    pub fn new(nested: StructWithCustomSerialization) -> Self {
+        Self {
+            nested,
+            encodings: None,
+        }
+    }
+}
 
 pub type Data = OrderedHashMap<Vec<u8>, OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>>;
 

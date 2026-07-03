@@ -2353,26 +2353,13 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // (profile, fixture stem, reason) — cells whose emitted round-trip surface is a known
     // structural gap under that profile. Empirically discovered; a resurfaced guard fails the gate
     // if any starts passing so the list can't rot.
-    const SKIP: &[(&str, &str, &str)] = &[
-        // Both cells fail the encoding-fidelity `indef_containers` variant with EndingBreakMissing:
-        // a bool element/key is CBOR major type 7 (Special), the same major type as the
-        // indefinite-length break byte, and `make_deser_loop_break_check` can only peek
-        // `cbor_type()` (a `fill_buf` byte peek needs a `BufRead` bound the type-erased choice
-        // closures can't carry — see that fn's docs). So an INDEFINITE container of specials
-        // mis-reads its first element as the break. Pre-existing limitation documented in both
-        // fixtures' comments; surfaced at scale by the fidelity oracle. Definite-length framing
-        // (every other mutation class) is unaffected.
-        (
-            "preserve",
-            "homogeneous_array",
-            "indefinite container of bool (major-7) elements: break-check consumes the element (EndingBreakMissing) — pre-existing limitation, see fixture comment",
-        ),
-        (
-            "preserve",
-            "special_map_key",
-            "indefinite map with bool (major-7) keys: break-check consumes the key (EndingBreakMissing) — pre-existing limitation, see fixture comment",
-        ),
-    ];
+    //
+    // The former `homogeneous_array`/`special_map_key` preserve entries are gone: the
+    // encoding-fidelity oracle now filters its two container-reframing variants OUT at emission time
+    // for any type reaching a variable-length container of major-type-7 elements/keys (see
+    // `emit_tests::SPECIAL_VAR_CONTAINER_EXCLUDED`), so those cells run fully green here — a real
+    // regression in them is no longer masked by a skip.
+    const SKIP: &[(&str, &str, &str)] = &[];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).

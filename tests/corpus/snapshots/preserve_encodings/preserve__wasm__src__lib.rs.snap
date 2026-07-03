@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 #![allow(
@@ -755,6 +755,49 @@ impl AsRef<cddl_lib::CborInCbor> for CborInCbor {
 }
 
 pub type CustomBytes = Vec<u8>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CustomFieldHolder(cddl_lib::CustomFieldHolder);
+
+#[wasm_bindgen]
+impl CustomFieldHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomFieldHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn nested(&self) -> StructWithCustomSerialization {
+        self.0.nested.clone().into()
+    }
+
+    pub fn new(nested: &StructWithCustomSerialization) -> Self {
+        Self(cddl_lib::CustomFieldHolder::new(nested.clone().into()))
+    }
+}
+
+impl From<cddl_lib::CustomFieldHolder> for CustomFieldHolder {
+    fn from(native: cddl_lib::CustomFieldHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomFieldHolder> for cddl_lib::CustomFieldHolder {
+    fn from(wasm: CustomFieldHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomFieldHolder> for CustomFieldHolder {
+    fn as_ref(&self) -> &cddl_lib::CustomFieldHolder {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
