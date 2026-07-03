@@ -68,18 +68,25 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 `bun run check.ts` at the repo root is the one entry point for verification: a gate registry with
 three tiers, each a superset of the previous.
-- `bun run check.ts quick` — fmt + clippy + snapshot tests (the inner loop).
-- `bun run check.ts` (`ci`, default) — exactly the frozen `build.yml` union: "what a PR would face".
-- `bun run check.ts full` — `ci` + every manual-only gate (the two `#[ignore]`d gates, `verify.ts`,
+- `bun run check.ts fast` — what CI runs: fmt + clippy + snapshot tests + the drift gates.
+- `bun run check.ts` (`local`, default) — fast + the workspace build and full `cargo test` suite.
+  Run this before considering work done.
+- `bun run check.ts full` — `local` + every manual-only gate (the `#[ignore]`d gates, `verify.ts`,
   `corpus_detect.ts`, the fuzz compile-rot check). Run this before shipping a feature.
 
 Every run prints the full registry as a PASS/FAIL/SKIPPED/STUB table and exits non-zero on any fail;
 its first gate self-checks that every manual gate, IOU stub, and `cddl-matrix` script is registered,
-so the "run everything" set can't silently rot. The runner is the local *superset* of CI, never a
-replacement to be wired in. See `tests/README.md` § "Running everything".
+so the "run everything" set can't silently rot. See `tests/README.md` § "Running everything".
 
-**CI is feature-frozen — make NO modifications to the CI flow.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or expansions of existing runs.
-The only acceptable CI changes are fixes to things that break due to refactoring
+**CI runs the `fast` tier ONLY.** `.github/workflows/build.yml` is a thin invoker of
+`bun run check.ts fast` — it must never grow its own steps (enforced: check.ts's `self_checks` gate
+fails on any other run step in the workflow). Keep the fast tier the absolute minimum: this project
+has a sole maintainer, and the rate at which AI makes commits means there is no budget for anything
+beyond a quick CI. New gates default to the `local` or `full` tier; promoting a gate into `fast` is
+a maintainer decision, not something an agent does in passing. The heavy correctness gates (full
+`cargo test`, corpus + wasm-matrix compiles) are therefore a LOCAL responsibility — run the
+appropriate tier yourself before finishing work; do not rely on CI to catch anything the fast tier
+doesn't cover.
 
 This repo follows test-driven development (TDD).
 That means that for every failure, we generally want to think about what could have systematically caught that failure.

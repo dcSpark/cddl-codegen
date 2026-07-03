@@ -11,12 +11,14 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `quick` | `bun run check.ts quick` | fmt + clippy + snapshot tests — the inner loop | ~12s |
-| `ci` (default) | `bun run check.ts` | exactly the frozen `build.yml` union (both jobs) | ~3 min |
-| `full` | `bun run check.ts full` | `ci` + every manual-only gate | ~9 min |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~15s |
+| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~4 min |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~10 min |
 
-`ci` is "what a PR would face" — run it before every push. `full` additionally runs the gates CI
-can't (the four `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
+`fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
+policy below). `local` is "run before considering work done" — the heavy correctness gates (full
+`cargo test`, corpus + wasm-matrix compiles) live here, NOT in CI. `full` additionally runs the
+manual gates (the four `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
 `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`,
 `cddl-matrix/verify.ts`, `corpus_detect.ts`, and the fuzz-crate compile-rot check) — run it before
 shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
@@ -30,9 +32,10 @@ gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refre
 
 The runner's **first gate is three self-completeness meta-checks**: every `#[ignore]` test must be
 registered as a manual gate or a known-failing stub, every `cddl-matrix/*.ts` (minus `lib.ts`) must
-be wired to a tier, and each `ci` command must still appear in `build.yml`. This is the systematic
-catch for the disease the runner cures — a gate that exists but is in nobody's habit — so a new
-manual gate or IOU stub is a conscious registry edit, not a silent omission.
+be wired to a tier, and `build.yml` must invoke `bun run check.ts fast` with no other run step (so
+CI can neither drift away from the fast tier nor grow work that bypasses the registry). This is the
+systematic catch for the disease the runner cures — a gate that exists but is in nobody's habit — so
+a new manual gate or IOU stub is a conscious registry edit, not a silent omission.
 
 Wall times above are warm-cache, measured on the dev machine; a cold build adds the one-time
 dependency + test-binary compile.
@@ -46,11 +49,13 @@ Snapshots are the fast inner loop and the primary safety net for refactors; inte
 the correctness gate. A refactor that doesn't intend to change output should leave every snapshot
 untouched — if one moves, you see exactly what changed.
 
-**CI policy — feature-frozen.** The CI workflow (`.github/workflows/build.yml`) is feature-frozen:
-it accepts no new jobs, steps, gates, or expansions of existing runs (CI minutes cost real money —
-see `AGENTS.md`). The only changes accepted are fixes to things that break due to refactoring.
-Verification systems not already wired into CI run manually/locally, and are documented as manual
-runs.
+**CI policy — fast tier only.** CI (`.github/workflows/build.yml`) runs exactly
+`bun run check.ts fast` and nothing else (CI minutes cost real money — sole maintainer, AI-velocity
+commits; see `AGENTS.md`). The fast tier of the registry is the single definition of what CI does,
+and check.ts's `self_checks` gate fails if the workflow grows any other run step. Keep the fast
+tier the absolute minimum: new gates default to `local` or `full`; promoting one into `fast` is a
+maintainer decision. Everything heavier than the fast tier runs locally, and is documented as a
+local/manual run.
 
 ## Golden snapshots (`snapshot_tests.rs`)
 
@@ -279,8 +284,8 @@ emits a fixed valid literal instead of the generic `"a"` — otherwise a spec-vi
 round-trip byte-identically yet be (correctly) rejected by this oracle. Only tags the validator actually
 enforces get a constant (`semantic_tag_content` in `emit_tests.rs`); every other tag mints the baseline.
 
-**The gate** (`integration_tests::ir_conformance_corpus`, `#[ignore]`d — **manual/local only** under
-the CI freeze, because it adds the heavy `cddl` dep to every corpus crate):
+**The gate** (`integration_tests::ir_conformance_corpus`, `#[ignore]`d — **manual/local only**, kept
+out of even the local tier's `cargo test` because it adds the heavy `cddl` dep to every corpus crate):
 
 ```sh
 cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture   # ~1 min

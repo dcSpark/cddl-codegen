@@ -45,9 +45,10 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
 
 ## 2. Running the verification suite
 
-**CI policy — feature-frozen.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or
-expanded runs (CI cost; see `AGENTS.md`). The **(CI)** markers below describe what is *already*
-wired; everything else runs manually and stays that way.
+**CI policy — fast tier only.** CI runs exactly `bun run check.ts fast` (cost policy; see
+`AGENTS.md`); the fast tier includes this directory's drift gates. The **(CI)** markers below mean
+"in check.ts's fast tier"; everything else runs locally (check.ts `local`/`full`), and promoting a
+gate into `fast` is a maintainer decision.
 
 All tooling is **Bun/TypeScript, run manually** from `cddl-matrix/`; `lib.ts` holds the shared loaders +
 the stable-JSON serializer. Oracle paths are env-overridable (`RUST_CDDL`, `RUBY_CDDL`; `CODEGEN_DIR`
@@ -59,9 +60,10 @@ preflight and a PASS/FAIL summary; it is the "run all to confirm consistency" pa
 commands below stay the reference for running one gate in isolation.
 
 **Full verification suite (run all to confirm consistency).** The fast, pure-`matrix.json` drift checks
-are **wired into CI** (`.github/workflows/build.yml` `matrix-drift` job runs `build_matrix.ts --check`,
-`project_robustness.ts --check`, `project_wasm_matrix.ts --check`, and `project_corpus.ts`); the
-heavy `verify.ts` oracle probe is run manually and stays manual (CI is frozen).
+are **wired into CI** via check.ts's fast tier (`build_matrix.ts --check`,
+`project_robustness.ts --check`, `project_wasm_matrix.ts --check`, `project_golden_hex.ts --check`,
+and `project_corpus.ts`); the heavy `verify.ts` oracle probe runs manually (check.ts `full` tier)
+and stays out of CI.
 - `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay. **(CI)**
 - `bun run project_wasm_matrix.ts --check` — drift gate for the wasm-ABI matrix fixtures
   (`tests/matrix_wasm/*.cddl`); pure `SHAPES`/`ROLES` projection, no cargo/oracles. **(CI)**
@@ -276,7 +278,7 @@ panic that forces the struct roles to use array-rep, so fixing that panic is a p
 --wasm=true` emits a `cddl_generated_wasm_tests` module (`src/emit_tests_wasm.rs`) that constructs through
 the wrapper API, round-trips, and reads accessors back against the minted literals, cross-checked against
 an independent `cddl_lib::` rust build (the byte differential). It runs per-cell via
-`integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d under the CI freeze) and, in `verify.ts`,
+`integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d — check.ts full tier) and, in `verify.ts`,
 via a **default-on** `--wasm` probe (opt out with `--no-wasm` / `VERIFY_WASM=0`) that `cargo test`s the
 generated wasm crate and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell
 evidence. Remaining:
