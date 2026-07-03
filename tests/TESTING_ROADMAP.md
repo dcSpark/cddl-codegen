@@ -77,15 +77,6 @@ is still a default-profile claim — the "Profile axis" pending decision below.
    real-world depth.
 
 5. **Small independent residuals (low).**
-   - **Decode-side reference-codec differential.** The two conformance oracles (the rust `cddl`
-     validator in `deser_test_conformance.rs` and the lineage-decorrelated ruby `cddl` gem sweep in
-     `ir_conformance_corpus`) both prove our bytes match the *spec*; neither is a raw structural
-     decode differential. A separate small oracle — our bytes → an independent CBOR codec (ciborium
-     directly, or minicbor, which is used nowhere today) → compare the decoded structure — would catch
-     a well-formedness/structural regression a CDDL-blind decoder sees but a spec validator does not.
-     Low priority: our output's well-formedness is already asserted at breadth by the round-trip +
-     encoding-fidelity oracles, and ciborium is already in the loop via the `cddl` validator, so this
-     buys structural cross-checking, not misparse decorrelation (that gap is closed by the ruby sweep).
    - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
      fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
      `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

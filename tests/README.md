@@ -395,6 +395,21 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   `CDDL_RUBY_ORACLE=skip`, which prints the grep-stable `RUBY ORACLE: SKIPPED (...)` marker and runs
   only the rust + dump-coverage halves.
 
+**Decode-side reference-codec differential (CDDL-blind, dependency-free).** Both cddl oracles above
+prove our bytes match the *spec*; neither is a raw structural decode. Piggybacking on the same dumped
+`.cbor` files, this gate also decodes every minted case through **two independent CBOR codecs**
+(`ciborium` and `minicbor`, harness-side dev-deps — `minicbor` is used nowhere else in the pipeline,
+which is its decorrelation value) and requires both to fully consume the bytes (no trailing garbage)
+and agree on the decoded structure. What it proves: two decorrelated decoders structurally agree on
+our output — a well-formedness regression a spec validator wouldn't see (a validator can accept bytes
+a raw decoder chokes on, or vice-versa). What it can't: nothing about spec conformance — that's the two
+cddl oracles' job. It has no external dependency, so it runs for `RUST_ORACLE_SKIP` fixtures and even
+under `CDDL_RUBY_ORACLE=skip`, with its own case floor (`DIFF_CASE_FLOOR`) and a truncation negative
+control (a malformed case must fail both codecs). The one place the codecs legitimately model the same
+bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds into integers and
+`minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude types) — is canonicalized by
+`fold_bignums` before comparison, so only a genuine structural divergence turns the gate red.
+
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
 A **coverage-by-construction** gate for the generated wasm-bindgen bindings: it compiles the wasm crate
