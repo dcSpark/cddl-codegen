@@ -5,11 +5,16 @@
 // `has(key)`) restore the lost bit WITHOUT changing any existing getter signature; the single-nested
 // enum variant needs no new accessor because `kind()` + `as_variant()` is already unambiguous.
 //
-// Each state is constructed through the RUST API (the wasm wrapper carries From<cddl_lib::T>) so the
-// absent-vs-present-null pair — which no wasm setter/constructor can mint (setters always wrap in an
-// outer Some) — is actually exercised. We then read each state back through the wasm accessors and
-// assert the three observations are PAIRWISE DISTINCT: that distinguishability is the property the two
-// retired `#[ignore]` stubs stood in for.
+// The wasm WRITE surface is fully three-state-expressive (this is a read-side flattening, not a
+// write-side one): a nullable setter/insert takes the inner `Option<T>` and wraps it in the outer
+// presence-`Option`, so `set_field0(None)` stores `Some(None)` (present-null) and `set_field0(Some(v))`
+// stores `Some(Some(v))` (present-value); skipping the setter leaves the ctor's `None` (absent).
+// Likewise map `insert(k, None)` stores a present-null entry, `insert(k, Some(v))` a present-value one,
+// and an un-inserted key is absent. So each state is constructed BOTH through the rust API AND through
+// the wasm write surface below, and read back through the wasm accessors; we assert the three
+// observations are PAIRWISE DISTINCT (the distinguishability the two retired `#[ignore]` stubs stood
+// in for) and that the wasm-written present-null is observed as present-null, pinning the corrected
+// write-side claim in docs/docs/wasm_differences.mdx.
 
 #[test]
 fn wasm_optional_nullable_field_three_state_fidelity() {
@@ -42,6 +47,20 @@ fn wasm_optional_nullable_field_three_state_fidelity() {
     assert_ne!(obs_absent, obs_null);
     assert_ne!(obs_absent, obs_value);
     assert_ne!(obs_null, obs_value);
+
+    // Now mint the same three states through the WASM WRITE surface (not the rust API): the setter
+    // wraps its inner-Option argument in the outer presence-Option, so present-null IS constructible
+    // from wasm — `set_field0(None)` -> Some(None). (Contradicts the old "no wasm setter can mint
+    // present-null" claim; see docs/docs/wasm_differences.mdx "Write-side semantics".)
+    let w_absent = NullableOptionalField::new(1); // never call the setter -> absent
+    let mut w_null = NullableOptionalField::new(1);
+    w_null.set_field0(None); // present-null via the wasm setter
+    let mut w_value = NullableOptionalField::new(1);
+    w_value.set_field0(Some(7)); // present-value via the wasm setter
+
+    assert_eq!((w_absent.has_field0(), w_absent.field0()), (false, None));
+    assert_eq!((w_null.has_field0(), w_null.field0()), (true, None));
+    assert_eq!((w_value.has_field0(), w_value.field0()), (true, Some(7)));
 }
 
 #[test]
@@ -67,6 +86,31 @@ fn wasm_nullable_map_value_three_state_fidelity() {
     assert_ne!(obs_absent, obs_null);
     assert_ne!(obs_absent, obs_value);
     assert_ne!(obs_null, obs_value);
+
+    // Same states, but built entirely through the WASM insert (not the rust API): `insert(k, None)`
+    // stores a present-null entry, `insert(k, Some(v))` a present-value one, an un-inserted key is
+    // absent. Confirms the wasm write surface can mint present-null (pins the corrected doc claim).
+    let mut wm = NullableMapValue::new();
+    wm.insert(10, None); // present-null via wasm insert
+    wm.insert(20, Some(7)); // present-value via wasm insert
+                            // key 30 never inserted -> absent
+    assert_eq!((wm.has(30), wm.get(30)), (false, None));
+    assert_eq!((wm.has(10), wm.get(10)), (true, None));
+    assert_eq!((wm.has(20), wm.get(20)), (true, Some(7)));
+}
+
+// Regression guard for the `has_<field>` name-collision skip (generation.rs). `has_name_collision`
+// has an optional-nullable `field0` (whose flattening getter would synthesize `has_field0()`) AND a
+// sibling field literally named `has_field0`. The generator must SKIP the synthesized accessor so the
+// wasm crate compiles with a single `pub fn has_field0` (the sibling field's own getter). That this
+// test module compiles at all is the proof; the assertion just exercises the surviving getters.
+#[test]
+fn wasm_has_field_name_collision_compiles() {
+    let v: HasNameCollision = cddl_lib::HasNameCollision::new(true).into();
+    // `has_field0()` here is the SIBLING FIELD's getter (a bool), not a synthesized presence accessor.
+    assert!(v.has_field0());
+    // `field0` (the optional-nullable field) still has its flattening getter; absent by default.
+    assert_eq!(v.field0(), None);
 }
 
 #[test]

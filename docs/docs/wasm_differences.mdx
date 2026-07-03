@@ -32,7 +32,7 @@ To recover the three states on the **read** side without changing any existing g
   - `has_field0() == false` → the field is **absent**.
   - `has_field0() == true && field0() == None` → the field is **present but null**.
   - `has_field0() == true && field0() == Some(v)` → the field holds **value** `v`.
-- **Nullable map value** — `get(key)` is joined by `has(key) -> bool` (key presence, an `O(log n)` lookup rather than scanning `keys()`):
+- **Nullable map value** — `get(key)` is joined by `has(key) -> bool` (key presence, a direct key lookup rather than scanning `keys()`):
   - `has(key) == false` → the key is **absent**.
   - `has(key) == true && get(key) == None` → the key is present with a **null** value.
   - `has(key) == true && get(key) == Some(v)` → the key holds **value** `v`.
@@ -43,9 +43,20 @@ To recover the three states on the **read** side without changing any existing g
 
 A **doubly**-nested nullable enum variant (a payload resolving to `Option<Option<T>>`, e.g. `text / ((uint / null) / null)`) is not a case you can hit: the generated wasm enum constructor cannot accept such a payload, so no supported CDDL produces one.
 
-### Write-side asymmetry
+### Write-side semantics
 
-The presence accessors restore fidelity on the **read** side only. On the **write** side, the wasm setters and constructors always wrap their argument in the outer presence-`Option` (`Some(..)`), so from JavaScript you can construct an **absent** slot (skip the setter / omit the map key) or a **present-value** one, but **not** a present-but-`null` one. This is a deliberate scope boundary — no consumer has needed to *build* present-null from wasm; if you need that state on the wire, construct the value through the rust crate (which represents all three states directly) and convert it across with the generated `From`/`Into`.
+The flattening is a **read**-side effect only; the **write** side is fully three-state expressive. A nullable setter/insert takes the *inner* `Option<T>` as its argument and stores it wrapped in the outer presence-`Option`, so all three states are constructible directly from JavaScript:
+
+- **Optional-nullable struct field** (`set_field0(value)` stores `self.0.field0 = Some(value)`):
+  - **absent** — never call the setter (the constructor leaves the field `None`).
+  - **present-null** — `set_field0(null)` stores `Some(None)`.
+  - **present-value** — `set_field0(v)` stores `Some(Some(v))`.
+- **Nullable map value** (`insert(key, value)` stores `value` directly as the entry):
+  - **absent key** — never insert the key.
+  - **present-null** — `insert(key, null)` stores a `null` entry.
+  - **present-value** — `insert(key, v)` stores `v`.
+
+(The only thing a setter can't do is *remove* a slot back to absent once set — but that state is the constructor default and needs no setter.) So unlike the read side, no fidelity is lost on write, and there is no need to detour through the rust crate to build a present-null value.
 
 ## JSON and large integers
 

@@ -1585,17 +1585,26 @@ fn ir_conformance_corpus() {
     // rejecting its now-in-spec minted value.
     const EXPECTED_FAIL: &[&str] = &[];
 
-    // Fixtures excluded from the conformance sweep (generated WITHOUT --emit-tests-conformance) —
-    // each with a concrete reason the oracle can't soundly judge it. Kept honest: a fixture only
-    // belongs here for a *validator/minter* gap, never to paper over a real bug.
-    //   - dsl_custom: references user-supplied @custom_serialize fns; can't compile standalone
-    //     (same reason feature_corpus_compiles skips it).
-    //   - sized_int: VALIDATOR GAP. Its spec has `i_8: -128..127` and `i_64: int .size 8`; the cddl
-    //     validator can't parse a range whose lower bound is a negative int ("lower value must be a
-    //     uint type. got -128") nor `.size` on a signed `int` ("target for .size must a string or
-    //     uint data type, got int"). Our minted values are in-spec (all zeros) — this is a limitation
-    //     of the oracle's constraint evaluator, not an encoder bug (see tests/README.md).
-    const CONFORMANCE_SKIP: &[&str] = &["dsl_custom", "sized_int"];
+    // Two DIFFERENT kinds of exclusion, deliberately split so a RUST-validator gap doesn't also cost
+    // the decorrelated ruby oracle its coverage (they are independent validators — one's blind spot
+    // is not the other's).
+    //
+    // GEN_SKIP: genuinely can't be generated/compiled standalone, so it's skipped ENTIRELY (no
+    // generation, no dump, no sweep of any kind).
+    //   - dsl_custom: references user-supplied @custom_serialize fns; can't compile standalone (same
+    //     reason feature_corpus_compiles skips it).
+    const GEN_SKIP: &[&str] = &["dsl_custom"];
+    // RUST_ORACLE_SKIP: the RUST conformance validator has a documented gap on this spec, but the
+    // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
+    // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
+    // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
+    //   - sized_int: RUST VALIDATOR GAP. Its spec has `i_8: -128..127` and `i_64: int .size 8`; the
+    //     dcSpark cddl validator can't parse a range whose lower bound is a negative int ("lower
+    //     value must be a uint type. got -128") nor `.size` on a signed `int` ("target for .size must
+    //     a string or uint data type, got int"). Our minted values are in-spec (all zeros) — an
+    //     oracle constraint-evaluator limitation, not an encoder bug (see tests/README.md). The ruby
+    //     gem is a different parser/evaluator, so it CAN weigh in on these bytes.
+    const RUST_ORACLE_SKIP: &[&str] = &["sized_int"];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -1640,21 +1649,26 @@ fn ir_conformance_corpus() {
     //                parser rejected the SPEC. We gate on EXIT CODE (0 vs nonzero); a `*** Unused rule`
     //                line the gem prints to stderr on the synthetic root is harmless noise, never an exit.
     //
-    // RUBY_EXPECTED_FAIL: fixtures the gem diverges on for a documented, non-bug reason — a gem construct
-    // gap (its parser/validator lacks something the fork legitimately supports; exit 1 or 65 on every
-    // case). Each entry is anchored with a justification. A DIVERGENCE IS SIGNAL: an unledgered one is
-    // either a gem gap to add here WITH a reason, or — the class this whole oracle exists to catch — a
-    // fork misparse minting spec-violating bytes. Investigate before ledgering. A ledgered fixture that
-    // STOPS diverging (all cases accepted) is flagged stale, like the rust oracle's fixed_or_toothless.
-    const RUBY_EXPECTED_FAIL: &[(&str, &str)] = &[
+    // RUBY_EXPECTED_FAIL: (fixture, RULE, reason) triples the gem diverges on for a documented,
+    // non-bug reason — a gem construct gap (its parser/validator lacks something the fork legitimately
+    // supports; exit 1 or 65 on that rule's cases). Ledgering is PER (fixture, rule), not per fixture:
+    // a fixture can have one rule the gem legitimately can't judge while its OTHER rules must still be
+    // sound — an unledgered divergence on a sibling rule of a ledgered fixture is a real failure, not
+    // swallowed. A DIVERGENCE IS SIGNAL: an unledgered one is either a gem gap to add here WITH a
+    // reason, or — the class this whole oracle exists to catch — a fork misparse minting spec-violating
+    // bytes. Investigate before ledgering. A ledgered (fixture, rule) that STOPS diverging (all its
+    // cases accepted) while still being swept is flagged stale, like the rust oracle's fixed_or_toothless.
+    const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[
         // `inner = (a: uint, b: uint)` is a bare GROUP, not a type. cddl-codegen represents a
         // top-level group rule as a standalone array-serialized struct (mints `[0, 0]` = 0x82 00 00);
         // the dcSpark fork's validator leniently accepts that array when the synthetic root aliases the
         // group. The ruby gem is stricter — a group is not a top-level instance type, so it errors
         // `Don't know how to validate [:grpent ...]`. Gem construct gap, NOT a fork misparse: the bytes
-        // faithfully encode (a:0, b:0). (`outer`, which embeds `inner` inside `[...]`, validates fine.)
+        // faithfully encode (a:0, b:0). Only the `inner` RULE is ledgered — `outer`, which embeds
+        // `inner` inside `[...]`, validates fine and any divergence on IT must still fail the gate.
         (
             "nested_group",
+            "inner",
             "gem cannot validate a bare top-level GROUP rule as an instance type",
         ),
     ];
@@ -1665,22 +1679,61 @@ fn ir_conformance_corpus() {
     // that reads an empty dir still fails the gate rather than passing a no-op oracle.
     const RUBY_CASE_FLOOR: usize = 50;
 
+    // DUMP_EXEMPT: (fixture, RULE, reason) triples where a rule the emitter INTENDED to dump (its
+    // dump hook is present in lib.rs) legitimately produced no `.cbor` on disk. The per-fixture
+    // dump-coverage check below fails the gate on any UN-exempt shortfall, so a dump hook that
+    // silently stops firing (or a lossy rule name that drops a top-level rule from the sweep — the
+    // very thing the source-rule-name recovery fixed) is visible per fixture, not only via the
+    // corpus-wide RUBY_CASE_FLOOR. Empty at HEAD: source rule names are always recoverable, so every
+    // dumping test dumps.
+    const DUMP_EXEMPT: &[(&str, &str, &str)] = &[];
+
     let ruby_gem = resolve_ruby_cddl();
+    // F7 posture: the decorrelated oracle must not silently, permanently degrade to a no-op just
+    // because the gem isn't installed on some machine. Gem absent => this gate FAILS with install
+    // instructions, UNLESS the operator explicitly opts out via CDDL_RUBY_ORACLE=skip (which prints a
+    // grep-stable SKIPPED marker at the end and runs only the rust half). Documented in
+    // tests/README.md and the check.ts gate description.
+    let ruby_opt_out = std::env::var("CDDL_RUBY_ORACLE").ok().as_deref() == Some("skip");
+    if ruby_gem.is_none() && !ruby_opt_out {
+        panic!(
+            "RUBY ORACLE REQUIRED but the ruby `cddl` gem was not found. The decorrelated (fork-\
+             misparse) conformance oracle cannot run without it. Install it with `gem install \
+             --user-install cddl` (or set RUBY_CDDL to a ruby cddl binary). To run this gate WITHOUT \
+             the decorrelated oracle — accepting that the fork-misparse class goes uncovered — set \
+             CDDL_RUBY_ORACLE=skip."
+        );
+    }
     let mut ruby_total_cases = 0usize;
     let mut ruby_failures: Vec<String> = vec![]; // unledgered divergences (rule/case/hex/stderr)
-    let mut ruby_ledger_clean: Vec<&str> = vec![]; // RUBY_EXPECTED_FAIL fixtures that DIDN'T diverge (stale)
+    // Per (fixture, rule) sweep bookkeeping for the per-rule ledger + stale check (F4).
+    let mut ruby_seen_rules: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new(); // (fixture, rule) pairs with >= 1 case actually swept
+    let mut ruby_diverged_rules: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new(); // (fixture, rule) pairs with >= 1 divergence
     // First known-good (rooted-spec, valid-bytes) pair, for the post-sweep negative control.
     let mut ruby_neg_sample: Option<(String, String, Vec<u8>)> = None;
 
+    let mut dump_coverage_failures: Vec<String> = vec![]; // F5: intended-but-undumped rules
     let mut failures = vec![];
     let mut fixed_or_toothless = vec![]; // EXPECTED_FAIL fixtures that unexpectedly passed
     let mut validated_fixtures = 0usize; // vacuity floor: fixtures that actually emitted a conformance call
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
-        if CONFORMANCE_SKIP.contains(&stem) {
+        if GEN_SKIP.contains(&stem) {
             continue;
         }
+        // rust_oracle: emit the rust `cddl_conformance::validate` half? Off for RUST_ORACLE_SKIP
+        // fixtures (rust-validator gap) — they still generate, round-trip, dump, and ruby-sweep.
+        let rust_oracle = !RUST_ORACLE_SKIP.contains(&stem);
         let expected_fail = EXPECTED_FAIL.contains(&stem);
+        // An EXPECTED_FAIL fixture is judged by the rust oracle's message, so it must have that
+        // oracle on — the two lists must stay disjoint.
+        assert!(
+            !expected_fail || rust_oracle,
+            "{stem} is on both EXPECTED_FAIL and RUST_ORACLE_SKIP — an expected-fail fixture needs \
+             the rust conformance oracle to fail for the right reason"
+        );
         let out = root.join(stem);
         let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
@@ -1688,7 +1741,7 @@ fn ir_conformance_corpus() {
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
             .arg("--emit-tests=true")
-            .arg("--emit-tests-conformance=true")
+            .arg(format!("--emit-tests-conformance={rust_oracle}"))
             .output()
             .unwrap();
         if !gen_out.status.success() {
@@ -1699,41 +1752,49 @@ fn ir_conformance_corpus() {
             continue;
         }
         let rust_dir = out.join("rust");
-        // wire in the shared oracle helpers (cddl_oracle_load_spec / assert_cddl_conforms) that the
-        // emitted cddl_conformance::validate calls resolve to — append them to lib.rs, like run_test
-        // appends deser_test_conformance.rs into the preserve fixture.
         let lib_rs_path = rust_dir.join("src/lib.rs");
-        let mut lib_rs = std::fs::OpenOptions::new()
-            .append(true)
-            .open(&lib_rs_path)
-            .unwrap();
-        lib_rs.write_all(b"\n\n").unwrap();
-        lib_rs.write_all(conformance_helpers.as_bytes()).unwrap();
-        std::mem::drop(lib_rs);
-        // the emitted validate() reads the spec from `cddl_conformance_source.cddl` next to the
-        // crate's Cargo.toml (CARGO_MANIFEST_DIR) — copy the fixture there.
-        std::fs::copy(input, rust_dir.join("cddl_conformance_source.cddl")).unwrap();
-        // add the cddl dep (rev-pinned, synced with Cargo.toml by cddl_oracle_dep_rev_matches_cargo_toml)
-        let mut cargo_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(rust_dir.join("Cargo.toml"))
-            .unwrap();
-        cargo_toml.write_all(CDDL_ORACLE_DEP.as_bytes()).unwrap();
-        std::mem::drop(cargo_toml);
+        // Only the rust-oracle half needs the shared validator helpers, the source-spec copy, and the
+        // cddl crate dependency. A RUST_ORACLE_SKIP fixture is compiled WITHOUT them (it emits no
+        // `cddl_conformance::validate` call) but STILL dumps its minted bytes for the ruby sweep.
+        if rust_oracle {
+            // wire in the shared oracle helpers (cddl_oracle_load_spec / assert_cddl_conforms) that the
+            // emitted cddl_conformance::validate calls resolve to — append them to lib.rs, like run_test
+            // appends deser_test_conformance.rs into the preserve fixture.
+            let mut lib_rs = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&lib_rs_path)
+                .unwrap();
+            lib_rs.write_all(b"\n\n").unwrap();
+            lib_rs.write_all(conformance_helpers.as_bytes()).unwrap();
+            std::mem::drop(lib_rs);
+            // the emitted validate() reads the spec from `cddl_conformance_source.cddl` next to the
+            // crate's Cargo.toml (CARGO_MANIFEST_DIR) — copy the fixture there.
+            std::fs::copy(input, rust_dir.join("cddl_conformance_source.cddl")).unwrap();
+            // add the cddl dep (rev-pinned, synced with Cargo.toml by cddl_oracle_dep_rev_matches_cargo_toml)
+            let mut cargo_toml = std::fs::OpenOptions::new()
+                .append(true)
+                .open(rust_dir.join("Cargo.toml"))
+                .unwrap();
+            cargo_toml.write_all(CDDL_ORACLE_DEP.as_bytes()).unwrap();
+            std::mem::drop(cargo_toml);
+        }
 
-        // vacuity: did this fixture actually emit any conformance call? (a fixture whose only
-        // round-trip types are transparent array/table aliases emits none — see occurrence)
         let lib_src = std::fs::read_to_string(&lib_rs_path).unwrap();
-        if lib_src.contains("cddl_conformance::validate(") {
-            validated_fixtures += 1;
-        } else if expected_fail {
-            // an expected-fail fixture that emits no conformance call can never fail for the right
-            // reason — the list is wrong.
-            failures.push(format!(
-                "{stem}: on EXPECTED_FAIL but emitted no conformance call (nothing to validate) — \
-                 the list is stale"
-            ));
-            continue;
+        // vacuity: did this fixture actually emit any conformance call? (a fixture whose only
+        // round-trip types are transparent array/table aliases emits none — see occurrence). Only
+        // meaningful for rust-oracle fixtures; a RUST_ORACLE_SKIP fixture emits none by design.
+        if rust_oracle {
+            if lib_src.contains("cddl_conformance::validate(") {
+                validated_fixtures += 1;
+            } else if expected_fail {
+                // an expected-fail fixture that emits no conformance call can never fail for the right
+                // reason — the list is wrong.
+                failures.push(format!(
+                    "{stem}: on EXPECTED_FAIL but emitted no conformance call (nothing to validate) — \
+                     the list is stale"
+                ));
+                continue;
+            }
         }
 
         // Per-fixture minted-bytes dump dir for the ruby sweep. Set unconditionally (harmless when the
@@ -1769,14 +1830,64 @@ fn ir_conformance_corpus() {
             (false, true) => {} // green as expected
             (false, false) => failures.push(format!(
                 "{stem}: conformance FAILED for a fixture not on EXPECTED_FAIL — either a new \
-                 IR-level miscompile (mints spec-violating bytes) or a validator gap to document \
-                 + add to CONFORMANCE_SKIP:\n{combined}"
+                 IR-level miscompile (mints spec-violating bytes), a round-trip failure, or a \
+                 validator gap to document + add to RUST_ORACLE_SKIP:\n{combined}"
             )),
         }
 
-        // --- ruby decorrelated sweep (only when the gem is present and rust validated this fixture
-        // as in-spec: we re-check the SAME bytes the rust oracle accepted). Sweep the dump dir in
-        // SORTED order for stable, reproducible diagnostics.
+        // The dumped rules actually on disk (a fixture only dumps once its tests RUN, i.e. `passed`).
+        let dumped_on_disk: std::collections::BTreeSet<String> = std::fs::read_dir(&dump_dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cbor"))
+                    .filter_map(|p| {
+                        p.file_name()
+                            .and_then(|f| f.to_str())
+                            .and_then(|f| f.rsplit_once("__case").map(|(r, _)| r.to_owned()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // F5 dump-coverage: every rule the emitter INTENDED to dump (its hook is present in lib.rs)
+        // must have landed a `.cbor` on disk — otherwise a hook silently stopped firing (or a
+        // top-level rule was dropped from the sweep by a lossy name). Only checked when the fixture's
+        // tests passed (a failed suite legitimately dumps nothing). The INTENDED set is derived from
+        // the dump-hook format strings `{__dump_dir}/<rule>__case…` the generator emits, so it counts
+        // exactly the types with a recoverable source rule (synthesized non-top-level structs emit no
+        // hook and are correctly excluded — e.g. prelude's `prelude_*` wrappers).
+        if passed && !expected_fail {
+            let intended: std::collections::BTreeSet<String> = lib_src
+                .match_indices("{__dump_dir}/")
+                .filter_map(|(i, m)| {
+                    let rest = &lib_src[i + m.len()..];
+                    rest.find("__case").map(|j| rest[..j].to_owned())
+                })
+                .collect();
+            for rule in intended.difference(&dumped_on_disk) {
+                if DUMP_EXEMPT.iter().any(|(s, r, _)| *s == stem && r == rule) {
+                    continue;
+                }
+                dump_coverage_failures.push(format!(
+                    "{stem} / rule `{rule}`: a dump hook for this rule is emitted in lib.rs but no \
+                     `{rule}__case*.cbor` was written — the hook silently stopped firing (or the \
+                     rule was dropped from the sweep). Fix the dump, or ledger it in DUMP_EXEMPT WITH \
+                     a justification."
+                ));
+            }
+            // stale DUMP_EXEMPT: an entry whose rule DID dump no longer needs exempting.
+            for (s, r, _) in DUMP_EXEMPT.iter().filter(|(s, _, _)| *s == stem) {
+                if dumped_on_disk.contains(*r) {
+                    dump_coverage_failures.push(format!(
+                        "{s} / rule `{r}`: on DUMP_EXEMPT but the rule now dumps — remove the stale exemption."
+                    ));
+                }
+            }
+        }
+
+        // --- ruby decorrelated sweep (only when the gem is present and the fixture's tests passed:
+        // we re-check the SAME minted bytes through a lineage-decorrelated parser). Sweep the dump dir
+        // in SORTED order for stable, reproducible diagnostics. Ledgering is PER (fixture, rule).
         if let Some(gem) = &ruby_gem
             && passed
             && !expected_fail
@@ -1792,8 +1903,6 @@ fn ir_conformance_corpus() {
             cases.sort();
             let mut rooted_specs: std::collections::BTreeMap<String, std::path::PathBuf> =
                 std::collections::BTreeMap::new();
-            let mut fixture_diverged = false;
-            let mut fixture_divergences: Vec<String> = vec![];
             for case in &cases {
                 let fname = case.file_name().unwrap().to_str().unwrap().to_owned();
                 // `<rule>__case<i>.cbor` -> rule is everything before the LAST `__case`.
@@ -1802,6 +1911,7 @@ fn ir_conformance_corpus() {
                     .map(|(r, _)| r)
                     .unwrap_or(&fname)
                     .to_owned();
+                ruby_seen_rules.insert((stem.to_owned(), rule.clone()));
                 // rooted synthetic-root spec (cached per rule), aiming the gem's first-rule validation
                 // at `rule` while resolving the rest of the fixture's references.
                 let rooted_path = rooted_specs.entry(rule.clone()).or_insert_with(|| {
@@ -1826,22 +1936,34 @@ fn ir_conformance_corpus() {
                         ));
                     }
                 } else {
-                    fixture_diverged = true;
-                    fixture_divergences.push(format!(
-                        "{stem} / rule `{rule}` / {fname}: ruby gem REJECTED (exit {})\n  bytes: {bytes:02x?}\n  gem stderr:\n{}",
-                        gem_out.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
-                        String::from_utf8_lossy(&gem_out.stderr).trim()
-                    ));
+                    ruby_diverged_rules.insert((stem.to_owned(), rule.clone()));
+                    // Per (fixture, rule) ledger: a divergence on an UN-ledgered rule is a real
+                    // failure even if a SIBLING rule of the same fixture is ledgered.
+                    let ledgered = RUBY_EXPECTED_FAIL
+                        .iter()
+                        .any(|(s, r, _)| *s == stem && *r == rule);
+                    if !ledgered {
+                        ruby_failures.push(format!(
+                            "{stem} / rule `{rule}` / {fname}: ruby gem REJECTED (exit {})\n  bytes: {bytes:02x?}\n  gem stderr:\n{}",
+                            gem_out.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
+                            String::from_utf8_lossy(&gem_out.stderr).trim()
+                        ));
+                    }
                 }
-            }
-            let ledgered = RUBY_EXPECTED_FAIL.iter().any(|(s, _)| *s == stem);
-            match (ledgered, fixture_diverged) {
-                (false, true) => ruby_failures.extend(fixture_divergences),
-                (true, false) => ruby_ledger_clean.push(stem),
-                _ => {} // (true, true) expected divergence · (false, false) clean pass
             }
         }
     }
+
+    // Per (fixture, rule) stale-ledger check (F4): a ledgered pair that WAS swept but never diverged
+    // means the gem gap it records is gone — flag it stale, like the rust oracle's fixed_or_toothless.
+    let ruby_ledger_stale: Vec<String> = RUBY_EXPECTED_FAIL
+        .iter()
+        .filter(|(s, r, _)| {
+            let pair = ((*s).to_owned(), (*r).to_owned());
+            ruby_seen_rules.contains(&pair) && !ruby_diverged_rules.contains(&pair)
+        })
+        .map(|(s, r, _)| format!("{s} / rule `{r}`"))
+        .collect();
 
     // Negative control BEFORE the scratch tree is removed: corrupt a known-good case (truncate the
     // final byte -> guaranteed malformed CBOR) and require the gem to REJECT it. A gem invocation that
@@ -1882,13 +2004,21 @@ fn ir_conformance_corpus() {
         "IR-conformance gate failures:\n\n{}",
         failures.join("\n\n")
     );
+    // F5 dump-coverage: an intended-but-undumped rule (or a stale DUMP_EXEMPT) fails the gate,
+    // independent of whether the gem ran — this catches an emit-side dump-hook regression per fixture.
+    assert!(
+        dump_coverage_failures.is_empty(),
+        "dump-coverage shortfall (a rule the generator intended to dump produced no bytes):\n\n{}",
+        dump_coverage_failures.join("\n\n")
+    );
 
     // ===== ruby decorrelated-oracle verdicts =====
     match &ruby_gem {
+        // Reached ONLY under the explicit CDDL_RUBY_ORACLE=skip opt-out (gem-absent without opt-out
+        // panicked at the top). Prints a grep-stable SKIPPED marker so check.ts can surface it.
         None => eprintln!(
-            "RUBY ORACLE: SKIPPED (gem not found — install with `gem install --user-install cddl`, \
-             or set RUBY_CDDL to a ruby cddl binary). The rust conformance half above still gated; \
-             the lineage-decorrelated (fork-misparse) half did not run on this machine."
+            "RUBY ORACLE: SKIPPED (CDDL_RUBY_ORACLE=skip). The rust conformance + dump-coverage \
+             halves above still gated; the lineage-decorrelated (fork-misparse) half did not run."
         ),
         Some(gem) => {
             eprintln!(
@@ -1908,10 +2038,10 @@ fn ir_conformance_corpus() {
                  vacuous (or no known-good sample was captured to corrupt)"
             );
             assert!(
-                ruby_ledger_clean.is_empty(),
-                "RUBY_EXPECTED_FAIL fixtures no longer diverge from the gem (remove them — the gem \
-                 gap they recorded is gone):\n{}",
-                ruby_ledger_clean.join("\n")
+                ruby_ledger_stale.is_empty(),
+                "RUBY_EXPECTED_FAIL (fixture, rule) entries no longer diverge from the gem (remove \
+                 them — the gem gap they recorded is gone):\n{}",
+                ruby_ledger_stale.join("\n")
             );
             assert!(
                 ruby_failures.is_empty(),

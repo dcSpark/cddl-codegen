@@ -4745,8 +4745,13 @@ fn codegen_table_type(
     // has(key): key-presence accessor, emitted from exactly the `value_nullable` flatten condition
     // above (single source of truth) so it can never drift from `get`. When the value is nullable,
     // `get` collapses Option<Option<T>> -> Option<T>, so a `None` return conflates an absent key with
-    // a present-but-null one; `has` exposes the key's presence directly (an O(log n) lookup, not the
-    // O(n) `keys()` scan that was the only recovery before). Mirrors `get`'s key-boundary handling.
+    // a present-but-null one; `has` exposes the key's presence directly (a direct key lookup, not the
+    // `keys()` scan that was the only recovery before). Mirrors `get`'s key-boundary handling.
+    //
+    // No collision check is needed here (unlike the record `has_<field>` accessor): a table wrapper's
+    // method surface is entirely generator-fixed (`len`/`insert`/`get`/`has`/`keys`) with no
+    // user-named methods — a map has no named fields, only key/value TYPES — so `has` cannot clash
+    // with anything the spec author controls.
     if value_nullable {
         let mut has_func = codegen::Function::new("has");
         has_func
@@ -5628,15 +5633,40 @@ fn codegen_struct(
                     // None); `has_<field>()` exposes the outer presence so a JS consumer can tell the
                     // three states apart. Gated on `field_getter_flattens` — the exact flatten
                     // condition — so the accessor and the flatten can never diverge.
+                    //
+                    // Collision guard: the accessor name `has_<field>` is synthesized, so a sibling
+                    // field literally named `has_<field>` (whose own wasm getter is `pub fn
+                    // has_<field>`) would make two identically-named methods in one impl —
+                    // non-compiling (E0592/E0201) for an otherwise-valid spec. On a clash we SKIP the
+                    // disambiguator loudly rather than invent a rename: the flattening getter still
+                    // works, only the three-state distinguisher is lost. The wasm getter surface of a
+                    // record is exactly one method per non-fixed-value field, named `field.name`, so a
+                    // clash is exactly `has_<field>` appearing as a sibling field name.
                     if field_getter_flattens {
-                        let mut has_field = codegen::Function::new(format!("has_{}", field.name));
-                        has_field
-                            .arg_ref_self()
-                            .vis("pub")
-                            .ret("bool")
-                            .doc("Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).")
-                            .line(format!("self.0.{}.is_some()", field.name));
-                        wrapper.s_impl.push_fn(has_field);
+                        let has_name = format!("has_{}", field.name);
+                        let collides = record
+                            .fields
+                            .iter()
+                            .filter(|f| !f.rust_type.is_fixed_value())
+                            .any(|f| f.name == has_name);
+                        if collides {
+                            eprintln!(
+                                "cddl-codegen --wasm: {name}: presence accessor `{has_name}()` for \
+                                 optional-nullable field `{}` collides with a sibling field of the \
+                                 same name — skipping the accessor (the flattening getter still \
+                                 works; the absent-vs-present-null distinction is lost for this field)",
+                                field.name
+                            );
+                        } else {
+                            let mut has_field = codegen::Function::new(&has_name);
+                            has_field
+                                .arg_ref_self()
+                                .vis("pub")
+                                .ret("bool")
+                                .doc("Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).")
+                                .line(format!("self.0.{}.is_some()", field.name));
+                            wrapper.s_impl.push_fn(has_field);
+                        }
                     }
                 } else {
                     // new

@@ -17,3 +17,11 @@ maybe_uint = uint / null
 nullable_optional_field = [pre: uint, ? field0: maybe_uint]
 nullable_map_value = { * uint => maybe_uint }
 nullable_enum = tstr / (uint / null)
+; `field0` is optional-nullable, so its flattening getter would normally get a synthesized
+; `has_field0()` presence accessor — but a SIBLING field is literally named `has_field0`, whose own
+; wasm getter is `pub fn has_field0`. Emitting both would put two identically-named methods in one
+; impl (E0592/E0201) — a non-compiling crate for a valid spec. The generator must detect the clash and
+; SKIP the disambiguator loudly (the flattening getter still works; only field0's three-state
+; distinction is lost here). This rule exists so the wasm crate COMPILES — the proof the guard works.
+; (Mandatory field first, optional last, so the array stays unambiguously deserializable.)
+has_name_collision = [has_field0: bool, ? field0: maybe_uint]

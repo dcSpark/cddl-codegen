@@ -355,23 +355,39 @@ invoking `<gem> <synthetic-rooted-spec> validate <case.cbor>` (the gem targets a
 the same `__cddl_oracle_root = <rule>` trick aims it). The gem is **harness-side only** — never a crate
 dep, so shipped output stays ruby-free. Teeth and posture:
 
-- **`RUBY_EXPECTED_FAIL`** — fixtures the gem diverges on for a documented, non-bug reason (a gem
-  construct gap the fork legitimately supports; e.g. `nested_group`, whose bare top-level GROUP rule
-  `inner = (a, b)` cddl-codegen serializes as an array but the gem won't validate as an instance type).
-  Each entry is anchored with a justification. A divergence is *signal*: an unledgered one is either a
-  gem gap to record here **with a reason**, or — the class this oracle exists to catch — a fork misparse
-  minting spec-violating bytes. **Investigate before ledgering.** A ledgered fixture that stops diverging
-  turns the gate RED (stale entry), mirroring `EXPECTED_FAIL`.
+- **`RUBY_EXPECTED_FAIL`** — `(fixture, rule, reason)` triples the gem diverges on for a documented,
+  non-bug reason (a gem construct gap the fork legitimately supports; e.g. `nested_group`'s `inner`
+  rule, a bare top-level GROUP `inner = (a, b)` cddl-codegen serializes as an array but the gem won't
+  validate as an instance type). Ledgering is **per (fixture, rule)**, not per fixture: a fixture may
+  have one rule the gem can't judge while its *other* rules must still be sound — a divergence on an
+  unledgered sibling rule (e.g. `nested_group`'s `outer`) fails the gate. A divergence is *signal*: an
+  unledgered one is either a gem gap to record here **with a reason**, or — the class this oracle
+  exists to catch — a fork misparse minting spec-violating bytes. **Investigate before ledgering.** A
+  ledgered `(fixture, rule)` that stops diverging while still being swept turns the gate RED (stale
+  entry), mirroring `EXPECTED_FAIL`.
+- **`GEN_SKIP` vs `RUST_ORACLE_SKIP`** — two distinct exclusions. `GEN_SKIP` (e.g. `dsl_custom`) can't
+  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` (e.g. `sized_int`) has
+  a *rust*-validator gap but generates, round-trips, and dumps fine — so it's generated **without**
+  `--emit-tests-conformance` (rust validate half off) yet its minted bytes are **still** swept by the
+  ruby gem. A rust-validator blind spot must not cost the decorrelated oracle its coverage.
+- **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
+  hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
+  gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops
+  firing (or a lossy rule name dropping a top-level rule from the sweep) is visible per fixture, not
+  only via the corpus-wide case floor. Empty at HEAD: source rule names are always recoverable.
 - **Negative control** — after the sweep, one known-good case is truncated (final byte dropped =
   guaranteed malformed) and the gem *must* reject it; a gem invocation that exits 0 regardless of input
   can never pass the gate.
 - **Case floor** — a minimum total swept-case count, so a dump hook that silently stops firing fails
   rather than shrinking to a vacuous no-op.
-- **SKIPPED when absent** — gem discovery mirrors `verify.ts`'s `resolveRubyCddl` (`RUBY_CDDL` env pin,
-  fail-loud if the pin is bad; else the gem-dir probe — never `$PATH`/`which cddl`, which is the
-  unrelated *rust* `cddl`). When no gem is found the sweep prints one grep-stable line
-  `RUBY ORACLE: SKIPPED (...)` and the rust half still gates: absence must **not** fail the gate, so the
-  full tier stays runnable on a fresh machine. Install locally with `gem install --user-install cddl`.
+- **Gem REQUIRED (opt-out `CDDL_RUBY_ORACLE=skip`)** — gem discovery mirrors `verify.ts`'s
+  `resolveRubyCddl` (`RUBY_CDDL` env pin, fail-loud if the pin is bad; else the gem-dir probe — never
+  `$PATH`/`which cddl`, which is the unrelated *rust* `cddl`). The decorrelated oracle must not
+  silently, permanently degrade to a no-op just because a machine lacks the gem, so **a missing gem
+  FAILS this gate** with install instructions (`gem install --user-install cddl`). To run the gate
+  without the decorrelated half — accepting the fork-misparse class goes uncovered — set
+  `CDDL_RUBY_ORACLE=skip`, which prints the grep-stable `RUBY ORACLE: SKIPPED (...)` marker and runs
+  only the rust + dump-coverage halves.
 
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 

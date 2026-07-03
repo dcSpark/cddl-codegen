@@ -153,7 +153,10 @@ pub fn with_types<R>(
                 false
             } else {
                 let ident = rule_ident(cddl_rule);
-                types.mark_scope(ident, scope.clone());
+                types.mark_scope(ident.clone(), scope.clone());
+                // Preserve the source spelling (`-` vs `_`, acronym casing) before `RustIdent`
+                // camel-cases it away — the conformance oracle needs the provable source rule name.
+                types.mark_source_rule_name(ident, cddl_rule.name());
                 true
             }
         })
