@@ -88,6 +88,13 @@ a maintainer decision, not something an agent does in passing. The heavy correct
 appropriate tier yourself before finishing work; do not rely on CI to catch anything the fast tier
 doesn't cover.
 
+**Agents: run gates in the foreground.** The multi-minute gates (`check.ts local`/`full`, the
+`#[ignore]`d integration gates) should be run as foreground commands with an extended tool timeout
+(up to 10 minutes), not detached into background monitors — detached runs strand their results when
+the agent stops, and every observed instance required a manual resume to collect them. Also never
+run two instances of `ir_conformance_corpus` concurrently from one checkout (scratch-dir clobber —
+see `tests/TESTING_ROADMAP.md`).
+
 This repo follows test-driven development (TDD).
 That means that for every failure, we generally want to think about what could have systematically caught that failure.
 Sometimes it could have been caught systematically, but the system didn't have the right test vector, in which case we can add it if we think that's the best approach
