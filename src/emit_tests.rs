@@ -52,7 +52,7 @@ use crate::intermediate::{
     ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
     RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
 };
-use crate::utils::{convert_to_camel_case, convert_to_snake_case};
+use crate::utils::convert_to_snake_case;
 
 type Bounds = (Option<i128>, Option<i128>);
 
@@ -371,13 +371,18 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
     ))
 }
 
-/// The source CDDL rule name to validate `ident`'s minted bytes against under
-/// `--emit-tests-conformance`, or `None` if this type can't be soundly conformance-checked. Only a
-/// top-level rule qualifies (a synthesized struct — embedded record, inline group — has no spec rule
-/// to root the validator against). The rule name is recovered as `convert_to_snake_case(ident)` and
-/// only accepted when `convert_to_camel_case` of it round-trips back to the exact ident, so a lossy
-/// reversal (dashed/acronym names the corpus doesn't use) is skipped loudly rather than pointed at a
-/// rule that doesn't exist.
+/// The source CDDL rule name naming `ident`'s minted bytes for the conformance oracles, or `None` if
+/// this type can't be soundly rooted. Only a top-level rule qualifies (a synthesized struct —
+/// embedded record, inline group — has no spec rule). The name is the EXACT source spelling recorded
+/// at rule registration (`IntermediateTypes::source_rule_name`), not a reversal of the camel-cased
+/// `RustIdent`: CDDL treats `-` and `_` as distinct rule characters (`my-rule` ≠ `my_rule`) but
+/// `RustIdent` camel-cases both to `MyRule`, so any snake↔camel guess would silently point the
+/// validator/dump at a NONEXISTENT rule. A rule whose source name can't be recovered is excluded
+/// loudly rather than mis-rooted.
+///
+/// Two consumers depend on this: the flag-gated `--emit-tests-conformance` validate call, and the
+/// always-on env-gated minted-bytes dump (`CDDL_CODEGEN_DUMP_MINTED`) the decorrelated ruby sweep
+/// reads — so a `None` here drops the type from BOTH oracles for this fixture.
 fn conformance_rule_name(
     types: &IntermediateTypes,
     ident: &crate::intermediate::RustIdent,
@@ -385,16 +390,19 @@ fn conformance_rule_name(
     if !types.is_toplevel_rule(ident) {
         return None;
     }
-    let name = ident.to_string();
-    let snake = convert_to_snake_case(&name);
-    if convert_to_camel_case(&snake) != name {
-        eprintln!(
-            "cddl-codegen --emit-tests-conformance: cannot recover a source rule name for {name} \
-             (snake_case reversal is not faithful) — no conformance oracle for this type"
-        );
-        return None;
+    match types.source_rule_name(ident) {
+        Some(name) => Some(name.to_owned()),
+        None => {
+            // A top-level rule with no recorded source name shouldn't happen (registration records
+            // every rule), but if it ever does, exclude loudly rather than mis-root the oracles.
+            eprintln!(
+                "cddl-codegen --emit-tests: cannot recover the source CDDL rule name for {ident} \
+                 — excluding it from the conformance validate (--emit-tests-conformance) AND the \
+                 decorrelated minted-bytes dump/ruby sweep for this fixture"
+            );
+            None
+        }
     }
-    Some(snake)
 }
 
 /// True if any part of this type's wire format is user-supplied (`@custom_serialize` /
@@ -686,9 +694,16 @@ fn roundtrip_body(
             // re-check them through a lineage-decorrelated parser. Pure std, inert when the var is
             // unset, needs no CLI flag. Only emitted when the type has a faithful source-rule name
             // (`dump_rule`); a lossy name is skipped loudly by `conformance_rule_name`.
+            //
+            // The hook is deliberately NON-FATAL: this same code ships in EVERY `--emit-tests` crate,
+            // so a leaked/misdirected env var must NOT turn a user's green suite into a wall of
+            // panics. It best-effort creates the dir and, on any write failure, logs to stderr and
+            // continues — the test never fails on the dump. The harness keeps its teeth elsewhere
+            // (the sweep's per-fixture case floor + negative control detect a dump that silently
+            // stopped firing), so a swallowed write can't quietly weaken the oracle.
             let dump_line = dump_rule
                 .map(|rule| format!(
-                    "        if let Ok(__dump_dir) = std::env::var(\"CDDL_CODEGEN_DUMP_MINTED\") {{\n            std::fs::write(format!(\"{{__dump_dir}}/{rule}__case{case_idx}.cbor\"), &bytes).expect(\"cddl-codegen: dump minted bytes\");\n        }}\n"
+                    "        if let Ok(__dump_dir) = std::env::var(\"CDDL_CODEGEN_DUMP_MINTED\") {{\n            let _ = std::fs::create_dir_all(&__dump_dir);\n            let __dump_path = format!(\"{{__dump_dir}}/{rule}__case{case_idx}.cbor\");\n            if let Err(__e) = std::fs::write(&__dump_path, &bytes) {{\n                eprintln!(\"cddl-codegen: could not dump minted bytes to {{__dump_path}}: {{__e}}\");\n            }}\n        }}\n"
                 ))
                 .unwrap_or_default();
             let value_eq_line = if value_eq {

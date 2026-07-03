@@ -139,6 +139,12 @@ pub struct IntermediateTypes<'a> {
     used_as_key: BTreeSet<RustIdent>,
     // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
+    // The ORIGINAL CDDL source name for each top-level rule's `RustIdent`. `RustIdent::new`
+    // camel-cases (and thus destroys the `-`/`_` distinction that CDDL treats as significant), so the
+    // ident alone can't be reversed back to the spec rule. Recorded verbatim at rule-registration
+    // time (`api::with_types`, alongside `mark_scope`) so the conformance oracle can root its
+    // validator at the PROVABLE source rule rather than a lossy snake↔camel guess.
+    rule_source_names: BTreeMap<RustIdent, String>,
     // for scope() to work we keep this here.
     // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
     root_scope: ModuleScope,
@@ -167,6 +173,7 @@ impl<'a> IntermediateTypes<'a> {
             news_can_fail: BTreeSet::new(),
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
+            rule_source_names: BTreeMap::new(),
             root_scope: ROOT_SCOPE.clone(),
         }
     }
@@ -783,6 +790,20 @@ impl<'a> IntermediateTypes<'a> {
         self.scopes.get(ident).unwrap_or(&self.root_scope)
     }
 
+    /// Record the original CDDL source name for a top-level rule's `RustIdent`. Called once per
+    /// parsed rule (`api::with_types`), before camel-casing has erased the source spelling.
+    pub fn mark_source_rule_name(&mut self, ident: RustIdent, source_name: String) {
+        self.rule_source_names.insert(ident, source_name);
+    }
+
+    /// The exact CDDL source rule name `ident` was registered under (e.g. `my-rule`, which
+    /// `RustIdent` camel-cases to `MyRule`, indistinguishable from `my_rule`). `None` for a struct
+    /// synthesized during IR build (no source rule). The conformance oracle roots its validator here
+    /// so it targets a PROVABLE spec rule rather than a lossy reversal of the ident.
+    pub fn source_rule_name(&self, ident: &RustIdent) -> Option<&str> {
+        self.rule_source_names.get(ident).map(|s| s.as_str())
+    }
+
     /// Whether `ident` names a top-level CDDL rule (as opposed to a struct synthesized during IR
     /// build — an embedded record, inline group, etc.). `scopes` is populated by `mark_scope`,
     /// which `api::with_types` calls once per parsed rule, so its key set is exactly the top-level
@@ -797,6 +818,7 @@ impl<'a> IntermediateTypes<'a> {
     pub fn remove_rust_struct(&mut self, ident: &RustIdent) -> Option<RustStruct> {
         self.plain_groups.remove(ident);
         self.scopes.remove(ident);
+        self.rule_source_names.remove(ident);
         self.rust_structs.remove(ident)
     }
 

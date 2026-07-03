@@ -243,7 +243,7 @@ const REGISTRY: Gate[] = [
     ignoredTest: "wasm_matrix_roundtrips", desc: "wasm-ABI matrix round-trip gate (manual, #[ignore]d)" },
   { id: "ir_conformance_corpus", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
-    ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (SKIPPED if gem absent; manual, #[ignore]d)" },
+    ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },
   { id: "all_supported_constructs_generate_all_profiles", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "all_supported_constructs_generate_all_profiles", "--", "--ignored"],
     ignoredTest: "all_supported_constructs_generate_all_profiles",
