@@ -4,7 +4,7 @@ A curated, opinionated plan for the *next* testing push, so a future effort has 
 point. This is the short list (what we'd actually do, in order), distilled from an independent
 multi-agent review (`draft/testing-recommendations/RECOMMENDATIONS.md` — the exhaustive menu) plus
 findings from building the current suite. See `tests/README.md` for how the current setup works and
-what's already covered; completed work is logged in `tests/CLEAR_WINS_PLAN.md`.
+what's already covered.
 
 **CI policy — fast tier only.** CI runs exactly `bun run check.ts fast` (the absolute-minimum
 commit gate; cost policy — see `AGENTS.md`), enforced by check.ts's `self_checks`. No item below
@@ -267,9 +267,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 
 ## Pending decisions (maintainer call — blocks the related test, not on effort)
 
-Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call. Full context + the
-rest of the deferred menu (incl. medium next-tasks like a preserve-encodings golden known-answer set
-and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`.
+Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call.
 
 - **MSRV / OS matrix for GENERATED code.** Generated crates pin no MSRV and are only ever built on
   the dev/CI platform; whether to declare + test a minimum rustc (and a second OS) for generated
@@ -286,6 +284,9 @@ and assertion upgrades needing value choices) live in `tests/CLEAR_WINS_PLAN.md`
   `tests/raw-bytes` — wasm boundary executed by its `tests_wasm.rs` — and the wasm-matrix
   `rawbytes__*` cells, which splice the in-repo defs). The gap is *snapshot* coverage of those emit
   paths; introduces a "snapshot-only corpus" concept the docs don't have yet.
+- **Stubbed `no_key_group` comment-dsl test.** The only test of the no-key-group emit path is
+  commented out (`tests/comment-dsl/tests.rs`); writing a real assertion first needs identifying
+  which CDDL construct actually routes through that path (and whether it's reachable at all).
 - **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
   float under the `json` profile; `OrderedHashMap` JSON **serde** (a map-bearing json fixture —
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
