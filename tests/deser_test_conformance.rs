@@ -8,8 +8,10 @@
 // misparse corrupts the generator IR and the oracle's spec interpretation identically and that class
 // passes silently. A FAILURE is a strong signal: our bytes don't match the spec. A PASS is weak: the
 // validator has known gaps (e.g. it does not enforce `uint .size`) AND shares the parser, so it can't
-// be the *only* oracle. (Decorrelation options — an anweiss rev, the ruby `cddl` gem already wired in
-// cddl-matrix/verify.ts, or a ciborium structural differential — are a TESTING_ROADMAP item.)
+// be the *only* oracle. The misparse class specifically is compensated by a lineage-decorrelated
+// second sweep — the harness-side ruby `cddl` gem in `ir_conformance_corpus` re-validates the same
+// minted bytes through a parser sharing no ancestry with the fork (see tests/README.md) — but that
+// does not strengthen THIS oracle's pass: treat it as one voice among several, never the sole one.
 //
 // `cddl::validate_cbor_from_slice` validates against a spec's first non-generic type rule only, so we
 // prepend a synthetic root aliasing the rule under test — letting us point the validator at any rule
