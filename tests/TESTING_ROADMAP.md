@@ -83,12 +83,6 @@ is still a default-profile claim — the "Profile axis" pending decision below.
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
-   - **`corpus_detect` dsl-prose residual.** On a directive-leading comment line the detector
-     credits every later `@word` via `matchAll`, which doesn't mirror `comment_ast`'s sequential parse
-     (`@doc` prose runs to the next `@`; other directives stop at the first non-directive token) — a
-     real directive id buried in trailing prose after a leading directive could keep a dsl cover green.
-     No current fixture triggers it; the fix must replicate that asymmetric `@doc` grammar, not a naive
-     stop-at-first rule.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
