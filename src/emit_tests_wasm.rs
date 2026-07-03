@@ -169,6 +169,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         MintValue::Float => "0.0".to_owned(),
         MintValue::Int { value, .. } => format!("{value}"),
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
+        MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
         MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
         MintValue::Array {
             elem: Some(e),
