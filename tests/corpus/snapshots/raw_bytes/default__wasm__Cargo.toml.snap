@@ -1,0 +1,17 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+[package]
+name = "cddl-lib-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cddl-lib = { path = "../rust" }
+cbor_event = "2.4.0"
+wasm-bindgen = "0.2"
+linked-hash-map = "0.5.3"

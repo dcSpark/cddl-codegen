@@ -71,9 +71,15 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   *skipped* here — they barely vary by construct, so they'd be repeated noise; they're covered by
   `whole_program` and `serialization_prelude` instead.
 - **`whole_program`** — the larger integration inputs (`core`, `preserve-encodings`, `canonical`,
-  `json`, and the `multifile` directory) each under one known-safe profile, capturing the *full*
-  output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path, and the
-  edition/deps logic.
+  `json`, `json-float`, and the `multifile` directory) each under one known-safe profile, capturing
+  the *full* output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path,
+  and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot
+  (`json-float`: floats can't join the corpus, whose snapshots span all three profiles, and
+  preserve-encodings is unimplemented for floats) and for inputs whose output *can't compile
+  standalone* (`extern_deps`/`raw_bytes` reference user-supplied types; their behavioral coverage is
+  their integration fixtures) — this suite never compiles, so neither constraint bites here, which
+  is why such inputs are pinned here rather than via corpus skip-lists that would weaken the corpus
+  invariant that every fixture is fully gated.
 - **`cargo_toml_matrix`** — a small curated `input × profile` matrix that snapshots every distinct
   generated `Cargo.toml` dependency combination (the type-conditional `hex`/`wasm-bindgen` deps
   toggled independently). The per-feature corpus skips `Cargo.toml` as near-constant noise, and
@@ -139,6 +145,10 @@ documented flag *value* that no named profile exercises (`--annotate-fields=fals
 path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emits a non-compiling
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
+
+`getting_started_example` pins the documented first-run experience: it generates from
+`example/test.cddl` — the spec `docs/docs/getting_started.mdx` tells a newcomer to run verbatim —
+and `cargo check`s both the rust and wasm crates, so that command can't rot silently.
 
 ### Independent conformance oracle (`tests/deser_test_conformance.rs`)
 

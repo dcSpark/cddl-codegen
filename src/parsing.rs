@@ -556,6 +556,25 @@ fn parse_type(
                                         ),
                                         cli,
                                     );
+                                } else if outer_tag.is_some() {
+                                    // The range collapses exactly onto a rust primitive (no residual
+                                    // bound to check), but a top-level `#6.n(uint .le 255)` tag rule
+                                    // must still wrap so its standalone `to/from_cbor_bytes`
+                                    // writes/checks the tag — a transparent `pub type` alias would drop
+                                    // it from the wire. Same shape as the primitive tag arm below: the
+                                    // tag rides on `ranged_type` (`.tag_if(outer_tag)`) and there's no
+                                    // `min_max` since the primitive already covers the whole domain.
+                                    types.register_rust_struct(
+                                        parent_visitor,
+                                        RustStruct::new_wrapper(
+                                            type_name.clone(),
+                                            None,
+                                            Some(&rule_metadata),
+                                            ranged_type.tag_if(outer_tag),
+                                            None,
+                                        ),
+                                        cli,
+                                    );
                                 } else {
                                     // matches to known rust type e.g. u32, i16, etc so just make an alias
                                     types.register_type_alias(
@@ -600,14 +619,37 @@ fn parse_type(
                                 _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
                             },
                             ControlOperator::Default(default_value) => {
-                                let default_type =
-                                    rust_type_from_type2(types, parent_visitor, &type1.type2, cli)
-                                        .default(default_value)
-                                        .tag_if(outer_tag);
-                                types.register_type_alias(
-                                    type_name.clone(),
-                                    AliasInfo::new_from_metadata(default_type, rule_metadata),
-                                );
+                                let inner_type =
+                                    rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
+                                // Same reasoning as the primitive tag arm below: a top-level
+                                // `#6.n(uint .default 5)` must wrap so its standalone
+                                // `to/from_cbor_bytes` writes/checks the tag (a transparent alias drops
+                                // it from the wire). The `.default` is dropped inside the wrapper: a
+                                // default substitutes for an *absent* value, and a standalone tagged
+                                // value is always present, so it has no meaning here (the preserve path's
+                                // per-field default-present encoding tracking has no struct field to hang
+                                // off either). The tag rides on the inner type (`.tag_if(outer_tag)`).
+                                if rule_metadata.newtype.is_some() || outer_tag.is_some() {
+                                    types.register_rust_struct(
+                                        parent_visitor,
+                                        RustStruct::new_wrapper(
+                                            type_name.clone(),
+                                            None,
+                                            Some(&rule_metadata),
+                                            inner_type.tag_if(outer_tag),
+                                            None,
+                                        ),
+                                        cli,
+                                    );
+                                } else {
+                                    types.register_type_alias(
+                                        type_name.clone(),
+                                        AliasInfo::new_from_metadata(
+                                            inner_type.default(default_value).tag_if(outer_tag),
+                                            rule_metadata,
+                                        ),
+                                    );
+                                }
                             }
                         }
                     }

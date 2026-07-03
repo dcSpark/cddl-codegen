@@ -1,0 +1,9 @@
+; A single-type tag wrapper whose inner is a range that collapses EXACTLY onto a rust primitive with
+; no residual bound (`#6.42(uint .le 255)` -> u8). A ranged inner that *does* carry a residual bound
+; (one that doesn't line up with a rust primitive) already wraps to enforce that bound; this fixture
+; pins the other half — the exact-collapse case must ALSO wrap, purely so its standalone
+; `to/from_cbor_bytes` writes/checks the tag (a transparent `pub type ... = u8` alias would drop the
+; tag from the wire). Because the primitive already covers the whole domain there is no bounds check
+; to emit: serialize writes `write_tag(42)` then the value, deserialize rejects a wrong tag with
+; `DeserializeFailure::TagMismatch`.
+tagged_ranged = #6.42(uint .le 255)

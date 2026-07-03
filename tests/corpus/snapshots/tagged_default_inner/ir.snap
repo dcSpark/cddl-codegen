@@ -1,0 +1,55 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "TaggedDefault",
+    ): RustStruct {
+        ident: RustIdent(
+            "TaggedDefault",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [
+                    Tagged(
+                        42,
+                    ),
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+        },
+    },
+}

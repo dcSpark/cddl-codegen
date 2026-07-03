@@ -1,0 +1,4 @@
+; float JSON serde/schema, isolated from tests/json/ because that fixture also runs under
+; json_preserve and preserve-encodings is unimplemented for floats. Fold back into tests/json/
+; if float preserve support ever lands.
+float_holder = [f: float64]

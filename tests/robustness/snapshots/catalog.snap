@@ -1,9 +1,10 @@
 ---
-source: src/robustness_tests.rs
+source: src/tests/robustness_tests.rs
 expression: catalog
 ---
 # generator outcome per malformed/edge input
-# PANIC = regression: malformed input must error gracefully, never panic
+# A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry
+# is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.
 
 duplicate_rule             error (graceful)
 empty                      ok
@@ -11,8 +12,10 @@ empty_array                ok
 empty_group                ok
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
+map_entry_no_key           PANIC
 prelude_biguint            ok
 self_recursive             ok
+single_bareword_map_field  PANIC
 undefined_generic          error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)

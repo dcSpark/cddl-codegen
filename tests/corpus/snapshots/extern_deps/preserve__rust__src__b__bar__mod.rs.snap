@@ -1,0 +1,45 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::a::c::foo::Foo;
+use crate::a::Baz;
+use cbor_encodings::BarEncoding;
+use extern_dep_crate::error::*;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Bar {
+    pub foo: Vec<Foo>,
+    pub derp: Option<u64>,
+    pub key_1: Option<u64>,
+    pub key_5: Option<String>,
+    pub foo_map: OrderedHashMap<Foo, Foo>,
+    pub baz: Option<Baz>,
+    pub encodings: Option<BarEncoding>,
+}
+
+impl Bar {
+    pub fn new(foo: Vec<Foo>, key_1: Option<u64>, foo_map: OrderedHashMap<Foo, Foo>) -> Self {
+        Self {
+            foo,
+            derp: None,
+            key_1,
+            key_5: None,
+            foo_map,
+            baz: None,
+            encodings: None,
+        }
+    }
+}
+
+pub type BarTypedef = Bar;

@@ -1,0 +1,5 @@
+; a map with exactly ONE bareword-keyed field panics: parse_group's table detection
+; (parsing.rs "unsupported table map key (1)") only survives value-keys (`{ 0: uint }` is fine)
+; or 2+ fields (`{ t: uint, u: uint }` is fine). Pins the gap: flipping to `error (graceful)`
+; or full support (a 1-field struct) is a fix (re-bless).
+plain = { t: uint }

@@ -32,11 +32,8 @@ mod tests {
         assert_eq!(decoded.checksum, 5);
     }
 
-    // TODO: find a case that triggers this path
-    // #[test]
-    // fn no_key_group() {
-
-    // }
+    // @name on KEYLESS map members has no test because the construct is rejected by design
+    // ("map fields need keys", src/parsing.rs) — pinned by tests/robustness/map_entry_no_key.cddl.
 
     // @name on int-keyed map members renames the RUST fields only; the wire keys stay 0/1.
     #[test]

@@ -1,0 +1,5 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+pub mod foo;
