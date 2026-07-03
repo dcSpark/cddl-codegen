@@ -1,0 +1,17 @@
+{
+  // Typecheck-only config for the cddl-matrix Bun/TypeScript scripts (the `matrix_typecheck` check.ts
+  // gate runs `tsc --noEmit`). The scripts run under Bun, which needs no build step, so this NEVER emits.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "types": ["bun"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false,
+    "lib": ["esnext"]
+  },
+  "include": ["*.ts", "types/*.d.ts"]
+}

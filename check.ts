@@ -187,6 +187,22 @@ function runFuzz(o: Opts): Outcome {
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo check (fuzz) exit ${exit}` };
 }
 
+// ---- matrix typecheck gate: tsc --noEmit via the pinned local devDependency ----------------------
+// The cddl-matrix scripts run under Bun (no build step), but nothing checks their strict types unless
+// `tsc` runs. This gate uses the LOCAL typescript pinned in cddl-matrix/package.json (not a global /
+// bunx-downloaded one) so the version is reproducible from the committed lockfile. The runtime stays
+// dependency-free — node_modules is dev-only and never imported at run time.
+function runMatrixTypecheck(): Outcome {
+  const tsc = join(MATRIX, "node_modules", ".bin", "tsc");
+  if (!existsSync(tsc)) {
+    console.log("  cddl-matrix/node_modules is missing — install the dev-only typecheck deps first:");
+    console.log("    (cd cddl-matrix && bun install)");
+    return { status: "FAIL", reason: "cddl-matrix/node_modules absent (run `bun install` in cddl-matrix)" };
+  }
+  const exit = sh([tsc, "--noEmit"], MATRIX);
+  return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `tsc --noEmit exit ${exit}` };
+}
+
 // ==================================================================================================
 // THE REGISTRY — one entry per gate. Execution order is registry order; a run at tier T executes
 // every non-stub gate whose tier rank <= rank(T). fast ⊂ local ⊂ full holds by construction.
@@ -236,6 +252,8 @@ const REGISTRY: Gate[] = [
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
+  { id: "matrix_typecheck", tier: "local", kind: "fn", run: runMatrixTypecheck,
+    desc: "tsc --noEmit over the cddl-matrix scripts (pinned local devDependency)" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",

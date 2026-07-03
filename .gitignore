@@ -6,6 +6,10 @@
 .vscode/
 docs/node_modules
 
+# node_modules anywhere (docs/, cddl-matrix/ dev-only typecheck deps, …) — never committed;
+# reproduced from the committed lockfile via `bun install`
+node_modules/
+
 # Rust
 target/
 book/
