@@ -26,3 +26,7 @@ tests/*/export*/
 # cddl-matrix: matrix.json is the committed golden (guarded by `bun run build_matrix.ts --check`);
 # verify_report.json is a transient per-run report, not a source of truth.
 cddl-matrix/verify_report.json
+
+# cargo-mutants survey output (regenerated, not committed)
+mutants.out/
+mutants.out.old/

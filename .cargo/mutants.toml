@@ -1,0 +1,18 @@
+# cargo-mutants configuration — mutation testing of the emit core.
+# See tests/README.md § "Mutation testing" for the full rationale and the pinned command.
+#
+# Scope: the generator's emit core (src/generation.rs; the glob keeps working if it ever splits).
+examine_globs = ["src/generation*"]
+
+# Scoring suite: nextest, with the golden-snapshot layer EXCLUDED via a filterset.
+# Snapshots trivially "kill" almost every emit-core mutant (any text change fails the snapshot),
+# which measures snapshot text-sensitivity, not whether a *behaviorally* wrong emission is caught.
+# Everything else — integration_tests, robustness_tests, and unit tests — is behavioral and counts.
+test_tool = "nextest"
+additional_cargo_test_args = ["-E", "not test(/snapshot_tests::/)"]
+
+# The integration tests shell nested `cargo run`/`cargo test` to compile generated crates, so a
+# mutant's test run is much slower than the baseline's warm incremental build. Give slow mutants
+# generous head-room before they are (mis)counted as timeouts.
+timeout_multiplier = 5.0
+minimum_test_timeout = 600
