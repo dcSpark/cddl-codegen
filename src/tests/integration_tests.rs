@@ -381,7 +381,8 @@ fn run_test(
 /// compile-gates. One shared `CARGO_TARGET_DIR` so the deps build once. `int` needs no extern defs
 /// here — the generator emits its own `Int` type.
 ///
-/// Under the DEFAULT profile this is also the corpus EXECUTION gate (TESTING_ROADMAP item 1 / c6):
+/// Under the DEFAULT profile this is also the corpus EXECUTION gate (tests/README.md
+/// § "Generated-test harness"):
 /// generation adds `--emit-tests` and the rust crate runs `cargo test`, executing the emitted
 /// round-trip + reject tests — a corpus construct must round-trip byte-identically, not just
 /// compile. One profile keeps the wall-clock bounded (preserve/json stay compile-only for now),
@@ -539,8 +540,8 @@ fn feature_corpus_compiles() {
 /// its cell off `SKIP` — and the guard below fails if a `SKIP` cell starts compiling, so the list can't
 /// silently rot. A cell that's red but NOT in `SKIP` fails the test: it's a new wasm-ABI bug to fix or
 /// (deliberately, with a ledger entry) skip-list. `cargo check`s only the wasm crate (single default
-/// profile) — lighter than `feature_corpus_compiles`; upgrade to a round-trip oracle once that harness
-/// lands (see `tests/TESTING_ROADMAP.md`).
+/// profile) — lighter than `feature_corpus_compiles`. The round-trip upgrade of this gate exists as
+/// `wasm_matrix_roundtrips` (manual, full tier); this compile floor stays always-on beside it.
 #[test]
 fn wasm_matrix_compiles() {
     use std::str::FromStr;
@@ -873,9 +874,8 @@ fn wasm_list_macro_compiles() {
     }
 }
 
-/// Smoke gate for documented flag *values* that no other test or profile exercises (closes the
-/// TESTING_ROADMAP "five documented flag values with zero coverage" pending decision for the
-/// rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
+/// Smoke gate for documented flag *values* that no other test or profile exercises (closed the
+/// once-open "five documented flag values with zero coverage" gap for the rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
 /// different deserialization / error-emission mode — 13+ branch sites in generation.rs),
 /// `--to-from-bytes-methods=false` (drops the `to_bytes`/`from_bytes` API), and
 /// `--binary-wrappers=true` (byte strings as new rust types). Before this, a generation regression
@@ -1092,7 +1092,7 @@ fn nullable_wasm() {
 // tests/corpus/COVERAGE.md, but a hand-authored overlay note can't fail a build — these stubs make
 // the gaps visible in the suite itself, per the same convention as the wasm-fidelity pair above.
 // Remove #[ignore] and write the real behavioral assertion when the generator is fixed (or when
-// the round-trip harness, TESTING_ROADMAP item 1, lands and covers it).
+// the emitted round-trip harness grows to cover the construct).
 
 /// `a...b` must EXCLUDE b (max valid = b-1). `[v: 0...10]` must emit `max: Some(9)` — NOT the old
 /// `max: Some(11)` (which accepted the out-of-spec 10 and 11). Asserts on the COMMITTED snapshot so a
@@ -1364,7 +1364,8 @@ fn preserve_encodings() {
     );
 }
 
-/// Executes the `--emit-tests` generated-test module end-to-end (TESTING_ROADMAP item 1): generate
+/// Executes the `--emit-tests` generated-test module end-to-end (tests/README.md § "Generated-test
+/// harness"): generate
 /// the rich preserve-encodings fixture with the flag on and `cargo test` the generated crate —
 /// run_test's test step runs the emitted reject_*/roundtrip_* tests alongside the hand-written
 /// suite. This is the emitter's execution gate (it previously had zero CI coverage, and its output
@@ -1423,8 +1424,8 @@ fn emit_tests_execute() {
     );
 }
 
-/// Executes the `--emit-tests` generated WASM-test module end-to-end (TESTING_ROADMAP item 2, the
-/// behavioural frontier): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
+/// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
+/// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
 /// (alongside the hand-written `tests_wasm.rs` — the plausibility cross-check where the two overlap).
 /// The floor asserts keep the gate from going vacuous if emission silently shrinks.
@@ -2212,7 +2213,7 @@ fn wasm_json_roundtrip() {
 /// (installed via `npm install` of that exact file), then asserts the emitted types. This is the only
 /// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
 /// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
-/// and `tests/TESTING_ROADMAP.md` item 7.
+/// and the `--json-schema-export` item in `tests/TESTING_ROADMAP.md`.
 #[test]
 fn js_schema_to_ts() {
     use std::str::FromStr;
@@ -2297,7 +2298,8 @@ fn js_schema_to_ts() {
     assert!(dts.contains("[k: string]: number"), "{dts}");
 }
 
-/// Covers the shipped `static/json-ts-types.js` (TESTING_ROADMAP.md item 7), which `--package-json`
+/// Covers the shipped `static/json-ts-types.js` (the `--json-schema-export` item in
+/// `tests/TESTING_ROADMAP.md`), which `--package-json`
 /// runs after `run-json2ts.js` to (a) type each wasm class's `to_json_value()` with its emitted JSON
 /// interface and (b) append those interfaces to the wasm-pack `.d.ts`. It's pure string-munging over
 /// two files, so it's exercised in isolation here (no wasm-pack/json2ts needed) with hand-written

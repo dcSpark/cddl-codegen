@@ -26,156 +26,17 @@ The value is in removing the human from that loop without losing trust: the gate
 enough that "the matrix says this feature is supported" *means* it generates, compiles (rust **and**
 wasm), and round-trips. The historical verdict meant only "rust generates and rust-`cargo check`s,"
 which is why real bugs (inverted `nint` bound, wasm `get`/`add` type mismatch, JSON-schema turbofish)
-shipped green. The Tier-1 items below are the remaining missing pieces of that oracle:
-
-- **Correctness** ✅ (depth + breadth across profiles) — the emitted round-trip harness (item 1)
-  turns "output didn't change" into "output is right" for every ctor-mintable type, executed by the
-  default `cargo test` suite (check.ts `local` tier)
-  via `integration_tests::emit_tests_execute`, across the corpus (`feature_corpus_compiles` runs
-  `--emit-tests` + `cargo test`; preserve/json via the manual
-  `feature_corpus_roundtrips_nondefault_profiles` gate), and across the matrix (`verify.ts` is
-  execution-gated, so the matrix "supported" verdict itself means "round-trips" for every minting
-  shape, and the shapes with no standalone surface round-trip at their embed site via verify.ts's
-  synthetic-holder fallback). The remaining breadth frontier is the matrix's own per-profile
-  verdict (the "Profile axis" pending decision below).
-- **Coverage (compile + round-trip)** ✅ — the generated **wasm** crate is compiled by systematic gates
-  (`feature_corpus_compiles` `--wasm=true`; the **wasm-ABI matrix** `wasm_matrix_compiles`, 85 enumerated
-  cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
-  (`src/emit_tests_wasm.rs`, a cross-crate byte differential + accessor read-back) that runs via
-  `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual).
-- **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
-  emission can never again pass as supported (item 7).
+shipped green. That oracle now exists as a set of live systems: the emitted round-trip harness
+executes across the default suite, the corpus, and the matrix (whose "supported" verdict is
+execution-gated, with an embed-site fallback for shapes that mint no standalone surface); the
+generated wasm crate is compiled AND round-tripped by the same systematic gates; and malformed
+emission is a hard generator error. Their living documentation is `tests/README.md` (suite-side)
+and `cddl-matrix/README.md` (probe-side). One north-star frontier remains: the matrix's own verdict
+is still a default-profile claim — the "Profile axis" pending decision below.
 
 ## Recommended next steps, in priority order
 
-### Tier 1 — the strategic investments
-
-1. **Grow the emitted round-trip harness toward matrix-driven execution.** The `--emit-tests`
-   module emits both halves per type — IR-derived round-trip cases (baseline, bound boundaries,
-   one per choice variant, each optional field present; every case asserted byte-identical through
-   the full wire cycle AND — outside preserve-encodings — `Debug`-equal to the minted original, since
-   byte-identity alone is a fixed point for information-losing projection miscompiles;
-   mutation-verified against a constant-writing serializer) and the bounded reject tests — and is executed in CI by
-   `integration_tests::emit_tests_execute` (which also floor-asserts the emitted-test counts so
-   emission can't silently shrink). Values are minted **deterministically from each type's IR**
-   rather than via emitted `proptest`/`Arbitrary` impls, to keep generated crates dependency-free
-   and runs byte-reproducible: the repo's determinism ethos would force a fixed seed anyway, and a
-   fixed-seed sampler is a deterministic enumerator with extra machinery — both designs share the
-   identical per-IR-shape derivation surface (`emit_tests.rs`), which is the single maintained
-   thing; unmintable shapes are skipped with an `eprintln!`, never silently. Validated at landing
-   by a full corpus sweep plus the preserve-profile integration gate, which immediately caught
-   (and led to fixing) two miscompiles that snapshots + compile gates had blessed: the `.ne`
-   unsatisfiable-bound window, and preserve-encodings map records writing default-valued fields
-   the header didn't count (corrupt CBOR on any freshly-constructed defaulted value). Remaining:
-   - **c6 — matrix-driven execution (the F3 frontier): closed except the per-profile matrix
-     verdict.** Every flip half is in: `feature_corpus_compiles` runs the default profile with
-     `--emit-tests` + `cargo test` (local tier); `feature_corpus_roundtrips_nondefault_profiles` runs
-     the preserve/json profiles the same way, rust + wasm (full tier, manual); and `verify.ts`'s
-     per-feature / per-cell / per-control-op probes are execution-gated with per-probe
-     `minted`/`embedded` bits, so "supported" means "round-trips" (standalone, or at the embed site
-     via the synthetic-holder re-probe — the Minter-coverage bullet below) rather than "compiles".
-     Remaining: the matrix's own verdict is still a default-profile claim — the "Profile axis"
-     pending decision below.
-   - **Encode-fidelity follow-on** for `preserve`/`canonical` (`bytes → T → bytes` byte-identical
-     over irregular encodings). Spec-anchored *known-answer* vectors now exist
-     (`tests/golden_hex_preserve/`, `tests/golden_hex_canonical/` — hand-derived RFC 8949
-     indefinite-length / non-minimal-`Sz` literals, independent of the `cbor_event` helpers).
-     (The hand-picked KAT axis itself is closed: value
-     anchors, nint vectors, the runtime table-sort pins, the cross-major `-1`/`256`
-     length-first-vs-bytewise discriminator, and the indefinite-length bool array/bool-keyed map
-     vectors all live in the sibling suites, each mutation-verified red. The at-scale fidelity
-     oracle runs every variant class — including the two container-reframing ones — on
-     major-type-7-bearing containers too, since the generated break-check probes the `0xff` break
-     with the non-consuming `special_break()`.)
-   - **Minter coverage:** the shapes with no standalone mint surface — transparent aliases
-     (`x = uint`, `x = [* uint]`), named tables/arrays (orphan-rule: no standalone `Serialize`),
-     bounded aliases like `g = [2*5 uint]`, and pure c-enums — get their execution coverage
-     PROBE-SIDE, from `verify.ts`'s embed fallback: when the base probe mints nothing, it re-probes
-     the rule wrapped in a synthetic record holder (`__probe_holder = [0, <rule>]`) and `cargo test`s
-     that crate, so the type's serialize/deserialize runs at its EMBED site — the only wire path these
-     shapes have (a transparent alias has no `new()`/round-trip of its own to exercise). Evidence then
-     reads "round-trips when embedded". A STANDALONE generated API for these aliases (a `new()` +
-     round-trip on the alias itself, which would also give the `nint` ledger entry's transparent-alias
-     bounded surface a named struct to hang assertions on) would require generator surface changes
-     nobody has asked for; until such a consumer need exists, embedding is the wire path and the probe
-     covers it. Carrying the embed fallback per profile folds into the "Profile axis" pending
-     decision below.
-   - **Decode-side reference-codec differential.** The two conformance oracles (the rust `cddl`
-     validator in `deser_test_conformance.rs` and the lineage-decorrelated ruby `cddl` gem sweep in
-     `ir_conformance_corpus`) both prove our bytes match the *spec*; neither is a raw structural
-     decode differential. A separate small oracle — our bytes → an independent CBOR codec (ciborium
-     directly, or minicbor, which is used nowhere today) → compare the decoded structure — would catch
-     a well-formedness/structural regression a CDDL-blind decoder sees but a spec validator does not.
-     Low priority: our output's well-formedness is already asserted at breadth by the round-trip +
-     encoding-fidelity oracles, and ciborium is already in the loop via the `cddl` validator, so this
-     buys structural cross-checking, not misparse decorrelation (that gap is closed by the ruby sweep).
-
-2. **Compile the generated *wasm* crate in the systematic gates.** *(compile + round-trip foundations
-   built; the remaining frontiers are the fidelity stubs and grid-audit hygiene below.)* The wasm
-   bindings are a wasm-ABI concern (`is_copy` × `directly_wasm_exposable` × the boundary-op tables in
-   `intermediate.rs`) that the CBOR-serialization feature axis doesn't individuate, so wasm needs its own
-   systematic gate: the rust crate can type-check while the generated wasm crate does not (wrong accessor
-   return type, bad boundary `.into()`/`.clone()`/by-ref slips, dangling map typedefs).
-   - **Foundation (context for the frontiers below).** `feature_corpus_compiles` and the wasm-ABI matrix
-     (`wasm_matrix_compiles`, an enumerated `{type-shape × role}` grid) both generate `--wasm=true` and
-     `cargo check` the wasm crate on the host target (no `wasm32`/`wasm-pack`; a shared `CARGO_TARGET_DIR`
-     amortizes deps). Coverage is by-construction over the enumerated grid; system doc: `tests/README.md`
-     § "wasm-ABI matrix". The frontier is now behavioural (round-trip) coverage, not the compile backlog.
-   - **Compile backlog: cleared.** Every enumerated cell compiles; the only `SKIP` left in
-     `wasm_matrix_compiles` is the permanent `extern__array-element` (user-supplied type, can't compile
-     standalone). A red cell reappearing is a regression to fix, not a backlog item. The wrapper-vs-transparent
-     fact — the recurring wasm-boundary bug class — now has one source of truth,
-     `IntermediateTypes::has_wasm_wrapper(ident)`; route new naming / boundary / exposability decisions
-     through it (see `cddl-matrix/ROADMAP.md` § "wasm-ABI matrix — remaining work").
-   - **Extending the grid.** Coverage equals the hand-curated shape axis (`SHAPES`); a representation not in
-     it is a silent hole, not a red cell — periodically audit for un-enumerated shapes and add them. The
-     `rawbytes` shape (`_CDDL_CODEGEN_RAW_BYTES_TYPE_` -> a user-supplied `PubKey`) is enumerated; its cells
-     can't `cargo check` standalone, so the gate splices the in-repo defs
-     (`tests/external_{rust,wasm}_raw_bytes_def`) into each `rawbytes__*` crate before compiling — the pattern
-     to reuse for any future user-supplied-type shape whose defs live in-repo (`extern` stays a permanent
-     SKIP because its defs live only in `tests/extern-deps`).
-   - **Behavioural frontier (compile → round-trip) — landed; residue below.** The compile gate can be
-     green while a cell emits a semantically wrong same-type conversion at the wasm boundary (an identity
-     `.into()` where a transform was needed). That is now caught: `--emit-tests --wasm=true` emits a
-     `cddl_generated_wasm_tests` module (`src/emit_tests_wasm.rs`) that renders each minted value through
-     BOTH the wasm wrapper API and the `cddl_lib::` rust API and asserts a cross-crate byte differential +
-     accessor read-back — a second renderer over the same `emit_tests::MintValue` derivation surface (no
-     duplicate minter). It runs in the default suite (`integration_tests::emit_wasm_tests_execute`, the
-     `core` fixture) and per grid cell via `integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d
-     — full tier). Every mintable core/matrix shape now emits a wasm surface: wrapper-collection
-     ctor args build through the wrapper's `new`/`add` (list) or `new`/`insert` (map) API as a block
-     expression, deriving the wrapper NAME from the UNRESOLVED conceptual type (`for_wasm_member`) so an
-     aliased list like `nums = [* uint]` stays `&Nums` rather than being shallow-resolved to a bare
-     `vec![..]` against a `&Nums` ctor (the `coll__struct-field` trap the per-cell run first surfaced); and
-     `@newtype`/tag/table/array wrapper ctor args — which export no wasm `new` — build via the
-     `From<cddl_lib::Native>` impl every wasm wrapper carries. Only extern / raw-bytes ctor args stay a loud
-     skip (user-supplied types with no generated conversion). Corpus- and matrix-breadth wasm round-trip
-     coverage is wired throughout: `feature_corpus_compiles` `cargo test`s the wasm crate under the default
-     profile, `feature_corpus_roundtrips_nondefault_profiles` under preserve/json, and `verify.ts` runs the
-     wasm oracle by default (opt out with `--no-wasm` / `VERIFY_WASM=0`). Residue:
-     - **A pre-existing `core`-fixture finding the wasm gate routes around** (surfaced building the wasm
-       execution gate; not a wasm bug, a latent rust-side sharp edge). `core`'s `TypeChoice` is wire-ambiguous
-       (uint `0` collides with the fixed `i0` variant), so the rust `--emit-tests` value-equality oracle
-       false-fails on it. That's why `emit_wasm_tests_execute` `cargo test`s only the *wasm* crate (which
-       builds the rust crate as a non-test dep). The wasm oracle sidesteps it by reading accessors on the
-       freshly-built value, not the post-wire one.
-     - **wasm write-side present-null construction** *(low; unrequested)* — the read-side three-state fidelity
-       gap is closed (presence accessors: `has_<field>()`, map `has(key)`; the `tests/nullable-wasm/` fixture
-       is the oracle; read protocols in `docs/docs/wasm_differences.mdx`). The remaining asymmetry is on the
-       WRITE side: wasm setters/constructors can't mint a present-but-null value — they always wrap the
-       argument in an outer `Some` — so a JS caller can produce absent and present-value but not present-null.
-       No consumer has asked for this; revisit only if one does.
-   - **Local-tier wall-clock to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
-     `wasm_matrix_compiles`, growing with the extensible axis) — both in the default `cargo test` suite
-     (check.ts `local` tier, not CI). The shared `CARGO_TARGET_DIR` amortizes deps; if wall-time bites,
-     batch cells into fewer crates, adopt `cargo-nextest`, or gate only changed cells.
-   - **Scope note:** the host `cargo check` catches type/signature errors cheaply; `#[wasm_bindgen]`
-     macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
-     `run_test` fixtures + item 7's `--package-json` run.
-
-### Tier 2 — validation & process (opportunistic)
-
-5. **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
+1. **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
    invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
    scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
    "kills" measure text-sensitivity, not whether wrong emission is caught behaviorally), but only a
@@ -191,46 +52,63 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
    baseline survivor map.
 
-6. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
+2. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
 
-7. **Output-validate `--json-schema-export` end-to-end.** *(small)* The in-process schema-vs-serde
-   check, the `.d.ts` merge, and json-gen's `export_schemas()` execution are covered for scalar
-   newtypes (`integration_tests::json` / `json_preserve`), and now for generic-backed newtypes too:
-   the turbofish bug — a wrapper over a map/array `@newtype` emitted `T<..>::json_schema` in
-   expression position → non-compiling crate — is **fixed** (qualified-path `<T as
-   schemars::JsonSchema>::` emission in `generate_wrapper_struct`) and gated by
-   `tests/corpus/newtype_generic.cddl` under the `json` profile of `feature_corpus_compiles`.
-   The silent-invalid-output hole that let the turbofish ship green — `rustfmt_generated_string`
-   swallowing a parse/internal failure and returning the unformatted source at exit 0 — is now **fixed
-   too** (fail-loud: propagates `Err`; `Some(3)` "unformatted-but-valid" still `Ok`), so any future
-   non-parsing emission is a hard generator error, guarded by
-   `snapshot_tests::rustfmt_rejects_unparseable_source` (the north star's "fail-loud" pillar).
-   **Still open:** the full `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack).
-   `run-json2ts.js` stays covered by `integration_tests::js_schema_to_ts`.
+3. **Output-validate `--json-schema-export` end-to-end.** *(small)* Still open: the full
+   `--package-json` run (json-gen `cargo run` → both scripts → wasm-pack). This is also the only
+   layer that would exercise `#[wasm_bindgen]` macro-expansion / `.d.ts` / JS-surface concerns —
+   the systematic wasm gates `cargo check` on the host target and can't see them; today the few
+   hand-written `run_test` fixtures' wasm-pack builds are the sole coverage. The rest of the json
+   surface is covered: the in-process schema-vs-serde check, the `.d.ts` merge, and json-gen's
+   `export_schemas()` execution for scalar AND generic-backed newtypes (`integration_tests::json`
+   / `json_preserve`; `tests/corpus/newtype_generic.cddl` under the `json` profile of
+   `feature_corpus_compiles`), plus `run-json2ts.js` via `integration_tests::js_schema_to_ts`.
 
-8. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
+4. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
    the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
    role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
    the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
-   divergence/crash into the snapshot corpus (review once, commit). Complements the real on-chain
-   differential (item 3): synthetic breadth vs real-world depth.
-   - **`ir_conformance_corpus` scratch-dir concurrency (LOW).** The gate's scratch root is keyed by
+   divergence/crash into the snapshot corpus (review once, commit). Complements a real-world on-chain
+   corpus differential (see `draft/testing-recommendations/RECOMMENDATIONS.md`): synthetic breadth vs
+   real-world depth.
+
+5. **Small independent residuals (low).**
+   - **Decode-side reference-codec differential.** The two conformance oracles (the rust `cddl`
+     validator in `deser_test_conformance.rs` and the lineage-decorrelated ruby `cddl` gem sweep in
+     `ir_conformance_corpus`) both prove our bytes match the *spec*; neither is a raw structural
+     decode differential. A separate small oracle — our bytes → an independent CBOR codec (ciborium
+     directly, or minicbor, which is used nowhere today) → compare the decoded structure — would catch
+     a well-formedness/structural regression a CDDL-blind decoder sees but a spec validator does not.
+     Low priority: our output's well-formedness is already asserted at breadth by the round-trip +
+     encoding-fidelity oracles, and ciborium is already in the loop via the `cddl` validator, so this
+     buys structural cross-checking, not misparse decorrelation (that gap is closed by the ruby sweep).
+   - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
+     fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
+     `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
+     asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
+     `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
+     when a consumer asks.
+   - **`ir_conformance_corpus` scratch-dir concurrency.** The gate's scratch root is keyed by
      a hash of the checkout path, which isolates different checkouts but not two concurrent runs
      from the SAME checkout — overlapping runs clobber each other's generated crates and fail with
      confusing unrelated-fixture errors (observed live; solo runs are clean). Any fix trades against
      the shared-cargo-cache amortization that path-keying buys (a PID key defeats target-dir reuse;
      a lock serializes but keeps the cache) — pick deliberately, or at minimum have the gate detect
      a concurrent sibling and fail fast with a clear message.
-   - **`corpus_detect` dsl-prose residual (LOW).** On a directive-leading comment line the detector
+   - **`corpus_detect` dsl-prose residual.** On a directive-leading comment line the detector
      credits every later `@word` via `matchAll`, which doesn't mirror `comment_ast`'s sequential parse
      (`@doc` prose runs to the next `@`; other directives stop at the first non-directive token) — a
      real directive id buried in trailing prose after a leading directive could keep a dsl cover green.
      No current fixture triggers it; the fix must replicate that asymmetric `@doc` grammar, not a naive
      stop-at-first rule.
+   - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
+     nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
+     shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
+     adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
 ## Pending decisions (maintainer call — blocks the related test, not on effort)
 
@@ -257,8 +135,9 @@ Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call.
 - **Re-bless-snapshot coverage gaps** (each needs a fixture/profile change + snapshot re-bless):
   float under the `json` profile; `OrderedHashMap` JSON **serde** (a map-bearing json fixture —
   `tests/json/input.cddl` has none; the `JsonSchema` half is now compile-gated by
-  `tests/corpus/newtype_generic.cddl`, item 7 — this remaining serde half is a genuine snapshot
-  chore); re-enabling `bool_wrapper` JSON newtype (blocked on generator issue #223).
+  `tests/corpus/newtype_generic.cddl`, see the `--json-schema-export` item above — this remaining
+  serde half is a genuine snapshot chore); re-enabling `bool_wrapper` JSON newtype (blocked on
+  generator issue #223).
 - **Profile axis on the matrix annotation schema.** The generation-breadth and round-trip-breadth
   halves of "supported is a per-profile fact" are now covered by manual gates — the supported
   catalog generates under all three profiles (`all_supported_constructs_generate_all_profiles`,
@@ -267,9 +146,10 @@ Surfaced during the clear-wins sweep; each is gated on a behaviour/policy call.
   verdict: `verify.ts` probes the default flags only, so a matrix `status = "supported"` annotation
   is still a default-profile claim. The frontier is a per-profile axis on the matrix annotation
   schema (a construct's verdict recorded per profile), so a supported-construct × preserve/json
-  regression surfaces as a matrix-drift diff rather than only inside those two manual gates.
-  Flag-specific failures are a proven class (floats hit `unimplemented!` under preserve — see the
-  `preserve_encodings_supports_floats` stub).
+  regression surfaces as a matrix-drift diff rather than only inside those two manual gates. This
+  also subsumes carrying `verify.ts`'s embed-site fallback (see `cddl-matrix/README.md`) per
+  profile. Flag-specific failures are a proven class (floats hit `unimplemented!` under preserve —
+  see the `preserve_encodings_supports_floats` stub).
 - **Tag-drop residue for exotic single-type tag inners (auto-wrap coverage gap).** Top-level tag rules
   auto-wrap into a tag-writing/tag-checking newtype whenever the inner is a primitive/named type
   (`tagged = #6.42(text)`) or a `bytes .cbor T` wrapper (`#6.20(bytes .cbor foo)`) — closing the

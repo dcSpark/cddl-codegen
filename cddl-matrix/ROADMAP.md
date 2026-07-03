@@ -120,14 +120,14 @@ evidence, never downgrades a verdict. Of `QUERIES.md` Q4's 5-way split **{accept
 round-trip, enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for
 both minting and embed-covered shapes; still deferred: the **encode vs decode** direction (a round-trip
 conflates them — splitting needs per-direction reference vectors, not just self-consistency), and carrying
-the embed fallback into the preserve/json profiles (the minter-coverage item in
+the embed fallback into the preserve/json profiles (subsumed by the "Profile axis" pending decision in
 `tests/TESTING_ROADMAP.md`). Q4 stays blocked on that directional split.
 
 **Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
 execution — those stay hand-asserted even now: cut/socket semantics are validation concerns a round-trip
-can't observe, and the `preserve` profile is a flag axis the probe doesn't run (see "supported is silently
-a default-profile fact" in `tests/TESTING_ROADMAP.md`).
+can't observe, and the `preserve` profile is a flag axis the probe doesn't run (see the "Profile axis"
+pending decision in `tests/TESTING_ROADMAP.md`).
 
 ## 4. F4 / F5 follow-ons (only when their consumer exists)
 
@@ -282,11 +282,12 @@ an independent `cddl_lib::` rust build (the byte differential). It runs per-cell
 via a **default-on** `--wasm` probe (opt out with `--no-wasm` / `VERIFY_WASM=0`) that `cargo test`s the
 generated wasm crate and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell
 evidence. Remaining:
-- **Unminted wasm shapes** — wrapper/collection ctor args (block-expr `new`/`add` build) and `@newtype`/tag
-  wrapper ctor args are currently **loud skips** (`eprintln!`), so a cell built entirely from them mints no
-  wasm surface and falls back to the compile verdict; a block-expr collection minter would close that (it
-  is the same deferred minter that gates the corpus/matrix wasm round-trip breadth in
-  `tests/TESTING_ROADMAP.md`).
+- **Unminted wasm shapes** — wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`
+  and `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl, so only
+  extern / raw-bytes ctor args (user-supplied types with no generated conversion), flatten points, and
+  the `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in `tests/README.md`
+  § "wasm-crate test module"); a cell built entirely from those mints no wasm surface and falls back
+  to the compile verdict.
 - **Fidelity gaps** — the wasm read-side flatten losses (optional-nullable field, double-nested enum
   variant) remain generator-side, tracked by the `#[ignore]`'d fidelity tests; a presence-accessor fix,
   not a test-surface change, closes them.

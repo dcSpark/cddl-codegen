@@ -190,8 +190,10 @@ variant, each optional field present — asserted byte-identical through the ful
 deserialized value asserted `Debug`-equal to the minted original: byte-identity alone is a fixed
 point for an information-losing projection serializer, so it can't see that miscompile class) and
 **bounded-reject** tests. Values are minted deterministically from each type's IR (no
-proptest/`Arbitrary` deps in generated crates); unmintable shapes are skipped with a logged
-notice. Two consumers run it in CI: `integration_tests::emit_tests_execute` (the rich
+proptest/`Arbitrary` deps in generated crates — the repo's determinism ethos would force a fixed
+seed anyway, and a fixed-seed sampler is a deterministic enumerator with extra machinery; both
+designs share the same per-IR-shape derivation surface in `emit_tests.rs`, which is the single
+maintained thing); unmintable shapes are skipped with a logged notice. Two consumers run it in CI: `integration_tests::emit_tests_execute` (the rich
 preserve-encodings fixture, with emitted-test count floors) and `feature_corpus_compiles`'
 default profile (below). This is the "output is right, not just unchanged" oracle — it caught two
 snapshot-blessed miscompiles (`.ne` bounds, preserve-encodings default-field serialization) on
