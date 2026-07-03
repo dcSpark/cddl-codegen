@@ -102,10 +102,6 @@ Remaining:
   one of them parse (the exact thing the cddl-fork bump did to 14 control ops) is caught by the existing
   test suite instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
   in-process pattern as the panic catalog.
-- **Typecheck enforcement.** The scripts are strict-typed but nothing runs `tsc`. Add a `tsconfig.json` +
-  `@types/bun` (dev-only) and run `tsc --noEmit` manually beside the gate scripts (needs an ambient
-  `declare module "*.toml"` for the `project_golden_hex.ts` import). The one place a (dev) dependency is
-  worth it; the runtime stays dependency-free.
 
 ## 3. F3 — directional / enforcement support (execution-gated; encode/decode split deferred)
 
