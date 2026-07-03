@@ -19,6 +19,10 @@
  * (auto-covers ~90 ids); structural constructs use a small hand table. Supported ids with no possible
  * text detector are declared in NO_DETECTOR (exported), not silently treated as absent.
  *
+ * The @-DSL channel is the ONE exception to the recall-first contract: `scanDslDirectives` is a
+ * PRECISE sequential mirror of comment_ast.rs (not a regex approximation), because the dsl set backs
+ * check A's cover drift-check where a FALSE CREDIT — not a miss — is the failure mode.
+ *
  * Known-approximate cases audited and accepted under the above (each would be fixed by the AST-floor
  * upgrade, not by more regex): hyphenated rule names; ctl-name credit from dotted ids / range bounds;
  * `type.enum`'s missing end anchor; hex-literal / inline-group / prelude-name-as-key over-credit; the
@@ -141,6 +145,73 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
 // grpent.groupname / grpent.member correctly — the gap is only in the text-scan channel.
 export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "grpent.member"]);
 
+// --- @-DSL directive scanner: a faithful mirror of comment_ast.rs's
+//     `rule_metadata = many0(whitespace_then_tag)` (comment_ast.rs:200-221).
+//
+// Fed PER COMMENT LINE: in the cddl crate a `Comments` is `Vec<&str>` with one element per `;`-line
+// (parser.rs pushes each comment line separately), and `metadata_from_comments` runs `rule_metadata`
+// on EACH element independently then merges. So a directive cannot span two comment lines, and @doc
+// prose on one line does not run into the next line's directives — the per-line split here matches.
+//
+// The scanner replaces a `matchAll(/@\w+/g)` that credited every `@word` on a directive-leading line:
+// that over-credited a real directive id buried in trailing prose, which could keep a dsl cover green
+// in check A. many0 instead parses SEQUENTIALLY and STOPS at the first token that isn't a recognized
+// directive (an unknown leading `@foo …` therefore credits nothing and kills the rest of the line).
+//
+// Each tag is nom `tag(..)` = PREFIX match (comment_ast has no word boundary): `@namefoo` parses as
+// `@name` + arg `foo`, exactly as comment_ast credits it. The table below is in comment_ast's `alt`
+// order; arg grammars mirror each tag_* fn:
+//   @name / @custom_serialize / @custom_deserialize : ws* then take_while1(!ws) — arg REQUIRED (fails if absent)
+//   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@)
+//   @no_alias / @used_as_key / @custom_json          : none
+//   @doc                                             : take_while1(c != '@') — prose runs to the next `@` (arg REQUIRED)
+type TagParse = (s: string) => { id: string; rest: string } | null;
+const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
+const argRequired = (id: string, tag: string): TagParse => s => {
+  if (!s.startsWith(tag)) return null;
+  const after = ws(s.slice(tag.length));
+  const m = after.match(/^\S+/); // take_while1(!ws) — must consume ≥1
+  return m ? { id, rest: after.slice(m[0].length) } : null;
+};
+const noArg = (id: string, tag: string): TagParse => s => (s.startsWith(tag) ? { id, rest: s.slice(tag.length) } : null);
+const DSL_TAGS: TagParse[] = [
+  argRequired("dsl.name", "@name"),
+  // @newtype: optional getter arg (chars that are neither ws nor `@`); on no arg, comment_ast returns
+  // NewType(None) with the input trim_start()'d (so a following directive is still reachable).
+  s => {
+    if (!s.startsWith("@newtype")) return null;
+    const after = s.slice("@newtype".length);
+    const m = ws(after).match(/^[^\s@]+/);
+    return m ? { id: "dsl.newtype", rest: ws(after).slice(m[0].length) } : { id: "dsl.newtype", rest: ws(after) };
+  },
+  noArg("dsl.no_alias", "@no_alias"),
+  noArg("dsl.used_as_key", "@used_as_key"),
+  noArg("dsl.custom_json", "@custom_json"),
+  argRequired("dsl.custom_serialize", "@custom_serialize"),
+  argRequired("dsl.custom_deserialize", "@custom_deserialize"),
+  // @doc: take_while1(c != '@') — prose (incl. leading ws) runs to the next `@` or EOL; fails if the
+  // very next char is `@` (so `@doc@newtype` credits nothing, matching comment_ast).
+  s => {
+    if (!s.startsWith("@doc")) return null;
+    const after = s.slice("@doc".length);
+    const m = after.match(/^[^@]+/);
+    return m ? { id: "dsl.doc", rest: after.slice(m[0].length) } : null;
+  },
+];
+function scanDslDirectives(line: string): string[] {
+  const out: string[] = [];
+  let s = line;
+  while (true) {
+    s = ws(s); // whitespace_then_tag skips leading whitespace before the alt
+    let hit: { id: string; rest: string } | null = null;
+    for (const p of DSL_TAGS) if ((hit = p(s))) break; // alt: first full match wins
+    if (!hit) break; // many0 stops at the first token that isn't a recognized directive
+    out.push(hit.id);
+    s = hit.rest;
+  }
+  return out;
+}
+
 export interface Detected { rfc: Set<string>; ctl: Set<string>; dsl: Set<string> }
 
 export function featuresIn(cddl: string): Detected {
@@ -165,12 +236,11 @@ export function featuresIn(cddl: string): Detected {
     if (refs > defs) rfc.add("type2.typename");
   }
   // CDDL_CODEGEN profile: @-DSL directives (in comments) -> dsl.<name>; sentinel typenames -> ext.<name>.
-  // Only comments that LEAD with a directive count (comment_ast semantics) — a prose mention like
-  // `; unlike @newtype, this is plain` must not credit the feature (it would false-pass check A).
-  for (const line of comments.split(/\r?\n/)) {
-    if (!/^\s*@/.test(line)) continue;
-    for (const m of line.matchAll(/@([A-Za-z_]\w*)/g)) dsl.add(`dsl.${m[1]}`);
-  }
+  // Precision channel (the file's one RECALL exception, justified in the header): the dsl set must
+  // PREDICT exactly what comment_ast credits, because it backs check A's cover drift-check where a
+  // FALSE CREDIT is the failure mode. So we run scanDslDirectives — a faithful mirror of
+  // comment_ast.rs's `rule_metadata = many0(whitespace_then_tag)` — per comment line.
+  for (const line of comments.split(/\r?\n/)) for (const id of scanDslDirectives(line)) dsl.add(id);
   if (code.includes("_CDDL_CODEGEN_EXTERN_TYPE_")) dsl.add("ext.extern");
   if (code.includes("_CDDL_CODEGEN_RAW_BYTES_TYPE_")) dsl.add("ext.raw_bytes");
 
@@ -295,6 +365,27 @@ function selfCheck() {
   if (featuresIn("x = 1e+9").rfc.has("occur.one_or_more")) throw new Error("selfCheck: exponent `+` false-credited occur.one_or_more");
   if (featuresIn("x = uint ; unlike @newtype, this is plain").dsl.has("dsl.newtype")) throw new Error("selfCheck: prose comment mention credited a dsl directive");
   if (featuresIn("x = uint ; ask user@example about it").dsl.size) throw new Error("selfCheck: mid-prose @word invented a dsl id");
+  // dsl-prose residual: the sequential scanner mirrors comment_ast's many0(whitespace_then_tag) —
+  // a real directive id buried in trailing prose after a NON-@doc directive must NOT be credited
+  // (comment_ast's many0 stops at the first non-directive token).
+  {
+    const r = featuresIn("x = uint ; @used_as_key see @newtype for the alternative").dsl;
+    if (!r.has("dsl.used_as_key")) throw new Error("selfCheck: @used_as_key not credited");
+    if (r.has("dsl.newtype")) throw new Error("selfCheck: @newtype in trailing prose after @used_as_key was over-credited (the dsl-prose residual)");
+  }
+  // the asymmetric @doc grammar: @doc's prose runs to the next `@`, so a directive AFTER @doc prose
+  // IS still parsed (comment_ast.rs tag_comment = take_while1(c != '@')). A naive stop-at-first rule
+  // would miss the @newtype here.
+  {
+    const r = featuresIn("x = uint ; @doc explains things then @newtype").dsl;
+    if (!r.has("dsl.doc") || !r.has("dsl.newtype")) throw new Error("selfCheck: @doc prose then @newtype must credit BOTH (asymmetric @doc grammar)");
+  }
+  // a @newtype getter token is consumed as its ARG, so the following directive is still parsed
+  // (mirrors comment_ast.rs parse_comment_newtype_getter_before).
+  {
+    const r = featuresIn("x = uint ; @newtype my_getter @used_as_key").dsl;
+    if (!r.has("dsl.newtype") || !r.has("dsl.used_as_key")) throw new Error("selfCheck: @newtype <getter> @used_as_key must credit BOTH");
+  }
   // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
   // (the comma form is covered above at line ~265; this is the keyless single-type form).
   if (featuresIn("g = [(uint)]").rfc.has("type2.parenthesized")) throw new Error("selfCheck: keyless inline group `[(uint)]` false-credited type2.parenthesized");
