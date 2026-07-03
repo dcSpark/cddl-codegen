@@ -46,11 +46,8 @@ impl Deserialize for BytesKeyHolder {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if let cbor_event::Len::Indefinite = named_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let named_key = raw.bytes()? as Vec<u8>;
@@ -73,11 +70,8 @@ impl Deserialize for BytesKeyHolder {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if let cbor_event::Len::Indefinite = inline_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special {
-                            match raw.special()? {
-                                cbor_event::Special::Break => break,
-                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                            }
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
                         }
                     }
                     let inline_key = raw.bytes()? as Vec<u8>;

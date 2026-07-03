@@ -4552,26 +4552,24 @@ fn make_deser_loop(len_var: &str, len_expr: &str, cli: &Cli) -> Block {
 
 fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     // Only INDEFINITE-length collections carry a break byte (`0xff`). For a definite length the loop
-    // reads exactly `n` items, so there is nothing to detect here — and we must NOT intercept: the
-    // break byte shares major type 7 (Special) with bool / null / float16-32-64 / simple, so gating
-    // on the whole `Type::Special` class rejected every non-empty special *element* collection
-    // (`[* float64]` failed `BreakInDefiniteLen`; a definite array holding `null` — `0x81 0xf6` —
-    // aborted). Restricting the check to the indefinite case lets a definite float/bool element flow
-    // straight to the element deserializer.
+    // reads exactly `n` items, so there is nothing to detect here — and we must NOT peek: the break
+    // byte shares major type 7 (Special) with bool / null / float16-32-64 / simple, so an ungated
+    // Special check would eat a definite-length special element/key.
     //
-    // This uses only `cbor_type`/`special` (which need just `Read`), NOT a `fill_buf` byte peek
-    // (which needs `BufRead`): the check is emitted inside the reader-type-erased type-choice
-    // deserializer closures (`|raw: &mut Deserializer<_>|`), where a `BufRead` bound can't be
-    // inferred (E0282). The indefinite arm therefore still consumes the special and errors on a
-    // non-break — an indefinite collection of value-specials remains a (pre-existing) limitation,
-    // but the definite path (what the generator itself emits) is now correct.
+    // In the indefinite arm we detect the break with `Deserializer::special_break()`: a
+    // NON-consuming probe that advances past the `0xff` break iff that's the next byte, and returns
+    // `false` WITHOUT advancing on any other Special (a bool/null/float element or key), which then
+    // falls through to the element/key deserializer and reads normally. This is why the whole prior
+    // "indefinite container of value-specials" limitation is gone — a non-break special is no longer
+    // consumed-and-rejected. `special_break` sits in the same `impl<R: BufRead>` block as
+    // `cbor_type()`, which this check already calls inside the reader-type-erased type-choice
+    // deserializer closures (`|raw: &mut Deserializer<_>|`), so it carries no new bound and no E0282
+    // risk. The `cbor_type` guard stays load-bearing: `special_break` errors on non-Special input.
     let mut indef = Block::new(format!("if let {} = {len_var}", cbor_event_len_indef(cli)));
-    let mut special = Block::new("if raw.cbor_type()? == cbor_event::Type::Special");
-    let mut sp_match = Block::new("match raw.special()?");
-    sp_match.line("cbor_event::Special::Break => break,");
-    sp_match.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
-    special.push_block(sp_match);
-    indef.push_block(special);
+    let mut brk =
+        Block::new("if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()?");
+    brk.line("break;");
+    indef.push_block(brk);
     indef
 }
 

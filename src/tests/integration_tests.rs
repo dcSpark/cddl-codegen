@@ -1150,13 +1150,14 @@ fn corpus_occurrence_bounds_enforced() {
 }
 
 /// Special-class (major-type-7) map KEYS must deserialize through the map loop, not be
-/// intercepted as a potential break byte. The definite-length loop reads exactly `n` entries
-/// (`make_deser_loop_break_check` gates its Special peek on the INDEFINITE case only — the same
-/// fix as the array-element half, 2a50524), so a bool key flows straight to `bool::deserialize`.
-/// This asserts on the COMMITTED special_map_key snapshots so the interception can't come back
-/// via an unreviewed re-bless; the *executed* proof is the fixture's emit-tests round-trip in
-/// `feature_corpus_compiles` (it mints a real `(false, 0)` entry — mutation-verified: an
-/// unconditional break check fails it with EndingBreakMissing at BkeyHolder.named).
+/// intercepted as a potential break byte — in EITHER framing. The definite-length loop reads
+/// exactly `n` entries (`make_deser_loop_break_check` gates its Special check on the INDEFINITE
+/// case only), and the indefinite loop uses the non-consuming `special_break()` probe, so a bool
+/// key is left in place and flows straight to `bool::deserialize`. This asserts on the COMMITTED
+/// special_map_key snapshots so the interception can't come back via an unreviewed re-bless; the
+/// *executed* proof is the fixture's emit-tests round-trip in `feature_corpus_compiles` (it mints
+/// a real `(false, 0)` entry — mutation-verified: an unconditional break check fails it with
+/// EndingBreakMissing at BkeyHolder.named) plus the golden_hex_preserve indefinite-bool KATs.
 #[test]
 fn corpus_special_map_key_supported() {
     let ser = std::fs::read_to_string(
@@ -2675,11 +2676,11 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // structural gap under that profile. Empirically discovered; a resurfaced guard fails the gate
     // if any starts passing so the list can't rot.
     //
-    // The former `homogeneous_array`/`special_map_key` preserve entries are gone: the
-    // encoding-fidelity oracle now filters its two container-reframing variants OUT at emission time
-    // for any type reaching a variable-length container of major-type-7 elements/keys (see
-    // `emit_tests::SPECIAL_VAR_CONTAINER_EXCLUDED`), so those cells run fully green here — a real
-    // regression in them is no longer masked by a skip.
+    // The former `homogeneous_array`/`special_map_key` preserve entries are gone: the generated
+    // indefinite-length break-check now probes for the `0xff` break with the non-consuming
+    // `special_break()` (so a major-type-7 element/key falls through to its deserializer), letting
+    // the encoding-fidelity oracle run ALL its variant classes — including the two
+    // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
     const SKIP: &[(&str, &str, &str)] = &[];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard

@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -101,11 +101,10 @@ impl Deserialize for EnumKeyHolder {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = choice_keyed_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let choice_keyed_key = Ikey::deserialize(raw)?;
@@ -142,11 +141,10 @@ impl Deserialize for EnumKeyHolder {
                         cbor_event::LenSz::Indefinite => true,
                     } {
                         if let cbor_event::LenSz::Indefinite = int_keyed_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special {
-                                match raw.special()? {
-                                    cbor_event::Special::Break => break,
-                                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                                }
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                         }
                         let int_keyed_key = Int::deserialize(raw)?;

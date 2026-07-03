@@ -34,3 +34,14 @@ npair = [n: nint, m: nint]
 ; preserve. Wrapped in a record (transparent aliases have no standalone Serialize).
 uint_table   = { * uint => text }
 table_holder = [t: uint_table]
+
+; variable-length container of CBOR major-type-7 (bool) elements: an indefinite `[* bool]` re-frame
+; feeds the deserialize-loop break-check a bool (0xf4/0xf5), which shares major type 7 with the 0xff
+; break — it must NOT be mistaken for the break. Bare `[* bool]` is a transparent Vec alias, wrap it.
+bool_seq        = [* bool]
+bool_seq_holder = [bs: bool_seq]
+
+; table with major-type-7 (bool) KEYS: the map break-check peeks the KEY type, so a bool key
+; (0xf4/0xf5) must flow to the key deserializer rather than be read as the 0xff break.
+bool_table        = { * bool => text }
+bool_table_holder = [bt: bool_table]
