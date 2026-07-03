@@ -256,9 +256,11 @@ version = "0.1.0"
 dependencies = [
  "cbor_event",
  "cddl",
+ "ciborium",
  "clap",
  "codegen",
  "insta",
+ "minicbor",
  "nom 8.0.0",
  "pathdiff",
  "which",
@@ -756,6 +758,15 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+
+[[package]]
+name = "minicbor"
+version = "0.26.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a309f581ade7597820083bc275075c4c6986e57e53f8d26f88507cfefc8c987"
+dependencies = [
+ "half",
+]
 
 [[package]]
 name = "minicov"

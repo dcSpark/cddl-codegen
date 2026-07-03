@@ -141,6 +141,332 @@ fn resolve_ruby_cddl() -> Option<std::path::PathBuf> {
     cand.exists().then_some(cand)
 }
 
+// ===== decode-side reference-codec differential (used by `ir_conformance_corpus`) ===================
+// A CDDL-BLIND structural cross-check, complementary to the two spec validators (the rust `cddl`
+// validator and the ruby `cddl` gem, both of which prove our bytes match the SPEC). This decodes each
+// minted case through TWO independent CBOR codecs — `ciborium` and `minicbor` — and asserts they BOTH
+// fully consume the bytes and agree on the decoded structure. It catches a well-formedness/structural
+// regression a CDDL validator wouldn't (a validator can accept bytes a raw decoder would choke on, or
+// vice-versa), and it has NO external dependency, so it runs even under `CDDL_RUBY_ORACLE=skip` and for
+// `RUST_ORACLE_SKIP` fixtures. What it proves: two decorrelated decoders agree on our bytes' structure.
+// What it CAN'T: nothing about spec conformance — that's the two cddl oracles' job.
+//
+// The minted corpus is generated with default flags (no `--preserve-encodings`), so every dumped case
+// is a single, canonical, definite-length CBOR item. Indefinite-length handling below is defensive:
+// both codecs normalize indefinite byte/text strings to their concatenated definite form, so the trees
+// still agree if one ever appears. `undefined` / exotic simple values aren't in the minter's baseline;
+// `ciborium::Value` can't represent them, so if one ever surfaced the differential would (correctly)
+// flag a structural surprise rather than silently pass.
+#[derive(Debug, PartialEq)]
+enum CborTree {
+    Int(i128),
+    Bytes(Vec<u8>),
+    Text(String),
+    Array(Vec<CborTree>),
+    Map(Vec<(CborTree, CborTree)>),
+    Tag(u64, Box<CborTree>),
+    Bool(bool),
+    Null,
+    Undefined,
+    Float(u64), // f64 bit pattern (f16/f32 widened); NaN canonicalized so bit-noise can't false-diff
+    Simple(u8),
+}
+
+fn canon_f64_bits(f: f64) -> u64 {
+    if f.is_nan() {
+        f64::NAN.to_bits()
+    } else {
+        f.to_bits()
+    }
+}
+
+fn tree_via_ciborium(bytes: &[u8]) -> Result<CborTree, String> {
+    // Read from a slice cursor so we can assert the reader consumed ALL bytes (no trailing garbage):
+    // `impl Read for &[u8]` advances the slice, and `from_reader` stops after one item.
+    let mut cursor: &[u8] = bytes;
+    let value: ciborium::value::Value =
+        ciborium::from_reader(&mut cursor).map_err(|e| format!("ciborium decode error: {e}"))?;
+    if !cursor.is_empty() {
+        return Err(format!(
+            "ciborium: {} trailing byte(s) after the item (not a single well-formed item)",
+            cursor.len()
+        ));
+    }
+    ciborium_value_to_tree(value)
+}
+
+fn ciborium_value_to_tree(v: ciborium::value::Value) -> Result<CborTree, String> {
+    use ciborium::value::Value;
+    Ok(match v {
+        Value::Integer(i) => CborTree::Int(i128::from(i)),
+        Value::Bytes(b) => CborTree::Bytes(b),
+        Value::Float(f) => CborTree::Float(canon_f64_bits(f)),
+        Value::Text(s) => CborTree::Text(s),
+        Value::Bool(b) => CborTree::Bool(b),
+        Value::Null => CborTree::Null,
+        Value::Tag(t, inner) => CborTree::Tag(t, Box::new(ciborium_value_to_tree(*inner)?)),
+        Value::Array(items) => CborTree::Array(
+            items
+                .into_iter()
+                .map(ciborium_value_to_tree)
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Map(entries) => CborTree::Map(
+            entries
+                .into_iter()
+                .map(|(k, val)| Ok((ciborium_value_to_tree(k)?, ciborium_value_to_tree(val)?)))
+                .collect::<Result<Vec<_>, String>>()?,
+        ),
+        // `#[non_exhaustive]`: a variant ciborium adds later (or a value it can't model, e.g.
+        // `undefined`) surfaces as a structural surprise rather than a silent pass.
+        other => return Err(format!("ciborium: unsupported value variant {other:?}")),
+    })
+}
+
+fn tree_via_minicbor(bytes: &[u8]) -> Result<CborTree, String> {
+    let mut tokens = minicbor::decode::Tokenizer::new(bytes);
+    let tree = minicbor_next_item(&mut tokens)?;
+    // Full consumption: after one complete item the token stream must be exhausted.
+    if let Some(extra) = tokens.next() {
+        return Err(format!(
+            "minicbor: trailing tokens after the item (not a single well-formed item): {extra:?}"
+        ));
+    }
+    Ok(tree)
+}
+
+fn minicbor_pull<'b>(
+    it: &mut minicbor::decode::Tokenizer<'_, 'b>,
+) -> Result<minicbor::data::Token<'b>, String> {
+    match it.next() {
+        Some(Ok(t)) => Ok(t),
+        Some(Err(e)) => Err(format!("minicbor decode error: {e}")),
+        None => Err("minicbor: unexpected end of input".into()),
+    }
+}
+
+fn minicbor_next_item(it: &mut minicbor::decode::Tokenizer<'_, '_>) -> Result<CborTree, String> {
+    let tok = minicbor_pull(it)?;
+    minicbor_item_from(tok, it)
+}
+
+fn minicbor_item_from(
+    tok: minicbor::data::Token<'_>,
+    it: &mut minicbor::decode::Tokenizer<'_, '_>,
+) -> Result<CborTree, String> {
+    use minicbor::data::Token;
+    Ok(match tok {
+        Token::Bool(b) => CborTree::Bool(b),
+        Token::U8(n) => CborTree::Int(i128::from(n)),
+        Token::U16(n) => CborTree::Int(i128::from(n)),
+        Token::U32(n) => CborTree::Int(i128::from(n)),
+        Token::U64(n) => CborTree::Int(i128::from(n)),
+        Token::I8(n) => CborTree::Int(i128::from(n)),
+        Token::I16(n) => CborTree::Int(i128::from(n)),
+        Token::I32(n) => CborTree::Int(i128::from(n)),
+        Token::I64(n) => CborTree::Int(i128::from(n)),
+        Token::Int(i) => CborTree::Int(i128::from(i)),
+        Token::F16(f) => CborTree::Float(canon_f64_bits(f64::from(f))),
+        Token::F32(f) => CborTree::Float(canon_f64_bits(f64::from(f))),
+        Token::F64(f) => CborTree::Float(canon_f64_bits(f)),
+        Token::Bytes(b) => CborTree::Bytes(b.to_vec()),
+        Token::String(s) => CborTree::Text(s.to_owned()),
+        Token::Null => CborTree::Null,
+        Token::Undefined => CborTree::Undefined,
+        Token::Simple(n) => CborTree::Simple(n),
+        Token::Tag(t) => CborTree::Tag(t.as_u64(), Box::new(minicbor_next_item(it)?)),
+        Token::Array(n) => {
+            let mut items = Vec::with_capacity(n as usize);
+            for _ in 0..n {
+                items.push(minicbor_next_item(it)?);
+            }
+            CborTree::Array(items)
+        }
+        Token::Map(n) => {
+            let mut entries = Vec::with_capacity(n as usize);
+            for _ in 0..n {
+                let k = minicbor_next_item(it)?;
+                let v = minicbor_next_item(it)?;
+                entries.push((k, v));
+            }
+            CborTree::Map(entries)
+        }
+        Token::BeginArray => {
+            let mut items = vec![];
+            loop {
+                let t = minicbor_pull(it)?;
+                if matches!(t, Token::Break) {
+                    break;
+                }
+                items.push(minicbor_item_from(t, it)?);
+            }
+            CborTree::Array(items)
+        }
+        Token::BeginMap => {
+            let mut entries = vec![];
+            loop {
+                let t = minicbor_pull(it)?;
+                if matches!(t, Token::Break) {
+                    break;
+                }
+                let k = minicbor_item_from(t, it)?;
+                let v = minicbor_next_item(it)?;
+                entries.push((k, v));
+            }
+            CborTree::Map(entries)
+        }
+        Token::BeginBytes => {
+            let mut buf = vec![];
+            loop {
+                match minicbor_pull(it)? {
+                    Token::Break => break,
+                    Token::Bytes(b) => buf.extend_from_slice(b),
+                    other => {
+                        return Err(format!(
+                            "minicbor: unexpected token {other:?} inside indefinite byte string"
+                        ));
+                    }
+                }
+            }
+            CborTree::Bytes(buf)
+        }
+        Token::BeginString => {
+            let mut s = String::new();
+            loop {
+                match minicbor_pull(it)? {
+                    Token::Break => break,
+                    Token::String(chunk) => s.push_str(chunk),
+                    other => {
+                        return Err(format!(
+                            "minicbor: unexpected token {other:?} inside indefinite text string"
+                        ));
+                    }
+                }
+            }
+            CborTree::Text(s)
+        }
+        Token::Break => return Err("minicbor: unexpected Break token".into()),
+    })
+}
+
+/// Canonicalize the one place the two codecs legitimately MODEL the same well-formed bytes
+/// differently: RFC 8949 §3.4.3 bignum tags. `ciborium`'s byte-level decoder folds tag 2 (BIGPOS) /
+/// tag 3 (BIGNEG) wrapping a definite byte string of <= 16 bytes into an integer (BIGNEG `b` becomes
+/// `-1 - be(b)`, i.e. `raw ^ !0`), while `minicbor`'s token stream leaves them as `Tag(2/3, Bytes)`.
+/// Both are correct decodings of the same bytes (our `biguint`/`bignint` prelude types encode as
+/// exactly this), so we fold minicbor's tree to match — the divergence is representational, not a
+/// structural regression. Applied to BOTH trees: a no-op on ciborium's already-folded tree. A bignum
+/// that exceeds i128 (never minted by the corpus) is left as `Tag` and would surface as a divergence
+/// to investigate rather than being silently mis-canonicalized.
+fn fold_bignums(t: CborTree) -> CborTree {
+    fn folded_int(neg: bool, b: &[u8]) -> Option<CborTree> {
+        if b.len() > 16 {
+            return None;
+        }
+        let mut buf = [0u8; 16];
+        buf[16 - b.len()..].copy_from_slice(b);
+        let raw = u128::from_be_bytes(buf);
+        let signed = i128::try_from(raw).ok()?;
+        Some(CborTree::Int(if neg { signed ^ !0 } else { signed }))
+    }
+    match t {
+        CborTree::Tag(tag @ (2 | 3), inner) => {
+            if let CborTree::Bytes(b) = inner.as_ref()
+                && let Some(folded) = folded_int(tag == 3, b)
+            {
+                return folded;
+            }
+            CborTree::Tag(tag, Box::new(fold_bignums(*inner)))
+        }
+        CborTree::Tag(tag, inner) => CborTree::Tag(tag, Box::new(fold_bignums(*inner))),
+        CborTree::Array(items) => CborTree::Array(items.into_iter().map(fold_bignums).collect()),
+        CborTree::Map(entries) => CborTree::Map(
+            entries
+                .into_iter()
+                .map(|(k, v)| (fold_bignums(k), fold_bignums(v)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Both independent codecs must fully decode `bytes` AND agree on the decoded structure (after
+/// bignum-representation canonicalization, see `fold_bignums`). Any error names which codec failed
+/// and why; a tree mismatch dumps both trees. Anti-vacuity: a truncated (malformed) case must FAIL
+/// this — a decoder that accepts anything can't pass (see the gate's negative control).
+fn reference_codec_differential(bytes: &[u8]) -> Result<(), String> {
+    let via_cib = fold_bignums(tree_via_ciborium(bytes)?);
+    let via_mini = fold_bignums(tree_via_minicbor(bytes)?);
+    if via_cib != via_mini {
+        return Err(format!(
+            "ciborium and minicbor disagree on the decoded structure:\n  ciborium: {via_cib:?}\n  minicbor: {via_mini:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// Pins the reference-codec differential's semantics on hand-derived RFC 8949 bytes so a codec bump
+/// or a mapping bug is caught fast, and — the teeth — asserts truncated bytes FAIL (a decoder that
+/// accepts anything can't pass). Mirrors the anti-vacuity posture the gate's negative control enforces
+/// at breadth.
+#[test]
+fn reference_codec_differential_self_check() {
+    // Well-formed vectors both codecs must fully decode and agree on.
+    let good: &[(&str, &[u8])] = &[
+        ("uint 0", &[0x00]),
+        ("uint 100", &[0x18, 0x64]),
+        ("nint -1", &[0x20]),
+        // negative below i64::MIN exercises minicbor's `Int` token + ciborium's i128 integer.
+        (
+            "nint -2^63-1",
+            &[0x3b, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ),
+        ("text \"a\"", &[0x61, 0x61]),
+        ("bytes h'01'", &[0x41, 0x01]),
+        ("false", &[0xf4]),
+        ("true", &[0xf5]),
+        ("null", &[0xf6]),
+        ("array [1, 2]", &[0x82, 0x01, 0x02]),
+        ("map {1: 2}", &[0xa1, 0x01, 0x02]),
+        (
+            "tag 0 \"2013-03-21T20:04:00Z\"",
+            &[
+                0xc0, 0x74, 0x32, 0x30, 0x31, 0x33, 0x2d, 0x30, 0x33, 0x2d, 0x32, 0x31, 0x54, 0x32,
+                0x30, 0x3a, 0x30, 0x34, 0x3a, 0x30, 0x30, 0x5a,
+            ],
+        ),
+        ("nested [[]]", &[0x81, 0x80]),
+        // bignum tags: ciborium folds tag 2/3 + short bytes into an integer, minicbor keeps them as
+        // Tag(2/3, Bytes); `fold_bignums` reconciles them (the `biguint`/`bignint` prelude case).
+        ("biguint tag2 h'00'", &[0xc2, 0x41, 0x00]),
+        ("bignint tag3 h'00'", &[0xc3, 0x41, 0x00]),
+        ("biguint tag2 h'0100'", &[0xc2, 0x42, 0x01, 0x00]),
+    ];
+    for (label, bytes) in good {
+        assert!(
+            reference_codec_differential(bytes).is_ok(),
+            "reference-codec differential should accept well-formed {label}: {}",
+            reference_codec_differential(bytes).unwrap_err()
+        );
+    }
+
+    // Teeth: truncating the final byte of a well-formed multi-byte item yields an incomplete item
+    // both codecs must reject — so the differential returns Err (never a silent accept).
+    for (label, bytes) in good.iter().filter(|(_, b)| b.len() > 1) {
+        let truncated = &bytes[..bytes.len() - 1];
+        assert!(
+            reference_codec_differential(truncated).is_err(),
+            "reference-codec differential must reject truncated (malformed) {label}"
+        );
+    }
+
+    // Trailing-garbage teeth: a valid item plus an extra byte is NOT a single well-formed item.
+    assert!(
+        reference_codec_differential(&[0x00, 0x00]).is_err(),
+        "two concatenated items must fail the single-item full-consumption check"
+    );
+}
+
 /// Append the in-repo user-supplied `RawBytesEncoding` defs (`PubKey`) into a freshly generated crate
 /// rooted at `out` (rust + wasm), so a `rawbytes__*` wasm-matrix cell — whose `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
 /// resolves to that user type — compiles/tests standalone instead of being a permanent SKIP like `extern`.
@@ -1756,6 +2082,12 @@ fn ir_conformance_corpus() {
     // that reads an empty dir still fails the gate rather than passing a no-op oracle.
     const RUBY_CASE_FLOOR: usize = 50;
 
+    // Vacuity floor on cases the decode-side reference-codec differential checked. It sweeps the SAME
+    // dumped files as the ruby oracle but never rides the `CDDL_RUBY_ORACLE=skip` opt-out (no external
+    // dependency), so it gets its own floor with the same loose-headroom convention — a dump hook that
+    // silently stops firing (or an empty sweep) fails rather than passing a no-op structural check.
+    const DIFF_CASE_FLOOR: usize = 50;
+
     // DUMP_EXEMPT: (fixture, RULE, reason) triples where a rule the emitter INTENDED to dump (its
     // dump hook is present in lib.rs) legitimately produced no `.cbor` on disk. The per-fixture
     // dump-coverage check below fails the gate on any UN-exempt shortfall, so a dump hook that
@@ -1795,6 +2127,15 @@ fn ir_conformance_corpus() {
     let mut failures = vec![];
     let mut fixed_or_toothless = vec![]; // EXPECTED_FAIL fixtures that unexpectedly passed
     let mut validated_fixtures = 0usize; // vacuity floor: fixtures that actually emitted a conformance call
+
+    // Decode-side reference-codec differential (see `reference_codec_differential`): a CDDL-blind,
+    // dependency-free structural cross-check that piggybacks on the same dumped `.cbor` files as the
+    // ruby sweep. It runs regardless of the ruby gem (even under CDDL_RUBY_ORACLE=skip) and for
+    // RUST_ORACLE_SKIP fixtures — a spec-validator blind spot must not cost the structural oracle its
+    // coverage. Failures go into the shared `failures` vec; `diff_total_cases` feeds its own floor and
+    // `diff_neg_sample` seeds an anti-vacuity truncation control after the sweep.
+    let mut diff_total_cases = 0usize;
+    let mut diff_neg_sample: Option<(String, Vec<u8>)> = None; // (label, valid bytes) to truncate
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         if GEN_SKIP.contains(&stem) {
@@ -1962,6 +2303,36 @@ fn ir_conformance_corpus() {
             }
         }
 
+        // --- decode-side reference-codec differential (CDDL-blind, dependency-free). Independent of
+        // the ruby gem: it sweeps the SAME dumped `.cbor` files and decodes each through ciborium +
+        // minicbor, requiring both to fully consume the bytes and agree on the structure. Runs for
+        // every fixture whose tests passed (RUST_ORACLE_SKIP included), even under
+        // CDDL_RUBY_ORACLE=skip. Sorted order for stable diagnostics.
+        if passed && !expected_fail {
+            let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&dump_dir)
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok().map(|e| e.path()))
+                        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cbor"))
+                        .collect()
+                })
+                .unwrap_or_default();
+            cases.sort();
+            for case in &cases {
+                let fname = case.file_name().unwrap().to_str().unwrap().to_owned();
+                let bytes = std::fs::read(case).unwrap();
+                diff_total_cases += 1;
+                if let Err(e) = reference_codec_differential(&bytes) {
+                    failures.push(format!(
+                        "{stem} / {fname}: reference-codec differential: {e}\n  bytes: {bytes:02x?}"
+                    ));
+                }
+                // Seed the post-sweep truncation control from the first non-trivial case.
+                if diff_neg_sample.is_none() && bytes.len() > 1 {
+                    diff_neg_sample = Some((format!("{stem}/{fname}"), bytes));
+                }
+            }
+        }
+
         // --- ruby decorrelated sweep (only when the gem is present and the fixture's tests passed:
         // we re-check the SAME minted bytes through a lineage-decorrelated parser). Sweep the dump dir
         // in SORTED order for stable, reproducible diagnostics. Ledgering is PER (fixture, rule).
@@ -2062,6 +2433,14 @@ fn ir_conformance_corpus() {
             None
         };
 
+    // Decode-side differential negative control (in-memory, no external dependency): truncating a
+    // known-good case's final byte yields an incomplete item both codecs must reject, so the
+    // differential must return Err. A structural check that accepted anything would make every PASS
+    // above vacuous. Mirrors the ruby negative control at the codec level; runs even under skip.
+    let diff_neg_control_ok: Option<bool> = diff_neg_sample.as_ref().map(|(_, good_bytes)| {
+        reference_codec_differential(&good_bytes[..good_bytes.len() - 1]).is_err()
+    });
+
     let _ = std::fs::remove_dir_all(&root);
     // vacuity floor: a silent no-op sweep (nothing validated) must not pass. 33 of the 39 non-skip
     // corpus fixtures emit at least one conformance call at landing (the rest are transparent
@@ -2087,6 +2466,25 @@ fn ir_conformance_corpus() {
         dump_coverage_failures.is_empty(),
         "dump-coverage shortfall (a rule the generator intended to dump produced no bytes):\n\n{}",
         dump_coverage_failures.join("\n\n")
+    );
+
+    // ===== decode-side reference-codec differential verdicts (dependency-free — always gated) =====
+    // (Structural divergences already went into `failures` above; here are its own anti-vacuity teeth.)
+    eprintln!(
+        "REFERENCE CODEC DIFFERENTIAL: checked {diff_total_cases} minted cases (ciborium vs minicbor)"
+    );
+    assert!(
+        diff_total_cases >= DIFF_CASE_FLOOR,
+        "reference-codec differential checked only {diff_total_cases} minted cases (floor \
+         {DIFF_CASE_FLOOR}) — the dump hook silently stopped firing or the sweep read an empty dir \
+         (vacuous structural oracle)"
+    );
+    assert_eq!(
+        diff_neg_control_ok,
+        Some(true),
+        "reference-codec differential NEGATIVE CONTROL failed: truncated (malformed) bytes were not \
+         rejected by both codecs, so the differential can't tell well-formed from malformed and every \
+         structural PASS above is vacuous (or no known-good sample was captured to corrupt)"
     );
 
     // ===== ruby decorrelated-oracle verdicts =====
