@@ -1,46 +1,51 @@
-# FEATURE-FROZEN (CI cost policy — see AGENTS.md "Build & verify" and tests/README.md).
-# This workflow accepts NO new jobs, steps, gates, or expanded runs. The only changes accepted are
-# fixes to things that break due to refactoring (e.g. a renamed path breaking an existing step).
-# New verification systems run manually/locally instead of being wired in here.
-name: Linter and unit tests
+# CI POLICY — CI runs EXACTLY `bun run check.ts fast`, nothing else (CI cost: sole maintainer,
+# AI-velocity commits — see AGENTS.md "Build & verify"). The fast tier of check.ts's gate registry
+# is the single definition of what CI does; this file stays a thin invoker. check.ts's own
+# `self_checks` gate FAILS if this workflow grows any other run step or drops the fast invocation,
+# so growing CI is a reviewed registry edit (maintainer decision), never a workflow edit.
+# The heavy correctness gates (workspace build, full `cargo test`, snapshot orphan check) live in
+# the `local` tier — run `bun run check.ts` locally before considering work done.
+name: fast checks
 
 on:
   push:
     branches: [ master ]
     paths:
       - '.github/workflows/build.yml'
+      - "check.ts"
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
       # static/ is the hand-written runtime shipped into every generated crate, and examples/
-      # (ast_roles) is built by the test job and executed by the drift job — an edit to either
-      # can break the suite, so neither may bypass CI.
+      # (ast_roles) is executed by project_corpus's role checks — an edit to either can break the
+      # suite, so neither may bypass CI.
       - "static/**"
       - "examples/**"
       - "tests/**"
-      # Matrix-only edits don't touch tests/**, so without this the drift gate
-      # below would never trigger on the change that caused the drift.
+      # Matrix-only edits don't touch tests/**, so without this the drift gates in the fast tier
+      # would never trigger on the change that caused the drift.
       - "cddl-matrix/**"
   pull_request:
     branches: [ master ]
     paths:
       - '.github/workflows/build.yml'
+      - "check.ts"
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
       # static/ is the hand-written runtime shipped into every generated crate, and examples/
-      # (ast_roles) is built by the test job and executed by the drift job — an edit to either
-      # can break the suite, so neither may bypass CI.
+      # (ast_roles) is executed by project_corpus's role checks — an edit to either can break the
+      # suite, so neither may bypass CI.
       - "static/**"
       - "examples/**"
       - "tests/**"
-      # Matrix-only edits don't touch tests/**, so without this the drift gate
-      # below would never trigger on the change that caused the drift.
+      # Matrix-only edits don't touch tests/**, so without this the drift gates in the fast tier
+      # would never trigger on the change that caused the drift.
       - "cddl-matrix/**"
 
 jobs:
-  test:
-    name: Rust project
+  fast:
+    name: check.ts fast tier
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,70 +54,8 @@ jobs:
       # cargo caching (wraps Swatinem/rust-cache).
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Format check
-        run: cargo fmt --all -- --check
-
-      - name: Linter checks
-        run: cargo clippy --locked --workspace --all-features --all-targets -- --deny "clippy::all"
-
-      - name: Build
-        run: cargo build --locked --workspace --all-features --all-targets
-
-      # wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node
-      # (node is preinstalled on ubuntu-latest; the wasm32 target comes from rust-toolchain.toml).
-      - name: Install wasm-pack
-        uses: taiki-e/install-action@v2
-        with:
-          tool: wasm-pack
-
-      - name: Test
-        run: cargo test --all-features --all-targets
-
-      # Plain `cargo test` catches changed/missing snapshots but not orphaned ones (a `.snap`
-      # left behind when a refactor stops generating a file). This rejects those.
-      - name: Install cargo-insta
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-insta
-
-      # Filter must list every snapshot-producing test module, or this would falsely flag the
-      # missing module's snapshots as unreferenced.
-      - name: Snapshot orphan check
-        run: cargo insta test --unreferenced=reject -- snapshot_tests robustness
-
-  # The cddl-matrix projection scripts keep the committed corpus/robustness fixtures and COVERAGE.md
-  # docs in sync with matrix.json. Cheap PR gate: mostly file-reading string-scanners, except
-  # project_corpus, which also runs the repo's own AST walker (`cargo run --example ast_roles`) for
-  # its role checks. The heavy verify.ts (cargo-check-per-schema) is deliberately NOT run here
-  # — see tests/TESTING_ROADMAP.md.
-  matrix-drift:
-    name: cddl-matrix drift gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      # project_corpus's role-keyed covers are verified against a real cddl-crate AST walk
-      # (`cargo run --example ast_roles` via corpus_detect's rolesIn) — a designed dependency, so
-      # the job needs the pinned toolchain; ubuntu-latest images no longer preinstall Rust. The
-      # action's cargo cache keeps the ast_roles build warm across runs.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      # build_matrix --check: matrix.json matches its authored TOMLs/annotations.
-      # project_robustness --check: matrix_{supported,panic}/ fixtures match the support verdict.
-      # project_wasm_matrix --check: matrix_wasm/ fixtures match the wasm-ABI cell projection.
-      # project_golden_hex --check: golden_hex COVERAGE.md matches tests.rs + the encoding matrix
-      #   (its header claims CI drift-gating, so it must actually be gated here).
-      # project_corpus: validates the corpus overlay (hard-fails on drift) and rewrites COVERAGE.md.
-      - name: Matrix snapshot + fixture drift
-        working-directory: cddl-matrix
-        run: |
-          bun run build_matrix.ts --check
-          bun run project_robustness.ts --check
-          bun run project_wasm_matrix.ts --check
-          bun run project_golden_hex.ts --check
-          bun run project_corpus.ts
-
-      # project_corpus's exit code doesn't catch stale *rendered* counts in COVERAGE.md (only overlay
-      # drift), so diff the file it just rewrote to catch a doc that wasn't regenerated after a change.
-      - name: COVERAGE.md is up to date
-        run: git diff --exit-code tests/corpus/COVERAGE.md
+      # The one CI step (enforced by check.ts self_checks meta-3): fmt, clippy, snapshot tests,
+      # the self-completeness meta-checks, and the cddl-matrix drift gates.
+      - run: bun run check.ts fast

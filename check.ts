@@ -2,16 +2,18 @@
 /**
  * check.ts — the single entry point for "run everything that verifies this repo".
  *
- *   bun run check.ts            # `ci`   tier (default) — exactly what a PR would face
- *   bun run check.ts quick      # fast inner loop (fmt + clippy + snapshot tests)
- *   bun run check.ts full       # `ci` + every manual-only gate (the real "run all tests")
+ *   bun run check.ts            # `local` tier (default) — run before considering work done
+ *   bun run check.ts fast       # what CI runs — the absolute-minimum commit gate
+ *   bun run check.ts full       # `local` + every manual-only gate (the real "run all tests")
  *
- * The CI workflow (`.github/workflows/build.yml`) is feature-frozen for cost, so "run everything"
- * lives here instead of in CI. The registry below IS the encoding of every gate that verifies this
- * repo; the tiers (quick ⊂ ci ⊂ full) are views over it. Honest reporting is the point: every run
- * prints the FULL registry as a table (PASS / FAIL / SKIPPED / STUB / not-in-tier + durations), so a
- * gate that did not run is always *visibly* not-run — the current failure mode (a manual gate that
- * exists but is in nobody's habit) becomes impossible to miss.
+ * CI (`.github/workflows/build.yml`) runs EXACTLY `bun run check.ts fast` — nothing else. The
+ * registry below IS the encoding of every gate that verifies this repo; the tiers
+ * (fast ⊂ local ⊂ full) are views over it. POLICY: the fast tier stays the absolute minimum (sole
+ * maintainer; AI-velocity commits; CI minutes are the scarce resource) — new gates default to
+ * `local` or `full`, and promoting anything into `fast` is a maintainer decision. Honest reporting
+ * is the point: every run prints the FULL registry as a table (PASS / FAIL / SKIPPED / STUB /
+ * not-in-tier + durations), so a gate that did not run is always *visibly* not-run — the failure
+ * mode this runner cures (a gate that exists but is in nobody's habit) is impossible to miss.
  *
  * Flags:
  *   --keep-going    run all in-tier gates even after a failure (default: fail fast — later cargo
@@ -24,12 +26,15 @@
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
  *      manual gate (run it) or a known-failing stub (never run it, shown as STUB).
  *   2. matrix-script coverage    — every `cddl-matrix/*.ts` (minus lib.ts) must be wired to a gate.
- *   3. build.yml mirror (WARN)   — each ci-tier command string must still appear in build.yml.
+ *   3. CI-is-fast-tier invariant — build.yml must invoke `bun run check.ts fast` and must contain
+ *      NO other run step (all CI work flows through the registry's fast tier, so growing CI is an
+ *      explicit, reviewed registry edit — not a workflow edit agents make in passing).
  *
  * Meta-checks mutation-verified red-first at landing (repo idiom):
  *   - adding a throwaway `#[ignore]` test           -> meta-check 1 FAILED (unclassified ignore)
  *   - adding a throwaway `cddl-matrix/throwaway.ts`  -> meta-check 2 FAILED (script wired to no gate)
- *   both canaries reverted after confirming red.
+ *   - adding a direct `run: cargo test` step to build.yml -> meta-check 3 FAILED (bypasses registry)
+ *   canaries reverted after confirming red.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -39,7 +44,7 @@ const ROOT = import.meta.dir;
 const MATRIX = join(ROOT, "cddl-matrix");
 
 // ---- tiers ---------------------------------------------------------------------------------------
-const TIERS = ["quick", "ci", "full"] as const;
+const TIERS = ["fast", "local", "full"] as const;
 type Tier = (typeof TIERS)[number];
 const rank = (t: Tier) => TIERS.indexOf(t);
 
@@ -57,7 +62,6 @@ interface Gate {
   run?: (o: Opts) => Outcome;// kind === "fn"
   ignoredTest?: string;      // maps this gate to a `#[ignore]` test (meta-check 1)
   script?: string;           // cddl-matrix/*.ts this gate drives (meta-check 2)
-  mirror?: string;           // verbatim build.yml substring this ci gate replicates (meta-check 3)
 }
 
 // ---- process helpers -----------------------------------------------------------------------------
@@ -127,11 +131,19 @@ function runSelfChecks(): Outcome {
     if (!referenced.has(s))
       problems.push(`meta-2: cddl-matrix/${s} is wired into no gate — add it to a tier in the registry (or justify its exclusion)`);
 
-  // 3. build.yml mirror (WARN only): the ci tier duplicates the frozen file, the one allowed drift risk.
+  // 3. CI-is-fast-tier invariant: build.yml must run exactly `bun run check.ts fast` — the one
+  //    load-bearing line — and nothing else. Any other `run:` step means CI work is bypassing the
+  //    registry (the fast tier is the sole definition of what CI does; growing it is a maintainer
+  //    decision made HERE, not a workflow edit).
   const yml = readFileSync(join(ROOT, ".github/workflows/build.yml"), "utf8");
-  for (const g of REGISTRY)
-    if (g.mirror && !yml.includes(g.mirror))
-      warnings.push(`meta-3: ci gate '${g.id}' command not found verbatim in build.yml — drift? ('${g.mirror}')`);
+  // Both YAML step forms count: `- run: …` (run starts the step) and bare `run: …` (after `- name:`).
+  const runSteps = yml.match(/^\s*(?:-\s+)?run:.*$/gm) ?? [];
+  const isFastInvocation = (s: string) => /^\s*(?:-\s+)?run:\s*bun run check\.ts fast\s*$/.test(s);
+  if (!runSteps.some(isFastInvocation))
+    problems.push("meta-3: build.yml no longer invokes `bun run check.ts fast` — CI must run the fast tier through this runner");
+  for (const s of runSteps)
+    if (!isFastInvocation(s))
+      problems.push(`meta-3: build.yml has a run step besides \`check.ts fast\` ('${s.trim()}') — CI work must flow through the registry's fast tier (maintainer decision)`);
 
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
@@ -140,7 +152,7 @@ function runSelfChecks(): Outcome {
   }
   console.log(
     `  OK — ${ignored.size} #[ignore] test(s) classified (${manual.size} manual gate(s), ${stubs.size} stub(s)), ` +
-      `${scripts.length} matrix script(s) covered, ${warnings.length} mirror warning(s)`,
+      `${scripts.length} matrix script(s) covered, CI runs the fast tier only`,
   );
   return { status: "PASS" };
 }
@@ -177,49 +189,53 @@ function runFuzz(o: Opts): Outcome {
 
 // ==================================================================================================
 // THE REGISTRY — one entry per gate. Execution order is registry order; a run at tier T executes
-// every non-stub gate whose tier rank <= rank(T). quick ⊂ ci ⊂ full holds by construction.
-//   - `self_checks` (quick) runs FIRST so a mis-registered gate fails before anything expensive.
-//   - the `ci`-tier gates replicate build.yml's two jobs (test job, then matrix-drift job) IN ORDER;
-//     `mirror` pins the verbatim command so meta-check 3 warns on drift.
-//   - `snapshot_quick` is the quick-tier inner loop; in ci/full it runs additionally (cheap, ~5s) and
-//     is subsumed by the full `cargo test`. The runner's own additions over the raw build.yml union
-//     are exactly: self_checks + snapshot_quick (both cheap, both quick-tier).
+// every non-stub gate whose tier rank <= rank(T). fast ⊂ local ⊂ full holds by construction.
+//   - `self_checks` (fast) runs FIRST so a mis-registered gate fails before anything expensive.
+//   - the `fast` tier is WHAT CI RUNS (build.yml invokes `bun run check.ts fast`, enforced by
+//     meta-check 3). Keep it the absolute minimum: the cheap correctness floor (fmt / clippy /
+//     snapshot tests) plus the sub-second drift gates. Promoting a gate into `fast` is a maintainer
+//     decision — new gates default to `local` or `full`.
+//   - the `local` tier (default) is "run before considering work done": fast + the workspace build
+//     and the full `cargo test` suite (corpus + wasm-matrix compile gates + emitted-test execution).
+//   - `snapshot_quick` is the fast-tier inner loop; in local/full it is subsumed by the full
+//     `cargo test` but stays cheap (~5s) so tier-supersetting holds by construction.
 // ==================================================================================================
 const REGISTRY: Gate[] = [
-  { id: "self_checks", tier: "quick", kind: "fn", run: runSelfChecks,
-    desc: "self-completeness meta-checks (ignored-test + matrix-script coverage + build.yml mirror)" },
+  { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
+    desc: "self-completeness meta-checks (ignored-test + matrix-script coverage + CI-is-fast-tier)" },
 
-  // --- quick tier (fast inner loop) ---
-  { id: "fmt", tier: "quick", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
-    mirror: "cargo fmt --all -- --check", desc: "rustfmt check" },
-  { id: "clippy", tier: "quick", kind: "cmd",
+  // --- fast tier (CI + the inner loop) ---
+  { id: "fmt", tier: "fast", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
+    desc: "rustfmt check" },
+  { id: "clippy", tier: "fast", kind: "cmd",
     cmd: ["cargo", "clippy", "--locked", "--workspace", "--all-features", "--all-targets", "--", "--deny", "clippy::all"],
-    mirror: "cargo clippy --locked --workspace --all-features --all-targets", desc: "clippy (deny all)" },
-  { id: "snapshot_quick", tier: "quick", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "snapshot_tests"],
+    desc: "clippy (deny all)" },
+  { id: "snapshot_quick", tier: "fast", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "snapshot_tests"],
     desc: "golden snapshot tests (in-process, fast)" },
 
-  // --- ci tier: build.yml `test` job, in order ---
-  { id: "build", tier: "ci", kind: "cmd", cmd: ["cargo", "build", "--locked", "--workspace", "--all-features", "--all-targets"],
-    mirror: "cargo build --locked --workspace --all-features --all-targets", desc: "workspace build" },
-  { id: "test", tier: "ci", kind: "cmd", cmd: ["cargo", "test", "--all-features", "--all-targets"],
-    mirror: "cargo test --all-features --all-targets", desc: "full test suite (incl. corpus + wasm-matrix compile gates)" },
-  { id: "insta_orphan", tier: "ci", kind: "cmd",
-    cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
-    mirror: "cargo insta test --unreferenced=reject -- snapshot_tests robustness", desc: "snapshot orphan check" },
+  // --- fast tier: the matrix-drift gates (sub-second file-scanners; project_corpus also runs the
+  //     repo's own `cargo run --example ast_roles` AST walk) ---
+  { id: "build_matrix_check", tier: "fast", kind: "cmd", cmd: ["bun", "run", "build_matrix.ts", "--check"], cwd: MATRIX,
+    script: "build_matrix.ts", desc: "matrix.json matches authored overlay" },
+  { id: "project_robustness_check", tier: "fast", kind: "cmd", cmd: ["bun", "run", "project_robustness.ts", "--check"], cwd: MATRIX,
+    script: "project_robustness.ts", desc: "robustness fixtures drift gate" },
+  { id: "project_wasm_matrix_check", tier: "fast", kind: "cmd", cmd: ["bun", "run", "project_wasm_matrix.ts", "--check"], cwd: MATRIX,
+    script: "project_wasm_matrix.ts", desc: "wasm-ABI matrix fixtures drift gate" },
+  { id: "project_golden_hex_check", tier: "fast", kind: "cmd", cmd: ["bun", "run", "project_golden_hex.ts", "--check"], cwd: MATRIX,
+    script: "project_golden_hex.ts", desc: "golden_hex COVERAGE.md drift gate" },
+  { id: "project_corpus", tier: "fast", kind: "cmd", cmd: ["bun", "run", "project_corpus.ts"], cwd: MATRIX,
+    script: "project_corpus.ts", desc: "corpus overlay validator + COVERAGE.md rewrite" },
+  { id: "coverage_md_diff", tier: "fast", kind: "cmd", cmd: ["git", "diff", "--exit-code", "tests/corpus/COVERAGE.md"], cwd: ROOT,
+    desc: "tests/corpus/COVERAGE.md is up to date" },
 
-  // --- ci tier: build.yml `matrix-drift` job, in order (cwd = cddl-matrix/) ---
-  { id: "build_matrix_check", tier: "ci", kind: "cmd", cmd: ["bun", "run", "build_matrix.ts", "--check"], cwd: MATRIX,
-    script: "build_matrix.ts", mirror: "bun run build_matrix.ts --check", desc: "matrix.json matches authored overlay" },
-  { id: "project_robustness_check", tier: "ci", kind: "cmd", cmd: ["bun", "run", "project_robustness.ts", "--check"], cwd: MATRIX,
-    script: "project_robustness.ts", mirror: "bun run project_robustness.ts --check", desc: "robustness fixtures drift gate" },
-  { id: "project_wasm_matrix_check", tier: "ci", kind: "cmd", cmd: ["bun", "run", "project_wasm_matrix.ts", "--check"], cwd: MATRIX,
-    script: "project_wasm_matrix.ts", mirror: "bun run project_wasm_matrix.ts --check", desc: "wasm-ABI matrix fixtures drift gate" },
-  { id: "project_golden_hex_check", tier: "ci", kind: "cmd", cmd: ["bun", "run", "project_golden_hex.ts", "--check"], cwd: MATRIX,
-    script: "project_golden_hex.ts", mirror: "bun run project_golden_hex.ts --check", desc: "golden_hex COVERAGE.md drift gate" },
-  { id: "project_corpus", tier: "ci", kind: "cmd", cmd: ["bun", "run", "project_corpus.ts"], cwd: MATRIX,
-    script: "project_corpus.ts", mirror: "bun run project_corpus.ts", desc: "corpus overlay validator + COVERAGE.md rewrite" },
-  { id: "coverage_md_diff", tier: "ci", kind: "cmd", cmd: ["git", "diff", "--exit-code", "tests/corpus/COVERAGE.md"], cwd: ROOT,
-    mirror: "git diff --exit-code tests/corpus/COVERAGE.md", desc: "tests/corpus/COVERAGE.md is up to date" },
+  // --- local tier (default): the heavy correctness gates, NOT run in CI (cost policy) ---
+  { id: "build", tier: "local", kind: "cmd", cmd: ["cargo", "build", "--locked", "--workspace", "--all-features", "--all-targets"],
+    desc: "workspace build" },
+  { id: "test", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--all-features", "--all-targets"],
+    desc: "full test suite (incl. corpus + wasm-matrix compile gates)" },
+  { id: "insta_orphan", tier: "local", kind: "cmd",
+    cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
+    desc: "snapshot orphan check" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
@@ -284,11 +300,11 @@ function main() {
   for (const f of flags)
     if (!KNOWN.has(f)) { console.error(`check.ts: unknown flag '${f}' (known: ${[...KNOWN].join(", ")})`); process.exit(2); }
   if (flags.has("--help")) {
-    console.log("usage: bun run check.ts [quick|ci|full] [--keep-going] [--skip-missing] [--refresh-fuzz]");
-    console.log("  bare invocation runs the `ci` tier. See the header of check.ts for details.");
+    console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz]");
+    console.log("  bare invocation runs the `local` tier; CI runs `fast`. See the header of check.ts for details.");
     process.exit(0);
   }
-  let tier: Tier = "ci";
+  let tier: Tier = "local";
   if (positional.length) {
     if (!TIERS.includes(positional[0] as Tier)) {
       console.error(`check.ts: unknown tier '${positional[0]}' (expected: ${TIERS.join(", ")})`);

@@ -6,10 +6,10 @@ multi-agent review (`draft/testing-recommendations/RECOMMENDATIONS.md` — the e
 findings from building the current suite. See `tests/README.md` for how the current setup works and
 what's already covered; completed work is logged in `tests/CLEAR_WINS_PLAN.md`.
 
-**CI policy — feature-frozen.** `.github/workflows/build.yml` accepts no new jobs, steps, gates, or
-expanded runs (CI cost; see `AGENTS.md`). No item below may be wired into CI: new verification
-systems run manually/locally. The only CI changes accepted are fixes for breakage caused by
-refactoring.
+**CI policy — fast tier only.** CI runs exactly `bun run check.ts fast` (the absolute-minimum
+commit gate; cost policy — see `AGENTS.md`), enforced by check.ts's `self_checks`. No item below
+goes into the fast tier: new verification systems land in check.ts's `local` or `full` tier and run
+locally. Promoting anything into `fast` is a maintainer decision.
 
 ## North star — automated feature coverage
 
@@ -29,7 +29,8 @@ which is why real bugs (inverted `nint` bound, wasm `get`/`add` type mismatch, J
 shipped green. The Tier-1 items below are the remaining missing pieces of that oracle:
 
 - **Correctness** ✅ (depth + breadth across profiles) — the emitted round-trip harness (item 1)
-  turns "output didn't change" into "output is right" for every ctor-mintable type, executed in CI
+  turns "output didn't change" into "output is right" for every ctor-mintable type, executed by the
+  default `cargo test` suite (check.ts `local` tier)
   via `integration_tests::emit_tests_execute`, across the corpus (`feature_corpus_compiles` runs
   `--emit-tests` + `cargo test`; preserve/json via the manual
   `feature_corpus_roundtrips_nondefault_profiles` gate), and across the matrix (`verify.ts` is
@@ -69,8 +70,8 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    the header didn't count (corrupt CBOR on any freshly-constructed defaulted value). Remaining:
    - **c6 — matrix-driven execution (the F3 frontier): closed except the per-profile matrix
      verdict.** Every flip half is in: `feature_corpus_compiles` runs the default profile with
-     `--emit-tests` + `cargo test` (CI); `feature_corpus_roundtrips_nondefault_profiles` runs the
-     preserve/json profiles the same way, rust + wasm (manual, per the CI freeze); and `verify.ts`'s
+     `--emit-tests` + `cargo test` (local tier); `feature_corpus_roundtrips_nondefault_profiles` runs
+     the preserve/json profiles the same way, rust + wasm (full tier, manual); and `verify.ts`'s
      per-feature / per-cell / per-control-op probes are execution-gated with per-probe
      `minted`/`embedded` bits, so "supported" means "round-trips" (standalone, or at the embed site
      via the synthetic-holder re-probe — the Minter-coverage bullet below) rather than "compiles".
@@ -139,7 +140,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      accessor read-back — a second renderer over the same `emit_tests::MintValue` derivation surface (no
      duplicate minter). It runs in the default suite (`integration_tests::emit_wasm_tests_execute`, the
      `core` fixture) and per grid cell via `integration_tests::wasm_matrix_roundtrips` (manual, `#[ignore]`d
-     under the CI freeze). Every mintable core/matrix shape now emits a wasm surface: wrapper-collection
+     — full tier). Every mintable core/matrix shape now emits a wasm surface: wrapper-collection
      ctor args build through the wrapper's `new`/`add` (list) or `new`/`insert` (map) API as a block
      expression, deriving the wrapper NAME from the UNRESOLVED conceptual type (`for_wasm_member`) so an
      aliased list like `nums = [* uint]` stays `&Nums` rather than being shallow-resolved to a bare
@@ -173,9 +174,10 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
          `keys()`), enum single-nested `as_variant()` (via `kind()`) — same flatten, lower priority.
        All flatten via the convention `add_wasm_enum_getters` established ("a bit ambiguous but better than
        nothing"); the round-trip verdict upgrade (this item) is what would catch them mechanically.
-   - **CI cost to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
-     `wasm_matrix_compiles`, growing with the extensible axis). The shared `CARGO_TARGET_DIR` amortizes deps;
-     if wall-time bites, batch cells into fewer crates, adopt `cargo-nextest`, or gate only changed cells.
+   - **Local-tier wall-clock to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
+     `wasm_matrix_compiles`, growing with the extensible axis) — both in the default `cargo test` suite
+     (check.ts `local` tier, not CI). The shared `CARGO_TARGET_DIR` amortizes deps; if wall-time bites,
+     batch cells into fewer crates, adopt `cargo-nextest`, or gate only changed cells.
    - **Scope note:** the host `cargo check` catches type/signature errors cheaply; `#[wasm_bindgen]`
      macro-expansion / `.d.ts` / JS-surface concerns still need `wasm-pack` and stay the job of the few
      `run_test` fixtures + item 7's `--package-json` run.
@@ -196,7 +198,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 ### Tier 3 — validation & process (opportunistic)
 
 5. **`cargo-mutants`** scoped to the emit core (`--file 'src/generation*'`), run manually/locally
-   (CI is feature-frozen). The defining technique for a codegen tool — proves the suite *catches*
+   (a full-tier gate at most; never fast). The defining technique for a codegen tool — proves the suite *catches*
    wrong-codegen bugs, not just covers lines. Only bites once #1 gives assertions with teeth; needs
    `cargo-nextest` as the runner.
    **Score mutants against the behavioral layers only** (a nextest filter excluding
@@ -233,7 +235,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
    the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
    divergence/crash into the snapshot corpus (review once, commit). Complements the real on-chain
    differential (item 3): synthetic breadth vs real-world depth.
-   - **Existing `fuzz/` rot residuals (the harness is manual-only under the CI freeze).** The seed
+   - **Existing `fuzz/` rot residuals (the harness is manual-only — CI cost policy).** The seed
      corpus now harvests all three golden-hex suites (default + preserve + canonical — done in
      `generate.sh`), and the fuzz crate's compile-rot is guarded by `check.ts`'s `full` tier
      (`fuzz_compile_rot` gate: run `fuzz/generate.sh` iff `fuzz/generated` is absent or
