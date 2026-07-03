@@ -181,6 +181,36 @@ raw-hex sets are the independent spec anchor for those modes. The projection val
 golden byte array in all three dirs (two-digit `0x??` literals, exactly one well-formed CBOR item)
 and hard-fails otherwise; regenerate + commit `COVERAGE.md` after editing any of them.
 
+### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
+
+`--json-schema-export` ships a JS toolchain that turns the exported schemas into TypeScript and
+merges them into the wasm-pack `.d.ts` (`static/run-json2ts.js` + `static/json-ts-types.js`, wired by
+the `--package-json` `package.json`). Three tests cover it, cheapest-in-isolation first:
+
+- **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over committed schema fixtures
+  (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
+  `.d.ts` (JSON-suffixed identifiers, resolved cross-refs, enum → union, the `additionalProperties`
+  guard on both a struct and a map type).
+- **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
+  wasm-pack/json2ts needed — asserting it specializes `to_json_value(): any` to the class's JSON
+  interface and appends the interface defs.
+- **`package_json_pipeline`** is the end-to-end gate: it generates a small extern-free fixture
+  (`tests/package-json/input.cddl`) with `--wasm --package-json --json-serde-derives
+  --json-schema-export` and runs the SHIPPED `npm run rust:build-nodejs` script VERBATIM — `wasm-pack
+  build --target=nodejs` → json-gen `cargo +stable run` → `run-json2ts.js` → `json-ts-types.js` →
+  `wasm-pack pack`. Running the script line itself (its `cd`/`;` shell shape, its dependency pins, its
+  `cargo +stable`) is the point; replicating the steps in Rust would let the script rot. This is the
+  ONLY layer that exercises `#[wasm_bindgen]` macro-expansion → a real wasm-pack `.d.ts` → the JS-side
+  merge end-to-end — the systematic wasm gates `cargo check` on the host target and can't see any of
+  it. Asserts pin each stage: the layout copy block, a wasm-pack `.d.ts`, a nonempty json-gen
+  `schemas/`, `to_json_value(): FooJSON;` + `export interface FooJSON` in the merged `.d.ts` (proving
+  the merge ran on real output, not a fixture), and a `.tgz` from `wasm-pack pack`. It builds the
+  generated crate with the user's `+stable` toolchain (faithful to the shipped consumer experience),
+  so a `+stable` failure here is a real finding about shipped output, not a test bug. Needs
+  node+npm+wasm-pack + a rustup `stable` toolchain; skips locally when absent (asserts their presence
+  under CI, though CI's fast tier never reaches it). Plain `#[test]`, so it runs in the `local` tier
+  like `wasm_json_roundtrip` (~20s warm).
+
 ## Generated-test harness (`--emit-tests`, `src/emit_tests.rs`)
 
 The generator can emit a `#[cfg(test)] mod cddl_generated_tests` into the generated rust crate:
