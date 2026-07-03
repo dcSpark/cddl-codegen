@@ -28,7 +28,8 @@
 //! field additionally present (records); one mandatory nullable (`T / null`) field additionally
 //! set to `Some(inner)` (records — so the present-value wire path runs, not just the `None`
 //! baseline); one case per choice/c-enum variant. This is the
-//! "output is right, not just unchanged" oracle (TESTING_ROADMAP item 1): a serialize/deserialize
+//! "output is right, not just unchanged" oracle (tests/README.md § "Generated-test harness"): a
+//! serialize/deserialize
 //! disagreement fails here even when snapshots and compile gates stay green. It deliberately
 //! shares the generator's IR, so on its own it cannot catch IR-level bugs (wrong bounds computed at
 //! parse time) — that is the spec-anchored oracles' job (golden hex / conformance validation).
@@ -42,7 +43,7 @@
 //! generator, so it catches wrong VALUES, not fork-level misparses (same caveat as
 //! `tests/deser_test_conformance.rs`, whose helpers it reuses).
 //!
-//! Deliberately scoped to the cheap cases (the first slice — see `tests/TESTING_ROADMAP.md` c6):
+//! Deliberately scoped to the cheap cases:
 //! valid values are minted from compile-time literals, so any field that can't be cheaply
 //! minted (nested rust structs/tags, bounded `nint`s — whose stored/wire direction is inverted)
 //! causes that one type/case to be skipped with an `eprintln!`.
@@ -1273,8 +1274,8 @@ pub(crate) fn mint_struct(
         // alias's associated `new()` resolves to the underlying map type's constructor
         // ponytail: named tables mint empty (one-entry minting needs the struct's insert API);
         // inline `{ * k => v }` map *fields* already mint one entry via materialize_at, so the map
-        // element wire path is still exercised there. Named-table standalone element coverage is a
-        // known residual (see TESTING_ROADMAP).
+        // element wire path is still exercised there. Named-table standalone element coverage is
+        // owned at the embed site by verify.ts's synthetic-holder probe (cddl-matrix/README.md).
         RustStructType::Table { .. } => Some(MintValue::TableEmpty { ident: name }),
         RustStructType::Array { element_type, .. } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
