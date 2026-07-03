@@ -98,6 +98,13 @@ pub(crate) enum MintValue {
     },
     /// a text string of the given length: `"a".repeat(len)`
     Str { len: i128 },
+    /// a fixed text literal: `"content".to_owned()`. Used to mint a semantically-VALID inner value
+    /// for prelude tag wrappers whose tag number carries RFC 8949 content requirements the reference
+    /// validator enforces (e.g. tag 0 = tdate must be an RFC 3339 date-time). The generic
+    /// `Str { len }` baseline (`"a"`) is spec-violating for those tags, so it would round-trip
+    /// byte-identically here yet be rejected by the conformance oracle. Renders identically in both
+    /// renderers (a `String` on the wire, so it still round-trips).
+    StrLit { content: String },
     /// a byte string of the given length: `vec![0u8; len]`
     Bytes { len: i128 },
     /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`
@@ -152,6 +159,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Float => "0.0".to_owned(),
         MintValue::Int { value, .. } => format!("{value}"),
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
+        MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
         MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
         MintValue::Array {
             elem: Some(e),
@@ -543,9 +551,16 @@ fn wrapper_roundtrip(
     conf: Option<&str>,
     value_eq: bool,
 ) -> Option<String> {
-    let inner = match min_max {
-        Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
-        None => valid_value(types, wrapped),
+    // Tag-aware, same as mint_struct's Wrapper arm: a semantically-enforced tag (e.g. tdate) gets a
+    // valid literal so this standalone round-trip stays consistent with the aggregate-record mint.
+    let inner = match semantic_tag_content(wrapped) {
+        Some(content) => Some(MintValue::StrLit {
+            content: content.to_owned(),
+        }),
+        None => match min_max {
+            Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
+            None => valid_value(types, wrapped),
+        },
     };
     let Some(inner) = inner else {
         eprintln!(
@@ -962,6 +977,24 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
     }
 }
 
+/// A semantically-VALID inner literal for a CBOR tag whose RFC 8949 content requirements the
+/// reference `cddl` validator enforces on decode. Returns `None` for tags the validator accepts with
+/// any well-typed content (only the enforced ones need a constant). Reads the tag off the wrapped
+/// type's encoding operations — the tag lives on the inner `RustType` for a `#6.N(...)` prelude
+/// wrapper, not on the wrapper struct.
+fn semantic_tag_content(wrapped: &RustType) -> Option<&'static str> {
+    use crate::intermediate::CBOREncodingOperation;
+    let tag = wrapped.encodings.iter().find_map(|op| match op {
+        CBOREncodingOperation::Tagged(t) => Some(*t),
+        _ => None,
+    })?;
+    match tag {
+        // tag 0 (tdate): RFC 8949 §3.4.1 — a standard date/time string per RFC 3339.
+        0 => Some("1970-01-01T00:00:00Z"),
+        _ => None,
+    }
+}
+
 /// Mint a valid instance of a NAMED generated struct, recursing into its fields (depth-capped so
 /// recursion terminates: at the cap this returns `None`, which an enclosing unbounded collection
 /// absorbs by minting empty — loudly — while any other enclosing mint gets the caller's loud skip).
@@ -997,11 +1030,21 @@ pub(crate) fn mint_struct(
             })
         }
         RustStructType::Wrapper { wrapped, min_max } => {
-            let inner = match min_max {
-                Some(mm) => {
-                    materialize_at(types, wrapped, wrapper_measure(wrapped, *mm), depth + 1)?
-                }
-                None => valid_value_at(types, wrapped, depth + 1)?,
+            // Tag-aware minting: when the wrapped type carries a CBOR tag whose RFC 8949 content the
+            // reference `cddl` validator SEMANTICALLY enforces, the generic `"a"` baseline is
+            // spec-violating (it round-trips byte-identically but the conformance oracle rejects it).
+            // Mint a fixed valid literal for exactly those tags instead. `None` for every other tag —
+            // no speculative coverage beyond what the oracle demands.
+            let inner = match semantic_tag_content(wrapped) {
+                Some(content) => MintValue::StrLit {
+                    content: content.to_owned(),
+                },
+                None => match min_max {
+                    Some(mm) => {
+                        materialize_at(types, wrapped, wrapper_measure(wrapped, *mm), depth + 1)?
+                    }
+                    None => valid_value_at(types, wrapped, depth + 1)?,
+                },
             };
             Some(MintValue::Wrapper {
                 ident: name,

@@ -272,7 +272,11 @@ faithfully — a synthesized struct or a lossy name gets no call.
 generator was built from). Same caveats as `deser_test_conformance.rs`: it shares the dcSpark fork's
 *parser* with the generator, so it catches wrong **values**, not fork-level misparses; and the minted
 values are shallow (None arms, empty tables, depth-capped recursion), so it's breadth across fixtures,
-not exhaustive per-type depth.
+not exhaustive per-type depth. One exception to the degenerate baseline: for a CBOR tag whose RFC 8949
+content the validator *semantically* enforces (tag 0 = tdate must be an RFC 3339 date-time), the minter
+emits a fixed valid literal instead of the generic `"a"` — otherwise a spec-violating baseline would
+round-trip byte-identically yet be (correctly) rejected by this oracle. Only tags the validator actually
+enforces get a constant (`semantic_tag_content` in `emit_tests.rs`); every other tag mints the baseline.
 
 **The gate** (`integration_tests::ir_conformance_corpus`, `#[ignore]`d — **manual/local only** under
 the CI freeze, because it adds the heavy `cddl` dep to every corpus crate):
