@@ -7,6 +7,8 @@
  *   - tests/matrix_supported/<id>.cddl  — every status="supported" feature/control-op   (expect-ok)
  *   - tests/matrix_panic/<id>.cddl      — every status="unsupported" feature/control-op whose evidence is
  *                                         a generation PANIC (`panic (exit 101)`)         (expect-PANIC)
+ *   - tests/matrix_reject/<id>.cddl     — every status="unsupported" feature/control-op whose evidence is
+ *                                         NOT a panic, PLUS every status="out_of_profile" row  (expect-reject)
  *
  * Each fixture is the construct's minimal `example` verbatim (the same text verify.ts probed), so the
  * in-process Rust outcome must match the matrix verdict. The panic catalog uses the matrix probe's
@@ -17,11 +19,21 @@
  * the grounding probe: it also generates with --wasm=true, which verify.ts never probes — a red
  * there with a green matrix can mean a wasm-emission-only panic, not matrix↔generator drift.
  *
- * contain.* (role x feature) cells are deliberately excluded — they carry no standalone probe example
- * and are a different axis (the role x feature corpus already covers them).
+ * The reject catalog is the third generation-outcome scorecard: the rows a verdict marks off-limits but
+ * that mint no test elsewhere (parse-rejected control ops, generates-but-doesn't-compile shapes like
+ * `prelude.any`, out-of-profile constructs). Its purpose is to catch a parser/codegen change that
+ * SILENTLY makes a rejected construct parse — the exact thing a past cddl-fork bump did to 14 control
+ * ops — which flips a committed `error (graceful)` row to `ok` and surfaces as a snapshot diff in the
+ * default `cargo test` suite instead of waiting for a manual verify.ts run. Because the outcome differs
+ * by evidence class (a parse-reject errors gracefully; a generates-but-doesn't-compile row generates
+ * fine under generate-only; an out-of-profile panic still panics), the --check cross-check derives the
+ * expected label PER ROW from the row's evidence class (below), not uniformly.
+ *
+ * contain.* (role x feature) cells are deliberately excluded from ALL three dirs — they carry no
+ * standalone probe example and are a different axis (the role x feature corpus already covers them).
  *
  * Run from cddl-matrix/:
- *   bun run project_robustness.ts          -> (re)writes both fixture dirs from matrix.json
+ *   bun run project_robustness.ts          -> (re)writes all three fixture dirs from matrix.json
  *   bun run project_robustness.ts --check  -> drift gate: fails if any fixture is stale/missing/orphaned
  */
 import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -29,7 +41,28 @@ import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, rmSync
 const HERE = import.meta.dir;
 const SUPPORTED_DIR = `${HERE}/../tests/matrix_supported`;
 const PANIC_DIR = `${HERE}/../tests/matrix_panic`;
+const REJECT_DIR = `${HERE}/../tests/matrix_reject`;
 const CHECK = process.argv.includes("--check");
+
+// The generation-outcome label the reject catalog is EXPECTED to record for a row, derived from the
+// row's matrix evidence class (the reject catalog is heterogeneous — its rows fail for different
+// reasons, and generate-only observes each differently). Returns null if the evidence shape is one
+// this catalog should never contain (a hard drift: the vocabulary drifted; the caller fails loud).
+function rejectExpectedLabel(evidence: string): string | null {
+  if (evidence.includes("rejected at parse/lex")) return "error (graceful)";
+  // The gap is POST-generation (won't compile, or emitted round-trip tests fail); a generate-only
+  // pass legitimately succeeds, so the catalog records `ok`. This is not drift — the reject catalog
+  // is generate-only, so it can't observe a compile/round-trip failure and correctly reports `ok`.
+  if (
+    evidence.includes("generates but does not compile") ||
+    evidence.includes("compiles but emitted round-trip tests fail")
+  )
+    return "ok";
+  // A construct that panics the generator even though it's off-profile (e.g. type2.tag_head_type is
+  // out_of_profile WITH panic evidence) still panics under generate-only.
+  if (evidence.includes("panic (exit 101)")) return "PANIC";
+  return null;
+}
 
 interface Ann { id: string; status: string; evidence?: string }
 interface Ex { id: string; example: string }
@@ -46,7 +79,12 @@ const exampleById = new Map<string, string>(
 
 const supported: Ex[] = [];
 const panic: Ex[] = [];
+const reject: Ex[] = [];
+// id -> the generation-outcome label the reject catalog should record (from evidence class); consumed
+// by the --check cross-check so it derives the expected label per row, not uniformly.
+const rejectExpect = new Map<string, string>();
 const droppedNoExample: string[] = [];
+const rejectEvidenceDrift: string[] = [];
 for (const a of matrix.annotations.cddl_codegen) {
   const ex = exampleById.get(a.id);
   if (ex === undefined) {
@@ -55,9 +93,30 @@ for (const a of matrix.annotations.cddl_codegen) {
     if (!a.id.startsWith("contain.")) droppedNoExample.push(`${a.id} (${a.status})`);
     continue;
   }
+  const evidence = a.evidence ?? "";
   if (a.status === "supported") supported.push({ id: a.id, example: ex });
-  else if (a.status === "unsupported" && (a.evidence ?? "").includes("panic (exit 101)"))
+  else if (a.status === "unsupported" && evidence.includes("panic (exit 101)"))
     panic.push({ id: a.id, example: ex });
+  // Reject catalog: non-panic unsupported rows (parse-rejected, generates-but-doesn't-compile) plus
+  // every out_of_profile row (which can itself be panic-class, e.g. type2.tag_head_type).
+  else if (
+    (a.status === "unsupported" && !evidence.includes("panic (exit 101)")) ||
+    a.status === "out_of_profile"
+  ) {
+    reject.push({ id: a.id, example: ex });
+    const expected = rejectExpectedLabel(evidence);
+    if (expected === null)
+      rejectEvidenceDrift.push(`${a.id} (evidence: "${evidence}")`);
+    else rejectExpect.set(a.id, expected);
+  }
+}
+if (rejectEvidenceDrift.length) {
+  console.log(
+    `ERROR: ${rejectEvidenceDrift.length} reject-catalog row(s) have an evidence shape rejectExpectedLabel() ` +
+      `doesn't recognise — the evidence vocabulary drifted; update rejectExpectedLabel in project_robustness.ts: ` +
+      rejectEvidenceDrift.join(", "),
+  );
+  process.exit(1);
 }
 if (droppedNoExample.length) {
   console.log(
@@ -68,6 +127,7 @@ if (droppedNoExample.length) {
 }
 supported.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
 panic.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+reject.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
 
 // The fixture is the example verbatim (trimmed + one trailing newline). The filename is the id (dots are
 // fine — Rust `file_stem` recovers the id as the catalog label).
@@ -94,6 +154,7 @@ function reconcile(dir: string, rows: Ex[], label: string) {
 }
 reconcile(SUPPORTED_DIR, supported, "matrix_supported (expect-ok)");
 reconcile(PANIC_DIR, panic, "matrix_panic (expect-PANIC)");
+reconcile(REJECT_DIR, reject, "matrix_reject (expect-reject)");
 
 // Cross-check the committed outcome catalog against the matrix verdict class. This gates the drift
 // class that actually happened once: a generator change flips a fixture's outcome, the insta catalog
@@ -142,8 +203,54 @@ if (CHECK) {
   }
 }
 
+// Same cross-check for the reject catalog, but the expected label is PER ROW (from the row's evidence
+// class, computed above into rejectExpect), because the reject catalog is heterogeneous: a parse-reject
+// records `error (graceful)`, a generates-but-doesn't-compile row records `ok` under generate-only, an
+// out-of-profile panic records `PANIC`. Same anti-vacuity guards as the panic cross-check above.
+if (CHECK) {
+  const snapPath = `${REJECT_DIR}/snapshots/catalog.snap`;
+  if (!existsSync(snapPath)) drift.push("matrix_reject: snapshots/catalog.snap is missing (run the Rust catalog test)");
+  else {
+    const rows = readFileSync(snapPath, "utf8")
+      .split("\n")
+      .map(l => /^([\w.$-]+) +(ok|error \(graceful\)|PANIC)$/.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null);
+    // Anti-vacuity: a label relabel + re-bless (both CI-green) would make this regex match zero rows,
+    // silently comparing nothing. Assert non-empty AND that every projected reject id has a row.
+    if (rows.length === 0) {
+      drift.push(
+        "reject catalog↔matrix: parsed 0 rows from catalog.snap — the label format drifted from this regex " +
+          "(update project_robustness.ts) or the snapshot is empty",
+      );
+    } else {
+      const catalogIds = new Set(rows.map(([, id]) => id));
+      for (const id of rejectExpect.keys())
+        if (!catalogIds.has(id))
+          drift.push(
+            `reject catalog↔matrix: projected \`${id}\` has no parseable row in the committed catalog.snap ` +
+              `(renamed/dropped, or the label regex no longer matches its row)`,
+          );
+    }
+    for (const [, id, label] of rows) {
+      const want = rejectExpect.get(id);
+      if (want === undefined)
+        drift.push(
+          `reject catalog↔matrix: the catalog records a row for \`${id}\` but the matrix no longer projects it ` +
+            `into the reject catalog — re-project and re-bless`,
+        );
+      else if (label !== want)
+        drift.push(
+          `reject catalog↔matrix: \`${id}\` should record \`${want}\` (its matrix evidence class) but the committed ` +
+            `catalog records \`${label}\` — a rejected construct may have started parsing; investigate, then re-run ` +
+            `verify.ts (refresh the verdict), re-project, re-bless`,
+        );
+    }
+  }
+}
+
 console.log(
-  `robustness projection: ${supported.length} supported (expect-ok), ${panic.length} panic-class (expect-PANIC)`,
+  `robustness projection: ${supported.length} supported (expect-ok), ${panic.length} panic-class (expect-PANIC), ` +
+    `${reject.length} reject-class (expect-reject)`,
 );
 if (CHECK) {
   if (drift.length) {
@@ -151,7 +258,7 @@ if (CHECK) {
     for (const d of drift) console.log("  -", d);
     process.exit(1);
   }
-  console.log("drift check OK: both fixture dirs match the matrix support verdict");
+  console.log("drift check OK: all three fixture dirs match the matrix support verdict");
 } else {
-  console.log(`wrote tests/matrix_supported/ and tests/matrix_panic/`);
+  console.log(`wrote tests/matrix_supported/, tests/matrix_panic/, and tests/matrix_reject/`);
 }

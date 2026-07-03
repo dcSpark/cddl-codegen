@@ -87,21 +87,11 @@ and stays out of CI.
 - `bun run project_golden_hex.ts` — golden_hex (encoding-axis) projection + drift-check; `--check` is
   the CI mode (fails on a stale committed COVERAGE.md without rewriting it). **(CI)**
 - `bun run project_robustness.ts` — projects the support verdict into the robustness-catalog fixtures
-  (`tests/matrix_{supported,panic}/*.cddl`); `--check` is the drift gate. Pure
-  `matrix.json` read (no cargo/oracles), so it's a fast CI gate. **(CI)**
+  (`tests/matrix_{supported,panic,reject}/*.cddl`); `--check` is the drift gate (and cross-checks each
+  committed generation-outcome catalog against the matrix verdict — for the reject catalog, per row by
+  evidence class). Pure `matrix.json` read (no cargo/oracles), so it's a fast CI gate. **(CI)**
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
-
-Remaining:
-- **Third robustness catalog: expect-reject.** The annotation rows that are non-panic `unsupported`
-  (the parse-rejected control ops, generates-but-doesn't-compile rows like `prelude.any`) plus the
-  `out_of_profile` rows are projected into no test at all — the exact set is the projection predicate
-  in `project_robustness.ts` (don't pin a count here; it drifts every time a verdict refresh moves a
-  row into the panic catalog): project them into a `tests/matrix_reject/` fixture dir mirrored
-  by a third generation-outcome catalog (expect graceful error), so a parser change that silently makes
-  one of them parse (the exact thing the cddl-fork bump did to 14 control ops) is caught by the existing
-  test suite instead of waiting for a manual verify.ts run. No oracles needed — same generate-only
-  in-process pattern as the panic catalog.
 
 ## 3. F3 — directional / enforcement support (execution-gated; encode/decode split deferred)
 
