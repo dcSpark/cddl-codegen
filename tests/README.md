@@ -51,7 +51,7 @@ untouched — if one moves, you see exactly what changed.
 
 **CI policy — fast tier only.** CI (`.github/workflows/build.yml`) runs exactly
 `bun run check.ts fast` and nothing else (CI minutes cost real money — sole maintainer, AI-velocity
-commits; see `AGENTS.md`). The fast tier of the registry is the single definition of what CI does,
+commits). The fast tier of the registry is the single definition of what CI does,
 and check.ts's `self_checks` gate fails if the workflow grows any other run step. Keep the fast
 tier the absolute minimum: new gates default to `local` or `full`; promoting one into `fast` is a
 maintainer decision. Everything heavier than the fast tier runs locally, and is documented as a

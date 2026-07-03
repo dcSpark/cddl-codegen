@@ -40,22 +40,16 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 ## Invariants & gotchas (the things that bite)
 
-1. Output must be deterministic. Note: There are two *different* properties are in play.
-    1. *Reproducibility* (same input → byte-identical output)
-        1. We use stable data structures like `BTreeMap`/`BTreeSet` throughout — never `HashMap` (otherwise it would depend on hash iteration order)
-    2. *Canonical layout*
-        1. Stable item ordering of concepts (structs, modules), which is done by `codegen`'s sort
-        2. any modifications done by a `rustfmt` post-processing
-- **The IR borrows the AST.** `IntermediateTypes<'a>` holds references into the parsed CDDL AST, so
-  it can't be returned from a function that parses internally. The pipeline is driven through a
-  scoped callback in `api.rs` that owns the AST for the duration of the call — use that pattern
-  rather than trying to hand the IR back to a caller.
-- **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list, and the
-  test suite (`src/tests/`) is declared from `main.rs` only (bin crate). A new production module
-  must be added to **both**; test-only library API is `#[cfg(test)]`. Test module *names* are
-  load-bearing: CI and documented commands select tests by substring (`cargo insta test --
-  snapshot_tests robustness`, `cargo test --bin cddl-codegen <name>`), so keep
-  `snapshot_tests`/`robustness_tests`/`integration_tests` in the module paths.
+- **Deterministic output** — two distinct properties:
+  - *Reproducibility* (same input → byte-identical output): always `BTreeMap`/`BTreeSet`, never
+    `HashMap` — hash iteration order breaks it.
+  - *Canonical layout*: stable item ordering via `codegen`'s sort + `rustfmt` post-processing.
+- **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
+  internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
+- **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
+  production module goes in **both** (`src/tests/` is bin-only; test-only library API is
+  `#[cfg(test)]`). Keep `snapshot_tests`/`robustness_tests`/`integration_tests` in test module
+  paths — CI and documented commands select tests by substring.
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
 
@@ -66,41 +60,24 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 ## Build & verify
 
-`bun run check.ts` at the repo root is the one entry point for verification: a gate registry with
-three tiers, each a superset of the previous.
+`bun run check.ts` at the repo root is the one entry point for verification — a self-checking gate
+registry with three tiers (details + wall times: `tests/README.md` § "Running everything"):
 - `bun run check.ts fast` — what CI runs: fmt + clippy + snapshot tests + the drift gates.
-- `bun run check.ts` (`local`, default) — fast + the workspace build and full `cargo test` suite.
+- `bun run check.ts` (`local`, default) — fast + workspace build + full `cargo test`.
   Run this before considering work done.
-- `bun run check.ts full` — `local` + every manual-only gate (the `#[ignore]`d gates, `verify.ts`,
-  `corpus_detect.ts`, the fuzz compile-rot check). Run this before shipping a feature.
+- `bun run check.ts full` — local + every manual-only gate. Run this before shipping a feature.
 
-Every run prints the full registry as a PASS/FAIL/SKIPPED/STUB table and exits non-zero on any fail;
-its first gate self-checks that every manual gate, IOU stub, and `cddl-matrix` script is registered,
-so the "run everything" set can't silently rot. See `tests/README.md` § "Running everything".
-
-**CI runs the `fast` tier ONLY.** `.github/workflows/build.yml` is a thin invoker of
-`bun run check.ts fast` — it must never grow its own steps (enforced: check.ts's `self_checks` gate
-fails on any other run step in the workflow). Keep the fast tier the absolute minimum: this project
-has a sole maintainer, and the rate at which AI makes commits means there is no budget for anything
-beyond a quick CI. New gates default to the `local` or `full` tier; promoting a gate into `fast` is
-a maintainer decision, not something an agent does in passing. The heavy correctness gates (full
-`cargo test`, corpus + wasm-matrix compiles) are therefore a LOCAL responsibility — run the
-appropriate tier yourself before finishing work; do not rely on CI to catch anything the fast tier
-doesn't cover.
-
-**Agents: run gates in the foreground.** The multi-minute gates (`check.ts local`/`full`, the
-`#[ignore]`d integration gates) should be run as foreground commands with an extended tool timeout
-(up to 10 minutes), not detached into background monitors — detached runs strand their results when
-the agent stops, and every observed instance required a manual resume to collect them. Also never
-run two instances of `ir_conformance_corpus` concurrently from one checkout (scratch-dir clobber —
-see `tests/TESTING_ROADMAP.md`).
-
-This repo follows test-driven development (TDD).
-That means that for every failure, we generally want to think about what could have systematically caught that failure.
-Sometimes it could have been caught systematically, but the system didn't have the right test vector, in which case we can add it if we think that's the best approach
-
-Generally, for any test failure, we have to think from first principles about how we could have avoided this in the first place.
-If no system exists that could have got it, a description of the missing system may exist (or have to be added) in the testing roadmap: `tests/TESTING_ROADMAP.md`
+Rules:
+- **CI runs the `fast` tier ONLY** (cost policy — see `tests/README.md` § "CI policy"). Never add
+  steps to `build.yml` or promote a gate into `fast` — that's a maintainer decision; new gates
+  default to `local`/`full`. The heavy correctness gates are therefore a LOCAL responsibility: run
+  the appropriate tier yourself; CI won't catch what fast doesn't cover.
+- **Run multi-minute gates in the foreground** with an extended tool timeout (up to 10 min), never
+  detached into background monitors — detached runs strand their results when the agent stops.
+- Never run two `ir_conformance_corpus` instances concurrently from one checkout (scratch-dir
+  clobber — see `tests/TESTING_ROADMAP.md`).
+- **TDD.** For every failure, ask what could have systematically caught it: add the missing test
+  vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
 ## Which AI model to use:
 
