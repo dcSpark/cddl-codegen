@@ -68,10 +68,58 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
 };
 
+// --- EMISSION-PROFILE axis (TESTING_ROADMAP item 2) ----------------------------------------------
+// Second, orthogonal axis on the support verdict: besides the DEFAULT-flags verdict (`status`), a
+// default-supported row is ALSO probed under each non-default emission profile — the CLI flag sets that
+// drive meaningfully different generation paths (preserve-encodings, json-serde/schema). The single
+// source of truth is the `ALL_PROFILES` const in src/tests/mod.rs (shared by the Rust snapshot axis and
+// the compile gate), extracted by regex with a floor assertion so a profile added to the Rust test axis
+// cannot silently escape the matrix probe. Distinct from the CDDL *language*-profile field the matrix
+// calls `profile` (RFC8610/RFC9682) — that's a grammar axis; this is a codegen-flag axis.
+interface EmissionProfile { name: string; flags: string[] }
+function extractEmissionProfiles(): EmissionProfile[] {
+  const modSrc = readFileSync(`${CODEGEN_DIR}/src/tests/mod.rs`, "utf8");
+  // Grab the array body between `= &[` and the terminating `];` (the inner flag arrays end with `])`/`],`,
+  // never `];`, so the non-greedy match stops only at the const's real end).
+  const block = modSrc.match(/const ALL_PROFILES\s*:[^=]*=\s*&\[([\s\S]*?)\];/);
+  if (!block) {
+    console.error("HARNESS FAILURE: could not locate the ALL_PROFILES const in src/tests/mod.rs — the emission-profile source of truth drifted.");
+    process.exit(2);
+  }
+  const profiles: EmissionProfile[] = [];
+  // Each entry is `("name", &[ "flag", ... ])`; the json entry's tuple/flag list spans lines, so match
+  // across newlines (`\s*` between `(` and the name; `[^\]]*` over the flag list).
+  for (const m of block![1].matchAll(/\(\s*"([a-z_]+)"\s*,\s*&\[([^\]]*)\]/g)) {
+    const flags = [...m[2].matchAll(/"([^"]+)"/g)].map(f => f[1]);
+    profiles.push({ name: m[1], flags });
+  }
+  const nonDefault = profiles.filter(p => p.name !== "default");
+  // Floor assertion (mirrors the dslDirectives/dslMarkers vacuity guard): a refactor that changes the
+  // const's extractable shape must fail loud, not quietly probe zero emission profiles.
+  if (!profiles.some(p => p.name === "default") || nonDefault.length < 2) {
+    console.error(`HARNESS FAILURE: ALL_PROFILES extraction implausible (default present=${profiles.some(p => p.name === "default")}, non-default profiles=${nonDefault.length}); expected 'default' + >=2 emission profiles. src/tests/mod.rs no longer matches the extraction pattern.`);
+    process.exit(2);
+  }
+  return nonDefault;
+}
+const EMISSION_PROFILES = extractEmissionProfiles();
+
+// --smoke=N (dev tooling): probe only the first N features, skip the containment/control-op loops and
+// all harness-health guards, TOML-parse-validate the composed annotation content, PRINT it, and write
+// NOTHING (neither annotations nor verify_report.json). Lets new probe code run end-to-end in minutes
+// so the multi-hour full run isn't its first execution.
+const smokeArg = process.argv.find(a => a.startsWith("--smoke="));
+const SMOKE_N = smokeArg ? parseInt(smokeArg.slice("--smoke=".length), 10) : 0;
+const SMOKE = SMOKE_N > 0;
+
 interface Derived {
   valid_a: boolean; valid_b: boolean; spec_valid: boolean; parser_limitation: boolean;
   support: string; support_detail: string; out_of_profile: boolean; status: string;
 }
+// Per-row outcome under ONE non-default emission profile (rust-only: no ruby/rust/wasm re-run). Same
+// generate -> cargo test -> (on fail) cargo check -> embed-fallback pipeline as the default probe, with
+// the profile's flags appended. `detail` is embed-upgraded (embedDetail), same as the default axis.
+interface EmissionOutcome { status: string; detail: string; gen: number; compile: number; test: number; minted: boolean; embedded?: boolean }
 interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
   ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean;
@@ -80,6 +128,8 @@ interface ProbeResult extends Derived {
   // true = round-trips inside a synthetic record holder; false = holder minted but round-trip failed;
   // undefined = not applicable (base already minted) or the synthetic was un-embeddable/failed to generate.
   embedded?: boolean;
+  // Per-emission-profile verdicts, populated iff the default verdict is supported (undefined otherwise).
+  emission?: Record<string, EmissionOutcome>;
 }
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
@@ -87,6 +137,7 @@ interface ContainmentCorr {
   codegen: number; compile: number; test: number; minted: boolean;
   minted_wasm?: boolean; wasm_roundtrips?: number;
   support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
+  emission?: Record<string, EmissionOutcome>;  // per-emission-profile verdicts (iff support === "supported")
 }
 interface AltCoverage {
   abnf_alternatives: string[]; feature_rows: string[]; covered: string[]; uncovered: string[]; modeled: boolean;
@@ -363,9 +414,11 @@ function runTest(timeoutS = PROBE_TIMEOUT): number {
 // from a panicking probe — or any future conditionally-emitted module — would leak into the next
 // probe's compile gate. Start every generation from an empty dir.
 const cleanOut = () => rmSync(ccOut, { recursive: true, force: true });
-function runCodegen(): number {
+// `extraFlags` appends an emission profile's CLI flags (preserve/json) so the SAME generate pipeline
+// serves both the default probe (no extra flags) and the per-emission-profile probes.
+function runCodegen(extraFlags: string[] = []): number {
   cleanOut();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR);
+  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
 }
 
 // WASM oracle (default-on): generate the SAME example with `--wasm=true` into a separate out dir, then
@@ -397,17 +450,26 @@ function runWasmTest(timeoutS = PROBE_TIMEOUT): number {
 // actually contains the generated wasm-test module (else a green `cargo test` is vacuous, same caveat
 // as `minted`).
 interface CodegenProbe { gen: number; compile: number; test: number; minted: boolean; minted_wasm?: boolean; wasm_roundtrips?: number }
-function probeCodegen(): CodegenProbe {
-  const gen = runCodegen();
-  // A spec that doesn't generate at all has no wasm crate to test either (the wasm probe re-runs the
-  // SAME generator with `--wasm=true`), so skip the doomed wasm generation — the rust verdict already
-  // records the parse/panic. wasm fields stay undefined -> no (redundant) wasm evidence clause.
+// The RUST-ONLY core of a codegen probe (generate -> cargo test -> classify), shared by the default
+// probe and the per-emission-profile probes. `extraFlags` appends a profile's CLI flags; the emission
+// probes deliberately DON'T run the wasm oracle (design doc: wasm stays default-profile corroborating
+// evidence, keeping added wall time ~2x rust work on the supported subset, not 4x).
+function probeCodegenRust(extraFlags: string[] = []): CodegenProbe {
+  const gen = runCodegen(extraFlags);
   if (gen !== 0) return { gen, compile: -2, test: -2, minted: false };
   const libPath = join(ccOut, "rust", "src", "lib.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
   const test = runTest();
   const compile = test === 0 ? 0 : runCompile();
-  return { gen, compile, test, minted, ...wasmProbe() };
+  return { gen, compile, test, minted };
+}
+function probeCodegen(): CodegenProbe {
+  const base = probeCodegenRust();
+  // A spec that doesn't generate at all has no wasm crate to test either (the wasm probe re-runs the
+  // SAME generator with `--wasm=true`), so skip the doomed wasm generation — the rust verdict already
+  // records the parse/panic. wasm fields stay undefined -> no (redundant) wasm evidence clause.
+  if (base.gen !== 0) return base;
+  return { ...base, ...wasmProbe() };
 }
 
 // The wasm half of a probe (default-on): generate `--wasm=true`, cargo test the wasm crate. Returns {}
@@ -485,14 +547,14 @@ function firstRuleName(example: string): { name: string; generic: boolean } | nu
 // Returns embedded=true iff the synthetic holder minted AND its `cargo test` round-trips green;
 // embedded stays undefined on any skip/failure (kept the compile verdict). Every path logs one loud
 // `[embed]` line so a skip or a failed embed is visible in the run output, not silent.
-function embedFallback(id: string, example: string, cg: CodegenProbe): boolean | undefined {
+function embedFallback(id: string, example: string, cg: CodegenProbe, extraFlags: string[] = []): boolean | undefined {
   if (cg.gen !== 0 || cg.minted) return undefined; // not applicable — base already mints (or didn't generate)
   const log = (note: string) => console.log(`  [embed] ${id}: ${note}`);
   const rule = firstRuleName(example);
   if (!rule) { log("no parseable rule head; embed skipped (kept compile verdict)"); return undefined; }
   if (rule.generic) { log(`generic rule '${rule.name}' needs type args; not embeddable (kept compile verdict)`); return undefined; }
   writeFileSync(probeFile, `${example}\n${HOLDER_RULE} = [0, ${rule.name}]\n`);
-  const gen = runCodegen();
+  const gen = runCodegen(extraFlags);
   if (gen !== 0) { log(`synthetic holder failed to generate (cargo run exit ${gen}); kept compile verdict`); return undefined; }
   const libPath = join(ccOut, "rust", "src", "lib.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
@@ -509,6 +571,38 @@ function embedFallback(id: string, example: string, cg: CodegenProbe): boolean |
 function embedDetail(detail: string, embedded?: boolean): string {
   if (embedded !== true) return detail;
   return detail.replace("compiles (no minted round-trip surface)", "compiles; round-trips when embedded (synthetic record holder)");
+}
+
+// EMISSION-PROFILE probe (TESTING_ROADMAP item 2): re-run the row's example through EACH non-default
+// emission profile, reusing the exact same rust-only pipeline (generate -> cargo test -> classify ->
+// embed-fallback-if-unminted) with the profile's flags appended. Runs ONLY when the row's default
+// verdict is supported (caller-enforced), so any non-supported entry here is a genuine profile
+// divergence. COMPILE_GATE_EXEMPT rows keep exemption semantics per profile (verdict from the
+// generation exit only; standalone-compile N/A). The shared `codegenVerdict` keeps the semantics from
+// drifting apart from the default axis.
+function probeEmissions(id: string, example: string): Record<string, EmissionOutcome> {
+  const out: Record<string, EmissionOutcome> = {};
+  const exempt = Object.hasOwn(COMPILE_GATE_EXEMPT, id);
+  for (const prof of EMISSION_PROFILES) {
+    writeFileSync(probeFile, example + "\n");
+    const cg = probeCodegenRust(prof.flags);
+    if (exempt && cg.gen === 0) {
+      out[prof.name] = {
+        status: "supported",
+        detail: `exit 0; standalone-compile N/A (${COMPILE_GATE_EXEMPT[id]})`,
+        gen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted,
+      };
+      continue;
+    }
+    const v = codegenVerdict(cg);
+    const embedded = embedFallback(`${id} (emission=${prof.name})`, example, cg, prof.flags);
+    out[prof.name] = {
+      status: v.supported ? "supported" : "unsupported",
+      detail: embedDetail(v.detail, embedded),
+      gen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded,
+    };
+  }
+  return out;
 }
 
 // [ruby, rust, codegen probe].
@@ -587,20 +681,45 @@ if (WASM_PROBE) {
   }
 }
 
+// Warm one known-good minting spec per EMISSION PROFILE (TESTING_ROADMAP item 2): the json profile
+// pulls serde/schemars deps, so without this the first json probe's dep build could exceed
+// PROBE_TIMEOUT and false-fail. Shares COMPILE_TARGET so subsequent per-profile `cargo test`s stay
+// incremental. Doubles as the per-profile pipeline self-test — an unhealthy profile aborts the run
+// before any verdict is written.
+for (const prof of EMISSION_PROFILES) {
+  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  cleanOut();
+  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const lib = g === 0 ? readFileSync(join(ccOut, "rust", "src", "lib.rs"), "utf8") : "";
+  const t = g === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+  if (g !== 0 || t !== 0 || !lib.includes("mod cddl_generated_tests")) {
+    console.error(`HARNESS FAILURE: emission-profile warm-up '${prof.name}' (flags: ${prof.flags.join(" ") || "none"}) failed (generate exit ${g}, cargo test exit ${t}, minted=${lib.includes("mod cddl_generated_tests")}). The '${prof.name}' probe pipeline is unhealthy; no probes were run and nothing was written.`);
+    process.exit(2);
+  }
+}
+
 const probe_results: ProbeResult[] = [];
-for (const f of [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+const sortedFeatures = [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+// --smoke=N probes only the first N features (see the flag comment near the top).
+const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : sortedFeatures;
+for (const f of featureList) {
   const [a, b, cg] = oracles(f.example);
   const profile = f.profile ?? "RFC8610";
   const d = derive(f.id, profile, a, b, cg);
   // Embed fallback (evidence-only): re-probe unmintable shapes wrapped in a synthetic record holder so
   // their embed-site wire path executes. Never changes `d.support` — only enriches the evidence text.
   const embedded = embedFallback(f.id, f.example, cg);
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, embedded, ...d });
+  // Emission-profile axis: probe preserve/json iff the FINAL default verdict is supported (scoping rule
+  // (a) — unsupported-at-default is unsupported everywhere, a derived fact recorded by ABSENCE of keys).
+  // status === "supported" captures COMPILE_GATE_EXEMPT and vendor rows (both land status="supported").
+  const emission = d.status === "supported" ? probeEmissions(f.id, f.example) : undefined;
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, embedded, emission, ...d });
 }
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
 // that degrades mid-run): zero supported features is not a plausible verdict shape for this repo.
-if (!probe_results.some(pr => pr.support === "supported")) {
+// Skipped under --smoke (a small feature slice may legitimately contain no supported rows).
+if (!SMOKE && !probe_results.some(pr => pr.support === "supported")) {
   console.error("HARNESS FAILURE: no feature probed 'supported' — implausible verdict shape; refusing to write verdicts.");
   process.exit(2);
 }
@@ -614,7 +733,9 @@ if (!probe_results.some(pr => pr.support === "supported")) {
 // mirror that here so adding an example-less cell is loud, not a quiet shrink of the probed set).
 const containment_missing_example = contain.filter(c => !c.example).map(c => c.id).sort();
 const containment_corroboration: ContainmentCorr[] = [];
-for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+// --smoke skips the containment loop entirely (see the flag comment near the top).
+const containCells = SMOKE ? [] : contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+for (const c of containCells) {
   writeFileSync(probeFile, c.example + "\n");
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
@@ -626,11 +747,14 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
   const observed = a === 0 ? "allowed" : "disallowed";
   const parser_limitation = a === 0 && b !== 0;  // directional, matching the feature-level definition (ruby accepts, rust rejects)
   const contradiction = observed !== c.spec;
+  // Emission-profile axis, same scoping rule (a) as the feature loop: probe preserve/json iff the cell's
+  // default per-cell verdict is supported.
+  const emission = support === "supported" ? probeEmissions(c.id, c.example!) : undefined;
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
     ruby: a, rust: b, parser_limitation, contradiction, example: c.example!,
     codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted,
-    minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, support,
+    minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, support, emission,
   });
 }
 
@@ -639,7 +763,7 @@ for (const c of contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
-interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string }
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string; emission?: Record<string, EmissionOutcome> }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
 // ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
 // simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
@@ -649,7 +773,9 @@ const controlop_missing_example = control_ops.filter(co => !co.example).map(co =
 // by hand before trusting its "unsupported" verdict.
 const controlop_uncorroborated: string[] = [];
 const controlop_support: ControlOpSupport[] = [];
-for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+// --smoke skips the control-op loop entirely (see the flag comment near the top).
+const controlOpCells = SMOKE ? [] : [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+for (const co of controlOpCells) {
   const [a, b, cg] = oracles(co.example!);
   // ANY nonzero ruby exit means the reference did not confirm the example is valid CDDL — not just
   // 65 (EX_DATAERR). Keying on 65 alone hid exit-1 cases (malformed controllers, valid examples of
@@ -662,7 +788,9 @@ for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id 
   // named rules): an op whose annotated type mints no standalone surface (`.cbor`, `.ge` -> a bounded
   // alias) round-trips at its embed site, upgrading the evidence without touching the support verdict.
   const embedded = embedFallback(co.id, co.example!, cg);
-  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example! });
+  // Emission-profile axis, same scoping rule (a): probe preserve/json iff the op's default verdict is supported.
+  const emission = v.supported ? probeEmissions(co.id, co.example!) : undefined;
+  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example!, emission });
 }
 
 // Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
@@ -671,13 +799,32 @@ for (const co of [...control_ops].filter(co => co.example).sort((a, b) => (a.id 
 // above still passes — the exact "failing looks passing" class this file exists to prevent. A real
 // run always has some supported cells/ops (18/36 and 9/37 at time of writing), so zero is
 // implausible: refuse to write verdicts rather than emit an all-unsupported annotation set.
-if (containment_corroboration.length && !containment_corroboration.some(c => c.support === "supported")) {
+if (!SMOKE && containment_corroboration.length && !containment_corroboration.some(c => c.support === "supported")) {
   console.error("HARNESS FAILURE: no containment cell probed 'supported' — implausible verdict shape; refusing to write verdicts.");
   process.exit(2);
 }
-if (controlop_support.length && !controlop_support.some(c => c.support === "supported")) {
+if (!SMOKE && controlop_support.length && !controlop_support.some(c => c.support === "supported")) {
   console.error("HARNESS FAILURE: no control-op probed 'supported' — implausible verdict shape; refusing to write verdicts.");
   process.exit(2);
+}
+
+// Emission-axis harness-health guard (TESTING_ROADMAP item 2), same shape as the three default-axis
+// guards above: per emission profile, if >=1 row was probed under it but ZERO came back supported, that
+// is an implausible verdict shape (a broken profile pipeline degraded mid-run) — refuse to write.
+// Skipped under --smoke.
+if (!SMOKE) {
+  const allEmission: Record<string, EmissionOutcome>[] = [
+    ...probe_results.map(p => p.emission),
+    ...containment_corroboration.map(c => c.emission),
+    ...controlop_support.map(o => o.emission),
+  ].filter((e): e is Record<string, EmissionOutcome> => e !== undefined);
+  for (const prof of EMISSION_PROFILES) {
+    const probed = allEmission.filter(e => prof.name in e);
+    if (probed.length && !probed.some(e => e[prof.name].status === "supported")) {
+      console.error(`HARNESS FAILURE: no row probed 'supported' under emission profile '${prof.name}' — implausible verdict shape; refusing to write verdicts.`);
+      process.exit(2);
+    }
+  }
 }
 
 // ==================================================================================================
@@ -720,8 +867,31 @@ const annoLines: string[] = [
   "#   * `T / null` type choice -> cddl-codegen emits Option<T> (a consumer special-case of the",
   '#     ordinary `type = type1 *("/" type1)` production, NOT a distinct ABNF alternative).',
   "#   * prelude `float` (float16-32 / float64) -> cddl-codegen maps to Rust f64.",
+  "#",
+  "# EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the",
+  "#   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each",
+  "#   non-default EMISSION profile (the CLI flag sets from src/tests/mod.rs's ALL_PROFILES:",
+  "#   `preserve` = --preserve-encodings=true, `json` = --json-serde-derives + --json-schema-export),",
+  "#   recorded as `emission.<name>.status` / `emission.<name>.evidence`. These probes are RUST-ONLY",
+  "#   (same generate -> cargo test -> embed-fallback pipeline with the profile flags appended; NO",
+  "#   ruby/rust re-run — spec validity is a property of the CDDL text, not codegen flags — and NO wasm).",
+  "#   SCOPING (rule a): only default-`supported` rows are probed. ABSENCE of `emission` keys therefore",
+  "#   means the row's default verdict is NOT supported, so it is unsupported under EVERY profile — a",
+  "#   DERIVED fact, not silent inheritance. Emission verdicts are NEVER hand-authored; only a passing",
+  "#   verify.ts run writes them. Until that run the committed file simply has no emission keys.",
   "",
 ];
+// Emit the per-emission-profile dotted keys for one probed row, profiles sorted by name for
+// determinism. `emission.<name>.status`/`emission.<name>.evidence` sit inside the row's [[support]]
+// table (dotted sub-tables); the detail is already embed-upgraded (see probeEmissions).
+function pushEmissionLines(emission?: Record<string, EmissionOutcome>) {
+  if (!emission) return;
+  for (const name of Object.keys(emission).sort()) {
+    const e = emission[name];
+    annoLines.push(`emission.${name}.status = ${tomlStr(e.status)}`);
+    annoLines.push(`emission.${name}.evidence = ${tomlStr(`probe (emission=${name}): cddl-codegen ${e.detail}`)}`);
+  }
+}
 for (const pr of probe_results) {
   let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
@@ -732,6 +902,7 @@ for (const pr of probe_results) {
   annoLines.push(`id = ${tomlStr(pr.id)}`);
   annoLines.push(`status = ${tomlStr(pr.status)}`);
   annoLines.push(`evidence = ${tomlStr(ev)}`);
+  pushEmissionLines(pr.emission);
   annoLines.push("");
 }
 // PER-CELL support (role × feature), keyed by containment id — same [[support]] table, since a
@@ -746,6 +917,7 @@ for (const c of containment_corroboration.filter(c => c.support !== null)) {
   annoLines.push(`id = ${tomlStr(c.id)}`);
   annoLines.push(`status = ${tomlStr(c.support!)}`);
   annoLines.push(`evidence = ${tomlStr(ev)}`);
+  pushEmissionLines(c.emission);
   annoLines.push("");
 }
 // PER-CONTROL-OP support (item 7), keyed by ctl.<name>. cddl-codegen is the support authority; ruby/rust
@@ -758,12 +930,38 @@ for (const co of controlop_support) {
   annoLines.push(`id = ${tomlStr(co.id)}`);
   annoLines.push(`status = ${tomlStr(co.support)}`);
   annoLines.push(`evidence = ${tomlStr(ev)}`);
+  pushEmissionLines(co.emission);
   annoLines.push("");
 }
 // Written only after the gate passes (bottom of the script): a hard-failing run must not leave a
 // poisoned "EXECUTION-GROUNDED" file on disk for the operator to accidentally commit.
 const annoPath = `${ROOT}/annotations/cddl_codegen.toml`;
 const annoContent = annoLines.join("\n").replace(/\s+$/, "") + "\n";
+
+// Parse-validate the composed annotation content BEFORE it is written (or, in smoke, printed): a
+// writer bug (a mis-emitted dotted key, an unescaped string) must not cost a completed multi-hour run
+// at the final step, and a malformed file must never land on disk.
+try {
+  Bun.TOML.parse(annoContent);
+} catch (e) {
+  console.error(`HARNESS FAILURE: composed annotations/cddl_codegen.toml does not parse as TOML (${e}) — a writer bug, not a probe verdict. Refusing to write.`);
+  process.exit(2);
+}
+
+// --smoke: print the parse-validated preview and exit WITHOUT writing anything (no annotations, no
+// verify_report.json). This is the only path where the composed content is shown but not persisted.
+if (SMOKE) {
+  console.log(`\n${"=".repeat(80)}`);
+  console.log(`SMOKE MODE (--smoke=${SMOKE_N}): probed the first ${featureList.length} feature(s) ONLY.`);
+  console.log("Skipped: containment loop, control-op loop, ALL harness-health guards.");
+  console.log("TOML-parse-validated annotation preview follows; NOTHING is written to disk.");
+  console.log("=".repeat(80));
+  console.log(annoContent);
+  console.log("=".repeat(80));
+  console.log("SMOKE MODE: wrote NO files (no annotations/cddl_codegen.toml, no verify_report.json).");
+  console.log("=".repeat(80));
+  process.exit(0);
+}
 
 // ==================================================================================================
 // 5. EMIT verify_report.json, print summary, exit nonzero on hard failures.
@@ -774,6 +972,33 @@ const containment_parser_limitations = containment_corroboration.filter(c => c.p
 const containment_contradictions = containment_corroboration.filter(c => c.contradiction);
 const uncertain = [...new Set(probe_results.filter(pr => pr.status === "uncertain").map(pr => pr.id))].sort();
 const out_of_profile = [...new Set(probe_results.filter(pr => pr.status === "out_of_profile").map(pr => pr.id))].sort();
+
+// EMISSION-PROFILE axis roll-up (features + containment cells + control ops). Every emission entry
+// exists only for a default-supported row, so any non-supported entry IS a divergence (default
+// supported, profile unsupported).
+interface EmissionDivergence { id: string; profile: string; detail: string }
+const emission_divergences: EmissionDivergence[] = [];
+const collectDivergences = (id: string, emission?: Record<string, EmissionOutcome>) => {
+  if (!emission) return;
+  for (const name of Object.keys(emission).sort())
+    if (emission[name].status !== "supported")
+      emission_divergences.push({ id, profile: name, detail: emission[name].detail });
+};
+for (const pr of probe_results) collectDivergences(pr.id, pr.emission);
+for (const c of containment_corroboration) collectDivergences(c.id, c.emission);
+for (const co of controlop_support) collectDivergences(co.id, co.emission);
+const emissionCounts: Record<string, { supported: number; unsupported: number }> = {};
+for (const prof of EMISSION_PROFILES) {
+  const all = [
+    ...probe_results.map(r => r.emission),
+    ...containment_corroboration.map(r => r.emission),
+    ...controlop_support.map(r => r.emission),
+  ].map(e => e?.[prof.name]).filter((e): e is EmissionOutcome => e !== undefined);
+  emissionCounts[prof.name] = {
+    supported: all.filter(e => e.status === "supported").length,
+    unsupported: all.filter(e => e.status !== "supported").length,
+  };
+}
 
 const report = {
   gaps,
@@ -793,6 +1018,8 @@ const report = {
   containment_contradictions: containment_contradictions.map(c => c.id),
   containment_parser_limitations: [...containment_parser_limitations].sort(),
   containment_missing_example,
+  emission_profiles: EMISSION_PROFILES.map(p => p.name),
+  emission_divergences,
   target_profile: CDDL_CODEGEN_TARGET_PROFILE,
   summary: {
     features: features.length,
@@ -826,6 +1053,8 @@ const report = {
     containment_contradictions: containment_contradictions.length,
     containment_parser_limitations: containment_parser_limitations.length,
     containment_missing_example: containment_missing_example.length,
+    emission: emissionCounts,
+    emission_divergent: emission_divergences.length,
     harness_timeouts_retried,
   },
 };
@@ -842,6 +1071,7 @@ console.log(`ABNF productions    : ${s.abnf_productions}  prelude names: ${s.pre
 console.log(`support (codegen)   : supported=${s.supported} unsupported=${s.unsupported} out_of_profile=${s.out_of_profile} uncertain=${s.uncertain}`);
 console.log(`embed-fallback      : ${s.embedded_upgraded} feature probe(s) + ${s.embedded_upgraded_controlops} control-op(s) upgraded compile-only -> round-trips-when-embedded`);
 console.log(`control-op support  : supported=${s.controlop_supported} unsupported=${s.controlop_unsupported} (of ${s.control_ops}; missing example=${s.controlop_missing_example})`);
+console.log(`emission axis       : ${EMISSION_PROFILES.map(p => `${p.name}(supported=${emissionCounts[p.name].supported} unsupported=${emissionCounts[p.name].unsupported})`).join("  ")}  divergent=${s.emission_divergent}`);
 console.log(`reconcile (BIDIRECTIONAL grammar lint):`);
 console.log(`  forward  (source->feature): type2 alternatives covered ${s.type2_covered}/${s.type2_alternatives} (uncovered=${s.type2_uncovered})`);
 console.log(`  backward (feature->source): fabricated=${s.fabricated} (feature.production resolving to no ABNF/prelude/control-op source)`);
@@ -889,6 +1119,9 @@ for (const u of out_of_profile) {
 
 console.log("\nUNCERTAIN (" + uncertain.length + "):");
 for (const u of uncertain) console.log(`  - ${u}`);
+
+console.log("\nEMISSION DIVERGENCES (" + emission_divergences.length + "; default-supported but unsupported under a non-default emission profile):");
+for (const dv of emission_divergences) console.log(`  - ${dv.id} [emission=${dv.profile}]: ${dv.detail}`);
 
 if (controlop_missing_example.length) {
   console.log("\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):");

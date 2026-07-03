@@ -52,23 +52,24 @@ is still a default-profile claim — next-steps item 2 below.
    `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
    baseline survivor map.
 
-2. **Per-emission-profile axis on the matrix annotation schema.** The generation-breadth and
-   round-trip-breadth halves of "supported is a per-profile fact" are covered by manual gates —
-   the supported catalog generates under all three profiles
-   (`all_supported_constructs_generate_all_profiles`, with a per-profile expected-fail list), and
-   the corpus `--emit-tests` round-trip suite runs under preserve/json
-   (`feature_corpus_roundtrips_nondefault_profiles`). But the matrix's OWN verdict is still a
-   default-flags claim (`verify.ts` probes default only), and the coverage delta is real: the
-   generate-all-profiles gate is generate-only, and the corpus gate covers corpus fixtures only —
-   matrix constructs outside the corpus get no preserve/json *execution* verification. Record a
-   per-profile verdict on the annotation schema so a supported-construct × preserve/json regression
-   surfaces as a matrix-drift diff; this subsumes carrying `verify.ts`'s embed-site fallback (see
-   `cddl-matrix/README.md`) per profile. Flag-specific failures are a proven class (floats hit
-   `unimplemented!` under preserve — see the `preserve_encodings_supports_floats` stub). Scoping
-   decisions, made: (a) probe preserve/json only for constructs whose default verdict is supported
-   (unsupported-at-default is unsupported everywhere; keeps the ~156-probe wall time from tripling);
-   (b) name the axis distinctly from the existing CDDL *language*-profile field (e.g. `emission`),
-   which `verify.ts`/`features/*.toml` already call `profile`.
+2. **Run the per-emission-profile regeneration and commit the filled axis.** The `emission` axis is
+   IMPLEMENTED in `verify.ts` (design: `draft/profile-axis-design.md`): every default-`supported`
+   feature / containment cell / control-op is re-probed under each non-default codegen profile
+   (`preserve`, `json` — the flag sets extracted from `src/tests/mod.rs`'s `ALL_PROFILES`), through
+   the same rust-only generate → `cargo test` → embed-fallback pipeline, recorded as
+   `emission.<name>.*` annotation keys. It was committed WITHOUT verdicts (rows have no `emission`
+   keys until a passing run fills them; all drift gates stay green). The remaining step is the slow
+   fill: run the DEFAULT wasm-on pipeline (multi-hour; a `--no-wasm` run strips committed wasm
+   evidence and must NOT be committed):
+   `cd cddl-matrix && bun run build_matrix.ts && bun run verify.ts && bun run build_matrix.ts`
+   (the second `build_matrix` refreshes `matrix.json` from the rewritten annotations). Then, in a
+   fresh session, review the **EMISSION DIVERGENCES** console section (expected: the float class
+   under `preserve` — `prelude.number`, `prelude.time`, the float prelude types, which hit
+   `unimplemented!` — see the `preserve_encodings_supports_floats` stub; ANYTHING else divergent is a
+   finding to surface, not to engineer away), run `bun run check.ts fast`, commit the regenerated
+   `annotations/cddl_codegen.toml` + `matrix.json`, then PRUNE this item, fix the north-star paragraph
+   above (drop the "still a default-profile claim" frontier), and delete
+   `draft/profile-axis-prompt.md` + `draft/profile-axis-design.md`.
 
 3. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built

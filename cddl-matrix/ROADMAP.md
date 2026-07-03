@@ -105,15 +105,18 @@ only one they have) runs, and the evidence reads "round-trips when embedded"; th
 evidence, never downgrades a verdict. Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode,
 round-trip, enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for
 both minting and embed-covered shapes; still deferred: the **encode vs decode** direction (a round-trip
-conflates them — splitting needs per-direction reference vectors, not just self-consistency), and carrying
-the embed fallback into the preserve/json profiles (subsumed by the "Profile axis" pending decision in
-`tests/TESTING_ROADMAP.md`). Q4 stays blocked on that directional split.
+conflates them — splitting needs per-direction reference vectors, not just self-consistency). The embed
+fallback already carries into the preserve/json profiles: the **emission axis** (`verify.ts` re-probes
+every default-`supported` row under each non-default codegen profile through the same rust-only
+generate → `cargo test` → embed pipeline, recorded as `emission.<name>.*` annotation keys — see
+`cddl-matrix/README.md`). Q4 stays blocked on the encode-vs-decode directional split alone.
 
 **Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
 execution — those stay hand-asserted even now: cut/socket semantics are validation concerns a round-trip
-can't observe, and the `preserve` profile is a flag axis the probe doesn't run (see the "Profile axis"
-pending decision in `tests/TESTING_ROADMAP.md`).
+can't observe. Float-under-`preserve` is now execution-grounded on the emission axis (`verify.ts` probes
+each default-`supported` row under `preserve`/`json`), but the corpus projection's ⚠️ note stays
+hand-asserted because it is a per-corpus-fixture annotation, not a per-master-row verdict.
 
 ## 4. F4 / F5 follow-ons (only when their consumer exists)
 
