@@ -16,7 +16,13 @@ auto-bless via `INSTA_UPDATE=always cargo test snapshot_tests`; the orphan gate 
 
 ## Session status
 
-**Last update: 2026-06-28 — handoff after the cw6–cw17 unattended session.**
+**Last update: 2026-07-03 — Wave-3 push complete (minted irregular encodings `17a03d8` + review
+fixes `50303d1`; wasm presence accessors `0e7873c`; ruby decorrelated conformance oracle
+`a787321`/merge `63f782d`; 10 review findings fixed `d42af9f`). All gates green at that HEAD
+(`check.ts local` PASS; `ir_conformance_corpus` 72 cases swept, 1 per-rule ledger entry;
+`feature_corpus_roundtrips_nondefault_profiles` PASS with an empty SKIP ledger).**
+
+**Previous update: 2026-06-28 — handoff after the cw6–cw17 unattended session.**
 
 ### Gate status (observed at HEAD `7643c3b`, all four GREEN)
 - `cargo fmt --check` → PASS (exit 0).
