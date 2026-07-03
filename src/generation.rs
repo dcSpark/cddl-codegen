@@ -4300,10 +4300,29 @@ fn create_serialize_impls(
             };
         }
         if generate_serialize_embedded {
-            ser_func.line(format!(
-                "self.serialize_as_embedded_group(serializer{})",
-                canonical_param(cli)
-            ));
+            if cli.preserve_encodings {
+                // The embedded serialize writes only the group's contents — the entity that wrote
+                // the array/map head owns the ending break (see the embedded-impl comment in
+                // codegen). So the standalone serialize writes the break itself, after the contents,
+                // rather than delegating it to the embedded call. Without this split an
+                // indefinite-length container would double-write the break.
+                ser_func.line(format!(
+                    "self.serialize_as_embedded_group(serializer{})?;",
+                    canonical_param(cli)
+                ));
+                end_len(
+                    &mut ser_func,
+                    "serializer",
+                    use_this_encoding.unwrap_or_default(),
+                    true,
+                    cli,
+                );
+            } else {
+                ser_func.line(format!(
+                    "self.serialize_as_embedded_group(serializer{})",
+                    canonical_param(cli)
+                ));
+            }
         }
     } else {
         // not array or map, generate serialize directly
@@ -6435,10 +6454,19 @@ fn codegen_struct(
                 format!("self.encodings.as_ref().map(|encs| encs.{var}).unwrap_or_default()")
             })
             .unwrap_or_default();
-        end_len(&mut ser_func, "serializer", &len_enc_var, true, cli);
         match &mut ser_embedded_impl {
-            Some(ser_embedded_impl) => ser_embedded_impl.push_fn(ser_func),
-            None => ser_impl.push_fn(ser_func),
+            Some(ser_embedded_impl) => {
+                // Embedded (plain-group) serialize writes only the group's contents; the entity
+                // that wrote the array/map head owns the ending break. Writing `.end()` here too
+                // double-writes the break when the framing owner is indefinite-length (the break
+                // is written once by the container / standalone serialize). Just return.
+                ser_func.line("Ok(serializer)");
+                ser_embedded_impl.push_fn(ser_func)
+            }
+            None => {
+                end_len(&mut ser_func, "serializer", &len_enc_var, true, cli);
+                ser_impl.push_fn(ser_func)
+            }
         };
         let mut deser_scaffolding = BlocksOrLines::default();
         let (mut deser_impl, mut deser_embedded_impl) = create_deserialize_impls(

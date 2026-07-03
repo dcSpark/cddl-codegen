@@ -1399,6 +1399,23 @@ fn emit_tests_execute() {
         n_reject >= 3,
         "emitted only {n_reject} reject tests for the preserve fixture — emission silently shrank"
     );
+    // Encoding-fidelity oracle (--preserve-encodings): the mutator module + a floor on how many
+    // round-trip cases assert the preserve contract on irregular re-encodings, so the layer can't
+    // silently vanish. The self-check test (mutator pinned against hand-derived RFC 8949 bytes +
+    // the end-to-end `variants()` vacuity pin) must be present and, having run above, green.
+    assert!(
+        lib.contains("mod cddl_encoding_fidelity"),
+        "--emit-tests --preserve-encodings emitted no encoding-fidelity mutator module"
+    );
+    assert!(
+        lib.contains("fn encoding_mutator_self_check"),
+        "the encoding-fidelity mutator self-check test is missing"
+    );
+    let n_fidelity = lib.matches("preserve-encodings must re-encode").count();
+    assert!(
+        n_fidelity >= 20,
+        "emitted only {n_fidelity} encoding-fidelity assertions for the preserve fixture — the oracle silently shrank"
+    );
 }
 
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (TESTING_ROADMAP item 2, the
@@ -1719,9 +1736,19 @@ fn ir_conformance_corpus() {
 
 #[test]
 fn canonical() {
+    // `--emit-tests=true` is the one place the canonical differential runs: the emitted round-trip
+    // suite's encoding-fidelity block asserts every irregular re-encoding canonicalizes to the same
+    // bytes (encoding-invariance) plus a per-case canonical fixed point. Consistent with
+    // `src/tests/mod.rs`'s policy that canonical is covered once at whole-program scale rather than
+    // as a fourth corpus profile. This fixture has a `tests_wasm.rs` and doesn't pass `--wasm=false`,
+    // so `run_test` also `cargo test`s the emitted *wasm* test module under canonical-form.
     run_test(
         "canonical",
-        &["--preserve-encodings=true", "--canonical-form=true"],
+        &[
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+            "--emit-tests=true",
+        ],
         None,
         &[],
         &[],
@@ -2326,7 +2353,26 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // (profile, fixture stem, reason) — cells whose emitted round-trip surface is a known
     // structural gap under that profile. Empirically discovered; a resurfaced guard fails the gate
     // if any starts passing so the list can't rot.
-    const SKIP: &[(&str, &str, &str)] = &[];
+    const SKIP: &[(&str, &str, &str)] = &[
+        // Both cells fail the encoding-fidelity `indef_containers` variant with EndingBreakMissing:
+        // a bool element/key is CBOR major type 7 (Special), the same major type as the
+        // indefinite-length break byte, and `make_deser_loop_break_check` can only peek
+        // `cbor_type()` (a `fill_buf` byte peek needs a `BufRead` bound the type-erased choice
+        // closures can't carry — see that fn's docs). So an INDEFINITE container of specials
+        // mis-reads its first element as the break. Pre-existing limitation documented in both
+        // fixtures' comments; surfaced at scale by the fidelity oracle. Definite-length framing
+        // (every other mutation class) is unaffected.
+        (
+            "preserve",
+            "homogeneous_array",
+            "indefinite container of bool (major-7) elements: break-check consumes the element (EndingBreakMissing) — pre-existing limitation, see fixture comment",
+        ),
+        (
+            "preserve",
+            "special_map_key",
+            "indefinite map with bool (major-7) keys: break-check consumes the key (EndingBreakMissing) — pre-existing limitation, see fixture comment",
+        ),
+    ];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).

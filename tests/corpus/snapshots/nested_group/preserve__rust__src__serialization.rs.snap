@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -24,7 +24,12 @@ impl cbor_event::se::Serialize for Inner {
                 .unwrap_or_default()
                 .to_len_sz(2),
         )?;
-        self.serialize_as_embedded_group(serializer)
+        self.serialize_as_embedded_group(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
     }
 }
 
@@ -53,11 +58,7 @@ impl SerializeEmbeddedGroup for Inner {
                     .unwrap_or_default(),
             ),
         )?;
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.len_encoding)
-            .unwrap_or_default()
-            .end(serializer)
+        Ok(serializer)
     }
 }
 
