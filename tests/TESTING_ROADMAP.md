@@ -175,16 +175,21 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
 
 ### Tier 2 — validation & process (opportunistic)
 
-5. **`cargo-mutants`** scoped to the emit core (`--file 'src/generation*'`), run manually/locally
-   (a full-tier gate at most; never fast). The defining technique for a codegen tool — proves the suite *catches*
-   wrong-codegen bugs, not just covers lines. Only bites once #1 gives assertions with teeth; needs
-   `cargo-nextest` as the runner.
-   **Score mutants against the behavioral layers only** (a nextest filter excluding
-   `snapshot_tests`): nearly every emit-core mutant changes output text, so under the full suite it
-   is trivially "killed" by a snapshot mismatch and the score measures snapshot *sensitivity* —
-   which says nothing about whether a human-blessed wrong emission would be caught (the failure
-   mode that actually ships). Scored behaviorally, the survivor list is a direct map of emit logic
-   no behavioral oracle observes.
+5. **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
+   invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
+   scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
+   "kills" measure text-sensitivity, not whether wrong emission is caught behaviorally), but only a
+   ~3% sample has been swept (33/1040 mutants; a full sweep is a measured ~30 h unattended job).
+   Remaining: run `cargo mutants --iterate` to completion (overnight chunks; resumes from
+   `mutants.out/`, skipping already-caught/unviable mutants), then triage every miss into one of
+   (a) a missing behavioral assertion → add the test, (b) a roadmap entry naming the uncovered
+   emit logic, or (c) behaviorally-equivalent-by-construction → exclude via config with a comment.
+   The sample's 6 misses were all class (c) (style-only: the clippy-appeasement arity branch in
+   `container_encoding_lookup`, redundant-`.clone()` emission from `encoding_var_is_copy ->
+   false`), so if that class dominates the full survivor list, add `exclude_re` entries for those
+   functions to keep the score meaningful. Whether a scoped variant (e.g. `--in-diff`) earns a
+   `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
+   baseline survivor map.
 
 6. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built

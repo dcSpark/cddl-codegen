@@ -488,6 +488,38 @@ Note: the integration tests run the generator in a subprocess, so llvm-cov (whic
 test binary) does not attribute their coverage — the 81% is from snapshots + in-process unit tests
 only.
 
+## Mutation testing (`cargo-mutants`, manual survey — not a check.ts gate)
+
+Mutates the emit core (`src/generation*`) and scores each mutant against the **behavioral layers
+only** — nextest with `-E 'not test(/snapshot_tests::/)'`. Snapshots trivially "kill" almost every
+emit-core mutant (any text change fails a snapshot), which measures snapshot *text-sensitivity*,
+not whether a human-blessed wrong emission would be caught — the failure mode that actually ships.
+Scored behaviorally, the survivor list is a direct map of emit logic no behavioral oracle observes.
+
+All settings (scope, nextest filterset, timeouts) are pinned in `.cargo/mutants.toml`. Requires
+`cargo install cargo-mutants cargo-nextest --locked`. Run from the repo root:
+
+```sh
+cargo mutants             # fresh sweep (writes mutants.out/, gitignored)
+cargo mutants --iterate   # resume: skips mutants already caught/unviable in mutants.out/
+```
+
+Never pass `--in-place`: an interrupted in-place run leaves a live mutant applied to
+`src/generation.rs` in the working tree (observed). The default copied-workdir costs one warm-up
+build per invocation and keeps the tree clean. Leave the default baseline on (it validates the
+unmutated suite green and auto-derives sane per-mutant timeouts; `--baseline=skip` falls back to a
+300 s cap that real mutant runs approach).
+
+Measured scale (first survey): **1040 mutants**, ~1.8 min/mutant average (the behavioral suite
+shells nested cargo per mutant) — a complete sweep is a **~30 h unattended job**; run it overnight
+in `--iterate` chunks. First-survey sample (33 tested: 13 caught, 14 unviable, 6 missed): all 6
+misses triaged as *behaviorally equivalent by construction*, not oracle gaps — the
+`container_encoding_lookup` arity branch exists only for `clippy::redundant_closure` (both branches
+emit semantically identical code), and `encoding_var_is_copy -> false` only adds redundant
+`.clone()`s to generated code (the dangerous direction, `-> true`, is caught behaviorally on all
+three impls). Expect that equivalent-style class among survivors; the sweep's value is the
+survivors that *aren't* in it.
+
 ## Known gap
 
 The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) is covered by `tests/corpus/prelude.cddl`.
