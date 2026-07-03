@@ -2,9 +2,13 @@
 ; a MAP VALUE (`get`/`insert` return Option<value>) and an OPTIONAL struct FIELD (getter returns
 ; Option<field>). Both would yield Option<Option<T>>, which wasm-bindgen can't represent
 ; (`Option<T>: OptionIntoWasmAbi` is not satisfied). The generated wasm accessors flatten to a single
-; Option<T> — absent and present-null both read as None — mirroring the c-style enum-getter convention.
-; Native storage keeps all three states (absent / present-null / present-value), so CBOR round-trips
-; are unaffected; only the wasm read conflates absent with present-null.
+; Option<T> — absent and present-null both read as None on the getter alone — mirroring the c-style
+; enum-getter convention. The lost distinction is RESTORED additively (no getter signature changes) by
+; presence accessors emitted from exactly this flatten condition: `has_field0()` beside the struct-field
+; getter and map `has(key)` beside `get` (see the snapshots). Native storage keeps all three states
+; (absent / present-null / present-value), so CBOR round-trips are unaffected. The behavioural oracle
+; asserting three-state distinguishability through the wasm accessors is `tests/nullable-wasm/`; read
+; protocols are in docs/docs/wasm_differences.mdx.
 maybe_uint = uint / null
 nullable_map_value = { * uint => maybe_uint }
 nullable_optional_field = [pre: uint, ? field0: maybe_uint]

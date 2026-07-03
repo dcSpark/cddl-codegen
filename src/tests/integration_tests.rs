@@ -1033,49 +1033,23 @@ fn wasm_cbor_json_api_macro_compiles() {
 }
 
 // ---------------------------------------------------------------------------
-// Tracked wasm-ABI SEMANTIC gaps (compile-green but not ideal).
+// wasm three-state read fidelity (`tests/nullable-wasm/`).
 //
-// wasm-bindgen can't represent a nested `Option<Option<T>>`, so a nullable value
-// (`T / null` -> `Option<T>`) sitting where the accessor adds its own presence-`Option` is FLATTENED to
-// a single `Option<T>` at the wasm boundary. That compiles (the matrix gate is green), and the native
-// rust types keep all three states so CBOR round-trips are unaffected — but the wasm READ conflates
-// "absent" with "present-but-null". This is a behavioural/round-trip property the compile gate can't
-// see; verifying it mechanically needs the round-trip harness (TESTING_ROADMAP item 1), so until then
-// these stand as tracked, skipped failing tests (remove `#[ignore]` + write the real round-trip
-// assertion once the harness or a fidelity fix lands). The ideal: the getter alone is unambiguous —
-// via a presence accessor, or by exposing the nullable as `Option<wrapper-struct>`.
-// See tests/TESTING_ROADMAP.md item 2 ("behavioural frontier").
-
-/// UNRECOVERABLE gap: an optional nullable struct field (`[pre: uint, ? field0: (uint / null)]`).
-/// The wasm getter `field0() -> Option<u64>` returns `None` for BOTH absent and present-null, and there
-/// is no presence accessor, so a JS consumer cannot tell them apart. (The map-value flatten is the same
-/// read-conflation but is recoverable via `keys()`.)
+// wasm-bindgen can't represent a nested `Option<Option<T>>`, so a nullable value (`T / null` ->
+// `Option<T>`) sitting where the accessor adds its own presence-`Option` is FLATTENED to a single
+// `Option<T>` on read: the plain getter reports `None` for BOTH an absent slot and a present-but-null
+// one. Three-state fidelity is restored ADDITIVELY (no existing getter signature changes) by presence
+// accessors emitted from exactly the flatten condition: `has_<field>()` beside an optional-nullable
+// struct field getter, and `has(key)` on a nullable-value map wrapper. The single-nested enum
+// variant needs no new accessor — `kind()` + `as_variant()` is already unambiguous. A DOUBLE-nested
+// enum variant (payload resolving to `Option<Option<T>>`) is unreachable: the wasm enum constructor
+// panics on such a variant before any getter is emitted, so `add_wasm_enum_getters` fails loud
+// (`unreachable!`) instead of silently skipping. The behavioural oracle is the fixture's
+// `tests_wasm.rs`, which constructs all three states through the rust API and asserts pairwise-distinct
+// observations through the wasm accessors; read protocols live in docs/docs/wasm_differences.mdx.
 #[test]
-#[ignore = "wasm three-state fidelity: optional-nullable field getter conflates absent vs present-null (unrecoverable). See tests/TESTING_ROADMAP.md item 2."]
-fn wasm_optional_nullable_field_three_state_fidelity() {
-    unimplemented!(
-        "Optional-nullable struct field flattens Option<Option<T>> -> Option<T> at the wasm boundary, \
-         conflating absent with present-null on read with no way to distinguish them. Add three-state \
-         fidelity (a presence accessor, or expose the nullable as Option<wrapper-struct>) or wire this \
-         to the round-trip harness (TESTING_ROADMAP item 1), then assert distinguishability and remove \
-         #[ignore]."
-    );
-}
-
-/// Ambiguous (recoverable) + one unrecoverable sub-case, in the enum getters (`add_wasm_enum_getters`).
-/// A type/group-choice enum with a nullable variant (`… / (text / null)`) emits `as_variant() ->
-/// Option<T>` flattened — recoverable via `kind()` but ambiguous from the getter alone. A *double*-nested
-/// optional variant is worse: the `as_variant()` getter is silently skipped (build-time `println!`
-/// only), so that variant's value is unreadable from wasm.
-#[test]
-#[ignore = "wasm three-state fidelity: enum nullable-variant getter is ambiguous (recoverable via kind()); a double-nested variant getter is silently skipped. See tests/TESTING_ROADMAP.md item 2."]
-fn wasm_enum_nullable_variant_three_state_fidelity() {
-    unimplemented!(
-        "Enum `as_variant()` for a nullable variant flattens Option<Option<T>> -> Option<T> (ambiguous \
-         without kind()); a double-nested optional variant getter is emitted as nothing at all. Give the \
-         getter unambiguous three-state fidelity (or emit the skipped double-nested getter) or wire this \
-         to the round-trip harness (TESTING_ROADMAP item 1), then assert and remove #[ignore]."
-    );
+fn nullable_wasm() {
+    run_test("nullable-wasm", &[], None, &[], &[], false, &[]);
 }
 
 // ---------------------------------------------------------------------------

@@ -4742,6 +4742,32 @@ fn codegen_table_type(
         ));
     }
     wrapper.s_impl.push_fn(getter);
+    // has(key): key-presence accessor, emitted from exactly the `value_nullable` flatten condition
+    // above (single source of truth) so it can never drift from `get`. When the value is nullable,
+    // `get` collapses Option<Option<T>> -> Option<T>, so a `None` return conflates an absent key with
+    // a present-but-null one; `has` exposes the key's presence directly (an O(log n) lookup, not the
+    // O(n) `keys()` scan that was the only recovery before). Mirrors `get`'s key-boundary handling.
+    if value_nullable {
+        let mut has_func = codegen::Function::new("has");
+        has_func
+            .arg_ref_self()
+            .arg("key", key_type.for_wasm_param(types))
+            .ret("bool")
+            .vis("pub")
+            .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
+        if key_type.directly_wasm_exposable(types) {
+            has_func.line(format!(
+                "self.0.get({}).is_some()",
+                key_type.from_wasm_boundary_ref(types, "key")
+            ));
+        } else {
+            has_func.line(format!(
+                "self.0.get({}.as_ref()).is_some()",
+                key_type.from_wasm_boundary_ref(types, "key")
+            ));
+        }
+        wrapper.s_impl.push_fn(has_func);
+    }
     // keys
     let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
     let mut keys = codegen::Function::new("keys");
@@ -5546,6 +5572,11 @@ fn codegen_struct(
 
                     wrapper.s_impl.push_fn(setter);
                     // getter
+                    // Set true iff the getter takes the flatten path below (nullable optional field
+                    // stored as Option<Option<T>>). This is the single source of truth for "this
+                    // position is lossy", so the `has_<field>` presence accessor emitted after the
+                    // getter can never drift from the flatten emission.
+                    let mut field_getter_flattens = false;
                     let mut getter = codegen::Function::new(&field.name);
                     getter.arg_ref_self().vis("pub");
                     if field.rust_type.config.default.is_some() {
@@ -5566,6 +5597,7 @@ fn codegen_struct(
                         // accessors / c-style enum getters). Native storage keeps all three states
                         // (absent / present-null / present-value), so CBOR round-trips are unaffected —
                         // only the wasm read conflates absent with present-null.
+                        field_getter_flattens = true;
                         getter
                             .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
                             .ret(field.rust_type.for_wasm_return(types))
@@ -5591,6 +5623,21 @@ fn codegen_struct(
                             ));
                     }
                     wrapper.s_impl.push_fn(getter);
+                    // Presence accessor for the flattened optional-nullable field. The getter above
+                    // collapses Option<Option<T>> -> Option<T> (absent and present-null both read
+                    // None); `has_<field>()` exposes the outer presence so a JS consumer can tell the
+                    // three states apart. Gated on `field_getter_flattens` — the exact flatten
+                    // condition — so the accessor and the flatten can never diverge.
+                    if field_getter_flattens {
+                        let mut has_field = codegen::Function::new(format!("has_{}", field.name));
+                        has_field
+                            .arg_ref_self()
+                            .vis("pub")
+                            .ret("bool")
+                            .doc("Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).")
+                            .line(format!("self.0.{}.is_some()", field.name));
+                        wrapper.s_impl.push_fn(has_field);
+                    }
                 } else {
                     // new
                     wasm_new.arg(&field.name, field.rust_type.for_wasm_param(types));
@@ -6767,16 +6814,24 @@ fn add_wasm_enum_getters(
             let supported = if let ConceptualRustType::Optional(inner) = ty.resolve_alias_shallow()
             {
                 if let ConceptualRustType::Optional(_) = inner.resolve_alias_shallow() {
-                    // don't bother - it's triple nested (optional nullable field?).
-                    // this seems to be unable to parseas ? (T / null)
-                    // but we'll keep this here as it makes it easy to make this
-                    // the behavior for skipping vs condensing on double nested ones (optional fields)
-                    println!(
-                        "skipping {}::as_{}() due to triple nested Options unsupported by wasm_bindgen",
+                    // An enum variant whose payload resolves to Option<Option<T>> (a
+                    // nullable-of-nullable, e.g. `text / ((uint / null) / null)`, or via an alias
+                    // chain to a nullable) is UNREACHABLE at this getter arm: the wasm enum
+                    // CONSTRUCTOR for such a variant panics earlier, in
+                    // `from_wasm_boundary_clone_optional` ("unsupported or unexpected"), before getter
+                    // emission ever runs. No supported CDDL reaches here, so the former silent
+                    // `println!` skip only advertised a behavior (dropping the getter) that can never
+                    // occur. Fail loudly instead: if a future constructor change lets the shape emit,
+                    // this points at the real work — double-flatten the getter plus an
+                    // `as_<variant>_present()` presence accessor (see docs/docs/wasm_differences.mdx)
+                    // — rather than silently dropping the getter.
+                    unreachable!(
+                        "enum variant {}::{} resolves to Option<Option<T>>, which the wasm enum \
+                         constructor rejects (from_wasm_boundary_clone_optional) before getters are \
+                         emitted — no supported CDDL reaches this arm",
                         name,
                         variant.name_as_var()
                     );
-                    false
                 } else {
                     as_variant
                         .ret(ty.for_wasm_return(types))

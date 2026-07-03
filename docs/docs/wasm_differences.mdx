@@ -26,6 +26,27 @@ Both type/group choices generate rust-style enums. On the wasm side we can't do 
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
 
+To recover the three states on the **read** side without changing any existing getter signature, additive presence accessors are emitted right beside the flattening getter. Use these read protocols:
+
+- **Optional-nullable struct field** — the getter `field0()` is joined by `has_field0() -> bool` (outer presence):
+  - `has_field0() == false` → the field is **absent**.
+  - `has_field0() == true && field0() == None` → the field is **present but null**.
+  - `has_field0() == true && field0() == Some(v)` → the field holds **value** `v`.
+- **Nullable map value** — `get(key)` is joined by `has(key) -> bool` (key presence, an `O(log n)` lookup rather than scanning `keys()`):
+  - `has(key) == false` → the key is **absent**.
+  - `has(key) == true && get(key) == None` → the key is present with a **null** value.
+  - `has(key) == true && get(key) == Some(v)` → the key holds **value** `v`.
+- **Single-nested nullable enum variant** (`… / (T / null)`) — no extra accessor is needed, because `kind()` already resolves the variant unambiguously. `as_variant()` flattens, but `kind()` tells you it *is* the variant, so a `None` from the getter can only mean inner-null:
+  - `kind() != <variant>` → a **different** variant.
+  - `kind() == <variant> && as_variant() == None` → this variant, **inner null**.
+  - `kind() == <variant> && as_variant() == Some(v)` → this variant, holding **value** `v`.
+
+A **doubly**-nested nullable enum variant (a payload resolving to `Option<Option<T>>`, e.g. `text / ((uint / null) / null)`) is not a case you can hit: the generated wasm enum constructor cannot accept such a payload, so no supported CDDL produces one.
+
+### Write-side asymmetry
+
+The presence accessors restore fidelity on the **read** side only. On the **write** side, the wasm setters and constructors always wrap their argument in the outer presence-`Option` (`Some(..)`), so from JavaScript you can construct an **absent** slot (skip the setter / omit the map key) or a **present-value** one, but **not** a present-but-`null` one. This is a deliberate scope boundary — no consumer has needed to *build* present-null from wasm; if you need that state on the wire, construct the value through the rust crate (which represents all three states directly) and convert it across with the generated `From`/`Into`.
+
 ## JSON and large integers
 
 With `--json-serde-derives` a wasm type exposes two ways to produce JSON: `to_json()` returns a string (via `serde_json`) and `to_json_value()` returns a live JS value (via `serde-wasm-bindgen`). They agree for every value inside JavaScript's safe-integer range (`|n| ≤ 2^53 − 1`).

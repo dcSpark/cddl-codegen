@@ -42,8 +42,7 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
   (`feature_corpus_compiles` `--wasm=true`; the **wasm-ABI matrix** `wasm_matrix_compiles`, 85 enumerated
   cells) AND round-tripped: `--emit-tests --wasm=true` emits a `cddl_generated_wasm_tests` module
   (`src/emit_tests_wasm.rs`, a cross-crate byte differential + accessor read-back) that runs via
-  `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual). See item 2.
-  The residue there is the fidelity stubs (nullable flatten read-side loss).
+  `emit_wasm_tests_execute` (default suite) and per-cell via `wasm_matrix_roundtrips` (manual).
 - **Fail-loud** ✅ — silent-invalid-output (the `rustfmt` swallow) is now a hard error, so malformed
   emission can never again pass as supported (item 7).
 
@@ -166,23 +165,12 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
        false-fails on it. That's why `emit_wasm_tests_execute` `cargo test`s only the *wasm* crate (which
        builds the rust crate as a non-test dep). The wasm oracle sidesteps it by reading accessors on the
        freshly-built value, not the post-wire one.
-     - **Known semantic-fidelity gaps** (tracked by `#[ignore]`'d failing tests in `integration_tests.rs`;
-       remove `#[ignore]` + write the real assertion when the harness or a fidelity fix lands). wasm-bindgen
-       can't represent nested `Option<Option<T>>`, so a nullable value (`T / null` → `Option<T>`) at a
-       position that adds its own presence-`Option` is flattened to a single `Option<T>` — the wasm READ
-       conflates "absent" with "present-but-null". Native types keep all three states, so CBOR round-trips
-       are unaffected; this is purely a wasm read-side loss. The ideal is an unambiguous getter (a presence
-       accessor, or exposing the nullable as `Option<wrapper-struct>`, which wasm-bindgen supports on the
-       return side). Cases, worst first:
-       - **Optional-nullable struct field** (`? field0: (T / null)`) — UNRECOVERABLE (no presence accessor).
-         `wasm_optional_nullable_field_three_state_fidelity`.
-       - **Double-nested enum variant** — `add_wasm_enum_getters` silently *skips* the `as_variant()` getter
-         (build-time `println!` only), so the value is unreadable from wasm.
-         `wasm_enum_nullable_variant_three_state_fidelity`.
-       - **Recoverable-but-ambiguous** (getter alone is lossy; a second call disambiguates): map `get` (via
-         `keys()`), enum single-nested `as_variant()` (via `kind()`) — same flatten, lower priority.
-       All flatten via the convention `add_wasm_enum_getters` established ("a bit ambiguous but better than
-       nothing"); the round-trip verdict upgrade (this item) is what would catch them mechanically.
+     - **wasm write-side present-null construction** *(low; unrequested)* — the read-side three-state fidelity
+       gap is closed (presence accessors: `has_<field>()`, map `has(key)`; the `tests/nullable-wasm/` fixture
+       is the oracle; read protocols in `docs/docs/wasm_differences.mdx`). The remaining asymmetry is on the
+       WRITE side: wasm setters/constructors can't mint a present-but-null value — they always wrap the
+       argument in an outer `Some` — so a JS caller can produce absent and present-value but not present-null.
+       No consumer has asked for this; revisit only if one does.
    - **Local-tier wall-clock to watch.** Two gates shell nested cargo per cell (`feature_corpus_compiles`;
      `wasm_matrix_compiles`, growing with the extensible axis) — both in the default `cargo test` suite
      (check.ts `local` tier, not CI). The shared `CARGO_TARGET_DIR` amortizes deps; if wall-time bites,
