@@ -107,14 +107,15 @@ shipped green. The Tier-1 items below are the remaining missing pieces of that o
      nobody has asked for; until such a consumer need exists, embedding is the wire path and the probe
      covers it. Carrying the embed fallback per profile folds into the "Profile axis" pending
      decision below.
-   - **Decorrelated conformance parser.** The IR-bug conformance oracle (`--emit-tests-conformance`)
-     shares the dcSpark `cddl` fork's *parser* with the generator, so a fork-level misparse escapes it
-     (it catches wrong *values*, not misparses) — the same limitation as `deser_test_conformance.rs`.
-     Decorrelating the parser (an anweiss rev, the ruby `cddl` gem already wired into
-     `cddl-matrix/verify.ts`, or a ciborium structural differential) would harden both oracles at once.
-     Same family, still unrecorded elsewhere: a DECODE-side reference-codec differential (our bytes →
-     ciborium/minicbor decode → compare structure — the conformance oracle only exercises ciborium via
-     the `cddl` crate's validator, and minicbor is used nowhere).
+   - **Decode-side reference-codec differential.** The two conformance oracles (the rust `cddl`
+     validator in `deser_test_conformance.rs` and the lineage-decorrelated ruby `cddl` gem sweep in
+     `ir_conformance_corpus`) both prove our bytes match the *spec*; neither is a raw structural
+     decode differential. A separate small oracle — our bytes → an independent CBOR codec (ciborium
+     directly, or minicbor, which is used nowhere today) → compare the decoded structure — would catch
+     a well-formedness/structural regression a CDDL-blind decoder sees but a spec validator does not.
+     Low priority: our output's well-formedness is already asserted at breadth by the round-trip +
+     encoding-fidelity oracles, and ciborium is already in the loop via the `cddl` validator, so this
+     buys structural cross-checking, not misparse decorrelation (that gap is closed by the ruby sweep).
 
 2. **Compile the generated *wasm* crate in the systematic gates.** *(compile + round-trip foundations
    built; the remaining frontiers are the fidelity stubs and grid-audit hygiene below.)* The wasm

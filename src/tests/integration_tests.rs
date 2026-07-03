@@ -36,6 +36,36 @@ fn tool_cmd(program: &str) -> std::process::Command {
     c
 }
 
+/// Locate the ruby `cddl` gem binary for the decorrelated conformance oracle (`ir_conformance_corpus`),
+/// mirroring `cddl-matrix/verify.ts`'s `resolveRubyCddl`: an explicit `RUBY_CDDL` env pin wins (and
+/// fails LOUD if it points nowhere — a mispinned oracle must NOT silently fall back to gem discovery,
+/// or the run would probe a different validator than the operator intended); otherwise probe the gem
+/// install location `$(ruby -e 'puts Gem.user_dir')/bin/cddl`. Returns `None` when neither resolves
+/// (ruby absent / gem not installed) — the caller prints a grep-stable SKIPPED marker and the gate's
+/// rust half still runs. Deliberately does NOT consult `$PATH`/`which cddl`: on a dev box that is
+/// typically the unrelated RUST `cddl` binary (same lineage as the generator — no decorrelation).
+fn resolve_ruby_cddl() -> Option<std::path::PathBuf> {
+    if let Ok(pin) = std::env::var("RUBY_CDDL") {
+        let p = std::path::PathBuf::from(&pin);
+        assert!(
+            p.exists(),
+            "RUBY_CDDL is set to '{pin}' but no such file exists — a pinned ruby cddl oracle that \
+             does not exist must fail loud, not silently fall back to gem discovery"
+        );
+        return Some(p);
+    }
+    let out = std::process::Command::new("ruby")
+        .args(["-e", "puts Gem.user_dir"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let gem_dir = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    let cand = std::path::PathBuf::from(gem_dir).join("bin").join("cddl");
+    cand.exists().then_some(cand)
+}
+
 /// Append the in-repo user-supplied `RawBytesEncoding` defs (`PubKey`) into a freshly generated crate
 /// rooted at `out` (rust + wasm), so a `rawbytes__*` wasm-matrix cell — whose `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
 /// resolves to that user type — compiles/tests standalone instead of being a permanent SKIP like `extern`.
@@ -1589,6 +1619,59 @@ fn ir_conformance_corpus() {
     // fixture failed *for the right reason*, not via some unrelated compile/test break.
     const ORACLE_MSG: &str = "cddl conformance failed for rule";
 
+    // ===== DECORRELATED (ruby `cddl` gem) conformance oracle ==========================================
+    // The rust oracle above shares the dcSpark `cddl` FORK's parser with the generator, so a fork-level
+    // grammar/AST MISPARSE corrupts generator IR and oracle spec-interpretation identically and passes
+    // green (see this gate's `Scope` note + `deser_test_conformance.rs`). This second sweep re-validates
+    // the SAME minted bytes through the ruby `cddl` gem — the RFC author's reference tool, sharing no
+    // parser, decoder, language, or lineage with the fork — so a fork misparse that mints
+    // well-formed-but-spec-wrong bytes is caught here even when the rust oracle can't see it. The gem is
+    // HARNESS-SIDE ONLY (never a crate dep): the `--emit-tests` dump hook (`CDDL_CODEGEN_DUMP_MINTED`,
+    // src/emit_tests.rs `roundtrip_body`) writes each minted case to `<rule>__case<i>.cbor`, and this
+    // gate sweeps those files.
+    //
+    // GEM CLI SEMANTICS (probed at implementation time against cddl 0.12.14; do not assume across major
+    // bumps):
+    //   invocation : `<gem> <spec.cddl> validate <instance.cbor>`  (extension-sensitive: `.cbor` = CBOR)
+    //   targeting  : validates the spec's FIRST rule only — so we prepend a synthetic
+    //                `__cddl_oracle_root = <rule>` root (same trick as `cddl_oracle_rooted`) to aim it at
+    //                any rule while resolving the rest of the spec.
+    //   exit codes : 0 = conforms · 1 = validation failure OR malformed/undecodable CBOR · 65 = the gem's
+    //                parser rejected the SPEC. We gate on EXIT CODE (0 vs nonzero); a `*** Unused rule`
+    //                line the gem prints to stderr on the synthetic root is harmless noise, never an exit.
+    //
+    // RUBY_EXPECTED_FAIL: fixtures the gem diverges on for a documented, non-bug reason — a gem construct
+    // gap (its parser/validator lacks something the fork legitimately supports; exit 1 or 65 on every
+    // case). Each entry is anchored with a justification. A DIVERGENCE IS SIGNAL: an unledgered one is
+    // either a gem gap to add here WITH a reason, or — the class this whole oracle exists to catch — a
+    // fork misparse minting spec-violating bytes. Investigate before ledgering. A ledgered fixture that
+    // STOPS diverging (all cases accepted) is flagged stale, like the rust oracle's fixed_or_toothless.
+    const RUBY_EXPECTED_FAIL: &[(&str, &str)] = &[
+        // `inner = (a: uint, b: uint)` is a bare GROUP, not a type. cddl-codegen represents a
+        // top-level group rule as a standalone array-serialized struct (mints `[0, 0]` = 0x82 00 00);
+        // the dcSpark fork's validator leniently accepts that array when the synthetic root aliases the
+        // group. The ruby gem is stricter — a group is not a top-level instance type, so it errors
+        // `Don't know how to validate [:grpent ...]`. Gem construct gap, NOT a fork misparse: the bytes
+        // faithfully encode (a:0, b:0). (`outer`, which embeds `inner` inside `[...]`, validates fine.)
+        (
+            "nested_group",
+            "gem cannot validate a bare top-level GROUP rule as an instance type",
+        ),
+    ];
+
+    // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;
+    // floor kept well below that (same loose-headroom convention as `validated_fixtures`, 20 of 33) so
+    // ordinary minter drift doesn't false-fail, while a dump hook that silently stops firing or a sweep
+    // that reads an empty dir still fails the gate rather than passing a no-op oracle.
+    const RUBY_CASE_FLOOR: usize = 50;
+
+    let ruby_gem = resolve_ruby_cddl();
+    let mut ruby_total_cases = 0usize;
+    let mut ruby_failures: Vec<String> = vec![]; // unledgered divergences (rule/case/hex/stderr)
+    let mut ruby_ledger_clean: Vec<&str> = vec![]; // RUBY_EXPECTED_FAIL fixtures that DIDN'T diverge (stale)
+    // First known-good (rooted-spec, valid-bytes) pair, for the post-sweep negative control.
+    let mut ruby_neg_sample: Option<(String, String, Vec<u8>)> = None;
+
     let mut failures = vec![];
     let mut fixed_or_toothless = vec![]; // EXPECTED_FAIL fixtures that unexpectedly passed
     let mut validated_fixtures = 0usize; // vacuity floor: fixtures that actually emitted a conformance call
@@ -1653,10 +1736,15 @@ fn ir_conformance_corpus() {
             continue;
         }
 
+        // Per-fixture minted-bytes dump dir for the ruby sweep. Set unconditionally (harmless when the
+        // gem is absent); the emitted dump hook fires whenever this env var points somewhere.
+        let dump_dir = out.join("__minted_dump");
+        let _ = std::fs::create_dir_all(&dump_dir);
         let test = tool_cmd("cargo")
             .arg("test")
             .current_dir(&rust_dir)
             .env("CARGO_TARGET_DIR", &target_dir)
+            .env("CDDL_CODEGEN_DUMP_MINTED", &dump_dir)
             .output()
             .unwrap();
         let combined = format!(
@@ -1685,7 +1773,95 @@ fn ir_conformance_corpus() {
                  + add to CONFORMANCE_SKIP:\n{combined}"
             )),
         }
+
+        // --- ruby decorrelated sweep (only when the gem is present and rust validated this fixture
+        // as in-spec: we re-check the SAME bytes the rust oracle accepted). Sweep the dump dir in
+        // SORTED order for stable, reproducible diagnostics.
+        if let Some(gem) = &ruby_gem
+            && passed
+            && !expected_fail
+        {
+            let source = std::fs::read_to_string(input).unwrap();
+            let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&dump_dir)
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok().map(|e| e.path()))
+                        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cbor"))
+                        .collect()
+                })
+                .unwrap_or_default();
+            cases.sort();
+            let mut rooted_specs: std::collections::BTreeMap<String, std::path::PathBuf> =
+                std::collections::BTreeMap::new();
+            let mut fixture_diverged = false;
+            let mut fixture_divergences: Vec<String> = vec![];
+            for case in &cases {
+                let fname = case.file_name().unwrap().to_str().unwrap().to_owned();
+                // `<rule>__case<i>.cbor` -> rule is everything before the LAST `__case`.
+                let rule = fname
+                    .rsplit_once("__case")
+                    .map(|(r, _)| r)
+                    .unwrap_or(&fname)
+                    .to_owned();
+                // rooted synthetic-root spec (cached per rule), aiming the gem's first-rule validation
+                // at `rule` while resolving the rest of the fixture's references.
+                let rooted_path = rooted_specs.entry(rule.clone()).or_insert_with(|| {
+                    let p = dump_dir.join(format!("__rooted_{rule}.cddl"));
+                    std::fs::write(&p, format!("__cddl_oracle_root = {rule}\n\n{source}")).unwrap();
+                    p
+                });
+                let bytes = std::fs::read(case).unwrap();
+                let gem_out = std::process::Command::new(gem)
+                    .arg(&*rooted_path)
+                    .arg("validate")
+                    .arg(case)
+                    .output()
+                    .unwrap();
+                ruby_total_cases += 1;
+                if gem_out.status.success() {
+                    if ruby_neg_sample.is_none() && bytes.len() > 1 {
+                        ruby_neg_sample = Some((
+                            rule.clone(),
+                            format!("__cddl_oracle_root = {rule}\n\n{source}"),
+                            bytes.clone(),
+                        ));
+                    }
+                } else {
+                    fixture_diverged = true;
+                    fixture_divergences.push(format!(
+                        "{stem} / rule `{rule}` / {fname}: ruby gem REJECTED (exit {})\n  bytes: {bytes:02x?}\n  gem stderr:\n{}",
+                        gem_out.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
+                        String::from_utf8_lossy(&gem_out.stderr).trim()
+                    ));
+                }
+            }
+            let ledgered = RUBY_EXPECTED_FAIL.iter().any(|(s, _)| *s == stem);
+            match (ledgered, fixture_diverged) {
+                (false, true) => ruby_failures.extend(fixture_divergences),
+                (true, false) => ruby_ledger_clean.push(stem),
+                _ => {} // (true, true) expected divergence · (false, false) clean pass
+            }
+        }
     }
+
+    // Negative control BEFORE the scratch tree is removed: corrupt a known-good case (truncate the
+    // final byte -> guaranteed malformed CBOR) and require the gem to REJECT it. A gem invocation that
+    // exits 0 regardless of input (wrong CLI shape / wrong arg) would make the whole sweep vacuous.
+    let ruby_neg_control_ok: Option<bool> =
+        if let (Some(gem), Some((_, rooted_src, good_bytes))) = (&ruby_gem, &ruby_neg_sample) {
+            let rooted_path = root.join("__ruby_neg_rooted.cddl");
+            let corrupt_path = root.join("__ruby_neg_control.cbor");
+            std::fs::write(&rooted_path, rooted_src).unwrap();
+            std::fs::write(&corrupt_path, &good_bytes[..good_bytes.len() - 1]).unwrap();
+            let nc = std::process::Command::new(gem)
+                .arg(&rooted_path)
+                .arg("validate")
+                .arg(&corrupt_path)
+                .output()
+                .unwrap();
+            Some(!nc.status.success()) // true = correctly rejected
+        } else {
+            None
+        };
 
     let _ = std::fs::remove_dir_all(&root);
     // vacuity floor: a silent no-op sweep (nothing validated) must not pass. 33 of the 39 non-skip
@@ -1706,6 +1882,47 @@ fn ir_conformance_corpus() {
         "IR-conformance gate failures:\n\n{}",
         failures.join("\n\n")
     );
+
+    // ===== ruby decorrelated-oracle verdicts =====
+    match &ruby_gem {
+        None => eprintln!(
+            "RUBY ORACLE: SKIPPED (gem not found — install with `gem install --user-install cddl`, \
+             or set RUBY_CDDL to a ruby cddl binary). The rust conformance half above still gated; \
+             the lineage-decorrelated (fork-misparse) half did not run on this machine."
+        ),
+        Some(gem) => {
+            eprintln!(
+                "RUBY ORACLE: swept {ruby_total_cases} minted cases through the ruby cddl gem at {}",
+                gem.display()
+            );
+            assert!(
+                ruby_total_cases >= RUBY_CASE_FLOOR,
+                "ruby oracle swept only {ruby_total_cases} minted cases (floor {RUBY_CASE_FLOOR}) — \
+                 the dump hook silently stopped firing or the sweep read an empty dir (vacuous oracle)"
+            );
+            assert_eq!(
+                ruby_neg_control_ok,
+                Some(true),
+                "ruby oracle NEGATIVE CONTROL failed: the gem did not reject truncated (malformed) \
+                 bytes, so its invocation shape can't tell valid from invalid and every PASS above is \
+                 vacuous (or no known-good sample was captured to corrupt)"
+            );
+            assert!(
+                ruby_ledger_clean.is_empty(),
+                "RUBY_EXPECTED_FAIL fixtures no longer diverge from the gem (remove them — the gem \
+                 gap they recorded is gone):\n{}",
+                ruby_ledger_clean.join("\n")
+            );
+            assert!(
+                ruby_failures.is_empty(),
+                "RUBY ORACLE divergences — each is EITHER a gem construct gap to add to \
+                 RUBY_EXPECTED_FAIL WITH a justification, OR (the class this oracle exists to catch) a \
+                 fork misparse minting spec-violating bytes the rust oracle can't see. Investigate \
+                 before ledgering:\n\n{}",
+                ruby_failures.join("\n\n")
+            );
+        }
+    }
 }
 
 #[test]

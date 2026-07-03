@@ -250,14 +250,16 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             ));
         }
 
-        // `--emit-tests-conformance`: the source rule name to validate this type's minted bytes
-        // against (None when off, when the type isn't a top-level rule, or when its name can't be
-        // faithfully reversed — see `conformance_rule_name`).
-        let conf = cli
-            .emit_tests_conformance
-            .then(|| conformance_rule_name(types, ident))
-            .flatten();
-        let conf = conf.as_deref();
+        // The source rule name for this type (None when it isn't a top-level rule or its name can't
+        // be faithfully snake↔camel reversed — see `conformance_rule_name`, which is loud about the
+        // latter). Computed unconditionally: it names both the flag-gated conformance validate line
+        // AND the env-gated minted-bytes dump (which needs no CLI flag — see `roundtrip_body`), so it
+        // must be available even without `--emit-tests-conformance`.
+        let rule_name = conformance_rule_name(types, ident);
+        let rule_name = rule_name.as_deref();
+        // `--emit-tests-conformance`: only under the flag does the emitted round-trip call the cddl
+        // validator on the minted bytes.
+        let conf = cli.emit_tests_conformance.then_some(rule_name).flatten();
 
         // value-equality is meaningless under preserve-encodings: `back` carries encoding structs
         // populated from the wire while the minted value has ctor defaults (see roundtrip_body).
@@ -293,15 +295,17 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             fidelity_exclude,
         };
         let roundtrip = match rust_struct.variant() {
-            RustStructType::Record(record) => record_roundtrip(types, &name, record, conf, rt),
+            RustStructType::Record(record) => {
+                record_roundtrip(types, &name, record, conf, rule_name, rt)
+            }
             RustStructType::TypeChoice { variants } => {
-                choice_roundtrip(types, &name, variants, false, conf, rt)
+                choice_roundtrip(types, &name, variants, false, conf, rule_name, rt)
             }
             RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants, true, conf, rt)
+                choice_roundtrip(types, &name, variants, true, conf, rule_name, rt)
             }
             RustStructType::Wrapper { wrapped, min_max } => {
-                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, rt)
+                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, rule_name, rt)
             }
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
@@ -656,6 +660,7 @@ fn roundtrip_body(
     name: &str,
     cases: Vec<(String, String)>,
     conf: Option<&str>,
+    dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
     if cases.is_empty() {
@@ -672,7 +677,20 @@ fn roundtrip_body(
         .unwrap_or_default();
     let blocks: Vec<String> = cases
         .into_iter()
-        .map(|(expr, label)| {
+        .enumerate()
+        .map(|(case_idx, (expr, label))| {
+            // Minted-bytes dump hook (decorrelated conformance oracle): when the env var
+            // CDDL_CODEGEN_DUMP_MINTED points at a directory, write each freshly minted case's bytes
+            // to `<dir>/<source_rule>__case<i>.cbor` before the assertions, so a harness-side
+            // reference validator (the ruby `cddl` gem, in the `ir_conformance_corpus` gate) can
+            // re-check them through a lineage-decorrelated parser. Pure std, inert when the var is
+            // unset, needs no CLI flag. Only emitted when the type has a faithful source-rule name
+            // (`dump_rule`); a lossy name is skipped loudly by `conformance_rule_name`.
+            let dump_line = dump_rule
+                .map(|rule| format!(
+                    "        if let Ok(__dump_dir) = std::env::var(\"CDDL_CODEGEN_DUMP_MINTED\") {{\n            std::fs::write(format!(\"{{__dump_dir}}/{rule}__case{case_idx}.cbor\"), &bytes).expect(\"cddl-codegen: dump minted bytes\");\n        }}\n"
+                ))
+                .unwrap_or_default();
             let value_eq_line = if value_eq {
                 format!("\n        assert_eq!(format!(\"{{:?}}\", back), format!(\"{{:?}}\", v), \"{name} ({label}): deserialized value must equal the minted original\");")
             } else {
@@ -728,7 +746,7 @@ fn roundtrip_body(
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
-{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{value_eq_line}
+{dump_line}{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{value_eq_line}
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");{fidelity}
     }}"
             )
@@ -752,6 +770,7 @@ fn record_roundtrip(
     name: &str,
     record: &RustRecord,
     conf: Option<&str>,
+    dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
     let ctor_fields: Vec<&RustField> = record
@@ -821,7 +840,7 @@ fn record_roundtrip(
             break;
         }
     }
-    roundtrip_body(name, cases, conf, rt)
+    roundtrip_body(name, cases, conf, dump_rule, rt)
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -832,6 +851,7 @@ fn choice_roundtrip(
     variants: &[EnumVariant],
     group_choice: bool,
     conf: Option<&str>,
+    dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
     let mut cases = Vec::new();
@@ -870,7 +890,7 @@ fn choice_roundtrip(
             format!("variant {}", variant.name),
         ));
     }
-    roundtrip_body(name, cases, conf, rt)
+    roundtrip_body(name, cases, conf, dump_rule, rt)
 }
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
@@ -881,6 +901,7 @@ fn wrapper_roundtrip(
     wrapped: &RustType,
     min_max: Option<Bounds>,
     conf: Option<&str>,
+    dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
     // Tag-aware, same as mint_struct's Wrapper arm: a semantically-enforced tag (e.g. tdate) gets a
@@ -906,7 +927,13 @@ fn wrapper_roundtrip(
         inner: Box::new(inner),
         can_fail: min_max.is_some(),
     });
-    roundtrip_body(name, vec![(base, "baseline".to_owned())], conf, rt)
+    roundtrip_body(
+        name,
+        vec![(base, "baseline".to_owned())],
+        conf,
+        dump_rule,
+        rt,
+    )
 }
 
 /// Mirrors a choice-variant ctor's per-arg fallibility (`generation.rs` per-variant `can_fail`):
