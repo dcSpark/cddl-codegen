@@ -1656,29 +1656,59 @@ fn parse_record_from_group_choice(
             }
             let optional_field = group_entry_optional(group_entry);
             let key = match rep {
-                Representation::Map => match group_entry_to_key(group_entry) {
-                    Some(key) => Some(key),
-                    // A map-representation field without a key is unsupported by design (each
-                    // map field needs a key). This also catches a plain-group reference embedded
-                    // in a map record, which surfaces here as a keyless `TypeGroupname`. Record a
-                    // graceful rejection (drained by `finalize`) and drop the field rather than
-                    // `panic!` — nothing downstream runs on this record once a rejection exists.
-                    None => {
-                        // cite the rule by its SOURCE spelling (`m`), not the camel-cased
-                        // RustIdent (`M`) — the user is looking at their CDDL, not our output
-                        let source_name = types
-                            .source_rule_name(name)
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| name.to_string());
-                        types.record_rejection(format!(
-                            "rule `{source_name}`: map field `{field_name}` has no key. Each map field \
-                             needs a key: use `k: v` / `k => v`, or a table `{{ * k => v }}`. \
-                             (A plain-group reference embedded in a map-representation record hits \
-                             this too — it is unsupported today.)"
-                        ));
-                        return None;
+                Representation::Map => {
+                    // cite the rule by its SOURCE spelling (`m`), not the camel-cased
+                    // RustIdent (`M`) — the user is looking at their CDDL, not our output
+                    let source_name = types
+                        .source_rule_name(name)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| name.to_string());
+                    match group_entry_to_key(group_entry) {
+                        Some(key) => {
+                            // A ZERO-permitting occurrence (`*`, `0*n`, `*n`) on a keyed map field
+                            // means the entry may be ABSENT (RFC 8610), but the record path would
+                            // silently narrow it to a MANDATORY field — a generated decoder that
+                            // rejects valid CBOR omitting the entry (invisible to round-trip tests;
+                            // only cross-producer data exposes it). Reject gracefully instead.
+                            // Lower bounds >= 1 (`+`, `1*2`) stay mandatory: under unique map keys
+                            // they collapse to exactly-one, so mandatory IS the honored semantics.
+                            let permits_zero = match group_entry {
+                                GroupEntry::ValueMemberKey { ge, .. } => matches!(
+                                    ge.occur.as_ref().map(|o| &o.occur),
+                                    Some(Occur::ZeroOrMore { .. })
+                                        | Some(Occur::Exact { lower: None, .. })
+                                        | Some(Occur::Exact { lower: Some(0), .. })
+                                ),
+                                _ => false,
+                            };
+                            if permits_zero {
+                                types.record_rejection(format!(
+                                    "rule `{source_name}`: map field `{field_name}` has a \
+                                     zero-permitting occurrence (`*` / `0*n` / `*n`), which would \
+                                     be silently narrowed to a mandatory field (generated decoders \
+                                     would reject valid CBOR that omits it). Use `?` for an \
+                                     optional field, or a table `{{ * k => v }}`."
+                                ));
+                                return None;
+                            }
+                            Some(key)
+                        }
+                        // A map-representation field without a key is unsupported by design (each
+                        // map field needs a key). This also catches a plain-group reference embedded
+                        // in a map record, which surfaces here as a keyless `TypeGroupname`. Record a
+                        // graceful rejection (drained by `finalize`) and drop the field rather than
+                        // `panic!` — nothing downstream runs on this record once a rejection exists.
+                        None => {
+                            types.record_rejection(format!(
+                                "rule `{source_name}`: map field `{field_name}` has no key. Each map field \
+                                 needs a key: use `k: v` / `k => v`, or a table `{{ * k => v }}`. \
+                                 (A plain-group reference embedded in a map-representation record hits \
+                                 this too — it is unsupported today.)"
+                            ));
+                            return None;
+                        }
                     }
-                },
+                }
                 Representation::Array => None,
             };
             Some(RustField::new(

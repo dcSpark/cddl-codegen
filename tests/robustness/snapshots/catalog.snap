@@ -14,6 +14,7 @@ garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
+map_field_zero_occurrence  error (graceful)
 prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok
