@@ -1,0 +1,4 @@
+; Quoted text member keys `"a":` are grammar sugar for the bareword key `a:` (identical wire key),
+; so they must generate IDENTICAL output to the bareword form — the field name is the text itself,
+; never `key_"a"` (which is invalid Rust and previously only tripped the rustfmt fail-loud gate).
+quoted_map_key = { "a": uint, "b": text }

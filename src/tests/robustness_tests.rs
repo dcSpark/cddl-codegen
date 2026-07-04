@@ -239,6 +239,84 @@ fn unsupported_construct_reject_catalog() {
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
 
+/// A bareword member key (`a:`) and a quoted text member key (`"a":`) are the same CDDL construct
+/// (the quoted form is grammar sugar for the identical text-string wire key), so with matching rule
+/// and field names the two forms must generate a byte-identical crate. Asserting the ENTIRE file map
+/// (not just a field name) pins that convergence end-to-end — naming, serialization, and JSON — for
+/// both the 1-field and 2-field forms, guarding the two paths (`group_entry_to_field_name`,
+/// `group_entry_to_key`, `group_entry_to_raw_field_name`) from drifting apart.
+#[test]
+fn bareword_and_quoted_keys_converge() {
+    fn generate(spec: &str, tag: &str) -> std::collections::BTreeMap<String, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_converge_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "converge_unused",
+        ]);
+        let out = crate::api::generated_strings(&cli).unwrap();
+        std::fs::remove_file(&path).ok();
+        out
+    }
+
+    // 1-field: single bareword map struct vs the equivalent quoted-key struct.
+    assert_eq!(
+        generate("foo = { a: uint }\n", "bw1"),
+        generate("foo = { \"a\": uint }\n", "q1"),
+        "1-field bareword and quoted map keys must generate identical output"
+    );
+
+    // 2-field: the heterogeneous form, exercising multiple keys.
+    assert_eq!(
+        generate("foo = { a: uint, b: text }\n", "bw2"),
+        generate("foo = { \"a\": uint, \"b\": text }\n", "q2"),
+        "2-field bareword and quoted map keys must generate identical output"
+    );
+}
+
+/// A keyless map entry (`{ bytes, uint }`) is rejected BY DESIGN — each map field needs a key — but
+/// via a GRACEFUL `Err` (deferred through `IntermediateTypes::record_rejection` → drained by
+/// `finalize`), never a `panic!`. This pins that the error is real and its message is actionable:
+/// it names the offending rule and tells the user what to do. The catalog fixtures
+/// (`map_entry_no_key`, `map_entry_no_key_single`) pin the OUTCOME category; this pins the message.
+#[test]
+fn keyless_map_entry_rejects_gracefully() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_keyless_map_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "m = { bytes, uint }\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "keyless_map_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err =
+        result.expect_err("keyless map entry must be a graceful Err, not Ok (and not a panic)");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("needs a key"),
+        "rejection message should be actionable (mention that each map field needs a key), got: {msg}"
+    );
+    // The message cites the SOURCE spelling (`m`), not the camel-cased RustIdent (`M`).
+    assert!(
+        msg.contains("rule `m`"),
+        "rejection message should name the offending rule, got: {msg}"
+    );
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");

@@ -1,0 +1,7 @@
+; a map with a SINGLE keyless entry (`{ bytes }`). Like `map_entry_no_key` (`{ bytes, uint }`) this
+; is rejected by design ("map fields need keys"), but it exercises a DIFFERENT parse path: the
+; 1-entry branch of `parse_group_type`, which used to `panic!("unsupported table map key (2)")` on a
+; single `TypeGroupname` map entry. It now falls through to the Heterogenous path and funnels into
+; `parse_record_from_group_choice`'s graceful rejection. Pins that the single-entry form stays
+; `error (graceful)`; a regression re-introducing the panic flips this back to PANIC.
+m = { bytes }

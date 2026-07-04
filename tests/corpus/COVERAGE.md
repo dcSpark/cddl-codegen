@@ -295,14 +295,14 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 8. Bug — a single-letter rule named `r` capitalizes to a struct `R` that collides with the generated deserializer's reader generic parameter `R` (`error[E0574]: ... found type parameter R`), so the crate fails to compile. Surfaced incidentally by the compile-gate; avoid `r` as a rule name. Candidate cddl-codegen fix.
 9. Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix.
 10. Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
-11. Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work.
+11. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both. Candidate cddl-codegen feature.
 12. Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.
 
 ## Summary
 
 - Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 47
+- Corpus fixtures: 49
 
 **Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

@@ -1,5 +1,7 @@
-; a map with exactly ONE bareword-keyed field panics: parse_group's table detection
-; (parsing.rs "unsupported table map key (1)") only survives value-keys (`{ 0: uint }` is fine)
-; or 2+ fields (`{ t: uint, u: uint }` is fine). Pins the gap: flipping to `error (graceful)`
-; or full support (a 1-field struct) is a fix (re-bless).
+; a map with exactly ONE bareword-keyed field. A bareword key is sugar for the equivalent
+; text-string value key, so this is a 1-field struct (identical wire shape to the multi-field
+; `{ t: uint, u: uint }` form) — parse_group's table detection falls through to the struct path for
+; it, alongside value-keys (`{ 0: uint }`) and 2+ fields. Pins that a regression re-introducing the
+; old "unsupported table map key (1)" panic would flip this back to PANIC. Positive-output coverage
+; lives in the `single_field_map` corpus fixture.
 plain = { t: uint }

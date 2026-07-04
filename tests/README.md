@@ -490,9 +490,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
     `keys`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
-    `[pre: uint, ? field0: T]`) because a map-representation struct with a bareword member key currently
-    panics generation (a separate, still-open limitation); consequently map-representation structs and
-    optional-fields-inside-maps are outside this grid's scope. A shape may likewise skip a role
+    `[pre: uint, ? field0: T]`); map-representation structs (bareword-keyed maps now generate) and
+    optional-fields-inside-maps are simply not yet enumerated as shapes here, so they're outside this
+    grid's scope for now. A shape may likewise skip a role
     that would only pin a permanent red — `nullable` skips `map-key`: a nullable key is degenerate
     CDDL and its wasm bindings don't compile (`Option<u64>` fails `ErasableGeneric`), see the
     prune comment in the projection.

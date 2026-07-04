@@ -145,6 +145,12 @@ pub struct IntermediateTypes<'a> {
     // time (`api::with_types`, alongside `mark_scope`) so the conformance oracle can root its
     // validator at the PROVABLE source rule rather than a lossy snake↔camel guess.
     rule_source_names: BTreeMap<RustIdent, String>,
+    // Deferred rejections: constructs the parse walk (which returns `()` and so can't surface an
+    // `Err`) recognizes as unsupported-by-design but must reject GRACEFULLY rather than `panic!`.
+    // Each entry is a human-actionable message; `finalize` drains them into a single `Err` before
+    // any resolution runs, so no later code operates on the incomplete IR left behind by a skipped
+    // field. A `Vec` keeps insertion order deterministic (rule order is already deterministic).
+    rejections: Vec<String>,
     // for scope() to work we keep this here.
     // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
     root_scope: ModuleScope,
@@ -174,8 +180,15 @@ impl<'a> IntermediateTypes<'a> {
             used_as_key: BTreeSet::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
+            rejections: Vec::new(),
             root_scope: ROOT_SCOPE.clone(),
         }
+    }
+
+    /// Record a construct the parse walk rejects by design (it can't return an `Err` itself).
+    /// `finalize` turns any accumulated rejections into a single graceful `Err`.
+    pub fn record_rejection(&mut self, msg: String) {
+        self.rejections.push(msg);
     }
 
     #[allow(unused)]
@@ -620,6 +633,11 @@ impl<'a> IntermediateTypes<'a> {
         parent_visitor: &ParentVisitor,
         cli: &Cli,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Surface any deferred rejections BEFORE any resolution runs, so nothing downstream
+        // operates on the incomplete IR a skipped-field record leaves behind.
+        if !self.rejections.is_empty() {
+            return Err(self.rejections.join("\n").into());
+        }
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
         let resolved_generics = self

@@ -1058,10 +1058,29 @@ fn parse_group_type<'a>(
                             Some(MemberKey::Value { .. }) => {
                                 // has a fixed value - this is just a 1-element struct
                             }
-                            _ => panic!("unsupported table map key (1): {:?}", ge),
+                            Some(MemberKey::Bareword { .. }) => {
+                                // a bareword key is sugar for the equivalent text-string value key,
+                                // so a single bareword-keyed entry is a 1-field struct, not a table
+                                // (identical wire shape to the multi-field `{ a: uint, b: text }` form)
+                            }
+                            None => {
+                                // a keyless map entry (e.g. `{ bytes }`) is unsupported by design;
+                                // fall through to the Heterogenous path so it funnels into
+                                // `parse_record_from_group_choice`'s graceful rejection rather than
+                                // panicking here.
+                            }
+                            Some(MemberKey::NonMemberKey { .. }) => {
+                                panic!("unsupported table map key (1): {:?}", ge)
+                            }
                         }
                     }
-                    other => panic!("unsupported table map key (2): {:?}", other),
+                    // a single keyless group reference (e.g. `{ bytes }` = a `TypeGroupname`) is
+                    // unsupported by design; fall through to the Heterogenous path where it is
+                    // rejected gracefully. A multi-choice inline group here is out of scope.
+                    GroupEntry::TypeGroupname { .. } => {}
+                    other @ GroupEntry::InlineGroup { .. } => {
+                        panic!("unsupported table map key (2): {:?}", other)
+                    }
                 }
             }
         }
@@ -1170,7 +1189,13 @@ fn group_entry_to_field_name(
                         RuleMetadata {
                             name: Some(name), ..
                         } => name,
-                        _ => format!("key_{value}"),
+                        // a quoted text key `"a":` is sugar for the bareword key `a:` (same wire
+                        // key), so it must converge on the bareword field name, not `key_"a"`
+                        // (which is invalid Rust). Non-text values keep the `key_{value}` fallback.
+                        _ => match value {
+                            cddl::token::Value::TEXT(t) => t.to_string(),
+                            _ => format!("key_{value}"),
+                        },
                     }
                 }
                 MemberKey::Bareword { ident, .. } => ident.to_string(),
@@ -1240,6 +1265,12 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
     match entry {
         GroupEntry::ValueMemberKey { ge, .. } => match ge.member_key.as_ref() {
             Some(MemberKey::Bareword { ident, .. }) => Some(ident.to_string()),
+            // a quoted text key is sugar for the bareword key, so enum-variant naming (group
+            // choices) must converge with the bareword path rather than treat it as nameless
+            Some(MemberKey::Value {
+                value: cddl::token::Value::TEXT(t),
+                ..
+            }) => Some(t.to_string()),
             _ => None,
         },
         GroupEntry::TypeGroupname {
@@ -1602,6 +1633,7 @@ fn parse_record_from_group_choice(
     types: &mut IntermediateTypes,
     rep: Representation,
     parent_visitor: &ParentVisitor,
+    name: &RustIdent,
     group_choice: &GroupChoice,
     cli: &Cli,
 ) -> RustRecord {
@@ -1609,7 +1641,7 @@ fn parse_record_from_group_choice(
     let fields = flatten_group_entries(&group_choice.group_entries)
         .into_iter()
         .enumerate()
-        .map(|(index, (group_entry, optional_comma))| {
+        .filter_map(|(index, (group_entry, optional_comma))| {
             let field_name = group_entry_to_field_name(
                 group_entry,
                 index,
@@ -1624,12 +1656,38 @@ fn parse_record_from_group_choice(
             }
             let optional_field = group_entry_optional(group_entry);
             let key = match rep {
-                Representation::Map => {
-                    Some(group_entry_to_key(group_entry).expect("map fields need keys"))
-                }
+                Representation::Map => match group_entry_to_key(group_entry) {
+                    Some(key) => Some(key),
+                    // A map-representation field without a key is unsupported by design (each
+                    // map field needs a key). This also catches a plain-group reference embedded
+                    // in a map record, which surfaces here as a keyless `TypeGroupname`. Record a
+                    // graceful rejection (drained by `finalize`) and drop the field rather than
+                    // `panic!` — nothing downstream runs on this record once a rejection exists.
+                    None => {
+                        // cite the rule by its SOURCE spelling (`m`), not the camel-cased
+                        // RustIdent (`M`) — the user is looking at their CDDL, not our output
+                        let source_name = types
+                            .source_rule_name(name)
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| name.to_string());
+                        types.record_rejection(format!(
+                            "rule `{source_name}`: map field `{field_name}` has no key. Each map field \
+                             needs a key: use `k: v` / `k => v`, or a table `{{ * k => v }}`. \
+                             (A plain-group reference embedded in a map-representation record hits \
+                             this too — it is unsupported today.)"
+                        ));
+                        return None;
+                    }
+                },
                 Representation::Array => None,
             };
-            RustField::new(field_name, field_type, optional_field, key, rule_metadata)
+            Some(RustField::new(
+                field_name,
+                field_type,
+                optional_field,
+                key,
+                rule_metadata,
+            ))
         })
         .collect();
     RustRecord { rep, fields }
@@ -1704,7 +1762,7 @@ fn parse_group_choice(
             );
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
             let record =
-                parse_record_from_group_choice(types, rep, parent_visitor, group_choice, cli);
+                parse_record_from_group_choice(types, rep, parent_visitor, name, group_choice, cli);
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
             RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
         }

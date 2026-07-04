@@ -1,0 +1,7 @@
+; A map with exactly ONE bareword-keyed field. A bareword key is sugar for the equivalent
+; text-string value key, so a single-field bareword map is a 1-field struct — the same wire shape
+; as the multi-field `{ a: uint, b: text }` form, just previously mis-detected as a table (panic
+; "unsupported table map key (1)"). The optional variant exercises an occurrence marker on the lone
+; field, which must behave like the multi-field optional form.
+single_field_map = { t: uint }
+single_field_map_opt = { ? t: uint }
