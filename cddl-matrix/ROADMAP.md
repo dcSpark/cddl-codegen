@@ -194,6 +194,10 @@ from a degenerate example.**
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
+- An occurrence marker other than `?` on a keyed struct-map field is **silently ignored**: `{ * t: uint }`
+  generates a single mandatory `pub t: u64` — the `*` is dropped rather than honored or rejected (same in
+  multi-field structs). Silently-wrong `ok`, so invisible to the generation-outcome catalogs; surfaced while
+  testing the single-field struct-map fix.
 - A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
