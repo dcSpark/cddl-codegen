@@ -11,9 +11,10 @@
 #
 # SEAM — the drift-check surfaced 7 constructs marked `unsupported` yet touched by a working fixture. On
 # investigation they split TWO ways (do NOT just edit the example to make the probe green — that hides gaps):
-#  * 3 were DEGENERATE-EXAMPLE artifacts: single-field / mixed maps hit ORTHOGONAL cddl-codegen bugs; the
-#    construct itself works. Fixed with minimal feature-isolating examples (memberkey.bareword,
-#    occur.optional -> single-field ARRAYS; type2.map -> a table) — now correctly `supported`.
+#  * 3 were DEGENERATE-EXAMPLE artifacts: the map shapes exercised properties ORTHOGONAL to the
+#    construct under test (e.g. mixed struct+table maps, still unsupported), so minimal
+#    feature-isolating examples are used (memberkey.bareword, occur.optional -> single-field ARRAYS;
+#    type2.map -> a table) — now correctly `supported`. (The construct itself always worked.)
 #  * 4 were GENUINE GAPS: top-level fixed-value / null types (`answer = 42`, `x = null`) panic — cddl-codegen
 #    only uses Fixed for serialization as a struct member, not as an exposed standalone type. These stay
 #    `unsupported`, REPORTED as real gaps (the ➖ notes below), not papered over. The corpus touches them
@@ -573,7 +574,7 @@ text = "Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so
 text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"
 
 [[finding]]
-text = "Bug — single-field STRUCT maps panic: `{ a: uint }` hits the table-detection path (`unsupported table map key`), so the minimal bareword-key / optional examples use single-field ARRAYS instead. Single-field structs should work."
+text = "Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both. Candidate cddl-codegen feature."
 
 [[finding]]
 text = "Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record."

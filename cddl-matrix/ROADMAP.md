@@ -169,10 +169,10 @@ from a degenerate example.**
   `@name`). The one exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the per-(feature,
   role) verdict genuinely differs, which is the whole point.
-- **Containment cell-example hygiene.** Enabling per-cell support exposed single-field-map cell examples that
-  confounded the panic reason. The `type2.map`-in-a-role cells (`array-element` / `cbor-payload` /
-  `choice-member` / `generic-arg` / `occurrence-target`) are 2-field, so they panic for the real
-  **anonymous-group** reason, not the single-field-map bug. No single-field struct-map cell example remains.
+- **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` / `cbor-payload` /
+  `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so any panic is
+  attributable to the real **anonymous-group** reason (an inline map inside a role needs a name), with no
+  single-field-map shape to confound it.
 - **Execution-gate (F3) — the support probe requires the generated crate's emitted tests to PASS, not just
   cddl-codegen exit 0.** The compile layer caught a false positive the exit-code probe had laundered:
   `x = any` exits 0 but emits `pub type X = Any;` (undefined type → won't compile), so `prelude.any` is
@@ -192,8 +192,8 @@ from a degenerate example.**
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
-- Single-field **struct** maps panic: `{ a: uint }` → `unsupported table map key`. Mixed struct+table maps
-  (`{ a: uint, * k => v }`) unsupported. Inline anonymous nested composites need a name.
+- Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
+  homogenous table, never both. Inline anonymous nested composites need a name.
 - A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
@@ -204,13 +204,6 @@ from a degenerate example.**
   bounds don't reach the field bounds check as `(Some,Some)`.
 - **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
   with no range check at all (bounds lost).
-- **Quoted text member keys emit invalid Rust.** `{ "a": uint }` generates the field `pub key_"a": u64` —
-  the quoted key takes the value-key naming path instead of the bareword-text path (the multi-field
-  bareword form `{ a: uint, b: text }`, the identical CBOR, works — the single-field bareword form
-  `{ a: uint }` independently panics, see the single-field struct-map note above). Caught loudly by
-  the rustfmt fail-loud gate at generation time. Surfaced while
-  authoring the canonical `mixed_len_keys` ordering fixture; related member-key notes:
-  `draft/cddl-bareword-member-key-bug.md`.
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
   *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
   length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any
@@ -260,8 +253,8 @@ stays a transparent `Vec`).
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
 enumerating?" and add a shape. Un-modelled but distinct (add when a consumer or regression appears): tagged
-`#6.n(...)` types; map-representation structs — the latter blocked on the bareword-member-key generation
-panic that forces the struct roles to use array-rep, so fixing that panic is a prerequisite.
+`#6.n(...)` types; map-representation structs (the struct roles currently use array-rep — bareword-keyed
+map structs now generate, so adding map-rep struct shapes is unblocked).
 
 **Behavioural upgrade — remaining state.** The wasm-side minted surface has landed: `--emit-tests
 --wasm=true` emits a `cddl_generated_wasm_tests` module (`src/emit_tests_wasm.rs`) that constructs through

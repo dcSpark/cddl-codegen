@@ -12,10 +12,11 @@ empty_array                ok
 empty_group                ok
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
-map_entry_no_key           PANIC
+map_entry_no_key           error (graceful)
+map_entry_no_key_single    error (graceful)
 prelude_biguint            ok
 self_recursive             ok
-single_bareword_map_field  PANIC
+single_bareword_map_field  ok
 undefined_generic          error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)

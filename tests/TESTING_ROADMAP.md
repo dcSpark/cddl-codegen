@@ -106,15 +106,6 @@ is still a default-profile claim — next-steps item 2 below.
    - **`bool_wrapper` JSON newtype** — blocked on generator bug #223 (bool newtype does not
      compile); the commented-out rule in `tests/json/input.cddl` carries the issue link. Unblocks
      only by fixing the generator.
-   - **Single-field bareword-keyed map structs panic generation** (`plain = { t: uint }` —
-     `parse_group`'s table detection only survives value-keys or 2+ fields; pinned by
-     `tests/robustness/single_bareword_map_field.cddl`). Support it (a 1-field struct) or reject
-     gracefully; either flips the pinned PANIC entry.
-   - **Keyless map entries panic instead of erroring** (`{ bytes, uint }` — rejected by design,
-     "map fields need keys", but via `panic!`; pinned by `tests/robustness/map_entry_no_key.cddl`).
-     Unlike the bareword case above the rejection itself is correct — the work is only a graceful
-     error. If support ever lands instead, add the `@name` coverage promised in
-     `tests/comment-dsl/tests.rs`.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
