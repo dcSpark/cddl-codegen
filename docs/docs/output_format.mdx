@@ -47,6 +47,9 @@ Every key falls into one of three categories:
   conditional dep is emitted when its flag/type condition holds and *removed* when it doesn't, so
   flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps it pulled in, rather
   than stranding them — note the removal deletes the whole entry, including any fields you added to it.
+  For the same reason, **regenerate with the same flags every time**: a regen that accidentally omits
+  a flag (e.g. forgetting `--wasm`) reads as "condition off" and removes that flag's conditional deps
+  from your manifest. Pin the full command in a script or Makefile.
 - **Seeded once.** `package.version` is written only if it's absent. After the initial `0.1.0`
   (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
   regenerations.
