@@ -88,6 +88,11 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   snapshots it asserts each conditional dep is present *exactly* when its flag/type condition holds —
   the absence half guards the manifest changeset's set-or-**remove** contract (a dep whose condition
   turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs`).
+  Its sibling `cargo_manifest_managed_key_ledger` enforces the changeset's append-only ledger
+  (`EVER_MANAGED_*` in `cargo_manifest.rs`): every key the tool has *ever* managed must stay
+  mentioned — re-emitted or explicitly tombstoned — so deleting a template line without adding a
+  tombstone (which would silently strand the stale key in existing user manifests) fails loudly
+  with the fix in the message.
 - **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
   combination (it ships verbatim into every crate but is assembled differently per flag).
 
