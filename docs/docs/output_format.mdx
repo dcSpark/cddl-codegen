@@ -34,11 +34,19 @@ Every key falls into one of three categories:
 - **Tool-owned (rewritten every run).** `package.name`, `package.edition`, `lib.crate-type`, and the
   entire `[dependencies]` set the generator emits (e.g. `cbor_event`, and the flag/type-conditional
   deps `linked-hash-map`, `derivative`, `serde`, `serde_json`, `schemars`, `hex`, `wasm-bindgen`,
-  `serde-wasm-bindgen`). The dependency set is version-coupled to the emitted code, so the tool must
-  keep it in sync — **your edits to these keys are overwritten by design** (the same contract
-  `cargo add` makes). A conditional dep is emitted when its flag/type condition holds and *removed*
-  when it doesn't, so flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps
-  it pulled in, rather than stranding them.
+  `serde-wasm-bindgen`). Non-dependency keys here are rewritten wholesale — **your edits to them are
+  overwritten by design** (the same contract `cargo add` makes). Dependency entries are **merged
+  field-level**, not clobbered: the tool owns the version *floor* (a compatible pin you wrote is kept
+  verbatim — caret semantics — while an incompatible one is bumped up to the tool's requirement), the
+  features it requires (unioned into your list, order preserved), and any field it sets (e.g. the
+  `path` on the wasm crate's path dep). Everything else on the entry — `optional`,
+  `default-features`, extra features, a `version` you added beside our `path` for publishing — is
+  preserved, and the entry keeps its existing shape (a plain-string dep stays a plain string unless a
+  merged field forces a table). This means, e.g., `wasm-bindgen = { version = "0.2.126", optional =
+  true }` survives regeneration with its `optional` intact instead of collapsing to `"0.2"`. A
+  conditional dep is emitted when its flag/type condition holds and *removed* when it doesn't, so
+  flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps it pulled in, rather
+  than stranding them — note the removal deletes the whole entry, including any fields you added to it.
 - **Seeded once.** `package.version` is written only if it's absent. After the initial `0.1.0`
   (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
   regenerations.

@@ -11,6 +11,12 @@
 //! The three op kinds are the per-field collision rules:
 //! * [`ManifestOp::Set`] — tool-owned key: written every run, overwriting whatever is there. User
 //!   edits to these are overwritten by design (the dep set is version-coupled to the emitted code).
+//!   The **one** exception is a `Set` whose path is exactly `["dependencies", <name>]`: those merge
+//!   FIELD-LEVEL into an existing entry ([`merge_dep_spec`]) instead of replacing it, so a user's
+//!   `optional`/`default-features`/extra features and a compatible version pin survive a regen while
+//!   the tool still owns the version floor, its required features, and any field it sets (e.g.
+//!   `path`). See [`merge_dep_spec`] for the exact merge contract. Every other `Set` path hard-
+//!   replaces as before.
 //! * [`ManifestOp::SeedOnce`] — written only if the key is absent (existence check only, never a
 //!   content read), so it stays on the safe side of the determinism line. `package.version` is the
 //!   one seeded key: the tool has no opinion on it after the initial `0.1.0`/`0.0.1`.
@@ -38,7 +44,7 @@
 
 use crate::cli::Cli;
 use crate::intermediate::{ConceptualRustType, IntermediateTypes, Primitive, RustStructType};
-use toml_edit::{DocumentMut, Entry, Item, Table};
+use toml_edit::{Array, DocumentMut, Entry, InlineTable, Item, Table, Value};
 
 /// A dotted key path into a TOML document, e.g. `["dependencies", "cbor_event"]`.
 pub type KeyPath = Vec<String>;
@@ -46,7 +52,9 @@ pub type KeyPath = Vec<String>;
 /// One declarative operation over a TOML key path. See the module docs for the collision contract.
 #[derive(Debug, Clone)]
 pub enum ManifestOp {
-    /// Tool-owned key: written every run, overwriting whatever value is there.
+    /// Tool-owned key: written every run, overwriting whatever value is there — EXCEPT a
+    /// `["dependencies", <name>]` path, which merges field-level into an existing entry
+    /// ([`merge_dep_spec`]) so a user's dep-spec shape survives regeneration.
     Set(Item),
     /// Written only if the key is absent (existence check only — never reads the existing value).
     SeedOnce(Item),
@@ -87,7 +95,19 @@ pub fn apply(
     };
     for (path, op) in ops {
         match op {
-            ManifestOp::Set(item) => set_leaf(&mut doc, path, item.clone()),
+            ManifestOp::Set(item) => {
+                // A `[dependencies].<name>` Set merges field-level into any existing entry (keeping
+                // the user's dep-spec shape); every other Set path hard-replaces.
+                let value = if is_dependency_entry(path) {
+                    match item_at(doc.as_table(), path) {
+                        Some(existing) => merge_dep_spec(existing, item),
+                        None => item.clone(),
+                    }
+                } else {
+                    item.clone()
+                };
+                set_leaf(&mut doc, path, value);
+            }
             ManifestOp::SeedOnce(item) => {
                 if item_at(doc.as_table(), path).is_none() {
                     set_leaf(&mut doc, path, item.clone());
@@ -174,6 +194,168 @@ fn remove_leaf(table: &mut Table, path: &[String]) {
             table.remove(seg);
         }
     }
+}
+
+// ---- dependency-spec merge ------------------------------------------------------------------
+
+/// Is `path` exactly `["dependencies", <name>]` — the one path class whose `Set` merges field-level
+/// rather than hard-replacing? Deeper paths (e.g. `dependencies.foo.version`) and everything else
+/// keep replace semantics.
+fn is_dependency_entry(path: &[String]) -> bool {
+    path.len() == 2 && path[0] == "dependencies"
+}
+
+/// The version field of a dep spec: the string itself for a plain-string shorthand (`"1.0"` is
+/// `{ version = "1.0" }`), else the `version` key of a table-like spec, if any.
+fn dep_version(item: &Item) -> Option<String> {
+    if let Some(s) = item.as_str() {
+        return Some(s.to_owned());
+    }
+    item.as_table_like()
+        .and_then(|t| t.get("version"))
+        .and_then(Item::as_str)
+        .map(str::to_owned)
+}
+
+/// The feature names of a dep spec (empty for a plain string or a spec with no `features` array).
+fn dep_feature_names(item: &Item) -> Vec<String> {
+    item.as_table_like()
+        .and_then(|t| t.get("features"))
+        .and_then(Item::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Does the user's concrete version pin satisfy the tool's version requirement? The tool spec parses
+/// as a cargo-default-caret [`semver::VersionReq`] (`"0.2"` → `^0.2`); the user string is stripped of
+/// a leading `^`/`=`, parsed as a [`semver::Version`] with missing minor/patch padded to `0`, and
+/// tested against the requirement. Anything the user wrote that isn't a plain (optionally caret/exact)
+/// version — a range, a wildcard, `*` — fails to parse and the tool's floor wins (the safe fallback).
+fn user_satisfies_tool(user: &str, tool: &str) -> bool {
+    let Ok(req) = semver::VersionReq::parse(tool) else {
+        return false;
+    };
+    let stripped = user
+        .strip_prefix('^')
+        .or_else(|| user.strip_prefix('='))
+        .unwrap_or(user);
+    let Some(version) = parse_padded_version(stripped) else {
+        return false;
+    };
+    req.matches(&version)
+}
+
+/// Parse a concrete version, padding a missing minor/patch to `0` (`"0.2"` → `0.2.0`). Returns `None`
+/// for anything that isn't a bare dotted numeric version (ranges, wildcards, pre-release soup).
+fn parse_padded_version(s: &str) -> Option<semver::Version> {
+    if let Ok(v) = semver::Version::parse(s) {
+        return Some(v);
+    }
+    let mut nums = Vec::with_capacity(3);
+    for part in s.split('.') {
+        nums.push(part.parse::<u64>().ok()?);
+    }
+    if nums.is_empty() || nums.len() > 3 {
+        return None;
+    }
+    while nums.len() < 3 {
+        nums.push(0);
+    }
+    Some(semver::Version::new(nums[0], nums[1], nums[2]))
+}
+
+/// Merge the tool's dep spec (`tool`) field-level onto the user's existing entry (`existing`, the
+/// BASE — its shape, field order and decor survive). Both a plain version string and an inline/header
+/// table are accepted on either side (`"1.0"` is shorthand for `{ version = "1.0" }`). The contract:
+/// * **version** — keep the user's verbatim if it satisfies the tool's requirement, else take the
+///   tool's ([`user_satisfies_tool`]). A tool spec with no version leaves the user's untouched.
+/// * **features** — union: the user's array (order + decor preserved) with any tool-required feature
+///   not already present appended. A tool spec with no features leaves the user's untouched.
+/// * **every other field the tool sets** (e.g. `path`) overwrites field-wise; **every user-only
+///   field** (`optional`, `default-features`, a `version` beside our `path`, anything else) survives.
+/// * **shape** — if the merge leaves only a `version` field and the user's entry was a plain string,
+///   emit a plain string (no spurious table-ification); otherwise a table on the user's existing shape.
+fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
+    let user_was_string = existing.as_str().is_some();
+
+    // Working base: the user's own table-like entry, or a fresh inline table seeded with the user's
+    // version string. All mutation happens through the `TableLike` view so header and inline tables
+    // are handled uniformly and the user's field order/decor is preserved.
+    let mut base: Item = if let Some(s) = existing.as_str() {
+        let mut t = InlineTable::new();
+        t.insert("version", Value::from(s));
+        Item::Value(Value::InlineTable(t))
+    } else {
+        existing.clone()
+    };
+
+    let user_version = dep_version(existing);
+    let merged_version = match (user_version.as_deref(), dep_version(tool).as_deref()) {
+        (Some(u), Some(t)) if !user_satisfies_tool(u, t) => Some(t.to_owned()),
+        (Some(u), _) => Some(u.to_owned()),
+        (None, t) => t.map(str::to_owned),
+    };
+
+    let user_features = dep_feature_names(existing);
+    let extra_features: Vec<String> = dep_feature_names(tool)
+        .into_iter()
+        .filter(|f| !user_features.contains(f))
+        .collect();
+
+    let table = base
+        .as_table_like_mut()
+        .expect("merge base is always a table-like item");
+
+    // version: only rewrite when it actually changes, so a kept pin retains the user's decor.
+    if merged_version != user_version
+        && let Some(v) = &merged_version
+    {
+        table.insert("version", Item::Value(Value::from(v.clone())));
+    }
+
+    // features union: extend the user's array in place, or create one from the tool's when the user
+    // had none. Nothing to do when there are no extra features to add.
+    if !extra_features.is_empty() {
+        match table.get_mut("features").and_then(Item::as_array_mut) {
+            Some(arr) => {
+                for f in &extra_features {
+                    arr.push(f.clone());
+                }
+            }
+            None => {
+                let mut arr = Array::new();
+                for f in &extra_features {
+                    arr.push(f.clone());
+                }
+                table.insert("features", Item::Value(Value::Array(arr)));
+            }
+        }
+    }
+
+    // every other field the tool sets overwrites field-wise; user-only fields are already in `base`.
+    if let Some(tool_table) = tool.as_table_like() {
+        for (key, val) in tool_table.iter() {
+            if key == "version" || key == "features" {
+                continue;
+            }
+            table.insert(key, val.clone());
+        }
+    }
+
+    // shape: a plain-string user entry stays a plain string iff the merge left only `version`.
+    if user_was_string {
+        let table = base.as_table_like().unwrap();
+        if table.len() == 1
+            && let Some(v) = table.get("version").and_then(Item::as_str)
+        {
+            return Item::Value(Value::from(v.to_owned()));
+        }
+    }
+    base
 }
 
 // ---- op builders ----------------------------------------------------------------------------
@@ -595,6 +777,196 @@ version = \"3.2.1\"
         assert!(
             err.to_string().contains("wasm/Cargo.toml"),
             "error display must name the file: {err}"
+        );
+    }
+
+    // ---- dependency-spec merge --------------------------------------------------------------
+
+    /// A user manifest shaped like cardano-multiplatform-lib's `[dependencies]` block — the deps
+    /// whose user-shaped specs a whole-value `Set` used to flatten. Used as the merge BASE.
+    fn cml_shaped_manifest() -> &'static str {
+        "\
+[dependencies]
+cbor_event = \"2.4.0\"
+wasm-bindgen = { version = \"0.2.126\", optional = true }
+serde_json = { version = \"1.0.57\", features = [\"arbitrary_precision\"] }
+serde = { version = \"1.0.152\", features = [\"derive\", \"rc\"] }
+linked-hash-map = \"0.5.6\"
+"
+    }
+
+    /// Apply a single `dependencies.<name>` Set to `existing` and return the merged entry's rendered
+    /// line (`name = ...`), for tight assertions on the merge outcome.
+    fn merged_dep(existing: &str, name: &str, tool_spec: &str) -> String {
+        let ops = vec![set(&["dependencies", name], tool_spec)];
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap(); // stays valid TOML
+        out.lines()
+            .find(|l| l.trim_start().starts_with(&format!("{name} = ")))
+            .unwrap_or_else(|| panic!("dep `{name}` missing from merge output:\n{out}"))
+            .to_owned()
+    }
+
+    #[test]
+    fn merge_preserves_optional_when_tool_flattens_version() {
+        // The exact reported CML failure: `Set` of the plain string "0.2" must NOT drop
+        // `optional = true` (which their `[features]` table references).
+        let line = merged_dep(cml_shaped_manifest(), "wasm-bindgen", "\"0.2\"");
+        assert!(line.contains("optional = true"), "optional dropped: {line}");
+        // compatible pin kept verbatim (0.2.126 satisfies ^0.2)
+        assert!(line.contains("0.2.126"), "user pin lost: {line}");
+    }
+
+    #[test]
+    fn merge_preserves_feature_when_tool_is_plain_string() {
+        // `serde_json` had `features = ["arbitrary_precision"]`; tool Set is a bare version string
+        // (no features) → the user's feature must survive.
+        let line = merged_dep(cml_shaped_manifest(), "serde_json", "\"1.0.57\"");
+        assert!(
+            line.contains("arbitrary_precision"),
+            "feature dropped: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_unions_features_user_order_first() {
+        // user ["derive", "rc"], tool { features = ["derive"] } → both, user order preserved.
+        let line = merged_dep(
+            cml_shaped_manifest(),
+            "serde",
+            "{ version = \"1.0\", features = [\"derive\"] }",
+        );
+        let derive = line.find("derive").unwrap();
+        let rc = line.find("rc").unwrap();
+        assert!(derive < rc, "user feature order not preserved: {line}");
+        // user's exact pin (satisfies ^1.0) is kept
+        assert!(line.contains("1.0.152"), "user pin lost: {line}");
+    }
+
+    #[test]
+    fn merge_unions_features_appends_new_tool_feature() {
+        let line = merged_dep(
+            "[dependencies]\nserde = { version = \"1.0\", features = [\"derive\"] }\n",
+            "serde",
+            "{ version = \"1.0\", features = [\"derive\", \"rc\"] }",
+        );
+        assert!(
+            line.contains("derive") && line.contains("rc"),
+            "tool feature not appended: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_keeps_compatible_pin() {
+        // user 0.5.6 satisfies ^0.5.3 → kept.
+        let line = merged_dep(cml_shaped_manifest(), "linked-hash-map", "\"0.5.3\"");
+        assert!(line.contains("0.5.6"), "compatible pin not kept: {line}");
+        assert!(!line.contains("0.5.3"), "tool floor leaked in: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_incompatible_pin() {
+        // user 0.4.0 does NOT satisfy ^0.4.3 → tool wins.
+        let line = merged_dep("[dependencies]\nfoo = \"0.4.0\"\n", "foo", "\"0.4.3\"");
+        assert!(
+            line.contains("0.4.3"),
+            "incompatible pin not bumped: {line}"
+        );
+        assert!(!line.contains("0.4.0"), "stale pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_newer_major_down_to_tool() {
+        // user 2.0 does NOT satisfy ^1.0 → tool wins.
+        let line = merged_dep("[dependencies]\nfoo = \"2.0\"\n", "foo", "\"1.0\"");
+        assert!(line.contains("1.0"), "tool floor not applied: {line}");
+        assert!(!line.contains("2.0"), "newer-major pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_unparseable_user_version_takes_tool() {
+        // a wildcard the user wrote can't be parsed as a concrete version → tool's floor wins.
+        let line = merged_dep("[dependencies]\nfoo = \"1.*\"\n", "foo", "\"1.2.3\"");
+        assert!(line.contains("1.2.3"), "tool floor not applied: {line}");
+        assert!(!line.contains("1.*"), "unparseable pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_plain_string_stays_plain_string() {
+        // plain-string user + plain-string tool + compatible → stays a bare string (user's).
+        let line = merged_dep(
+            "[dependencies]\ncbor_event = \"2.4.0\"\n",
+            "cbor_event",
+            "\"2.4.0\"",
+        );
+        assert_eq!(
+            line.trim(),
+            "cbor_event = \"2.4.0\"",
+            "spurious table-ify: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_tool_path_field_wins_user_version_preserved() {
+        // user added a `version` beside our path dep (for publishing); tool sets only `path`.
+        // tool's path wins field-wise, the user's version field survives.
+        let existing = "[dependencies]\ncddl-lib = { path = \"../old\", version = \"1.2.3\" }\n";
+        let line = merged_dep(existing, "cddl-lib", "{ path = \"../rust\" }");
+        assert!(
+            line.contains("path = \"../rust\""),
+            "tool path not applied: {line}"
+        );
+        assert!(
+            line.contains("version = \"1.2.3\""),
+            "user version dropped: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_only_applies_to_dependency_entries() {
+        // a non-`dependencies` Set still hard-replaces, even a compatible-looking one.
+        let existing = "[package]\nedition = \"2021\"\n";
+        let ops = vec![set(&["package", "edition"], "\"2024\"")];
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        assert!(
+            out.contains("edition = \"2024\""),
+            "hard-replace lost: {out}"
+        );
+        assert!(!out.contains("2021"), "old value survived: {out}");
+    }
+
+    #[test]
+    fn merge_result_is_idempotent() {
+        // applying the same Set ops to the merge's own output is a byte-identical fixed point.
+        let ops = vec![
+            set(&["dependencies", "wasm-bindgen"], "\"0.2\""),
+            set(&["dependencies", "serde_json"], "\"1.0.57\""),
+            set(
+                &["dependencies", "serde"],
+                "{ version = \"1.0\", features = [\"derive\"] }",
+            ),
+            set(&["dependencies", "linked-hash-map"], "\"0.5.3\""),
+        ];
+        let first = apply(&ops, Some(cml_shaped_manifest()), "rust/Cargo.toml").unwrap();
+        let second = apply(&ops, Some(&first), "rust/Cargo.toml").unwrap();
+        assert_eq!(
+            first, second,
+            "merge output must be a fixed point:\n{first}"
+        );
+    }
+
+    #[test]
+    fn merge_no_existing_entry_writes_tool_spec_verbatim() {
+        // fresh (no existing entry) → tool spec verbatim, unchanged from today's Set behavior.
+        let out = apply(
+            &[set(&["dependencies", "new-dep"], "\"1.0\"")],
+            Some("[dependencies]\n"),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            out.contains("new-dep = \"1.0\""),
+            "verbatim write lost: {out}"
         );
     }
 

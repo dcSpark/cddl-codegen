@@ -1490,11 +1490,22 @@ fn cargo_manifest_disk_round_trip() {
     );
 
     // Hand-edit: bump the seeded version, tamper the stamp, add a user dep with an inline comment,
-    // and prepend a top-of-file comment. All but the stamp must survive; the stamp must be restored.
+    // prepend a top-of-file comment, and reshape the tool-owned `cbor_event` dep into a table that
+    // adds an `optional = false` field with a still-compatible pin. All but the stamp must survive
+    // (the reshape exercises the field-level dep merge on a real disk round trip); the stamp must be
+    // restored.
+    assert!(
+        first.contains("cbor_event = \"2.4.0\""),
+        "expected the plain-string cbor_event dep to reshape:\n{first}"
+    );
     let edited = format!(
         "# hand-written top comment\n{}\nanyhow = \"1\" # user pin\n",
         first
             .replace("version = \"0.1.0\"", "version = \"9.9.9\"")
+            .replace(
+                "cbor_event = \"2.4.0\"",
+                "cbor_event = { version = \"2.4.0\", optional = false }",
+            )
             .replace(
                 &format!("generated-with = \"{tool_version}\""),
                 "generated-with = \"0.0.0-tampered\"",
@@ -1528,6 +1539,16 @@ fn cargo_manifest_disk_round_trip() {
     assert!(
         second.contains("cbor_event"),
         "tool-owned dep must persist:\n{second}"
+    );
+    // the user's reshape (optional field + inline-table shape) survives the field-level dep merge,
+    // and the still-compatible pin is kept rather than flattened back to a bare string.
+    assert!(
+        second.contains("optional = false"),
+        "user-added dep field must survive the dep merge:\n{second}"
+    );
+    assert!(
+        second.contains("version = \"2.4.0\""),
+        "compatible pin must be kept on the merged dep:\n{second}"
     );
 
     // Third run: byte-identical fixed point.
