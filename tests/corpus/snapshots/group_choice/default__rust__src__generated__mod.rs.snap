@@ -1,0 +1,31 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub enum GroupChoice {
+    GroupChoice0(u64),
+    GroupChoice1(String),
+}
+
+impl GroupChoice {
+    pub fn new_group_choice0(index_1: u64) -> Self {
+        Self::GroupChoice0(index_1)
+    }
+
+    pub fn new_group_choice1(index_1: String) -> Self {
+        Self::GroupChoice1(index_1)
+    }
+}

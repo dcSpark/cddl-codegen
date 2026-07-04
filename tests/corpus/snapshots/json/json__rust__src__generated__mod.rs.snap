@@ -1,0 +1,678 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct BytesWrapper(Vec<u8>);
+
+impl BytesWrapper {
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for BytesWrapper {
+    fn from(inner: Vec<u8>) -> Self {
+        BytesWrapper::new(inner)
+    }
+}
+
+impl From<BytesWrapper> for Vec<u8> {
+    fn from(wrapper: BytesWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for BytesWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for BytesWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        hex::decode(&s).map(BytesWrapper::new).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
+        })
+    }
+}
+
+impl schemars::JsonSchema for BytesWrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("BytesWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct CustomWrapper(u64);
+
+impl CustomWrapper {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for CustomWrapper {
+    fn from(inner: u64) -> Self {
+        CustomWrapper::new(inner)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct I16Wrapper(i16);
+
+impl I16Wrapper {
+    pub fn new(inner: i16) -> Result<Self, DeserializeError> {
+        if inner < -32768 || inner > 32767 {
+            return Err(DeserializeError::new(
+                "I16Wrapper",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-32768),
+                    max: Some(32767),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i16> for I16Wrapper {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i16) -> Result<Self, Self::Error> {
+        I16Wrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for I16Wrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for I16Wrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <i16 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::new(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid I16Wrapper",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for I16Wrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("I16Wrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <i16 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <i16 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct I64Wrapper(i64);
+
+impl I64Wrapper {
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -9223372036854775808 || inner > 9223372036854775807 {
+            return Err(DeserializeError::new(
+                "I64Wrapper",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-9223372036854775808),
+                    max: Some(9223372036854775807),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i64> for I64Wrapper {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        I64Wrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for I64Wrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for I64Wrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <i64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::new(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid I64Wrapper",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for I64Wrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("I64Wrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <i64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <i64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl serde::Serialize for Int {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Int {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        std::str::FromStr::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
+        })
+    }
+}
+
+impl schemars::JsonSchema for Int {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Int")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        String::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        String::inline_schema()
+    }
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl std::fmt::Display for Int {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl std::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).abs()).map(Self::Nint)
+        }
+    }
+}
+
+impl From<IntWrapper> for Int {
+    fn from(wrapper: IntWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(std::num::TryFromIntError),
+    Parsing(std::num::ParseIntError),
+}
+
+#[derive(Clone, Debug)]
+pub struct IntWrapper(Int);
+
+impl IntWrapper {
+    pub fn new(inner: Int) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Int> for IntWrapper {
+    fn from(inner: Int) -> Self {
+        IntWrapper::new(inner.clone().into())
+    }
+}
+
+impl serde::Serialize for IntWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Int as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for IntWrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("IntWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Int as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Int as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct NintWrapper(u64);
+
+impl NintWrapper {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for NintWrapper {
+    fn from(inner: u64) -> Self {
+        NintWrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for NintWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NintWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for NintWrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("NintWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StrWrapper(String);
+
+impl StrWrapper {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for StrWrapper {
+    fn from(inner: String) -> Self {
+        StrWrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for StrWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for StrWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for StrWrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("StrWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<StrWrapper> for String {
+    fn from(wrapper: StrWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StructWrapper(U64Wrapper);
+
+impl StructWrapper {
+    pub fn new(inner: U64Wrapper) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<U64Wrapper> for StructWrapper {
+    fn from(inner: U64Wrapper) -> Self {
+        StructWrapper::new(inner.clone().into())
+    }
+}
+
+impl serde::Serialize for StructWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for StructWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <U64Wrapper as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for StructWrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("StructWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <U64Wrapper as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <U64Wrapper as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+pub type Table = BTreeMap<String, u64>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct TableHolder {
+    pub t: Table,
+}
+
+impl TableHolder {
+    pub fn new(t: Table) -> Self {
+        Self { t }
+    }
+}
+
+pub type TextList = Vec<String>;
+
+#[derive(Clone, Debug, Copy)]
+pub struct U64Wrapper(u64);
+
+impl From<StructWrapper> for U64Wrapper {
+    fn from(wrapper: StructWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl U64Wrapper {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for U64Wrapper {
+    fn from(inner: u64) -> Self {
+        U64Wrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for U64Wrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for U64Wrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for U64Wrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("U64Wrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct U8Wrapper(u8);
+
+impl U8Wrapper {
+    pub fn new(inner: u8) -> Result<Self, DeserializeError> {
+        if inner > 255 {
+            return Err(DeserializeError::new(
+                "U8Wrapper",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(0),
+                    max: Some(255),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u8> for U8Wrapper {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u8) -> Result<Self, Self::Error> {
+        U8Wrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for U8Wrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for U8Wrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u8 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::new(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Unsigned(inner as u64),
+                &"invalid U8Wrapper",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for U8Wrapper {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("U8Wrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u8 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u8 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<I16Wrapper> for i16 {
+    fn from(wrapper: I16Wrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<I64Wrapper> for i64 {
+    fn from(wrapper: I64Wrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<CustomWrapper> for u64 {
+    fn from(wrapper: CustomWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintWrapper> for u64 {
+    fn from(wrapper: NintWrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<U64Wrapper> for u64 {
+    fn from(wrapper: U64Wrapper) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<U8Wrapper> for u8 {
+    fn from(wrapper: U8Wrapper) -> Self {
+        wrapper.0
+    }
+}

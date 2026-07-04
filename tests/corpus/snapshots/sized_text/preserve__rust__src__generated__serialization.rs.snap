@@ -1,0 +1,51 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for SizedText {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_text_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for SizedText {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (inner, inner_encoding) = raw
+            .text_sz()
+            .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+        if inner.len() < 1 || inner.len() > 16 {
+            return Err(DeserializeError::new(
+                "SizedText",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(1),
+                    max: Some(16),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: Some(SizedTextEncoding { inner_encoding }),
+        })
+    }
+}

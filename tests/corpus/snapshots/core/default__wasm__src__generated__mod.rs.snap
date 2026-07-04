@@ -1,0 +1,4211 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub use cddl_lib::CEnum;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct A(cddl_lib::A);
+
+#[wasm_bindgen]
+impl A {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<A, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Result<A, JsError> {
+        cddl_lib::A::new(a, b).map(Into::into).map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::A> for A {
+    fn from(native: cddl_lib::A) -> Self {
+        Self(native)
+    }
+}
+
+impl From<A> for cddl_lib::A {
+    fn from(wasm: A) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::A> for A {
+    fn as_ref(&self) -> &cddl_lib::A {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrayOptFields(cddl_lib::ArrayOptFields);
+
+#[wasm_bindgen]
+impl ArrayOptFields {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrayOptFields, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn set_a(&mut self, a: u64) {
+        self.0.a = Some(a)
+    }
+
+    pub fn a(&self) -> Option<u64> {
+        self.0.a
+    }
+
+    pub fn set_b(&mut self, b: String) {
+        self.0.b = Some(b)
+    }
+
+    pub fn b(&self) -> Option<String> {
+        self.0.b.clone()
+    }
+
+    pub fn c(&self) -> u64 {
+        self.0.c
+    }
+
+    pub fn set_d(&mut self, d: String) {
+        self.0.d = Some(d)
+    }
+
+    pub fn d(&self) -> Option<String> {
+        self.0.d.clone()
+    }
+
+    pub fn set_e(&mut self, e: &NonOverlappingTypeChoiceSome) {
+        self.0.e = Some(e.clone().into())
+    }
+
+    pub fn e(&self) -> Option<NonOverlappingTypeChoiceSome> {
+        self.0.e.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(c: u64) -> Self {
+        Self(cddl_lib::ArrayOptFields::new(c))
+    }
+}
+
+impl From<cddl_lib::ArrayOptFields> for ArrayOptFields {
+    fn from(native: cddl_lib::ArrayOptFields) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrayOptFields> for cddl_lib::ArrayOptFields {
+    fn from(wasm: ArrayOptFields) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrayOptFields> for ArrayOptFields {
+    fn as_ref(&self) -> &cddl_lib::ArrayOptFields {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bar(cddl_lib::Bar);
+
+#[wasm_bindgen]
+impl Bar {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Bar, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> Foo {
+        self.0.foo.clone().into()
+    }
+
+    pub fn set_derp(&mut self, derp: u64) {
+        self.0.derp = Some(derp)
+    }
+
+    pub fn derp(&self) -> Option<u64> {
+        self.0.derp
+    }
+
+    pub fn one(&self) -> Option<u64> {
+        self.0.one
+    }
+
+    pub fn set_key_5(&mut self, key_5: String) {
+        self.0.key_5 = Some(key_5)
+    }
+
+    pub fn key_5(&self) -> Option<String> {
+        self.0.key_5.clone()
+    }
+
+    pub fn float(&self) -> f64 {
+        self.0.float
+    }
+
+    pub fn new(foo: &Foo, one: Option<u64>, float: f64) -> Self {
+        Self(cddl_lib::Bar::new(foo.clone().into(), one, float))
+    }
+}
+
+impl From<cddl_lib::Bar> for Bar {
+    fn from(native: cddl_lib::Bar) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bar> for cddl_lib::Bar {
+    fn from(wasm: Bar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Bar> for Bar {
+    fn as_ref(&self) -> &cddl_lib::Bar {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Basic(cddl_lib::Basic);
+
+#[wasm_bindgen]
+impl Basic {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Basic, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::Basic::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Basic> for Basic {
+    fn from(native: cddl_lib::Basic) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Basic> for cddl_lib::Basic {
+    fn from(wasm: Basic) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Basic> for Basic {
+    fn as_ref(&self) -> &cddl_lib::Basic {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BasicArr(cddl_lib::BasicArr);
+
+#[wasm_bindgen]
+impl BasicArr {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BasicArr, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn basic(&self) -> Basic {
+        self.0.basic.clone().into()
+    }
+
+    pub fn new(basic: &Basic) -> Self {
+        Self(cddl_lib::BasicArr::new(basic.clone().into()))
+    }
+}
+
+impl From<cddl_lib::BasicArr> for BasicArr {
+    fn from(native: cddl_lib::BasicArr) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BasicArr> for cddl_lib::BasicArr {
+    fn from(wasm: BasicArr) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BasicArr> for BasicArr {
+    fn as_ref(&self) -> &cddl_lib::BasicArr {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bounds(cddl_lib::Bounds);
+
+#[wasm_bindgen]
+impl Bounds {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Bounds, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn w(&self) -> i64 {
+        self.0.w
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn y(&self) -> u64 {
+        self.0.y
+    }
+
+    pub fn z(&self) -> String {
+        self.0.z.clone()
+    }
+
+    pub fn a(&self) -> Vec<u64> {
+        self.0.a.clone()
+    }
+
+    pub fn b(&self) -> MapU64ToU64 {
+        self.0.b.clone().into()
+    }
+
+    pub fn new(
+        w: i64,
+        x: u64,
+        y: u64,
+        z: String,
+        a: Vec<u64>,
+        b: &MapU64ToU64,
+    ) -> Result<Bounds, JsError> {
+        cddl_lib::Bounds::new(w, x, y, z, a, b.clone().into())
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::Bounds> for Bounds {
+    fn from(native: cddl_lib::Bounds) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bounds> for cddl_lib::Bounds {
+    fn from(wasm: Bounds) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Bounds> for Bounds {
+    fn as_ref(&self) -> &cddl_lib::Bounds {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoundsGroupChoice(cddl_lib::BoundsGroupChoice);
+
+#[wasm_bindgen]
+impl BoundsGroupChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoundsGroupChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_a(a: u64, b: String) -> Result<BoundsGroupChoice, JsError> {
+        cddl_lib::BoundsGroupChoice::new_a(a, b)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn new_b(b: &Hash) -> Self {
+        Self(cddl_lib::BoundsGroupChoice::new_b(b.clone().into()))
+    }
+
+    pub fn new_c(x: &Hash, y: &Hash) -> Self {
+        Self(cddl_lib::BoundsGroupChoice::new_c(
+            x.clone().into(),
+            y.clone().into(),
+        ))
+    }
+
+    pub fn kind(&self) -> BoundsGroupChoiceKind {
+        match &self.0 {
+            cddl_lib::BoundsGroupChoice::A(_) => BoundsGroupChoiceKind::A,
+            cddl_lib::BoundsGroupChoice::B(_) => BoundsGroupChoiceKind::B,
+            cddl_lib::BoundsGroupChoice::C(_) => BoundsGroupChoiceKind::C,
+        }
+    }
+
+    pub fn as_a(&self) -> Option<A> {
+        match &self.0 {
+            cddl_lib::BoundsGroupChoice::A(a) => Some(a.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<Hash> {
+        match &self.0 {
+            cddl_lib::BoundsGroupChoice::B(b) => Some(b.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_c(&self) -> Option<C> {
+        match &self.0 {
+            cddl_lib::BoundsGroupChoice::C(c) => Some(c.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::BoundsGroupChoice> for BoundsGroupChoice {
+    fn from(native: cddl_lib::BoundsGroupChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoundsGroupChoice> for cddl_lib::BoundsGroupChoice {
+    fn from(wasm: BoundsGroupChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoundsGroupChoice> for BoundsGroupChoice {
+    fn as_ref(&self) -> &cddl_lib::BoundsGroupChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BoundsGroupChoiceKind {
+    A,
+    B,
+    C,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoundsTypeChoice(cddl_lib::BoundsTypeChoice);
+
+#[wasm_bindgen]
+impl BoundsTypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoundsTypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Result<BoundsTypeChoice, JsError> {
+        cddl_lib::BoundsTypeChoice::new_bytes(bytes)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn new_text(text: String) -> Result<BoundsTypeChoice, JsError> {
+        cddl_lib::BoundsTypeChoice::new_text(text)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn kind(&self) -> BoundsTypeChoiceKind {
+        match &self.0 {
+            cddl_lib::BoundsTypeChoice::Bytes(_) => BoundsTypeChoiceKind::Bytes,
+            cddl_lib::BoundsTypeChoice::Text(_) => BoundsTypeChoiceKind::Text,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::BoundsTypeChoice::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::BoundsTypeChoice::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::BoundsTypeChoice> for BoundsTypeChoice {
+    fn from(native: cddl_lib::BoundsTypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoundsTypeChoice> for cddl_lib::BoundsTypeChoice {
+    fn from(wasm: BoundsTypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoundsTypeChoice> for BoundsTypeChoice {
+    fn as_ref(&self) -> &cddl_lib::BoundsTypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BoundsTypeChoiceKind {
+    Bytes,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesUint(cddl_lib::BytesUint);
+
+#[wasm_bindgen]
+impl BytesUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> Vec<u8> {
+        self.0.index_0.clone()
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn new(index_0: Vec<u8>, index_1: u64) -> Self {
+        Self(cddl_lib::BytesUint::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::BytesUint> for BytesUint {
+    fn from(native: cddl_lib::BytesUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesUint> for cddl_lib::BytesUint {
+    fn from(wasm: BytesUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesUint> for BytesUint {
+    fn as_ref(&self) -> &cddl_lib::BytesUint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct C(cddl_lib::C);
+
+#[wasm_bindgen]
+impl C {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<C, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> Hash {
+        self.0.x.clone().into()
+    }
+
+    pub fn y(&self) -> Hash {
+        self.0.y.clone().into()
+    }
+
+    pub fn new(x: &Hash, y: &Hash) -> Self {
+        Self(cddl_lib::C::new(x.clone().into(), y.clone().into()))
+    }
+}
+
+impl From<cddl_lib::C> for C {
+    fn from(native: cddl_lib::C) -> Self {
+        Self(native)
+    }
+}
+
+impl From<C> for cddl_lib::C {
+    fn from(wasm: C) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::C> for C {
+    fn as_ref(&self) -> &cddl_lib::C {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CasingTest(cddl_lib::CasingTest);
+
+#[wasm_bindgen]
+impl CasingTest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CasingTest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_nft() -> Self {
+        Self(cddl_lib::CasingTest::new_nft())
+    }
+
+    pub fn new_ip_address() -> Self {
+        Self(cddl_lib::CasingTest::new_ip_address())
+    }
+
+    pub fn new_shelley_ma() -> Self {
+        Self(cddl_lib::CasingTest::new_shelley_ma())
+    }
+
+    pub fn new_vrf_vkey() -> Self {
+        Self(cddl_lib::CasingTest::new_vrf_vkey())
+    }
+
+    pub fn kind(&self) -> CasingTestKind {
+        match &self.0 {
+            cddl_lib::CasingTest::NFT => CasingTestKind::NFT,
+            cddl_lib::CasingTest::IPAddress => CasingTestKind::IPAddress,
+            cddl_lib::CasingTest::ShelleyMA => CasingTestKind::ShelleyMA,
+            cddl_lib::CasingTest::VRFVkey => CasingTestKind::VRFVkey,
+        }
+    }
+}
+
+impl From<cddl_lib::CasingTest> for CasingTest {
+    fn from(native: cddl_lib::CasingTest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CasingTest> for cddl_lib::CasingTest {
+    fn from(wasm: CasingTest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CasingTest> for CasingTest {
+    fn as_ref(&self) -> &cddl_lib::CasingTest {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum CasingTestKind {
+    NFT,
+    IPAddress,
+    ShelleyMA,
+    VRFVkey,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborInCbor(cddl_lib::CborInCbor);
+
+#[wasm_bindgen]
+impl CborInCbor {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborInCbor, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo_bytes(&self) -> FooBytes {
+        self.0.foo_bytes.clone().into()
+    }
+
+    pub fn uint_bytes(&self) -> u64 {
+        self.0.uint_bytes
+    }
+
+    pub fn tagged_foo_bytes(&self) -> TaggedFooBytes {
+        self.0.tagged_foo_bytes.clone().into()
+    }
+
+    pub fn new(foo_bytes: &FooBytes, uint_bytes: u64, tagged_foo_bytes: &TaggedFooBytes) -> Self {
+        Self(cddl_lib::CborInCbor::new(
+            foo_bytes.clone().into(),
+            uint_bytes,
+            tagged_foo_bytes.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::CborInCbor> for CborInCbor {
+    fn from(native: cddl_lib::CborInCbor) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborInCbor> for cddl_lib::CborInCbor {
+    fn from(wasm: CborInCbor) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborInCbor> for CborInCbor {
+    fn as_ref(&self) -> &cddl_lib::CborInCbor {
+        &self.0
+    }
+}
+
+pub type CustomBytes = Vec<u8>;
+
+pub type DefaultUint = u64;
+
+/// struct documentation here
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Docs(cddl_lib::Docs);
+
+#[wasm_bindgen]
+impl Docs {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Docs, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> String {
+        self.0.foo.clone()
+    }
+
+    pub fn bar(&self) -> u64 {
+        self.0.bar
+    }
+
+    /// * `foo` - this is a field-level comment
+    /// * `bar` - bar is a u64
+    pub fn new(foo: String, bar: u64) -> Self {
+        Self(cddl_lib::Docs::new(foo, bar))
+    }
+}
+
+impl From<cddl_lib::Docs> for Docs {
+    fn from(native: cddl_lib::Docs) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Docs> for cddl_lib::Docs {
+    fn from(wasm: Docs) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Docs> for Docs {
+    fn as_ref(&self) -> &cddl_lib::Docs {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DocsGroupchoice(cddl_lib::DocsGroupchoice);
+
+#[wasm_bindgen]
+impl DocsGroupchoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DocsGroupchoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    /// comment-about-first
+    pub fn new_first(index_1: u64) -> Self {
+        Self(cddl_lib::DocsGroupchoice::new_first(index_1))
+    }
+
+    /// comments about second
+    pub fn new_second(second: String) -> Self {
+        Self(cddl_lib::DocsGroupchoice::new_second(second))
+    }
+
+    pub fn kind(&self) -> DocsGroupchoiceKind {
+        match &self.0 {
+            cddl_lib::DocsGroupchoice::First(_) => DocsGroupchoiceKind::First,
+            cddl_lib::DocsGroupchoice::Second(_) => DocsGroupchoiceKind::Second,
+        }
+    }
+
+    pub fn as_first(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::DocsGroupchoice::First(index_1) => Some(*index_1),
+            _ => None,
+        }
+    }
+
+    pub fn as_second(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::DocsGroupchoice::Second(second) => Some(second.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::DocsGroupchoice> for DocsGroupchoice {
+    fn from(native: cddl_lib::DocsGroupchoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DocsGroupchoice> for cddl_lib::DocsGroupchoice {
+    fn from(wasm: DocsGroupchoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DocsGroupchoice> for DocsGroupchoice {
+    fn as_ref(&self) -> &cddl_lib::DocsGroupchoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum DocsGroupchoiceKind {
+    First,
+    Second,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Ed(cddl_lib::Ed);
+
+#[wasm_bindgen]
+impl Ed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Ed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn set_index_2(&mut self, index_2: String) {
+        self.0.index_2 = Some(index_2)
+    }
+
+    pub fn index_2(&self) -> Option<String> {
+        self.0.index_2.clone()
+    }
+
+    pub fn new(index_1: u64) -> Self {
+        Self(cddl_lib::Ed::new(index_1))
+    }
+}
+
+impl From<cddl_lib::Ed> for Ed {
+    fn from(native: cddl_lib::Ed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Ed> for cddl_lib::Ed {
+    fn from(wasm: Ed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Ed> for Ed {
+    fn as_ref(&self) -> &cddl_lib::Ed {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Ee(cddl_lib::Ee);
+
+#[wasm_bindgen]
+impl Ee {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Ee, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn set_index_2(&mut self, index_2: Vec<u8>) {
+        self.0.index_2 = Some(index_2)
+    }
+
+    pub fn index_2(&self) -> Option<Vec<u8>> {
+        self.0.index_2.clone()
+    }
+
+    pub fn index_3(&self) -> u64 {
+        self.0.index_3
+    }
+
+    pub fn new(index_1: u64, index_3: u64) -> Self {
+        Self(cddl_lib::Ee::new(index_1, index_3))
+    }
+}
+
+impl From<cddl_lib::Ee> for Ee {
+    fn from(native: cddl_lib::Ee) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Ee> for cddl_lib::Ee {
+    fn from(wasm: Ee) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Ee> for Ee {
+    fn as_ref(&self) -> &cddl_lib::Ee {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct EmbeddedTable(cddl_lib::EmbeddedTable);
+
+#[wasm_bindgen]
+impl EmbeddedTable {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::EmbeddedTable> for EmbeddedTable {
+    fn from(native: cddl_lib::EmbeddedTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<EmbeddedTable> for cddl_lib::EmbeddedTable {
+    fn from(wasm: EmbeddedTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::EmbeddedTable> for EmbeddedTable {
+    fn as_ref(&self) -> &cddl_lib::EmbeddedTable {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct EmbeddedText(cddl_lib::EmbeddedText);
+
+#[wasm_bindgen]
+impl EmbeddedText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> TextList {
+        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+impl From<cddl_lib::EmbeddedText> for EmbeddedText {
+    fn from(native: cddl_lib::EmbeddedText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<EmbeddedText> for cddl_lib::EmbeddedText {
+    fn from(wasm: EmbeddedText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::EmbeddedText> for EmbeddedText {
+    fn as_ref(&self) -> &cddl_lib::EmbeddedText {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct EnumOptEmbedFields(cddl_lib::EnumOptEmbedFields);
+
+#[wasm_bindgen]
+impl EnumOptEmbedFields {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<EnumOptEmbedFields, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_ea() -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_ea())
+    }
+
+    pub fn new_eb(index_1: Option<String>) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_eb(index_1))
+    }
+
+    pub fn new_ec(index_1: u64) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_ec(index_1))
+    }
+
+    pub fn new_ed(index_1: u64) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_ed(index_1))
+    }
+
+    pub fn new_ee(index_1: u64, index_3: u64) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_ee(index_1, index_3))
+    }
+
+    pub fn new_ef(non_overlapping_type_choice_some: Option<NonOverlappingTypeChoiceSome>) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_ef(
+            non_overlapping_type_choice_some.map(Into::into),
+        ))
+    }
+
+    pub fn new_eg(overlapping_inlined: Option<OverlappingInlined>) -> Self {
+        Self(cddl_lib::EnumOptEmbedFields::new_eg(
+            overlapping_inlined.map(Into::into),
+        ))
+    }
+
+    pub fn kind(&self) -> EnumOptEmbedFieldsKind {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Ea => EnumOptEmbedFieldsKind::Ea,
+            cddl_lib::EnumOptEmbedFields::Eb(_) => EnumOptEmbedFieldsKind::Eb,
+            cddl_lib::EnumOptEmbedFields::Ec(_) => EnumOptEmbedFieldsKind::Ec,
+            cddl_lib::EnumOptEmbedFields::Ed(_) => EnumOptEmbedFieldsKind::Ed,
+            cddl_lib::EnumOptEmbedFields::Ee(_) => EnumOptEmbedFieldsKind::Ee,
+            cddl_lib::EnumOptEmbedFields::Ef(_) => EnumOptEmbedFieldsKind::Ef,
+            cddl_lib::EnumOptEmbedFields::Eg(_) => EnumOptEmbedFieldsKind::Eg,
+        }
+    }
+
+    /// Returns None if not Eb variant OR it is but it's set to None
+    /// This is to get around wasm_bindgen not supporting Option<Option<T>>
+    pub fn as_eb(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Eb(index_1) => index_1.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn as_ec(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Ec(index_1) => Some(*index_1),
+            _ => None,
+        }
+    }
+
+    pub fn as_ed(&self) -> Option<Ed> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Ed(ed) => Some(ed.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_ee(&self) -> Option<Ee> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Ee(ee) => Some(ee.clone().into()),
+            _ => None,
+        }
+    }
+
+    /// Returns None if not Ef variant OR it is but it's set to None
+    /// This is to get around wasm_bindgen not supporting Option<Option<T>>
+    pub fn as_ef(&self) -> Option<NonOverlappingTypeChoiceSome> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Ef(non_overlapping_type_choice_some) => {
+                non_overlapping_type_choice_some
+                    .clone()
+                    .map(std::convert::Into::into)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns None if not Eg variant OR it is but it's set to None
+    /// This is to get around wasm_bindgen not supporting Option<Option<T>>
+    pub fn as_eg(&self) -> Option<OverlappingInlined> {
+        match &self.0 {
+            cddl_lib::EnumOptEmbedFields::Eg(overlapping_inlined) => {
+                overlapping_inlined.clone().map(std::convert::Into::into)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::EnumOptEmbedFields> for EnumOptEmbedFields {
+    fn from(native: cddl_lib::EnumOptEmbedFields) -> Self {
+        Self(native)
+    }
+}
+
+impl From<EnumOptEmbedFields> for cddl_lib::EnumOptEmbedFields {
+    fn from(wasm: EnumOptEmbedFields) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::EnumOptEmbedFields> for EnumOptEmbedFields {
+    fn as_ref(&self) -> &cddl_lib::EnumOptEmbedFields {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum EnumOptEmbedFieldsKind {
+    Ea,
+    Eb,
+    Ec,
+    Ed,
+    Ee,
+    Ef,
+    Eg,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Enums(cddl_lib::Enums);
+
+#[wasm_bindgen]
+impl Enums {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Enums, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn c_enum(&self) -> CEnum {
+        self.0.c_enum
+    }
+
+    pub fn type_choice(&self) -> TypeChoice {
+        self.0.type_choice.clone().into()
+    }
+
+    pub fn new(c_enum: CEnum, type_choice: &TypeChoice) -> Self {
+        Self(cddl_lib::Enums::new(
+            c_enum.into(),
+            type_choice.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Enums> for Enums {
+    fn from(native: cddl_lib::Enums) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Enums> for cddl_lib::Enums {
+    fn from(wasm: Enums) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Enums> for Enums {
+    fn as_ref(&self) -> &cddl_lib::Enums {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Externs(cddl_lib::Externs);
+
+#[wasm_bindgen]
+impl Externs {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Externs, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn req(&self) -> ExternalFoo {
+        self.0.req.clone().into()
+    }
+
+    pub fn set_opt(&mut self, opt: &ExternalFoo) {
+        self.0.opt = Some(opt.clone().into())
+    }
+
+    pub fn opt(&self) -> Option<ExternalFoo> {
+        self.0.opt.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(req: &ExternalFoo) -> Self {
+        Self(cddl_lib::Externs::new(req.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Externs> for Externs {
+    fn from(native: cddl_lib::Externs) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Externs> for cddl_lib::Externs {
+    fn from(wasm: Externs) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Externs> for Externs {
+    fn as_ref(&self) -> &cddl_lib::Externs {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct First(cddl_lib::First);
+
+#[wasm_bindgen]
+impl First {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<First, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn z(&self) -> u64 {
+        self.0.z
+    }
+
+    pub fn new(x: u64, z: u64) -> Self {
+        Self(cddl_lib::First::new(x, z))
+    }
+}
+
+impl From<cddl_lib::First> for First {
+    fn from(native: cddl_lib::First) -> Self {
+        Self(native)
+    }
+}
+
+impl From<First> for cddl_lib::First {
+    fn from(wasm: First) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::First> for First {
+    fn as_ref(&self) -> &cddl_lib::First {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo(cddl_lib::Foo);
+
+#[wasm_bindgen]
+impl Foo {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn index_2(&self) -> Vec<u8> {
+        self.0.index_2.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self(cddl_lib::Foo::new(index_0, index_1, index_2))
+    }
+}
+
+impl From<cddl_lib::Foo> for Foo {
+    fn from(native: cddl_lib::Foo) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo> for cddl_lib::Foo {
+    fn from(wasm: Foo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo> for Foo {
+    fn as_ref(&self) -> &cddl_lib::Foo {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Foo2(cddl_lib::Foo2);
+
+#[wasm_bindgen]
+impl Foo2 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo2, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn opt_text(&self) -> OptText {
+        self.0.opt_text.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(index_0: u64, opt_text: Option<TaggedText>) -> Self {
+        Self(cddl_lib::Foo2::new(index_0, opt_text.map(Into::into)))
+    }
+}
+
+impl From<cddl_lib::Foo2> for Foo2 {
+    fn from(native: cddl_lib::Foo2) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Foo2> for cddl_lib::Foo2 {
+    fn from(wasm: Foo2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Foo2> for Foo2 {
+    fn as_ref(&self) -> &cddl_lib::Foo2 {
+        &self.0
+    }
+}
+
+pub type FooBytes = Foo;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FooList(Vec<cddl_lib::Foo>);
+
+#[wasm_bindgen]
+impl FooList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Foo {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Foo) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Foo>> for FooList {
+    fn from(native: Vec<cddl_lib::Foo>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FooList> for Vec<cddl_lib::Foo> {
+    fn from(wasm: FooList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Foo>> for FooList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Foo> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct GroupChoice(cddl_lib::GroupChoice);
+
+#[wasm_bindgen]
+impl GroupChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<GroupChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_foo(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
+        Self(cddl_lib::GroupChoice::new_foo(index_0, index_1, index_2))
+    }
+
+    pub fn new_group_choice1(x: u64) -> Self {
+        Self(cddl_lib::GroupChoice::new_group_choice1(x))
+    }
+
+    pub fn new_plain(d: u64, e: &TaggedText) -> Self {
+        Self(cddl_lib::GroupChoice::new_plain(d, e.clone().into()))
+    }
+
+    pub fn kind(&self) -> GroupChoiceKind {
+        match &self.0 {
+            cddl_lib::GroupChoice::Foo(_) => GroupChoiceKind::Foo,
+            cddl_lib::GroupChoice::GroupChoice1(_) => GroupChoiceKind::GroupChoice1,
+            cddl_lib::GroupChoice::Plain(_) => GroupChoiceKind::Plain,
+        }
+    }
+
+    pub fn as_foo(&self) -> Option<Foo> {
+        match &self.0 {
+            cddl_lib::GroupChoice::Foo(foo) => Some(foo.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_group_choice1(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::GroupChoice::GroupChoice1(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_plain(&self) -> Option<Plain> {
+        match &self.0 {
+            cddl_lib::GroupChoice::Plain(plain) => Some(plain.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::GroupChoice> for GroupChoice {
+    fn from(native: cddl_lib::GroupChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<GroupChoice> for cddl_lib::GroupChoice {
+    fn from(wasm: GroupChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::GroupChoice> for GroupChoice {
+    fn as_ref(&self) -> &cddl_lib::GroupChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GroupChoiceKind {
+    Foo,
+    GroupChoice1,
+    Plain,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Hash(cddl_lib::Hash);
+
+#[wasm_bindgen]
+impl Hash {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Hash, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::Hash> for Hash {
+    fn from(native: cddl_lib::Hash) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Hash> for cddl_lib::Hash {
+    fn from(wasm: Hash) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Hash> for Hash {
+    fn as_ref(&self) -> &cddl_lib::Hash {
+        &self.0
+    }
+}
+
+pub type I64 = i64;
+
+pub type I8 = i8;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineWrapper(cddl_lib::InlineWrapper);
+
+#[wasm_bindgen]
+impl InlineWrapper {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InlineWrapper, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> MapTextToText {
+        self.0.index_0.clone().into()
+    }
+
+    pub fn new(index_0: &MapTextToText) -> Self {
+        Self(cddl_lib::InlineWrapper::new(index_0.clone().into()))
+    }
+}
+
+impl From<cddl_lib::InlineWrapper> for InlineWrapper {
+    fn from(native: cddl_lib::InlineWrapper) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineWrapper> for cddl_lib::InlineWrapper {
+    fn from(wasm: InlineWrapper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InlineWrapper> for InlineWrapper {
+    fn as_ref(&self) -> &cddl_lib::InlineWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapTextToText(BTreeMap<String, String>);
+
+#[wasm_bindgen]
+impl MapTextToText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> TextList {
+        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<String, String>> for MapTextToText {
+    fn from(native: BTreeMap<String, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToText> for BTreeMap<String, String> {
+    fn from(wasm: MapTextToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<String, String>> for MapTextToText {
+    fn as_ref(&self) -> &BTreeMap<String, String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapTextToU64(BTreeMap<String, u64>);
+
+#[wasm_bindgen]
+impl MapTextToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> TextList {
+        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<String, u64>> for MapTextToU64 {
+    fn from(native: BTreeMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToU64> for BTreeMap<String, u64> {
+    fn from(wasm: MapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
+    fn as_ref(&self) -> &BTreeMap<String, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToU64(BTreeMap<u64, u64>);
+
+#[wasm_bindgen]
+impl MapU64ToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn from(native: BTreeMap<u64, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToU64> for BTreeMap<u64, u64> {
+    fn from(wasm: MapU64ToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn as_ref(&self) -> &BTreeMap<u64, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapWithDefaults(cddl_lib::MapWithDefaults);
+
+#[wasm_bindgen]
+impl MapWithDefaults {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MapWithDefaults, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn set_key_1(&mut self, key_1: DefaultUint) {
+        self.0.key_1 = key_1.into()
+    }
+
+    pub fn key_1(&self) -> DefaultUint {
+        self.0.key_1
+    }
+
+    pub fn set_key_2(&mut self, key_2: String) {
+        self.0.key_2 = key_2
+    }
+
+    pub fn key_2(&self) -> String {
+        self.0.key_2.clone()
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::MapWithDefaults::new())
+    }
+}
+
+impl From<cddl_lib::MapWithDefaults> for MapWithDefaults {
+    fn from(native: cddl_lib::MapWithDefaults) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapWithDefaults> for cddl_lib::MapWithDefaults {
+    fn from(wasm: MapWithDefaults) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
+    fn as_ref(&self) -> &cddl_lib::MapWithDefaults {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NintGeNewtype(cddl_lib::NintGeNewtype);
+
+#[wasm_bindgen]
+impl NintGeNewtype {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NintGeNewtype, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::NintGeNewtype> for NintGeNewtype {
+    fn from(native: cddl_lib::NintGeNewtype) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NintGeNewtype> for cddl_lib::NintGeNewtype {
+    fn from(wasm: NintGeNewtype) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NintGeNewtype> for NintGeNewtype {
+    fn as_ref(&self) -> &cddl_lib::NintGeNewtype {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NintLeNewtype(cddl_lib::NintLeNewtype);
+
+#[wasm_bindgen]
+impl NintLeNewtype {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NintLeNewtype, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::NintLeNewtype> for NintLeNewtype {
+    fn from(native: cddl_lib::NintLeNewtype) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NintLeNewtype> for cddl_lib::NintLeNewtype {
+    fn from(wasm: NintLeNewtype) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NintLeNewtype> for NintLeNewtype {
+    fn as_ref(&self) -> &cddl_lib::NintLeNewtype {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NoAlias(cddl_lib::NoAlias);
+
+#[wasm_bindgen]
+impl NoAlias {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NoAlias, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn no_alias_u32(&self) -> u32 {
+        self.0.no_alias_u32
+    }
+
+    pub fn no_alias_u64(&self) -> u64 {
+        self.0.no_alias_u64
+    }
+
+    pub fn new(no_alias_u32: u32, no_alias_u64: u64) -> Self {
+        Self(cddl_lib::NoAlias::new(no_alias_u32, no_alias_u64))
+    }
+}
+
+impl From<cddl_lib::NoAlias> for NoAlias {
+    fn from(native: cddl_lib::NoAlias) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NoAlias> for cddl_lib::NoAlias {
+    fn from(wasm: NoAlias) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NoAlias> for NoAlias {
+    fn as_ref(&self) -> &cddl_lib::NoAlias {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlapBasicEmbed(cddl_lib::NonOverlapBasicEmbed);
+
+#[wasm_bindgen]
+impl NonOverlapBasicEmbed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlapBasicEmbed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_first(x: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbed::new_first(x))
+    }
+
+    pub fn new_second(y: String) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbed::new_second(y))
+    }
+
+    pub fn kind(&self) -> NonOverlapBasicEmbedKind {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbed::First(_) => NonOverlapBasicEmbedKind::First,
+            cddl_lib::NonOverlapBasicEmbed::Second(_) => NonOverlapBasicEmbedKind::Second,
+        }
+    }
+
+    pub fn as_first(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbed::First(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_second(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbed::Second(y) => Some(y.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlapBasicEmbed> for NonOverlapBasicEmbed {
+    fn from(native: cddl_lib::NonOverlapBasicEmbed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlapBasicEmbed> for cddl_lib::NonOverlapBasicEmbed {
+    fn from(wasm: NonOverlapBasicEmbed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlapBasicEmbed> for NonOverlapBasicEmbed {
+    fn as_ref(&self) -> &cddl_lib::NonOverlapBasicEmbed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlapBasicEmbedKind {
+    First,
+    Second,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlapBasicEmbedMixed(cddl_lib::NonOverlapBasicEmbedMixed);
+
+#[wasm_bindgen]
+impl NonOverlapBasicEmbedMixed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlapBasicEmbedMixed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_first(x: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMixed::new_first(x))
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMixed::new_second(y, z))
+    }
+
+    pub fn kind(&self) -> NonOverlapBasicEmbedMixedKind {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixed::First(_) => NonOverlapBasicEmbedMixedKind::First,
+            cddl_lib::NonOverlapBasicEmbedMixed::Second(_) => NonOverlapBasicEmbedMixedKind::Second,
+        }
+    }
+
+    pub fn as_first(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixed::First(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_second(&self) -> Option<Second> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixed::Second(second) => Some(second.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlapBasicEmbedMixed> for NonOverlapBasicEmbedMixed {
+    fn from(native: cddl_lib::NonOverlapBasicEmbedMixed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlapBasicEmbedMixed> for cddl_lib::NonOverlapBasicEmbedMixed {
+    fn from(wasm: NonOverlapBasicEmbedMixed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlapBasicEmbedMixed> for NonOverlapBasicEmbedMixed {
+    fn as_ref(&self) -> &cddl_lib::NonOverlapBasicEmbedMixed {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlapBasicEmbedMixedExplicit(cddl_lib::NonOverlapBasicEmbedMixedExplicit);
+
+#[wasm_bindgen]
+impl NonOverlapBasicEmbedMixedExplicit {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(
+        cbor_bytes: &[u8],
+    ) -> Result<NonOverlapBasicEmbedMixedExplicit, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_first(x: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMixedExplicit::new_first(x))
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMixedExplicit::new_second(
+            y, z,
+        ))
+    }
+
+    pub fn new_third(index_0: Vec<u8>, index_1: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMixedExplicit::new_third(
+            index_0, index_1,
+        ))
+    }
+
+    pub fn kind(&self) -> NonOverlapBasicEmbedMixedExplicitKind {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::First(_) => {
+                NonOverlapBasicEmbedMixedExplicitKind::First
+            }
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::Second(_) => {
+                NonOverlapBasicEmbedMixedExplicitKind::Second
+            }
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::Third(_) => {
+                NonOverlapBasicEmbedMixedExplicitKind::Third
+            }
+        }
+    }
+
+    pub fn as_first(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::First(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_second(&self) -> Option<Second> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::Second(second) => {
+                Some(second.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_third(&self) -> Option<BytesUint> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMixedExplicit::Third(third) => Some(third.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlapBasicEmbedMixedExplicit> for NonOverlapBasicEmbedMixedExplicit {
+    fn from(native: cddl_lib::NonOverlapBasicEmbedMixedExplicit) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlapBasicEmbedMixedExplicit> for cddl_lib::NonOverlapBasicEmbedMixedExplicit {
+    fn from(wasm: NonOverlapBasicEmbedMixedExplicit) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlapBasicEmbedMixedExplicit> for NonOverlapBasicEmbedMixedExplicit {
+    fn as_ref(&self) -> &cddl_lib::NonOverlapBasicEmbedMixedExplicit {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlapBasicEmbedMixedExplicitKind {
+    First,
+    Second,
+    Third,
+}
+
+#[wasm_bindgen]
+pub enum NonOverlapBasicEmbedMixedKind {
+    First,
+    Second,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlapBasicEmbedMultiFields(cddl_lib::NonOverlapBasicEmbedMultiFields);
+
+#[wasm_bindgen]
+impl NonOverlapBasicEmbedMultiFields {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlapBasicEmbedMultiFields, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_first(x: u64, z: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMultiFields::new_first(x, z))
+    }
+
+    pub fn new_second(y: String, z: u64) -> Self {
+        Self(cddl_lib::NonOverlapBasicEmbedMultiFields::new_second(y, z))
+    }
+
+    pub fn kind(&self) -> NonOverlapBasicEmbedMultiFieldsKind {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMultiFields::First(_) => {
+                NonOverlapBasicEmbedMultiFieldsKind::First
+            }
+            cddl_lib::NonOverlapBasicEmbedMultiFields::Second(_) => {
+                NonOverlapBasicEmbedMultiFieldsKind::Second
+            }
+        }
+    }
+
+    pub fn as_first(&self) -> Option<First> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMultiFields::First(first) => Some(first.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_second(&self) -> Option<Second> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicEmbedMultiFields::Second(second) => {
+                Some(second.clone().into())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlapBasicEmbedMultiFields> for NonOverlapBasicEmbedMultiFields {
+    fn from(native: cddl_lib::NonOverlapBasicEmbedMultiFields) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlapBasicEmbedMultiFields> for cddl_lib::NonOverlapBasicEmbedMultiFields {
+    fn from(wasm: NonOverlapBasicEmbedMultiFields) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlapBasicEmbedMultiFields> for NonOverlapBasicEmbedMultiFields {
+    fn as_ref(&self) -> &cddl_lib::NonOverlapBasicEmbedMultiFields {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlapBasicEmbedMultiFieldsKind {
+    First,
+    Second,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlapBasicNotBasic(cddl_lib::NonOverlapBasicNotBasic);
+
+#[wasm_bindgen]
+impl NonOverlapBasicNotBasic {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlapBasicNotBasic, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_group(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::NonOverlapBasicNotBasic::new_group(
+            index_0, index_1,
+        ))
+    }
+
+    pub fn new_group_arr(basic: &Basic) -> Self {
+        Self(cddl_lib::NonOverlapBasicNotBasic::new_group_arr(
+            basic.clone().into(),
+        ))
+    }
+
+    pub fn new_group_tagged(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::NonOverlapBasicNotBasic::new_group_tagged(
+            index_0, index_1,
+        ))
+    }
+
+    pub fn new_group_bytes(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::NonOverlapBasicNotBasic::new_group_bytes(
+            index_0, index_1,
+        ))
+    }
+
+    pub fn kind(&self) -> NonOverlapBasicNotBasicKind {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicNotBasic::Group(_) => NonOverlapBasicNotBasicKind::Group,
+            cddl_lib::NonOverlapBasicNotBasic::GroupArr(_) => NonOverlapBasicNotBasicKind::GroupArr,
+            cddl_lib::NonOverlapBasicNotBasic::GroupTagged(_) => {
+                NonOverlapBasicNotBasicKind::GroupTagged
+            }
+            cddl_lib::NonOverlapBasicNotBasic::GroupBytes(_) => {
+                NonOverlapBasicNotBasicKind::GroupBytes
+            }
+        }
+    }
+
+    pub fn as_group(&self) -> Option<Basic> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicNotBasic::Group(group) => Some(group.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_group_arr(&self) -> Option<BasicArr> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicNotBasic::GroupArr(group_arr) => {
+                Some(group_arr.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_group_tagged(&self) -> Option<Basic> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicNotBasic::GroupTagged(group_tagged) => {
+                Some(group_tagged.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_group_bytes(&self) -> Option<Basic> {
+        match &self.0 {
+            cddl_lib::NonOverlapBasicNotBasic::GroupBytes(group_bytes) => {
+                Some(group_bytes.clone().into())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlapBasicNotBasic> for NonOverlapBasicNotBasic {
+    fn from(native: cddl_lib::NonOverlapBasicNotBasic) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlapBasicNotBasic> for cddl_lib::NonOverlapBasicNotBasic {
+    fn from(wasm: NonOverlapBasicNotBasic) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlapBasicNotBasic> for NonOverlapBasicNotBasic {
+    fn as_ref(&self) -> &cddl_lib::NonOverlapBasicNotBasic {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlapBasicNotBasicKind {
+    Group,
+    GroupArr,
+    GroupTagged,
+    GroupBytes,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlappingTypeChoiceAll(cddl_lib::NonOverlappingTypeChoiceAll);
+
+#[wasm_bindgen]
+impl NonOverlappingTypeChoiceAll {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlappingTypeChoiceAll, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_uint(uint))
+    }
+
+    pub fn new_n64(n64: u64) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_n64(n64))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_text(text))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_bytes(bytes))
+    }
+
+    pub fn new_helloworld() -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_helloworld())
+    }
+
+    pub fn new_arr_u64(arr_u64: Vec<u64>) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_arr_u64(arr_u64))
+    }
+
+    pub fn new_map_text_to_u64(map_text_to_u64: &MapTextToU64) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceAll::new_map_text_to_u64(
+            map_text_to_u64.clone().into(),
+        ))
+    }
+
+    pub fn kind(&self) -> NonOverlappingTypeChoiceAllKind {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::U64(_) => NonOverlappingTypeChoiceAllKind::U64,
+            cddl_lib::NonOverlappingTypeChoiceAll::N64(_) => NonOverlappingTypeChoiceAllKind::N64,
+            cddl_lib::NonOverlappingTypeChoiceAll::Text(_) => NonOverlappingTypeChoiceAllKind::Text,
+            cddl_lib::NonOverlappingTypeChoiceAll::Bytes(_) => {
+                NonOverlappingTypeChoiceAllKind::Bytes
+            }
+            cddl_lib::NonOverlappingTypeChoiceAll::Helloworld => {
+                NonOverlappingTypeChoiceAllKind::Helloworld
+            }
+            cddl_lib::NonOverlappingTypeChoiceAll::ArrU64(_) => {
+                NonOverlappingTypeChoiceAllKind::ArrU64
+            }
+            cddl_lib::NonOverlappingTypeChoiceAll::MapTextToU64(_) => {
+                NonOverlappingTypeChoiceAllKind::MapTextToU64
+            }
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_n64(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::N64(n64) => Some(*n64),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr_u64(&self) -> Option<Vec<u64>> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::ArrU64(arr_u64) => Some(arr_u64.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_map_text_to_u64(&self) -> Option<MapTextToU64> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceAll::MapTextToU64(map_text_to_u64) => {
+                Some(map_text_to_u64.clone().into())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlappingTypeChoiceAll> for NonOverlappingTypeChoiceAll {
+    fn from(native: cddl_lib::NonOverlappingTypeChoiceAll) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlappingTypeChoiceAll> for cddl_lib::NonOverlappingTypeChoiceAll {
+    fn from(wasm: NonOverlappingTypeChoiceAll) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlappingTypeChoiceAll> for NonOverlappingTypeChoiceAll {
+    fn as_ref(&self) -> &cddl_lib::NonOverlappingTypeChoiceAll {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlappingTypeChoiceAllKind {
+    U64,
+    N64,
+    Text,
+    Bytes,
+    Helloworld,
+    ArrU64,
+    MapTextToU64,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonOverlappingTypeChoiceSome(cddl_lib::NonOverlappingTypeChoiceSome);
+
+#[wasm_bindgen]
+impl NonOverlappingTypeChoiceSome {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonOverlappingTypeChoiceSome, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceSome::new_uint(uint))
+    }
+
+    pub fn new_n64(n64: u64) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceSome::new_n64(n64))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::NonOverlappingTypeChoiceSome::new_text(text))
+    }
+
+    pub fn kind(&self) -> NonOverlappingTypeChoiceSomeKind {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceSome::U64(_) => NonOverlappingTypeChoiceSomeKind::U64,
+            cddl_lib::NonOverlappingTypeChoiceSome::N64(_) => NonOverlappingTypeChoiceSomeKind::N64,
+            cddl_lib::NonOverlappingTypeChoiceSome::Text(_) => {
+                NonOverlappingTypeChoiceSomeKind::Text
+            }
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceSome::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_n64(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceSome::N64(n64) => Some(*n64),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::NonOverlappingTypeChoiceSome::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonOverlappingTypeChoiceSome> for NonOverlappingTypeChoiceSome {
+    fn from(native: cddl_lib::NonOverlappingTypeChoiceSome) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonOverlappingTypeChoiceSome> for cddl_lib::NonOverlappingTypeChoiceSome {
+    fn from(wasm: NonOverlappingTypeChoiceSome) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonOverlappingTypeChoiceSome> for NonOverlappingTypeChoiceSome {
+    fn as_ref(&self) -> &cddl_lib::NonOverlappingTypeChoiceSome {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonOverlappingTypeChoiceSomeKind {
+    U64,
+    N64,
+    Text,
+}
+
+pub type OptText = Option<TaggedText>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Outer(cddl_lib::Outer);
+
+#[wasm_bindgen]
+impl Outer {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Outer, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> Plain {
+        self.0.b.clone().into()
+    }
+
+    pub fn new(a: u64, b: &Plain) -> Self {
+        Self(cddl_lib::Outer::new(a, b.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Outer> for Outer {
+    fn from(native: cddl_lib::Outer) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Outer> for cddl_lib::Outer {
+    fn from(wasm: Outer) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Outer> for Outer {
+    fn as_ref(&self) -> &cddl_lib::Outer {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OverlapBasicEmbed(cddl_lib::OverlapBasicEmbed);
+
+#[wasm_bindgen]
+impl OverlapBasicEmbed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OverlapBasicEmbed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_identity() -> Self {
+        Self(cddl_lib::OverlapBasicEmbed::new_identity())
+    }
+
+    pub fn new_x(hash: Vec<u8>) -> Result<OverlapBasicEmbed, JsError> {
+        cddl_lib::OverlapBasicEmbed::new_x(hash)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn kind(&self) -> OverlapBasicEmbedKind {
+        match &self.0 {
+            cddl_lib::OverlapBasicEmbed::Identity => OverlapBasicEmbedKind::Identity,
+            cddl_lib::OverlapBasicEmbed::X(_) => OverlapBasicEmbedKind::X,
+        }
+    }
+
+    pub fn as_x(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::OverlapBasicEmbed::X(hash) => Some(hash.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::OverlapBasicEmbed> for OverlapBasicEmbed {
+    fn from(native: cddl_lib::OverlapBasicEmbed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OverlapBasicEmbed> for cddl_lib::OverlapBasicEmbed {
+    fn from(wasm: OverlapBasicEmbed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OverlapBasicEmbed> for OverlapBasicEmbed {
+    fn as_ref(&self) -> &cddl_lib::OverlapBasicEmbed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum OverlapBasicEmbedKind {
+    Identity,
+    X,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Overlapping(cddl_lib::Overlapping);
+
+#[wasm_bindgen]
+impl Overlapping {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Overlapping, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_a(a: &Overlapping0) -> Self {
+        Self(cddl_lib::Overlapping::new_a(a.clone().into()))
+    }
+
+    pub fn new_b(b: &Overlapping1) -> Self {
+        Self(cddl_lib::Overlapping::new_b(b.clone().into()))
+    }
+
+    pub fn new_c(c: &Overlapping2) -> Self {
+        Self(cddl_lib::Overlapping::new_c(c.clone().into()))
+    }
+
+    pub fn kind(&self) -> OverlappingKind {
+        match &self.0 {
+            cddl_lib::Overlapping::A(_) => OverlappingKind::A,
+            cddl_lib::Overlapping::B(_) => OverlappingKind::B,
+            cddl_lib::Overlapping::C(_) => OverlappingKind::C,
+        }
+    }
+
+    pub fn as_a(&self) -> Option<Overlapping0> {
+        match &self.0 {
+            cddl_lib::Overlapping::A(a) => Some(a.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<Overlapping1> {
+        match &self.0 {
+            cddl_lib::Overlapping::B(b) => Some(b.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_c(&self) -> Option<Overlapping2> {
+        match &self.0 {
+            cddl_lib::Overlapping::C(c) => Some(c.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Overlapping> for Overlapping {
+    fn from(native: cddl_lib::Overlapping) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Overlapping> for cddl_lib::Overlapping {
+    fn from(wasm: Overlapping) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Overlapping> for Overlapping {
+    fn as_ref(&self) -> &cddl_lib::Overlapping {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Overlapping0(cddl_lib::Overlapping0);
+
+#[wasm_bindgen]
+impl Overlapping0 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Overlapping0, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::Overlapping0::new())
+    }
+}
+
+impl From<cddl_lib::Overlapping0> for Overlapping0 {
+    fn from(native: cddl_lib::Overlapping0) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Overlapping0> for cddl_lib::Overlapping0 {
+    fn from(wasm: Overlapping0) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Overlapping0> for Overlapping0 {
+    fn as_ref(&self) -> &cddl_lib::Overlapping0 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Overlapping1(cddl_lib::Overlapping1);
+
+#[wasm_bindgen]
+impl Overlapping1 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Overlapping1, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn new(index_1: u64) -> Self {
+        Self(cddl_lib::Overlapping1::new(index_1))
+    }
+}
+
+impl From<cddl_lib::Overlapping1> for Overlapping1 {
+    fn from(native: cddl_lib::Overlapping1) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Overlapping1> for cddl_lib::Overlapping1 {
+    fn from(wasm: Overlapping1) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Overlapping1> for Overlapping1 {
+    fn as_ref(&self) -> &cddl_lib::Overlapping1 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Overlapping2(cddl_lib::Overlapping2);
+
+#[wasm_bindgen]
+impl Overlapping2 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Overlapping2, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn index_2(&self) -> String {
+        self.0.index_2.clone()
+    }
+
+    pub fn new(index_1: u64, index_2: String) -> Self {
+        Self(cddl_lib::Overlapping2::new(index_1, index_2))
+    }
+}
+
+impl From<cddl_lib::Overlapping2> for Overlapping2 {
+    fn from(native: cddl_lib::Overlapping2) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Overlapping2> for cddl_lib::Overlapping2 {
+    fn from(wasm: Overlapping2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Overlapping2> for Overlapping2 {
+    fn as_ref(&self) -> &cddl_lib::Overlapping2 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OverlappingInlined(cddl_lib::OverlappingInlined);
+
+#[wasm_bindgen]
+impl OverlappingInlined {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OverlappingInlined, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_one() -> Self {
+        Self(cddl_lib::OverlappingInlined::new_one())
+    }
+
+    pub fn new_two(index_1: u64) -> Self {
+        Self(cddl_lib::OverlappingInlined::new_two(index_1))
+    }
+
+    pub fn new_three(index_1: u64, index_2: String) -> Self {
+        Self(cddl_lib::OverlappingInlined::new_three(index_1, index_2))
+    }
+
+    pub fn kind(&self) -> OverlappingInlinedKind {
+        match &self.0 {
+            cddl_lib::OverlappingInlined::One => OverlappingInlinedKind::One,
+            cddl_lib::OverlappingInlined::Two(_) => OverlappingInlinedKind::Two,
+            cddl_lib::OverlappingInlined::Three(_) => OverlappingInlinedKind::Three,
+        }
+    }
+
+    pub fn as_two(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::OverlappingInlined::Two(index_1) => Some(*index_1),
+            _ => None,
+        }
+    }
+
+    pub fn as_three(&self) -> Option<Three> {
+        match &self.0 {
+            cddl_lib::OverlappingInlined::Three(three) => Some(three.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::OverlappingInlined> for OverlappingInlined {
+    fn from(native: cddl_lib::OverlappingInlined) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OverlappingInlined> for cddl_lib::OverlappingInlined {
+    fn from(wasm: OverlappingInlined) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OverlappingInlined> for OverlappingInlined {
+    fn as_ref(&self) -> &cddl_lib::OverlappingInlined {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum OverlappingInlinedKind {
+    One,
+    Two,
+    Three,
+}
+
+#[wasm_bindgen]
+pub enum OverlappingKind {
+    A,
+    B,
+    C,
+}
+
+pub type ParenCbor = String;
+
+pub type ParenSize = u8;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Plain(cddl_lib::Plain);
+
+#[wasm_bindgen]
+impl Plain {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Plain, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn d(&self) -> u64 {
+        self.0.d
+    }
+
+    pub fn e(&self) -> TaggedText {
+        self.0.e.clone().into()
+    }
+
+    pub fn new(d: u64, e: &TaggedText) -> Self {
+        Self(cddl_lib::Plain::new(d, e.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Plain> for Plain {
+    fn from(native: cddl_lib::Plain) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Plain> for cddl_lib::Plain {
+    fn from(wasm: Plain) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Plain> for Plain {
+    fn as_ref(&self) -> &cddl_lib::Plain {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PlainArrays(cddl_lib::PlainArrays);
+
+#[wasm_bindgen]
+impl PlainArrays {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PlainArrays, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn embedded(&self) -> Plain {
+        self.0.embedded.clone().into()
+    }
+
+    pub fn single(&self) -> Plain {
+        self.0.single.clone().into()
+    }
+
+    pub fn multi(&self) -> PlainList {
+        self.0.multi.clone().into()
+    }
+
+    pub fn new(embedded: &Plain, single: &Plain, multi: &PlainList) -> Self {
+        Self(cddl_lib::PlainArrays::new(
+            embedded.clone().into(),
+            single.clone().into(),
+            multi.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::PlainArrays> for PlainArrays {
+    fn from(native: cddl_lib::PlainArrays) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PlainArrays> for cddl_lib::PlainArrays {
+    fn from(wasm: PlainArrays) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PlainArrays> for PlainArrays {
+    fn as_ref(&self) -> &cddl_lib::PlainArrays {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PlainList(Vec<cddl_lib::Plain>);
+
+#[wasm_bindgen]
+impl PlainList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Plain {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Plain) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Plain>> for PlainList {
+    fn from(native: Vec<cddl_lib::Plain>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PlainList> for Vec<cddl_lib::Plain> {
+    fn from(wasm: PlainList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Plain>> for PlainList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Plain> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Second(cddl_lib::Second);
+
+#[wasm_bindgen]
+impl Second {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Second, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn y(&self) -> String {
+        self.0.y.clone()
+    }
+
+    pub fn z(&self) -> u64 {
+        self.0.z
+    }
+
+    pub fn new(y: String, z: u64) -> Self {
+        Self(cddl_lib::Second::new(y, z))
+    }
+}
+
+impl From<cddl_lib::Second> for Second {
+    fn from(native: cddl_lib::Second) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Second> for cddl_lib::Second {
+    fn from(wasm: Second) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Second> for Second {
+    fn as_ref(&self) -> &cddl_lib::Second {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SignedInts(cddl_lib::SignedInts);
+
+#[wasm_bindgen]
+impl SignedInts {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SignedInts, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn u_8(&self) -> u8 {
+        self.0.u_8
+    }
+
+    pub fn u_16(&self) -> u16 {
+        self.0.u_16
+    }
+
+    pub fn u_32(&self) -> u32 {
+        self.0.u_32
+    }
+
+    pub fn u_64(&self) -> u64 {
+        self.0.u_64
+    }
+
+    pub fn i_8(&self) -> i8 {
+        self.0.i_8
+    }
+
+    pub fn i_16(&self) -> i16 {
+        self.0.i_16
+    }
+
+    pub fn i_32(&self) -> i32 {
+        self.0.i_32
+    }
+
+    pub fn i_64(&self) -> i64 {
+        self.0.i_64
+    }
+
+    pub fn n_64(&self) -> u64 {
+        self.0.n_64
+    }
+
+    pub fn new(
+        u_8: u8,
+        u_16: u16,
+        u_32: u32,
+        u_64: u64,
+        i_8: i8,
+        i_16: i16,
+        i_32: i32,
+        i_64: i64,
+        n_64: u64,
+    ) -> Self {
+        Self(cddl_lib::SignedInts::new(
+            u_8, u_16, u_32, u_64, i_8, i_16, i_32, i_64, n_64,
+        ))
+    }
+}
+
+impl From<cddl_lib::SignedInts> for SignedInts {
+    fn from(native: cddl_lib::SignedInts) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SignedInts> for cddl_lib::SignedInts {
+    fn from(wasm: SignedInts) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SignedInts> for SignedInts {
+    fn as_ref(&self) -> &cddl_lib::SignedInts {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct StandaloneTable(cddl_lib::StandaloneTable);
+
+#[wasm_bindgen]
+impl StandaloneTable {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::StandaloneTable> for StandaloneTable {
+    fn from(native: cddl_lib::StandaloneTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<StandaloneTable> for cddl_lib::StandaloneTable {
+    fn from(wasm: StandaloneTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::StandaloneTable> for StandaloneTable {
+    fn as_ref(&self) -> &cddl_lib::StandaloneTable {
+        &self.0
+    }
+}
+
+type StandaloneText = MapTextToText;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct StructWithCustomSerialization(cddl_lib::StructWithCustomSerialization);
+
+#[wasm_bindgen]
+impl StructWithCustomSerialization {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<StructWithCustomSerialization, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn custom_bytes(&self) -> CustomBytes {
+        self.0.custom_bytes.clone().into()
+    }
+
+    pub fn field(&self) -> Vec<u8> {
+        self.0.field.clone()
+    }
+
+    pub fn overridden(&self) -> CustomBytes {
+        self.0.overridden.clone().into()
+    }
+
+    pub fn tagged1(&self) -> CustomBytes {
+        self.0.tagged1.clone().into()
+    }
+
+    pub fn tagged2(&self) -> u64 {
+        self.0.tagged2
+    }
+
+    pub fn new(
+        custom_bytes: CustomBytes,
+        field: Vec<u8>,
+        overridden: CustomBytes,
+        tagged1: CustomBytes,
+        tagged2: u64,
+    ) -> Self {
+        Self(cddl_lib::StructWithCustomSerialization::new(
+            custom_bytes.clone().into(),
+            field,
+            overridden.clone().into(),
+            tagged1.clone().into(),
+            tagged2,
+        ))
+    }
+}
+
+impl From<cddl_lib::StructWithCustomSerialization> for StructWithCustomSerialization {
+    fn from(native: cddl_lib::StructWithCustomSerialization) -> Self {
+        Self(native)
+    }
+}
+
+impl From<StructWithCustomSerialization> for cddl_lib::StructWithCustomSerialization {
+    fn from(wasm: StructWithCustomSerialization) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::StructWithCustomSerialization> for StructWithCustomSerialization {
+    fn as_ref(&self) -> &cddl_lib::StructWithCustomSerialization {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Table(cddl_lib::Table);
+
+#[wasm_bindgen]
+impl Table {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::Table> for Table {
+    fn from(native: cddl_lib::Table) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Table> for cddl_lib::Table {
+    fn from(wasm: Table) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Table> for Table {
+    fn as_ref(&self) -> &cddl_lib::Table {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TableArrMembers(cddl_lib::TableArrMembers);
+
+#[wasm_bindgen]
+impl TableArrMembers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TableArrMembers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn tab(&self) -> MapTextToText {
+        self.0.tab.clone().into()
+    }
+
+    pub fn arr(&self) -> Vec<u64> {
+        self.0.arr.clone()
+    }
+
+    pub fn arr2(&self) -> FooList {
+        self.0.arr2.clone().into()
+    }
+
+    pub fn new(tab: &MapTextToText, arr: Vec<u64>, arr2: &FooList) -> Self {
+        Self(cddl_lib::TableArrMembers::new(
+            tab.clone().into(),
+            arr,
+            arr2.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::TableArrMembers> for TableArrMembers {
+    fn from(native: cddl_lib::TableArrMembers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TableArrMembers> for cddl_lib::TableArrMembers {
+    fn from(wasm: TableArrMembers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
+    fn as_ref(&self) -> &cddl_lib::TableArrMembers {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TableArrayWrapper(cddl_lib::TableArrayWrapper);
+
+#[wasm_bindgen]
+impl TableArrayWrapper {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TableArrayWrapper, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn embedded_table(&self) -> EmbeddedTable {
+        self.0.embedded_table.clone().into()
+    }
+
+    pub fn new(embedded_table: &EmbeddedTable) -> Self {
+        Self(cddl_lib::TableArrayWrapper::new(
+            embedded_table.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::TableArrayWrapper> for TableArrayWrapper {
+    fn from(native: cddl_lib::TableArrayWrapper) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TableArrayWrapper> for cddl_lib::TableArrayWrapper {
+    fn from(wasm: TableArrayWrapper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TableArrayWrapper> for TableArrayWrapper {
+    fn as_ref(&self) -> &cddl_lib::TableArrayWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TableMapWrapper(cddl_lib::TableMapWrapper);
+
+#[wasm_bindgen]
+impl TableMapWrapper {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TableMapWrapper, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_721(&self) -> EmbeddedTable {
+        self.0.key_721.clone().into()
+    }
+
+    pub fn new(key_721: &EmbeddedTable) -> Self {
+        Self(cddl_lib::TableMapWrapper::new(key_721.clone().into()))
+    }
+}
+
+impl From<cddl_lib::TableMapWrapper> for TableMapWrapper {
+    fn from(native: cddl_lib::TableMapWrapper) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TableMapWrapper> for cddl_lib::TableMapWrapper {
+    fn from(wasm: TableMapWrapper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TableMapWrapper> for TableMapWrapper {
+    fn as_ref(&self) -> &cddl_lib::TableMapWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedFooBytes(cddl_lib::TaggedFooBytes);
+
+#[wasm_bindgen]
+impl TaggedFooBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedFooBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
+    fn from(native: cddl_lib::TaggedFooBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedFooBytes> for cddl_lib::TaggedFooBytes {
+    fn from(wasm: TaggedFooBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
+    fn as_ref(&self) -> &cddl_lib::TaggedFooBytes {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedText(cddl_lib::TaggedText);
+
+#[wasm_bindgen]
+impl TaggedText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::TaggedText> for TaggedText {
+    fn from(native: cddl_lib::TaggedText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedText> for cddl_lib::TaggedText {
+    fn from(wasm: TaggedText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedText> for TaggedText {
+    fn as_ref(&self) -> &cddl_lib::TaggedText {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextArrayWrapper(cddl_lib::TextArrayWrapper);
+
+#[wasm_bindgen]
+impl TextArrayWrapper {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TextArrayWrapper, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn embedded_text(&self) -> EmbeddedText {
+        self.0.embedded_text.clone().into()
+    }
+
+    pub fn new(embedded_text: &EmbeddedText) -> Self {
+        Self(cddl_lib::TextArrayWrapper::new(
+            embedded_text.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::TextArrayWrapper> for TextArrayWrapper {
+    fn from(native: cddl_lib::TextArrayWrapper) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextArrayWrapper> for cddl_lib::TextArrayWrapper {
+    fn from(wasm: TextArrayWrapper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TextArrayWrapper> for TextArrayWrapper {
+    fn as_ref(&self) -> &cddl_lib::TextArrayWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextList(Vec<String>);
+
+#[wasm_bindgen]
+impl TextList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<String>> for TextList {
+    fn from(native: Vec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextList> for Vec<String> {
+    fn from(wasm: TextList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<String>> for TextList {
+    fn as_ref(&self) -> &Vec<String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextMapWrapper(cddl_lib::TextMapWrapper);
+
+#[wasm_bindgen]
+impl TextMapWrapper {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TextMapWrapper, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_721(&self) -> EmbeddedText {
+        self.0.key_721.clone().into()
+    }
+
+    pub fn new(key_721: &EmbeddedText) -> Self {
+        Self(cddl_lib::TextMapWrapper::new(key_721.clone().into()))
+    }
+}
+
+impl From<cddl_lib::TextMapWrapper> for TextMapWrapper {
+    fn from(native: cddl_lib::TextMapWrapper) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextMapWrapper> for cddl_lib::TextMapWrapper {
+    fn from(wasm: TextMapWrapper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TextMapWrapper> for TextMapWrapper {
+    fn as_ref(&self) -> &cddl_lib::TextMapWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Three(cddl_lib::Three);
+
+#[wasm_bindgen]
+impl Three {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Three, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn index_2(&self) -> String {
+        self.0.index_2.clone()
+    }
+
+    pub fn new(index_1: u64, index_2: String) -> Self {
+        Self(cddl_lib::Three::new(index_1, index_2))
+    }
+}
+
+impl From<cddl_lib::Three> for Three {
+    fn from(native: cddl_lib::Three) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Three> for cddl_lib::Three {
+    fn from(wasm: Three) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Three> for Three {
+    fn as_ref(&self) -> &cddl_lib::Three {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TopLevelArray(Vec<u64>);
+
+#[wasm_bindgen]
+impl TopLevelArray {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for TopLevelArray {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TopLevelArray> for Vec<u64> {
+    fn from(wasm: TopLevelArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for TopLevelArray {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TopLevelSingleElem(cddl_lib::TopLevelSingleElem);
+
+#[wasm_bindgen]
+impl TopLevelSingleElem {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TopLevelSingleElem, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::TopLevelSingleElem::new(index_0))
+    }
+}
+
+impl From<cddl_lib::TopLevelSingleElem> for TopLevelSingleElem {
+    fn from(native: cddl_lib::TopLevelSingleElem) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TopLevelSingleElem> for cddl_lib::TopLevelSingleElem {
+    fn from(wasm: TopLevelSingleElem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TopLevelSingleElem> for TopLevelSingleElem {
+    fn as_ref(&self) -> &cddl_lib::TopLevelSingleElem {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TypeChoice(cddl_lib::TypeChoice);
+
+#[wasm_bindgen]
+impl TypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_i0() -> Self {
+        Self(cddl_lib::TypeChoice::new_i0())
+    }
+
+    pub fn new_helloworld() -> Self {
+        Self(cddl_lib::TypeChoice::new_helloworld())
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::TypeChoice::new_uint(uint))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TypeChoice::new_text(text))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::TypeChoice::new_bytes(bytes))
+    }
+
+    pub fn new_arr_u64(arr_u64: Vec<u64>) -> Self {
+        Self(cddl_lib::TypeChoice::new_arr_u64(arr_u64))
+    }
+
+    pub fn kind(&self) -> TypeChoiceKind {
+        match &self.0 {
+            cddl_lib::TypeChoice::I0 => TypeChoiceKind::I0,
+            cddl_lib::TypeChoice::Helloworld => TypeChoiceKind::Helloworld,
+            cddl_lib::TypeChoice::U64(_) => TypeChoiceKind::U64,
+            cddl_lib::TypeChoice::Text(_) => TypeChoiceKind::Text,
+            cddl_lib::TypeChoice::Bytes(_) => TypeChoiceKind::Bytes,
+            cddl_lib::TypeChoice::ArrU64(_) => TypeChoiceKind::ArrU64,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TypeChoice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TypeChoice::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::TypeChoice::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr_u64(&self) -> Option<Vec<u64>> {
+        match &self.0 {
+            cddl_lib::TypeChoice::ArrU64(arr_u64) => Some(arr_u64.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TypeChoice> for TypeChoice {
+    fn from(native: cddl_lib::TypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TypeChoice> for cddl_lib::TypeChoice {
+    fn from(wasm: TypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TypeChoice> for TypeChoice {
+    fn as_ref(&self) -> &cddl_lib::TypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TypeChoiceKind {
+    I0,
+    Helloworld,
+    U64,
+    Text,
+    Bytes,
+    ArrU64,
+}
+
+pub type U16 = u16;
+
+pub type U32 = u32;
+
+pub type U64 = u64;
+
+pub type U8 = u8;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct UsingExternGeneric(cddl_lib::UsingExternGeneric);
+
+#[wasm_bindgen]
+impl UsingExternGeneric {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UsingExternGeneric, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> ExternGenericExternalFoo {
+        self.0.foo.clone().into()
+    }
+
+    pub fn new(foo: &ExternGenericExternalFoo) -> Self {
+        Self(cddl_lib::UsingExternGeneric::new(foo.clone().into()))
+    }
+}
+
+impl From<cddl_lib::UsingExternGeneric> for UsingExternGeneric {
+    fn from(native: cddl_lib::UsingExternGeneric) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UsingExternGeneric> for cddl_lib::UsingExternGeneric {
+    fn from(wasm: UsingExternGeneric) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UsingExternGeneric> for UsingExternGeneric {
+    fn as_ref(&self) -> &cddl_lib::UsingExternGeneric {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrapperInt(cddl_lib::WrapperInt);
+
+#[wasm_bindgen]
+impl WrapperInt {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrapperInt, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn custom_getter(&self) -> u64 {
+        self.0.custom_getter()
+    }
+}
+
+impl From<cddl_lib::WrapperInt> for WrapperInt {
+    fn from(native: cddl_lib::WrapperInt) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrapperInt> for cddl_lib::WrapperInt {
+    fn from(wasm: WrapperInt) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrapperInt> for WrapperInt {
+    fn as_ref(&self) -> &cddl_lib::WrapperInt {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrapperList(cddl_lib::WrapperList);
+
+#[wasm_bindgen]
+impl WrapperList {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrapperList, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::WrapperList> for WrapperList {
+    fn from(native: cddl_lib::WrapperList) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrapperList> for cddl_lib::WrapperList {
+    fn from(wasm: WrapperList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrapperList> for WrapperList {
+    fn as_ref(&self) -> &cddl_lib::WrapperList {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrapperTable(cddl_lib::WrapperTable);
+
+#[wasm_bindgen]
+impl WrapperTable {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrapperTable, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::WrapperTable> for WrapperTable {
+    fn from(native: cddl_lib::WrapperTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrapperTable> for cddl_lib::WrapperTable {
+    fn from(wasm: WrapperTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrapperTable> for WrapperTable {
+    fn as_ref(&self) -> &cddl_lib::WrapperTable {
+        &self.0
+    }
+}

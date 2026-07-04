@@ -1,0 +1,84 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for BoundedInts {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(5))?;
+        serializer.write_unsigned_integer(self.u_8 as u64)?;
+        serializer.write_unsigned_integer(self.u_16 as u64)?;
+        serializer.write_unsigned_integer(self.u_32 as u64)?;
+        if self.i_8 >= 0 {
+            serializer.write_unsigned_integer(self.i_8 as u64)?;
+        } else {
+            serializer.write_negative_integer(self.i_8 as i64)?;
+        }
+        if self.i_64 >= 0 {
+            serializer.write_unsigned_integer(self.i_64 as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.i_64 as i128,
+                cbor_event::Sz::canonical((self.i_64 + 1).abs() as u64),
+            )?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BoundedInts {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(5)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let u_8 = Ok(raw.unsigned_integer()? as u8)
+                .map_err(|e: DeserializeError| e.annotate("u_8"))?;
+            let u_16 = Ok(raw.unsigned_integer()? as u16)
+                .map_err(|e: DeserializeError| e.annotate("u_16"))?;
+            let u_32 = Ok(raw.unsigned_integer()? as u32)
+                .map_err(|e: DeserializeError| e.annotate("u_32"))?;
+            let i_8 = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw.unsigned_integer()? as i8,
+                    _ => raw.negative_integer()? as i8,
+                })
+            })()
+            .map_err(|e| e.annotate("i_8"))?;
+            let i_64 = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw.unsigned_integer()? as i64,
+                    _ => raw.negative_integer_sz().map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("i_64"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(BoundedInts {
+                u_8,
+                u_16,
+                u_32,
+                i_8,
+                i_64,
+            })
+        })()
+        .map_err(|e| e.annotate("BoundedInts"))
+    }
+}

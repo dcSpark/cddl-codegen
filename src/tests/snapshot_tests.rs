@@ -392,7 +392,7 @@ fn manifest_template_drift() {
 /// import) in place of the inline struct + accessor + conversion block. The fixture covers every
 /// reachable `(needs_into, is_copy)` combination. The flag-*off* output is the inline form the rest
 /// of the suite already snapshots (and `whole_program`/`generation_is_deterministic` guard that the
-/// gated branch leaves it byte-identical), so this only needs the flag-on wasm `lib.rs`.
+/// gated branch leaves it byte-identical), so this only needs the flag-on wasm `generated/mod.rs`.
 #[test]
 fn wasm_list_macro() {
     let dir = std::env::current_dir()
@@ -424,10 +424,12 @@ fn wasm_list_macro() {
         for (label, extra) in cases {
             let cli = cli_for(input, extra);
             let files = crate::api::generated_strings(&cli).unwrap();
+            // The wasm macro invocations live in the generated root scope (`generated/mod.rs`), not
+            // the thin seed-once `lib.rs` (which carries only `mod generated; pub use generated::*;`).
             let lib = files
-                .get("wasm/src/lib.rs")
-                .expect("no wasm/src/lib.rs generated");
-            insta::assert_snapshot!(format!("{label}__wasm__src__lib.rs"), lib);
+                .get("wasm/src/generated/mod.rs")
+                .expect("no wasm/src/generated/mod.rs generated");
+            insta::assert_snapshot!(format!("{label}__wasm__src__generated__mod.rs"), lib);
         }
     });
 }

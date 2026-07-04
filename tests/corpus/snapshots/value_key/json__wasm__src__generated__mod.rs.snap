@@ -1,0 +1,146 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrowValueKeys(cddl_lib::ArrowValueKeys);
+
+#[wasm_bindgen]
+impl ArrowValueKeys {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrowValueKeys, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<ArrowValueKeys, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn set_first(&mut self, first: String) {
+        self.0.first = Some(first)
+    }
+
+    pub fn first(&self) -> Option<String> {
+        self.0.first.clone()
+    }
+
+    pub fn set_second(&mut self, second: u64) {
+        self.0.second = Some(second)
+    }
+
+    pub fn second(&self) -> Option<u64> {
+        self.0.second
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::ArrowValueKeys::new())
+    }
+}
+
+impl From<cddl_lib::ArrowValueKeys> for ArrowValueKeys {
+    fn from(native: cddl_lib::ArrowValueKeys) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrowValueKeys> for cddl_lib::ArrowValueKeys {
+    fn from(wasm: ArrowValueKeys) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrowValueKeys> for ArrowValueKeys {
+    fn as_ref(&self) -> &cddl_lib::ArrowValueKeys {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ValueKeys(cddl_lib::ValueKeys);
+
+#[wasm_bindgen]
+impl ValueKeys {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ValueKeys, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<ValueKeys, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn key_1(&self) -> String {
+        self.0.key_1.clone()
+    }
+
+    pub fn key_2(&self) -> u64 {
+        self.0.key_2
+    }
+
+    pub fn new(key_1: String, key_2: u64) -> Self {
+        Self(cddl_lib::ValueKeys::new(key_1, key_2))
+    }
+}
+
+impl From<cddl_lib::ValueKeys> for ValueKeys {
+    fn from(native: cddl_lib::ValueKeys) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ValueKeys> for cddl_lib::ValueKeys {
+    fn from(wasm: ValueKeys) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ValueKeys> for ValueKeys {
+    fn as_ref(&self) -> &cddl_lib::ValueKeys {
+        &self.0
+    }
+}

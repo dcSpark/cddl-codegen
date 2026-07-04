@@ -718,17 +718,18 @@ fn bareword_keyword_field_name_rejects_gracefully() {
     }
 
     // The verified remedy generates: a `; @name branch` directive renames the field to `branch`
-    // (the CBOR wire key stays the bareword `if`), and the generated lib.rs must contain `branch`.
+    // (the CBOR wire key stays the bareword `if`), and the generated struct must contain `branch`.
+    // The struct now lives in the `generated/mod.rs` scope root, not the thin seed-once `lib.rs`.
     let files = run("kw = { if: uint, ; @name branch\n}\n", "remedy")
         .expect("the @name remedy must generate a valid crate");
     let lib = files
         .iter()
-        .find(|(name, _)| name.contains("lib.rs"))
+        .find(|(name, _)| name.contains("generated/mod.rs"))
         .map(|(_, src)| src.clone())
         .unwrap_or_default();
     assert!(
         lib.contains("branch"),
-        "the @name remedy must emit a field named `branch`, got lib.rs without it"
+        "the @name remedy must emit a field named `branch`, got generated/mod.rs without it"
     );
 
     // Boundary: an ordinary bareword field still generates.

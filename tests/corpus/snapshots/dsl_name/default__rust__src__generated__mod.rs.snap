@@ -1,0 +1,27 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Named {
+    pub address: Vec<u8>,
+    pub checksum: u64,
+}
+
+impl Named {
+    pub fn new(address: Vec<u8>, checksum: u64) -> Self {
+        Self { address, checksum }
+    }
+}

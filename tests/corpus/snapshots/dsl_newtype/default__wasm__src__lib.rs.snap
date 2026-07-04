@@ -1,49 +1,9 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(
-    clippy::len_without_is_empty,
-    clippy::too_many_arguments,
-    clippy::new_without_default
-)]
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct ProtocolMagic(cddl_lib::ProtocolMagic);
-
-#[wasm_bindgen]
-impl ProtocolMagic {
-    pub fn to_cbor_bytes(&self) -> Vec<u8> {
-        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ProtocolMagic, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
-    }
-}
-
-impl From<cddl_lib::ProtocolMagic> for ProtocolMagic {
-    fn from(native: cddl_lib::ProtocolMagic) -> Self {
-        Self(native)
-    }
-}
-
-impl From<ProtocolMagic> for cddl_lib::ProtocolMagic {
-    fn from(wasm: ProtocolMagic) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<cddl_lib::ProtocolMagic> for ProtocolMagic {
-    fn as_ref(&self) -> &cddl_lib::ProtocolMagic {
-        &self.0
-    }
-}
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

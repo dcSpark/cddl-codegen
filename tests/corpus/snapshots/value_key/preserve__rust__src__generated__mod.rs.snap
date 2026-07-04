@@ -1,0 +1,61 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{ArrowValueKeysEncoding, ValueKeysEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct ArrowValueKeys {
+    pub first: Option<String>,
+    pub second: Option<u64>,
+    pub encodings: Option<ArrowValueKeysEncoding>,
+}
+
+impl ArrowValueKeys {
+    pub fn new() -> Self {
+        Self {
+            first: None,
+            second: None,
+            encodings: None,
+        }
+    }
+}
+
+impl Default for ArrowValueKeys {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ValueKeys {
+    pub key_1: String,
+    pub key_2: u64,
+    pub encodings: Option<ValueKeysEncoding>,
+}
+
+impl ValueKeys {
+    pub fn new(key_1: String, key_2: u64) -> Self {
+        Self {
+            key_1,
+            key_2,
+            encodings: None,
+        }
+    }
+}

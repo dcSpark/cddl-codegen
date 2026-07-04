@@ -1,0 +1,26 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct PositionalOptional {
+    pub uint: Option<u64>,
+}
+
+impl PositionalOptional {
+    pub fn new(uint: Option<u64>) -> Self {
+        Self { uint }
+    }
+}

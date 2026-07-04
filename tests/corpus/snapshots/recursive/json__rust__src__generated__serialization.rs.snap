@@ -1,0 +1,66 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Tree {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_unsigned_integer(self.value)?;
+        serializer.write_array(cbor_event::Len::Len(self.children.len() as u64))?;
+        for element in self.children.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Tree {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let value = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("value"))?;
+            let children = (|| -> Result<_, DeserializeError> {
+                let mut children_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (children_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if let cbor_event::Len::Indefinite = len {
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
+                        }
+                    }
+                    children_arr.push(Tree::deserialize(raw)?);
+                }
+                Ok(children_arr)
+            })()
+            .map_err(|e| e.annotate("children"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Tree { value, children })
+        })()
+        .map_err(|e| e.annotate("Tree"))
+    }
+}

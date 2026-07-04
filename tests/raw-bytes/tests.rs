@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RawBytesEncoding;
+    use crate::serialization::RawBytesEncoding;
     use cbor_event::de::Deserializer;
     use serialization::Deserialize;
 

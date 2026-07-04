@@ -1,0 +1,563 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FixedValueArm(cddl_lib::FixedValueArm);
+
+#[wasm_bindgen]
+impl FixedValueArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedValueArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<FixedValueArm, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_fixed_value_arm0(key_2: u64) -> Self {
+        Self(cddl_lib::FixedValueArm::new_fixed_value_arm0(key_2))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::FixedValueArm::new_text(text))
+    }
+
+    pub fn kind(&self) -> FixedValueArmKind {
+        match &self.0 {
+            cddl_lib::FixedValueArm::FixedValueArm0(_) => FixedValueArmKind::FixedValueArm0,
+            cddl_lib::FixedValueArm::Text(_) => FixedValueArmKind::Text,
+        }
+    }
+
+    pub fn as_fixed_value_arm0(&self) -> Option<FixedValueArm0> {
+        match &self.0 {
+            cddl_lib::FixedValueArm::FixedValueArm0(fixed_value_arm0) => {
+                Some(fixed_value_arm0.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::FixedValueArm::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::FixedValueArm> for FixedValueArm {
+    fn from(native: cddl_lib::FixedValueArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedValueArm> for cddl_lib::FixedValueArm {
+    fn from(wasm: FixedValueArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedValueArm> for FixedValueArm {
+    fn as_ref(&self) -> &cddl_lib::FixedValueArm {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FixedValueArm0(cddl_lib::FixedValueArm0);
+
+#[wasm_bindgen]
+impl FixedValueArm0 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedValueArm0, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<FixedValueArm0, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn key_2(&self) -> u64 {
+        self.0.key_2
+    }
+
+    pub fn new(key_2: u64) -> Self {
+        Self(cddl_lib::FixedValueArm0::new(key_2))
+    }
+}
+
+impl From<cddl_lib::FixedValueArm0> for FixedValueArm0 {
+    fn from(native: cddl_lib::FixedValueArm0) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedValueArm0> for cddl_lib::FixedValueArm0 {
+    fn from(wasm: FixedValueArm0) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedValueArm0> for FixedValueArm0 {
+    fn as_ref(&self) -> &cddl_lib::FixedValueArm0 {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum FixedValueArmKind {
+    FixedValueArm0,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MixedKeyTypes(cddl_lib::MixedKeyTypes);
+
+#[wasm_bindgen]
+impl MixedKeyTypes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MixedKeyTypes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<MixedKeyTypes, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_uint(u64: u64) -> Self {
+        Self(cddl_lib::MixedKeyTypes::new_uint(u64))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self(cddl_lib::MixedKeyTypes::new_b(b))
+    }
+
+    pub fn kind(&self) -> MixedKeyTypesKind {
+        match &self.0 {
+            cddl_lib::MixedKeyTypes::U64(_) => MixedKeyTypesKind::U64,
+            cddl_lib::MixedKeyTypes::B(_) => MixedKeyTypesKind::B,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::MixedKeyTypes::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::MixedKeyTypes::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::MixedKeyTypes> for MixedKeyTypes {
+    fn from(native: cddl_lib::MixedKeyTypes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MixedKeyTypes> for cddl_lib::MixedKeyTypes {
+    fn from(wasm: MixedKeyTypes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MixedKeyTypes> for MixedKeyTypes {
+    fn as_ref(&self) -> &cddl_lib::MixedKeyTypes {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MixedKeyTypesKind {
+    U64,
+    B,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MultiFieldArm(cddl_lib::MultiFieldArm);
+
+#[wasm_bindgen]
+impl MultiFieldArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MultiFieldArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<MultiFieldArm, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_multi_field_arm0(a: u64, x: String) -> Self {
+        Self(cddl_lib::MultiFieldArm::new_multi_field_arm0(a, x))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self(cddl_lib::MultiFieldArm::new_b(b))
+    }
+
+    pub fn kind(&self) -> MultiFieldArmKind {
+        match &self.0 {
+            cddl_lib::MultiFieldArm::MultiFieldArm0(_) => MultiFieldArmKind::MultiFieldArm0,
+            cddl_lib::MultiFieldArm::B(_) => MultiFieldArmKind::B,
+        }
+    }
+
+    pub fn as_multi_field_arm0(&self) -> Option<MultiFieldArm0> {
+        match &self.0 {
+            cddl_lib::MultiFieldArm::MultiFieldArm0(multi_field_arm0) => {
+                Some(multi_field_arm0.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::MultiFieldArm::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::MultiFieldArm> for MultiFieldArm {
+    fn from(native: cddl_lib::MultiFieldArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MultiFieldArm> for cddl_lib::MultiFieldArm {
+    fn from(wasm: MultiFieldArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MultiFieldArm> for MultiFieldArm {
+    fn as_ref(&self) -> &cddl_lib::MultiFieldArm {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MultiFieldArm0(cddl_lib::MultiFieldArm0);
+
+#[wasm_bindgen]
+impl MultiFieldArm0 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MultiFieldArm0, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<MultiFieldArm0, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn x(&self) -> String {
+        self.0.x.clone()
+    }
+
+    pub fn new(a: u64, x: String) -> Self {
+        Self(cddl_lib::MultiFieldArm0::new(a, x))
+    }
+}
+
+impl From<cddl_lib::MultiFieldArm0> for MultiFieldArm0 {
+    fn from(native: cddl_lib::MultiFieldArm0) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MultiFieldArm0> for cddl_lib::MultiFieldArm0 {
+    fn from(wasm: MultiFieldArm0) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MultiFieldArm0> for MultiFieldArm0 {
+    fn as_ref(&self) -> &cddl_lib::MultiFieldArm0 {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MultiFieldArmKind {
+    MultiFieldArm0,
+    B,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextKeyed(cddl_lib::TextKeyed);
+
+#[wasm_bindgen]
+impl TextKeyed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TextKeyed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<TextKeyed, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_a(a: u64) -> Self {
+        Self(cddl_lib::TextKeyed::new_a(a))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self(cddl_lib::TextKeyed::new_b(b))
+    }
+
+    pub fn kind(&self) -> TextKeyedKind {
+        match &self.0 {
+            cddl_lib::TextKeyed::A(_) => TextKeyedKind::A,
+            cddl_lib::TextKeyed::B(_) => TextKeyedKind::B,
+        }
+    }
+
+    pub fn as_a(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TextKeyed::A(a) => Some(*a),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TextKeyed::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TextKeyed> for TextKeyed {
+    fn from(native: cddl_lib::TextKeyed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextKeyed> for cddl_lib::TextKeyed {
+    fn from(wasm: TextKeyed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TextKeyed> for TextKeyed {
+    fn as_ref(&self) -> &cddl_lib::TextKeyed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TextKeyedKind {
+    A,
+    B,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct UintKeyed(cddl_lib::UintKeyed);
+
+#[wasm_bindgen]
+impl UintKeyed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UintKeyed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<UintKeyed, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_uint(u64: u64) -> Self {
+        Self(cddl_lib::UintKeyed::new_uint(u64))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::UintKeyed::new_text(text))
+    }
+
+    pub fn kind(&self) -> UintKeyedKind {
+        match &self.0 {
+            cddl_lib::UintKeyed::U64(_) => UintKeyedKind::U64,
+            cddl_lib::UintKeyed::Text(_) => UintKeyedKind::Text,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::UintKeyed::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::UintKeyed::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::UintKeyed> for UintKeyed {
+    fn from(native: cddl_lib::UintKeyed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UintKeyed> for cddl_lib::UintKeyed {
+    fn from(wasm: UintKeyed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UintKeyed> for UintKeyed {
+    fn as_ref(&self) -> &cddl_lib::UintKeyed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum UintKeyedKind {
+    U64,
+    Text,
+}

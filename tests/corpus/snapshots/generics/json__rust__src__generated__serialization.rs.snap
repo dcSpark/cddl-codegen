@@ -1,0 +1,127 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for PairUse {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_unsigned_integer(self.k)?;
+        serializer.write_text(&self.v)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for PairUse {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let k = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("k"))?;
+            let v = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("v"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(PairUse { k, v })
+        })()
+        .map_err(|e| e.annotate("PairUse"))
+    }
+}
+
+impl cbor_event::se::Serialize for RangedContainer {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.value)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for RangedContainer {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let value = Ok(raw
+                .unsigned_integer()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|x| {
+                    if x < 1 || x > 10 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: x as isize,
+                            min: Some(1),
+                            max: Some(10),
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })? as u64)
+            .map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(RangedContainer { value })
+        })()
+        .map_err(|e| e.annotate("RangedContainer"))
+    }
+}
+
+impl cbor_event::se::Serialize for UintContainer {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.value)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for UintContainer {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let value = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(UintContainer { value })
+        })()
+        .map_err(|e| e.annotate("UintContainer"))
+    }
+}

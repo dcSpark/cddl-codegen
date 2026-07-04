@@ -1,0 +1,31 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type Bkeys = BTreeMap<Vec<u8>, u64>;
+
+#[derive(Clone, Debug)]
+pub struct BytesKeyHolder {
+    pub named: Bkeys,
+    pub inline: BTreeMap<Vec<u8>, u64>,
+}
+
+impl BytesKeyHolder {
+    pub fn new(named: Bkeys, inline: BTreeMap<Vec<u8>, u64>) -> Self {
+        Self { named, inline }
+    }
+}
+
+pub type BytesList = Vec<Vec<u8>>;

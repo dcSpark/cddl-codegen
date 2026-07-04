@@ -1,0 +1,60 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::HashEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Hash {
+    pub inner: Vec<u8>,
+    pub encodings: Option<HashEncoding>,
+}
+
+impl Hash {
+    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+        if inner.len() > 32 {
+            return Err(DeserializeError::new(
+                "Hash",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as isize,
+                    min: Some(0),
+                    max: Some(32),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<Vec<u8>> for Hash {
+    type Error = DeserializeError;
+
+    fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
+        Hash::new(inner)
+    }
+}
+
+impl From<Hash> for Vec<u8> {
+    fn from(wrapper: Hash) -> Self {
+        wrapper.inner
+    }
+}

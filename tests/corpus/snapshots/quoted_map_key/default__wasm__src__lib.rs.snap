@@ -2,60 +2,8 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(
-    clippy::len_without_is_empty,
-    clippy::too_many_arguments,
-    clippy::new_without_default
-)]
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct QuotedMapKey(cddl_lib::QuotedMapKey);
-
-#[wasm_bindgen]
-impl QuotedMapKey {
-    pub fn to_cbor_bytes(&self) -> Vec<u8> {
-        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<QuotedMapKey, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
-    }
-
-    pub fn a(&self) -> u64 {
-        self.0.a
-    }
-
-    pub fn b(&self) -> String {
-        self.0.b.clone()
-    }
-
-    pub fn new(a: u64, b: String) -> Self {
-        Self(cddl_lib::QuotedMapKey::new(a, b))
-    }
-}
-
-impl From<cddl_lib::QuotedMapKey> for QuotedMapKey {
-    fn from(native: cddl_lib::QuotedMapKey) -> Self {
-        Self(native)
-    }
-}
-
-impl From<QuotedMapKey> for cddl_lib::QuotedMapKey {
-    fn from(wasm: QuotedMapKey) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<cddl_lib::QuotedMapKey> for QuotedMapKey {
-    fn as_ref(&self) -> &cddl_lib::QuotedMapKey {
-        &self.0
-    }
-}
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

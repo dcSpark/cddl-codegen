@@ -1,4 +1,4 @@
-use crate::RawBytesEncoding;
+use crate::serialization::RawBytesEncoding;
 
 #[derive(Clone, Debug)]
 pub struct PubKey([u8; 32]);

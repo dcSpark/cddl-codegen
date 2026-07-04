@@ -1,65 +1,9 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(
-    clippy::len_without_is_empty,
-    clippy::too_many_arguments,
-    clippy::new_without_default
-)]
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct Arr(cddl_lib::Arr);
-
-#[wasm_bindgen]
-impl Arr {
-    pub fn to_cbor_bytes(&self) -> Vec<u8> {
-        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Arr, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
-    }
-
-    pub fn index_0(&self) -> u64 {
-        self.0.index_0
-    }
-
-    pub fn index_1(&self) -> String {
-        self.0.index_1.clone()
-    }
-
-    pub fn index_2(&self) -> Vec<u8> {
-        self.0.index_2.clone()
-    }
-
-    pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {
-        Self(cddl_lib::Arr::new(index_0, index_1, index_2))
-    }
-}
-
-impl From<cddl_lib::Arr> for Arr {
-    fn from(native: cddl_lib::Arr) -> Self {
-        Self(native)
-    }
-}
-
-impl From<Arr> for cddl_lib::Arr {
-    fn from(wasm: Arr) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<cddl_lib::Arr> for Arr {
-    fn as_ref(&self) -> &cddl_lib::Arr {
-        &self.0
-    }
-}
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

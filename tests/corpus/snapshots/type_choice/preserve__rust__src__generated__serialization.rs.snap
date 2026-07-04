@@ -1,0 +1,76 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for TypeChoice {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            TypeChoice::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+            TypeChoice::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            TypeChoice::Bytes {
+                bytes,
+                bytes_encoding,
+            } => {
+                serializer.write_bytes_sz(&bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64))
+            }
+        }
+    }
+}
+
+impl Deserialize for TypeChoice {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                cbor_event::Type::Bytes => {
+                    let (bytes, bytes_encoding) = raw
+                        .bytes_sz()
+                        .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                    Ok(Self::Bytes {
+                        bytes,
+                        bytes_encoding,
+                    })
+                }
+                _ => Err(DeserializeError::new(
+                    "TypeChoice",
+                    DeserializeFailure::NoVariantMatched,
+                )),
+            }
+        })()
+        .map_err(|e| e.annotate("TypeChoice"))
+    }
+}

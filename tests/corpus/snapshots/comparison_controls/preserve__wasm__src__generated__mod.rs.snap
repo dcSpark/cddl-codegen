@@ -1,0 +1,75 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ComparisonControls(cddl_lib::ComparisonControls);
+
+#[wasm_bindgen]
+impl ComparisonControls {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ComparisonControls, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> u64 {
+        self.0.b
+    }
+
+    pub fn c(&self) -> u64 {
+        self.0.c
+    }
+
+    pub fn d(&self) -> u64 {
+        self.0.d
+    }
+
+    pub fn e(&self) -> u64 {
+        self.0.e
+    }
+
+    pub fn new(a: u64, b: u64, c: u64, d: u64, e: u64) -> Result<ComparisonControls, JsError> {
+        cddl_lib::ComparisonControls::new(a, b, c, d, e)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::ComparisonControls> for ComparisonControls {
+    fn from(native: cddl_lib::ComparisonControls) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ComparisonControls> for cddl_lib::ComparisonControls {
+    fn from(wasm: ComparisonControls) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ComparisonControls> for ComparisonControls {
+    fn as_ref(&self) -> &cddl_lib::ComparisonControls {
+        &self.0
+    }
+}

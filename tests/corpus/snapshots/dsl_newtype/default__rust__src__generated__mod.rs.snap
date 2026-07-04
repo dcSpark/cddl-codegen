@@ -1,0 +1,36 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, Copy)]
+pub struct ProtocolMagic(u64);
+
+impl ProtocolMagic {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for ProtocolMagic {
+    fn from(inner: u64) -> Self {
+        ProtocolMagic::new(inner)
+    }
+}
+
+impl From<ProtocolMagic> for u64 {
+    fn from(wrapper: ProtocolMagic) -> Self {
+        wrapper.0
+    }
+}

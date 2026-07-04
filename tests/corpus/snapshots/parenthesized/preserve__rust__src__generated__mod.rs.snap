@@ -1,0 +1,114 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{HolderEncoding, NestedEncoding, NewtypeViaParensEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type Basic = u64;
+
+#[derive(Clone, Debug)]
+pub enum Choice {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl Choice {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub ref_basic: Basic,
+    pub ref_choice: Choice,
+    pub ref_newtype: NewtypeViaParens,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(ref_basic: Basic, ref_choice: Choice, ref_newtype: NewtypeViaParens) -> Self {
+        Self {
+            ref_basic,
+            ref_choice,
+            ref_newtype,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Nested {
+    pub a: u64,
+    pub b: String,
+    pub encodings: Option<NestedEncoding>,
+}
+
+impl Nested {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            b,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NewtypeViaParens {
+    pub inner: u64,
+    pub encodings: Option<NewtypeViaParensEncoding>,
+}
+
+impl NewtypeViaParens {
+    pub fn new(inner: u64) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<u64> for NewtypeViaParens {
+    fn from(inner: u64) -> Self {
+        NewtypeViaParens::new(inner)
+    }
+}
+
+impl From<NewtypeViaParens> for u64 {
+    fn from(wrapper: NewtypeViaParens) -> Self {
+        wrapper.inner
+    }
+}

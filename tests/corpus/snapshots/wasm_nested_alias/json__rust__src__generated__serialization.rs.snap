@@ -1,0 +1,84 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for OptHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + match &self.f {
+                Some(x) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_unsigned_integer(self.x)?;
+        if let Some(field) = &self.f {
+            serializer.write_array(cbor_event::Len::Len(field.len() as u64))?;
+            for element in field.iter() {
+                serializer.write_unsigned_integer(*element)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(1)?;
+        (|| -> Result<_, DeserializeError> {
+            let x = Ok(raw.unsigned_integer()? as u64)
+                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let f = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Array)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let mut f_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (f_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if let cbor_event::Len::Indefinite = len {
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
+                            }
+                        }
+                        f_arr.push(raw.unsigned_integer()? as u64);
+                    }
+                    Ok(f_arr)
+                })()
+                .map_err(|e| e.annotate("f"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptHolder { x, f })
+        })()
+        .map_err(|e| e.annotate("OptHolder"))
+    }
+}

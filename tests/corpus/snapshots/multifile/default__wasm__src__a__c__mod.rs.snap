@@ -1,5 +1,0 @@
----
-source: src/snapshot_tests.rs
-expression: content
----
-pub mod foo;

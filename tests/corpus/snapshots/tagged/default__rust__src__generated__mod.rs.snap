@@ -1,0 +1,68 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub payload: TaggedNewtype,
+}
+
+impl Holder {
+    pub fn new(payload: TaggedNewtype) -> Self {
+        Self { payload }
+    }
+}
+
+impl From<Tagged> for String {
+    fn from(wrapper: Tagged) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<TaggedNewtype> for String {
+    fn from(wrapper: TaggedNewtype) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Tagged(String);
+
+impl Tagged {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for Tagged {
+    fn from(inner: String) -> Self {
+        Tagged::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedNewtype(String);
+
+impl TaggedNewtype {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for TaggedNewtype {
+    fn from(inner: String) -> Self {
+        TaggedNewtype::new(inner)
+    }
+}

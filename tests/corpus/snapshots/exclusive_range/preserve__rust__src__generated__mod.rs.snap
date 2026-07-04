@@ -1,0 +1,41 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::ExclusiveRangeEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct ExclusiveRange {
+    pub v: u64,
+    pub encodings: Option<ExclusiveRangeEncoding>,
+}
+
+impl ExclusiveRange {
+    pub fn new(v: u64) -> Result<Self, DeserializeError> {
+        if v > 9 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: v as isize,
+                min: None,
+                max: Some(9),
+            }
+            .into());
+        }
+        Ok(Self { v, encodings: None })
+    }
+}

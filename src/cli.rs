@@ -136,7 +136,12 @@ impl Cli {
     }
 
     pub fn common_import_rust(&self) -> &str {
-        self.common_import_override.as_deref().unwrap_or("crate")
+        // Generated code lives under `src/generated/**`, so the crate-local runtime modules
+        // (error/serialization/ordered_hash_map) are reached via `crate::generated::…`. An explicit
+        // `--common-import-override` points at a separate crate and is used verbatim.
+        self.common_import_override
+            .as_deref()
+            .unwrap_or("crate::generated")
     }
 
     pub fn common_import_wasm(&self) -> String {

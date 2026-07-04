@@ -1,0 +1,36 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, Copy)]
+pub struct TaggedRanged(u8);
+
+impl TaggedRanged {
+    pub fn new(inner: u8) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u8> for TaggedRanged {
+    fn from(inner: u8) -> Self {
+        TaggedRanged::new(inner)
+    }
+}
+
+impl From<TaggedRanged> for u8 {
+    fn from(wrapper: TaggedRanged) -> Self {
+        wrapper.0
+    }
+}

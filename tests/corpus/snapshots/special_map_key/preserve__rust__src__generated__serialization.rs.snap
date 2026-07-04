@@ -1,0 +1,170 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for BkeyHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.named_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.named.len() as u64),
+        )?;
+        for (key, value) in self.named.iter() {
+            serializer.write_special(cbor_event::Special::Bool(*key))?;
+            let named_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.named_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*value, fit_sz(*value, named_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.named_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inline_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.inline.len() as u64),
+        )?;
+        for (key, value) in self.inline.iter() {
+            serializer.write_special(cbor_event::Special::Bool(*key))?;
+            let inline_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inline_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*value, fit_sz(*value, inline_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.inline_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for BkeyHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (named, named_encoding, named_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut named_table = OrderedHashMap::new();
+                    let named_len = raw.map_sz()?;
+                    let named_encoding = named_len.into();
+                    let mut named_value_encodings = BTreeMap::new();
+                    while match named_len {
+                        cbor_event::LenSz::Len(n, _) => (named_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if let cbor_event::LenSz::Indefinite = named_len {
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
+                            }
+                        }
+                        let named_key = bool::deserialize(raw)?;
+                        let (named_value, named_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if named_table.insert(named_key, named_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        named_value_encodings.insert(named_key, named_value_encoding);
+                    }
+                    Ok((named_table, named_encoding, named_value_encodings))
+                })()
+                .map_err(|e| e.annotate("named"))?;
+            let (inline, inline_encoding, inline_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut inline_table = OrderedHashMap::new();
+                    let inline_len = raw.map_sz()?;
+                    let inline_encoding = inline_len.into();
+                    let mut inline_value_encodings = BTreeMap::new();
+                    while match inline_len {
+                        cbor_event::LenSz::Len(n, _) => (inline_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if let cbor_event::LenSz::Indefinite = inline_len {
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
+                            }
+                        }
+                        let inline_key = bool::deserialize(raw)?;
+                        let (inline_value, inline_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if inline_table.insert(inline_key, inline_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        inline_value_encodings.insert(inline_key, inline_value_encoding);
+                    }
+                    Ok((inline_table, inline_encoding, inline_value_encodings))
+                })()
+                .map_err(|e| e.annotate("inline"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(BkeyHolder {
+                named,
+                inline,
+                encodings: Some(BkeyHolderEncoding {
+                    len_encoding,
+                    named_encoding,
+                    named_value_encodings,
+                    inline_encoding,
+                    inline_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("BkeyHolder"))
+    }
+}

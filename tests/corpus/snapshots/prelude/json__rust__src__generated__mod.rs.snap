@@ -1,0 +1,727 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl serde::Serialize for Int {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Int {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        std::str::FromStr::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
+        })
+    }
+}
+
+impl schemars::JsonSchema for Int {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Int")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        String::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        String::inline_schema()
+    }
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl std::fmt::Display for Int {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl std::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).abs()).map(Self::Nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(std::num::TryFromIntError),
+    Parsing(std::num::ParseIntError),
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Prelude {
+    pub big_u: PreludeBiguint,
+    pub uri: PreludeUri,
+    pub big_i: PreludeBigint,
+    pub unsigned: PreludeUnsigned,
+    pub t: String,
+    pub b: Vec<u8>,
+    pub intg: PreludeInteger,
+    pub big_n: PreludeBignint,
+    pub date: PreludeTdate,
+    pub b64u: PreludeB64url,
+    pub b64l: PreludeB64legacy,
+    pub re: PreludeRegexp,
+    pub mime: PreludeMimeMessage,
+    pub ec: PreludeEncodedCbor,
+    pub df: PreludeDecfrac,
+    pub bf: PreludeBigfloat,
+}
+
+impl Prelude {
+    pub fn new(
+        big_u: PreludeBiguint,
+        uri: PreludeUri,
+        big_i: PreludeBigint,
+        unsigned: PreludeUnsigned,
+        t: String,
+        b: Vec<u8>,
+        intg: PreludeInteger,
+        big_n: PreludeBignint,
+        date: PreludeTdate,
+        b64u: PreludeB64url,
+        b64l: PreludeB64legacy,
+        re: PreludeRegexp,
+        mime: PreludeMimeMessage,
+        ec: PreludeEncodedCbor,
+        df: PreludeDecfrac,
+        bf: PreludeBigfloat,
+    ) -> Self {
+        Self {
+            big_u,
+            uri,
+            big_i,
+            unsigned,
+            t,
+            b,
+            intg,
+            big_n,
+            date,
+            b64u,
+            b64l,
+            re,
+            mime,
+            ec,
+            df,
+            bf,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeB64legacy(String);
+
+impl PreludeB64legacy {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeB64legacy {
+    fn from(inner: String) -> Self {
+        PreludeB64legacy::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeB64legacy {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeB64legacy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeB64legacy {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeB64legacy")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeB64url(String);
+
+impl PreludeB64url {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeB64url {
+    fn from(inner: String) -> Self {
+        PreludeB64url::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeB64url {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeB64url {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeB64url {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeB64url")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PreludeBigfloat {
+    pub e2: Int,
+    pub m: PreludeInteger,
+}
+
+impl PreludeBigfloat {
+    pub fn new(e2: Int, m: PreludeInteger) -> Self {
+        Self { e2, m }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum PreludeBigint {
+    PreludeBiguint(PreludeBiguint),
+    PreludeBignint(PreludeBignint),
+}
+
+impl PreludeBigint {
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self::PreludeBiguint(prelude_biguint)
+    }
+
+    pub fn new_prelude_bignint(prelude_bignint: PreludeBignint) -> Self {
+        Self::PreludeBignint(prelude_bignint)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeBignint(Vec<u8>);
+
+impl PreludeBignint {
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for PreludeBignint {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeBignint::new(inner)
+    }
+}
+
+impl From<PreludeBignint> for Vec<u8> {
+    fn from(wrapper: PreludeBignint) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for PreludeBignint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeBignint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        hex::decode(&s).map(PreludeBignint::new).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
+        })
+    }
+}
+
+impl schemars::JsonSchema for PreludeBignint {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeBignint")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeBiguint(Vec<u8>);
+
+impl PreludeBiguint {
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for PreludeBiguint {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeBiguint::new(inner)
+    }
+}
+
+impl From<PreludeBiguint> for Vec<u8> {
+    fn from(wrapper: PreludeBiguint) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for PreludeBiguint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeBiguint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        hex::decode(&s).map(PreludeBiguint::new).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
+        })
+    }
+}
+
+impl schemars::JsonSchema for PreludeBiguint {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeBiguint")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PreludeDecfrac {
+    pub e10: Int,
+    pub m: PreludeInteger,
+}
+
+impl PreludeDecfrac {
+    pub fn new(e10: Int, m: PreludeInteger) -> Self {
+        Self { e10, m }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEncodedCbor(Vec<u8>);
+
+impl PreludeEncodedCbor {
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for PreludeEncodedCbor {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeEncodedCbor::new(inner)
+    }
+}
+
+impl From<PreludeEncodedCbor> for Vec<u8> {
+    fn from(wrapper: PreludeEncodedCbor) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for PreludeEncodedCbor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeEncodedCbor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        hex::decode(&s).map(PreludeEncodedCbor::new).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
+        })
+    }
+}
+
+impl schemars::JsonSchema for PreludeEncodedCbor {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeEncodedCbor")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum PreludeInteger {
+    Int(Int),
+    PreludeBigint(PreludeBigint),
+}
+
+impl PreludeInteger {
+    pub fn new_int(int: Int) -> Self {
+        Self::Int(int)
+    }
+
+    pub fn new_prelude_bigint(prelude_bigint: PreludeBigint) -> Self {
+        Self::PreludeBigint(prelude_bigint)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeMimeMessage(String);
+
+impl PreludeMimeMessage {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeMimeMessage {
+    fn from(inner: String) -> Self {
+        PreludeMimeMessage::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeMimeMessage {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeMimeMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeMimeMessage {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeMimeMessage")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeRegexp(String);
+
+impl PreludeRegexp {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeRegexp {
+    fn from(inner: String) -> Self {
+        PreludeRegexp::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeRegexp {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeRegexp {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeRegexp {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeRegexp")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeTdate(String);
+
+impl PreludeTdate {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeTdate {
+    fn from(inner: String) -> Self {
+        PreludeTdate::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeTdate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeTdate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeTdate {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeTdate")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum PreludeUnsigned {
+    U64(u64),
+    PreludeBiguint(PreludeBiguint),
+}
+
+impl PreludeUnsigned {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_prelude_biguint(prelude_biguint: PreludeBiguint) -> Self {
+        Self::PreludeBiguint(prelude_biguint)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeUri(String);
+
+impl PreludeUri {
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for PreludeUri {
+    fn from(inner: String) -> Self {
+        PreludeUri::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeUri {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeUri {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeUri {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeUri")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<PreludeB64legacy> for String {
+    fn from(wrapper: PreludeB64legacy) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeB64url> for String {
+    fn from(wrapper: PreludeB64url) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeMimeMessage> for String {
+    fn from(wrapper: PreludeMimeMessage) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeRegexp> for String {
+    fn from(wrapper: PreludeRegexp) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeTdate> for String {
+    fn from(wrapper: PreludeTdate) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeUri> for String {
+    fn from(wrapper: PreludeUri) -> Self {
+        wrapper.0
+    }
+}

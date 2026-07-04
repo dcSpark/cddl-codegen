@@ -1,0 +1,73 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Defaulted(cddl_lib::Defaulted);
+
+#[wasm_bindgen]
+impl Defaulted {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Defaulted, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_b(&mut self, b: u64) {
+        self.0.b = b
+    }
+
+    pub fn b(&self) -> u64 {
+        self.0.b
+    }
+
+    pub fn set_c(&mut self, c: String) {
+        self.0.c = c
+    }
+
+    pub fn c(&self) -> String {
+        self.0.c.clone()
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::Defaulted::new(a))
+    }
+}
+
+impl From<cddl_lib::Defaulted> for Defaulted {
+    fn from(native: cddl_lib::Defaulted) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Defaulted> for cddl_lib::Defaulted {
+    fn from(wasm: Defaulted) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Defaulted> for Defaulted {
+    fn as_ref(&self) -> &cddl_lib::Defaulted {
+        &self.0
+    }
+}

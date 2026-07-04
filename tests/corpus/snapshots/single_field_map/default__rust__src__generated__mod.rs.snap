@@ -1,0 +1,43 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct SingleFieldMap {
+    pub t: u64,
+}
+
+impl SingleFieldMap {
+    pub fn new(t: u64) -> Self {
+        Self { t }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SingleFieldMapOpt {
+    pub t: Option<u64>,
+}
+
+impl SingleFieldMapOpt {
+    pub fn new() -> Self {
+        Self { t: None }
+    }
+}
+
+impl Default for SingleFieldMapOpt {
+    fn default() -> Self {
+        Self::new()
+    }
+}

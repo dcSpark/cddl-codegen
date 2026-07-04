@@ -1,0 +1,300 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for SingleFieldMap {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| encs.orig_deser_order.len() == 1)
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..1).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    serializer.write_text_sz(
+                        "t",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.t_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("t".len() as u64),
+                    )?;
+                    serializer.write_unsigned_integer_sz(
+                        self.t,
+                        fit_sz(
+                            self.t,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.t_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for SingleFieldMap {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(1)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let mut orig_deser_order = Vec::new();
+            let mut t_encoding = None;
+            let mut t_key_encoding = StringEncoding::default();
+            let mut t = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "t" => {
+                                if t.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "t".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_t, tmp_t_encoding) = raw
+                                    .unsigned_integer_sz()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .map(|(x, enc)| (x, Some(enc)))
+                                    .map_err(|e: DeserializeError| e.annotate("t"))?;
+                                t = Some(tmp_t);
+                                t_encoding = tmp_t_encoding;
+                                t_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into())
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let t = match t {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("t")))
+                            .into(),
+                    )
+                }
+            };
+            ();
+            Ok(Self {
+                t,
+                encodings: Some(SingleFieldMapEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    t_key_encoding,
+                    t_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("SingleFieldMap"))
+    }
+}
+
+impl cbor_event::se::Serialize for SingleFieldMapOpt {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(match &self.t {
+                    Some(_) => 1,
+                    None => 0,
+                }),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == match &self.t {
+                        Some(_) => 1,
+                        None => 0,
+                    }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..1).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    if let Some(field) = &self.t {
+                        serializer.write_text_sz(
+                            "t",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.t_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("t".len() as u64),
+                        )?;
+                        serializer.write_unsigned_integer_sz(
+                            *field,
+                            fit_sz(
+                                *field,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.t_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for SingleFieldMapOpt {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        (|| -> Result<_, DeserializeError> {
+            let mut orig_deser_order = Vec::new();
+            let mut t_encoding = None;
+            let mut t_key_encoding = StringEncoding::default();
+            let mut t = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "t" => {
+                                if t.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "t".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_t, tmp_t_encoding) =
+                                    (|| -> Result<_, DeserializeError> {
+                                        read_len.read_elems(1)?;
+                                        raw.unsigned_integer_sz()
+                                            .map_err(Into::<DeserializeError>::into)
+                                            .map(|(x, enc)| (x, Some(enc)))
+                                    })()
+                                    .map_err(|e| e.annotate("t"))?;
+                                t = Some(tmp_t);
+                                t_encoding = tmp_t_encoding;
+                                t_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into())
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self {
+                t,
+                encodings: Some(SingleFieldMapOptEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    t_key_encoding,
+                    t_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("SingleFieldMapOpt"))
+    }
+}

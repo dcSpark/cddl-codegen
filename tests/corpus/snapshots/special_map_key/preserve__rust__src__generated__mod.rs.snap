@@ -1,0 +1,42 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::BkeyHolderEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct BkeyHolder {
+    pub named: Bkeys,
+    pub inline: OrderedHashMap<bool, u64>,
+    pub encodings: Option<BkeyHolderEncoding>,
+}
+
+impl BkeyHolder {
+    pub fn new(named: Bkeys, inline: OrderedHashMap<bool, u64>) -> Self {
+        Self {
+            named,
+            inline,
+            encodings: None,
+        }
+    }
+}
+
+pub type Bkeys = OrderedHashMap<bool, u64>;
+
+pub type BoolList = Vec<bool>;

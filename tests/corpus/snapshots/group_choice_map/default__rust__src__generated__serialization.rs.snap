@@ -1,0 +1,686 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for FixedValueArm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            FixedValueArm::FixedValueArm0(fixed_value_arm0) => {
+                fixed_value_arm0.serialize(serializer)
+            }
+            FixedValueArm::Text(text) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_unsigned_integer(3u64)?;
+                serializer.write_text(&text)
+            }
+        }
+    }
+}
+
+impl Deserialize for FixedValueArm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                let ret = FixedValueArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
+                ();
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(fixed_value_arm0) => return Ok(Self::FixedValueArm0(fixed_value_arm0)),
+                Err(e) => {
+                    errs.push(e.annotate("FixedValueArm0"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let text_key = raw.unsigned_integer()?;
+                if text_key != 3 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(text_key),
+                        expected: Key::Uint(3),
+                    }
+                    .into());
+                }
+                let text = raw.text()? as String;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(FixedValueArm::Text(text))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Text"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeError::new(
+                "FixedValueArm",
+                DeserializeFailure::NoVariantMatchedWithCauses(errs),
+            ))
+        })()
+        .map_err(|e| e.annotate("FixedValueArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for FixedValueArm0 {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(2))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for FixedValueArm0 {
+    fn serialize_as_embedded_group<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(5u64)?;
+        serializer.write_unsigned_integer(2u64)?;
+        serializer.write_unsigned_integer(self.key_2)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for FixedValueArm0 {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        ();
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for FixedValueArm0 {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        _read_len: &mut CBORReadLen,
+        len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let mut key_1_present = false;
+            let mut key_2 = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1_present = (|| -> Result<_, DeserializeError> {
+                                let key_1_value = raw.unsigned_integer()?;
+                                if key_1_value != 5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(key_1_value),
+                                        expected: Key::Uint(5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("key_1"))?;
+                        }
+                        2 => {
+                            if key_2.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(2)).into());
+                            }
+                            key_2 = Some(
+                                Ok(raw.unsigned_integer()? as u64)
+                                    .map_err(|e: DeserializeError| e.annotate("key_2"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(
+                                DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                            )
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            if !key_1_present {
+                return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into());
+            }
+            let key_2 = match key_2 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(2)).into()),
+            };
+            Ok(Self { key_2 })
+        })()
+        .map_err(|e| e.annotate("FixedValueArm0"))
+    }
+}
+
+impl cbor_event::se::Serialize for MixedKeyTypes {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            MixedKeyTypes::U64(uint) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_unsigned_integer(1u64)?;
+                serializer.write_unsigned_integer(*uint)
+            }
+            MixedKeyTypes::B(b) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("b")?;
+                serializer.write_text(&b)
+            }
+        }
+    }
+}
+
+impl Deserialize for MixedKeyTypes {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let uint_key = raw.unsigned_integer()?;
+                    if uint_key != 1 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(uint_key),
+                            expected: Key::Uint(1),
+                        }
+                        .into());
+                    }
+                    let uint = raw.unsigned_integer()? as u64;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(MixedKeyTypes::U64(uint))
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let b_key = raw.text()?;
+                    if b_key != "b" {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Str(b_key),
+                            expected: Key::Str(String::from("b")),
+                        }
+                        .into());
+                    }
+                    let b = raw.text()? as String;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(MixedKeyTypes::B(b))
+                }
+                _ => Err(DeserializeError::new(
+                    "MixedKeyTypes",
+                    DeserializeFailure::NoVariantMatched,
+                )),
+            }
+        })()
+        .map_err(|e| e.annotate("MixedKeyTypes"))
+    }
+}
+
+impl cbor_event::se::Serialize for MultiFieldArm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            MultiFieldArm::MultiFieldArm0(multi_field_arm0) => {
+                multi_field_arm0.serialize(serializer)
+            }
+            MultiFieldArm::B(b) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("b")?;
+                serializer.write_text(&b)
+            }
+        }
+    }
+}
+
+impl Deserialize for MultiFieldArm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                let ret = MultiFieldArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
+                ();
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(multi_field_arm0) => return Ok(Self::MultiFieldArm0(multi_field_arm0)),
+                Err(e) => {
+                    errs.push(e.annotate("MultiFieldArm0"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let b_key = raw.text()?;
+                if b_key != "b" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(b_key),
+                        expected: Key::Str(String::from("b")),
+                    }
+                    .into());
+                }
+                let b = raw.text()? as String;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(MultiFieldArm::B(b))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("B"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeError::new(
+                "MultiFieldArm",
+                DeserializeFailure::NoVariantMatchedWithCauses(errs),
+            ))
+        })()
+        .map_err(|e| e.annotate("MultiFieldArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for MultiFieldArm0 {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(2))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for MultiFieldArm0 {
+    fn serialize_as_embedded_group<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_text("a")?;
+        serializer.write_unsigned_integer(self.a)?;
+        serializer.write_text("x")?;
+        serializer.write_text(&self.x)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for MultiFieldArm0 {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(2)?;
+        read_len.finish()?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        ();
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for MultiFieldArm0 {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        _read_len: &mut CBORReadLen,
+        len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let mut a = None;
+            let mut x = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "a" => {
+                            if a.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("a".into())).into()
+                                );
+                            }
+                            a = Some(
+                                Ok(raw.unsigned_integer()? as u64)
+                                    .map_err(|e: DeserializeError| e.annotate("a"))?,
+                            );
+                        }
+                        "x" => {
+                            if x.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("x".into())).into()
+                                );
+                            }
+                            x = Some(
+                                Ok(raw.text()? as String)
+                                    .map_err(|e: DeserializeError| e.annotate("x"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let a = match a {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
+                            .into(),
+                    )
+                }
+            };
+            let x = match x {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { a, x })
+        })()
+        .map_err(|e| e.annotate("MultiFieldArm0"))
+    }
+}
+
+impl cbor_event::se::Serialize for TextKeyed {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            TextKeyed::A(a) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("a")?;
+                serializer.write_unsigned_integer(*a)
+            }
+            TextKeyed::B(b) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("b")?;
+                serializer.write_text(&b)
+            }
+        }
+    }
+}
+
+impl Deserialize for TextKeyed {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let a_key = raw.text()?;
+                if a_key != "a" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(a_key),
+                        expected: Key::Str(String::from("a")),
+                    }
+                    .into());
+                }
+                let a = raw.unsigned_integer()? as u64;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(TextKeyed::A(a))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("A"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let b_key = raw.text()?;
+                if b_key != "b" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(b_key),
+                        expected: Key::Str(String::from("b")),
+                    }
+                    .into());
+                }
+                let b = raw.text()? as String;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(TextKeyed::B(b))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("B"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeError::new(
+                "TextKeyed",
+                DeserializeFailure::NoVariantMatchedWithCauses(errs),
+            ))
+        })()
+        .map_err(|e| e.annotate("TextKeyed"))
+    }
+}
+
+impl cbor_event::se::Serialize for UintKeyed {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            UintKeyed::U64(uint) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_unsigned_integer(1u64)?;
+                serializer.write_unsigned_integer(*uint)
+            }
+            UintKeyed::Text(text) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_unsigned_integer(2u64)?;
+                serializer.write_text(&text)
+            }
+        }
+    }
+}
+
+impl Deserialize for UintKeyed {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let uint_key = raw.unsigned_integer()?;
+                if uint_key != 1 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(uint_key),
+                        expected: Key::Uint(1),
+                    }
+                    .into());
+                }
+                let uint = raw.unsigned_integer()? as u64;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(UintKeyed::U64(uint))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("U64"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let text_key = raw.unsigned_integer()?;
+                if text_key != 2 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(text_key),
+                        expected: Key::Uint(2),
+                    }
+                    .into());
+                }
+                let text = raw.text()? as String;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(UintKeyed::Text(text))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Text"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeError::new(
+                "UintKeyed",
+                DeserializeFailure::NoVariantMatchedWithCauses(errs),
+            ))
+        })()
+        .map_err(|e| e.annotate("UintKeyed"))
+    }
+}

@@ -1,0 +1,36 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type EnumKeyedMap = OrderedHashMap<FixedEnum, u64>;
+
+#[derive(Copy, Clone, Debug, derivative::Derivative)]
+#[derivative(
+    Eq,
+    PartialEq,
+    Ord = "feature_allow_slow_enum",
+    PartialOrd = "feature_allow_slow_enum",
+    Hash
+)]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub enum FixedEnum {
+    I0,
+    I1,
+    I2,
+}
