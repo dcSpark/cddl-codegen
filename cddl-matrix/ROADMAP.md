@@ -43,6 +43,23 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Group-choice-arm containment role (both reps).** The `//` arm is a container role the containment
+  axis does not enumerate at all (`role.choice-member` covers only `/` type choices), and it is the
+  proven hole behind the map-rep group-choice bug family: every arm-shape defect (multi-field-arm
+  dispatch, fixed-value-entry generation panic, non-fixed-key silent key drop, nint/float-key
+  rejection) was a cell of this missing role, found by hand probing instead of by sweep. Add
+  `role.group-choice-arm` cells with rep as part of the cell (map-rep arms carry member keys,
+  array-rep arms don't — the support surfaces differ), so `verify.ts` verdicts every feature-in-arm
+  combination execution-gated, the decode-conformance obligation projection auto-mints foreign
+  vectors for the supported cells, and `project_robustness.ts` projects the reject/panic cells —
+  subsuming the interim hand pins
+  `tests/robustness/group_choice_map_{nonfixed_key,keyless_entry,unsupported_key}.cddl` (prune them
+  when the projected fixtures land). While in there: `map-key.toml` enumerates only composite key
+  shapes (2 cells) — literal key KINDS (nint/float/bool) are the same under-enumeration one level
+  down; the record-path nint-key generation panic (§ findings) was never verdicted for lack of a
+  cell. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
+  containment-example recombination: fuzz recombination is only as complete as the role set it
+  recombines.
 
 ## 2. Running the verification suite
 

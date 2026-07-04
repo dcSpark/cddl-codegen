@@ -97,7 +97,10 @@ is still a default-profile claim — next-steps item 2 below.
    have surfaced mechanically from recombining member shapes inside one construct. Identifier
    space is a fuzz dimension too, not just grammar shapes: a rule named `w` generates
    `pub enum W`, which collides with the `serialize<W: Write>` generic and doesn't compile
-   (ledgered in `cddl-matrix/ROADMAP.md` § findings).
+   (ledgered in `cddl-matrix/ROADMAP.md` § findings). Recombination is only as complete as the
+   role set it draws from — the enumerative prerequisite (a group-choice-arm containment role;
+   the `//` arm is currently not a containment role at all) is ledgered concretely in
+   `cddl-matrix/ROADMAP.md` § 1 and should land before or with the fuzzer.
 
 5. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
