@@ -366,11 +366,24 @@ from a degenerate example.**
   decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded);
   the emission-axis fill run (`tests/TESTING_ROADMAP.md` item 2) should re-surface it as an
   `EMISSION DIVERGENCE` beyond the expected float class.
-- **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
-  error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
-  bounds don't reach the field bounds check as `(Some,Some)`.
-- **Top-level two-sided negative range silently drops its bounds.** `c = -10..-3` emits `pub type C = i64;`
-  with no range check at all (bounds lost).
+- **All-negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
+  error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm. Mechanism (probed):
+  an int-typed field's deserializer branches per CBOR sign (uint arm / nint arm) and each arm gets its
+  own partitioned bounds check — the straddling `[q: -10..3]` generates correctly with TWO RangeChecks,
+  and all-positive `[q: 3..10]` with one — but an all-negative range leaves the uint arm's partition
+  with an empty window, which reaches `bounds_check_if_block` as the unrepresentable `(None,None)`
+  instead of an always-reject. The fix seam is the sign-branch bounds partition in generation, not
+  parsing (the straddle case proves the range plumbing upstream is fine).
+- **A top-level two-sided range alias silently drops its bounds — ANY sign, not just negative.**
+  `c = -10..-3` emits `pub type C = i64;` and equally `e = 3..10` emits `pub type E = u64;` — a bare
+  alias with no range check anywhere, silently accepting out-of-range values (worse than the field
+  panic: spec-invalid data round-trips as valid). Bounds ARE enforced on the `@newtype` wrapper path
+  (the nint magnitude/bound fixes) and on the field path (previous entry aside), so the gap is
+  specifically the plain top-level alias emission; candidate fix: auto-wrap bounded aliases like the
+  tagged-inner `.default`/range cases already auto-wrap, or reject with a `@newtype` remedy. Both
+  entries are one enumeration hole: the range features are verdicted from one example in one position
+  and one sign — position (top-level alias / field) × bound-sign (negative / straddling / positive)
+  are unswept axes of the same § 1 under-enumeration class.
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
   *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
   length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any
