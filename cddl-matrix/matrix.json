@@ -122,9 +122,9 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips (equivalent to memberkey.value — a literal-key `k ^ => v` routes to the record path as a 1-field struct, the cut `^` being a no-op for a closed single-key map); ruby=ok rust=ok",
         "id": "memberkey.cut",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); ruby=ok rust=ok",

@@ -95,7 +95,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `memberkey.bareword` | ✅ | Bareword memberkey (k:) | `map_struct.cddl` |
-| `memberkey.cut` | ➖ | Cut in a => memberkey (^) | explicit cut `^` attaches to a `=>` (Type1) memberkey, which cddl-codegen doesn't support in this form — the example panics. (The IMPLICIT cut on `:`/bareword keys is a separate, supported-but-dropped story — see finding.)  [`Encountered Type1 member key in multi-field map`] |
+| `memberkey.cut` | ⚠️ | Cut in a => memberkey (^) | a literal-key `k ^ => v` routes to the record path as a 1-field struct (the example generates and round-trips), but the cut SEMANTICS (a matched key not being offered to later wildcard entries) is parsed and dropped, exactly like the implicit `:`/bareword cut — a no-op for a closed single-key map, so wire-correct here, but not enforced in general (see finding).  [`Do we need to handle cuts`] |
 | `memberkey.type1` | ✅ | Type memberkey (t =>) | `table.cddl` |
 | `memberkey.value` | ✅ | Value memberkey (1:) | `value_key.cddl` |
 
@@ -287,7 +287,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
 2. Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
-3. The IMPLICIT cut on `:`/bareword keys is parsed but silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The EXPLICIT `^` cut is unsupported (see the memberkey.cut note).
+3. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
 4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes).
 5. Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats.
 6. Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested).
@@ -300,7 +300,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 5 partial · ➖ 26 not supported
+- Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 6 partial · ➖ 25 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 50
 

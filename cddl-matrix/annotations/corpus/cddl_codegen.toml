@@ -360,9 +360,9 @@ note = "text literal member (`b: \"marker\"`)"
 
 [[note]]
 id = "memberkey.cut"
-status = "unsupported"
-reason = "explicit cut `^` attaches to a `=>` (Type1) memberkey, which cddl-codegen doesn't support in this form — the example panics. (The IMPLICIT cut on `:`/bareword keys is a separate, supported-but-dropped story — see finding.)"
-code_anchor = "Encountered Type1 member key in multi-field map"
+status = "partial"
+reason = "a literal-key `k ^ => v` routes to the record path as a 1-field struct (the example generates and round-trips), but the cut SEMANTICS (a matched key not being offered to later wildcard entries) is parsed and dropped, exactly like the implicit `:`/bareword cut — a no-op for a closed single-key map, so wire-correct here, but not enforced in general (see finding)."
+code_anchor = "Do we need to handle cuts"
 
 [[note]]
 id = "assignt.extend"
@@ -550,7 +550,7 @@ text = "Unsupported constructs `panic!` instead of erroring gracefully — valid
 text = "Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here)."
 
 [[finding]]
-text = "The IMPLICIT cut on `:`/bareword keys is parsed but silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The EXPLICIT `^` cut is unsupported (see the memberkey.cut note)."
+text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap."
 
 [[finding]]
 text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes)."

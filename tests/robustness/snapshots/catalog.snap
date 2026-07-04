@@ -16,10 +16,11 @@ group_choice_map_keyless_entry error (graceful)
 group_choice_map_nonfixed_key error (graceful)
 group_choice_map_unsupported_key error (graceful)
 inline_group_occurrence    error (graceful)
+map_bareword_keyword_key   error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
 map_field_zero_occurrence  error (graceful)
-map_fixed_key_arrow_single PANIC
+map_fixed_key_arrow_single ok
 map_inline_group_zero_occurrence error (graceful)
 prelude_biguint            ok
 record_map_unsupported_key error (graceful)
