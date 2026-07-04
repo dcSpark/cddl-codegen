@@ -195,10 +195,12 @@ from a degenerate example.**
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
-- An occurrence marker other than `?` on a keyed struct-map field is **silently ignored**: `{ * t: uint }`
-  generates a single mandatory `pub t: u64` — the `*` is dropped rather than honored or rejected (same in
-  multi-field structs). Silently-wrong `ok`, so invisible to the generation-outcome catalogs; surfaced while
-  testing the single-field struct-map fix.
+- Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected gracefully**
+  (pinned by `tests/robustness/map_field_zero_occurrence.cddl`) rather than silently narrowed to a mandatory
+  field — the narrowing generated decoders that reject valid CBOR omitting the entry, invisible to
+  round-trip tests. `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field: under unique map
+  keys they collapse to exactly-one, so mandatory is the honored semantics. Real support for `*` (an
+  `Option<T>` field, like `?`) is a candidate feature; surfaced while testing the single-field struct-map fix.
 - A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.

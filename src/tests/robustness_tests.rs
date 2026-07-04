@@ -317,6 +317,51 @@ fn keyless_map_entry_rejects_gracefully() {
     );
 }
 
+/// A ZERO-permitting occurrence (`*` / `0*n` / `*n`) on a keyed struct-map field means the entry
+/// may be ABSENT (RFC 8610) — silently narrowing it to a mandatory field generates a decoder that
+/// rejects valid CBOR, invisible to round-trip tests (only cross-producer data exposes it). This
+/// pins the graceful rejection AND the boundary: `+` (lower bound >= 1) must keep generating a
+/// mandatory field, because under unique map keys "one or more" collapses to exactly-one — that is
+/// honored semantics, not narrowing. The catalog fixture (`map_field_zero_occurrence`) pins the
+/// outcome category; this pins the message and the `+` boundary.
+#[test]
+fn zero_permitting_occurrence_on_keyed_map_field_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_zero_occur_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "zero_occur_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    let msg = run("m = { * t: uint }\n", "star").expect_err(
+        "`*` on a keyed map field must be a graceful Err (silent narrowing to mandatory is wrong)",
+    );
+    assert!(
+        msg.contains("zero-permitting occurrence") && msg.contains("rule `m`"),
+        "rejection message should be actionable and name the rule, got: {msg}"
+    );
+
+    run("m = { 0*1 t: uint }\n", "bounded")
+        .expect_err("`0*n` permits zero occurrences, so it must reject like `*`");
+
+    // The boundary: `+` collapses to exactly-one under unique map keys, so a mandatory field IS
+    // the honored semantics — it must keep generating.
+    run("m = { + t: uint }\n", "plus")
+        .expect("`+` (lower bound >= 1) must still generate a mandatory field");
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");
