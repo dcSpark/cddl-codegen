@@ -19,7 +19,8 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
-`cddl-matrix/` once; the runtime stays dependency-free) live here, NOT in CI. `full` additionally runs the
+`cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog drift
+gate (`project_decode_conformance.ts`) live here, NOT in CI. `full` additionally runs the
 manual gates (the five `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
 `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` /
 `feature_corpus_roundtrips_nondefault_profiles`, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and

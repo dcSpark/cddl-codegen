@@ -37,7 +37,9 @@ enforce-constraint}."
 - E.g. indefinite-length is commonly *decode-accept but encode-never*; `.size`/cut *enforcement* is
   where generators cut corners.
 - **Requires:** the support signal split into ≥5 directional facts, not one bit. → **needs F3.** A
-  single accept/reject/crash bit cannot answer this.
+  single accept/reject/crash bit cannot answer this. (F3 is now grounded — round-trip + reject
+  execution gates, decode-direction vectors via the decode-conformance harness, encode via the
+  conformance oracles; see `ROADMAP.md` §3. What remains for Q4 is only its query script.)
 
 ### Q5 — Matrix self-completeness (per profile)
 "List every construct defined by CDDL profile P (grammar ∪ prelude ∪ control-op registry) that the
