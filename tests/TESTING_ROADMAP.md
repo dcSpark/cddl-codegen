@@ -65,8 +65,13 @@ is still a default-profile claim — next-steps item 2 below.
    (the second `build_matrix` refreshes `matrix.json` from the rewritten annotations). Then, in a
    fresh session, review the **EMISSION DIVERGENCES** console section (expected: the float class
    under `preserve` — `prelude.number`, `prelude.time`, the float prelude types, which hit
-   `unimplemented!` — see the `preserve_encodings_supports_floats` stub; ANYTHING else divergent is a
-   finding to surface, not to engineer away), run `bun run check.ts fast`, commit the regenerated
+   `unimplemented!` — see the `preserve_encodings_supports_floats` stub — AND
+   `contain.tag-content.type.choice` under `preserve`, the already-ledgered tag-over-a-type-choice
+   generation panic in `cddl-matrix/ROADMAP.md` § findings; ANYTHING else divergent is a
+   finding to surface, not to engineer away). This run also fills the decode-foreign evidence
+   clauses (`accepts_foreign` — see `tests/README.md` § "Decode-direction conformance"); review the
+   **DECODE-FOREIGN FAILURES** section the same way (expected: empty). Then run
+   `bun run check.ts fast`, commit the regenerated
    `annotations/cddl_codegen.toml` + `matrix.json`, then PRUNE this item, fix the north-star paragraph
    above (drop the "still a default-profile claim" frontier), and delete
    `draft/profile-axis-prompt.md` + `draft/profile-axis-design.md`.
