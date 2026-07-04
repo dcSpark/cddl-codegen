@@ -215,7 +215,17 @@ from a degenerate example.**
   `contain.occurrence-target.grpent.inline_group` in `tests/decode_conformance/catalog.toml`. A named
   rule for the group (`pair = (int, tstr)`, `a = [* pair]`) generates the correct `Vec` shape, so the
   narrowing is specific to the inline-group occurrence path.
-- A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
+- Single-letter rule names colliding with an emitted generic parameter generate non-compiling code:
+  `r` hits the deserializer's reader generic `R` (`E0574`), `w` the serializer's writer generic `W`
+  (`E0599` — `pub enum W` resolves to the type param inside `fn serialize<'se, W: Write>`). The class
+  is "camel-cased rule name == an emitted generic"; candidate fix is collision-proof generic names.
+- **Nint/float fixed map keys panic generation on the record path.** `neg = { -1: uint }` →
+  `unsupported map key type for Neg.key__1: Nint(-1)` (the map-key write path and
+  `key_encoding_field` implement only uint/text keys). Group-choice arms with such keys are rejected
+  gracefully up front (pinned by `tests/robustness/group_choice_map_unsupported_key.cddl`); the
+  record path still panics. Candidate fix: graceful rejection or real nint/float key support —
+  do the record path first, then lift the group-choice rejection. No matrix example samples a
+  nint/float map key, which is why the panic was never verdicted.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail

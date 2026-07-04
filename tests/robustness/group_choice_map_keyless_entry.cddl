@@ -1,0 +1,6 @@
+; a map-representation group-choice arm whose single entry is a bare value with NO member key
+; (and no plain-group reference to own its keys). A CBOR map entry is a key/value PAIR, so there
+; is no well-formed wire shape for a keyless arm — pre-fix the generator emitted `map(1)` + the
+; bare value (a truncated CBOR item). Rejected gracefully; a plain-group arm (`{ grp // ... }`)
+; keeps working because the referenced group writes its own keys.
+g = { bytes // b: tstr }

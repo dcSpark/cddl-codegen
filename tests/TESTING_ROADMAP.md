@@ -89,6 +89,15 @@ is still a default-profile claim — next-steps item 2 below.
    divergence/crash into the snapshot corpus (review once, commit). Complements a real-world on-chain
    corpus differential (see `draft/testing-recommendations/RECOMMENDATIONS.md`): synthetic breadth vs
    real-world depth.
+   The value of shape recombination is proven, not speculative: every gate samples ONE minimal
+   example per feature row, and the map-rep group-choice fix found three defects hiding in
+   unsampled shape variants of a single "supported" row — a multi-field arm whose enum dispatch
+   keyed on the wrong CBOR type (didn't even self-round-trip), a fixed-value-entry arm that
+   panicked generation, and a non-fixed-key arm that silently dropped the key. All three would
+   have surfaced mechanically from recombining member shapes inside one construct. Identifier
+   space is a fuzz dimension too, not just grammar shapes: a rule named `w` generates
+   `pub enum W`, which collides with the `serialize<W: Write>` generic and doesn't compile
+   (ledgered in `cddl-matrix/ROADMAP.md` § findings).
 
 5. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
@@ -116,15 +125,28 @@ is still a default-profile claim — next-steps item 2 below.
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-6. **Extend the decode-conformance corpus with composition depth (low).** The shipped
-   decode-direction harness (`tests/README.md` § "Decode-direction conformance") keys its obligation
-   set on the matrix's minimal per-construct examples — breadth, not depth. The corpus fixtures
-   (`tests/corpus/*.cddl`) add the composition depth those minimal examples lack; extending the
-   harness to mint vectors for them should go through the corpus projection (so coverage stays
-   mechanically checkable), not a hand-picked fixture list. json/wasm decode surfaces are likewise
-   unminted. Do this when the breadth layer's findings are fixed — its first sweep already caught
-   two decoder bugs (malformed map-rep group-choice emission; inline-group occurrence narrowing —
-   both in `cddl-matrix/ROADMAP.md` § findings), so depth is not the current bottleneck.
+6. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
+   depth.**
+   - **Encoding variants (medium — cheap and self-contained).** Every committed accept vector is
+     definite-length, minimal-width CBOR by mint construction (ruby `generate` → `diag2cbor.rb`),
+     so spec-EQUAL re-encodings of accepted instances — indefinite container lengths, non-minimal
+     int/len widths — are systematically unsampled in the decode direction. The gap is proven: the
+     keyed map-rep group-choice deserializer rejected indefinite-length maps (`bf 6161 05 ff`) and
+     only a manual review caught it, because no gate feeds encoding-variant bytes to the decoders.
+     The remedy needs no oracle: derive the variants mechanically from each committed accept
+     vector's bytes (re-encode container headers indefinite, widen int/len sizes) inside the
+     replay gate and assert they decode to the same value — deterministic, pure-byte transforms,
+     `full` tier alongside the existing replay.
+   - **Composition depth (low).** The shipped decode-direction harness (`tests/README.md`
+     § "Decode-direction conformance") keys its obligation set on the matrix's minimal
+     per-construct examples — breadth, not depth. The corpus fixtures (`tests/corpus/*.cddl`) add
+     the composition depth those minimal examples lack; extending the harness to mint vectors for
+     them should go through the corpus projection (so coverage stays mechanically checkable), not
+     a hand-picked fixture list. json/wasm decode surfaces are likewise unminted. The breadth
+     layer's first sweep caught two decoder bugs (the map-rep group-choice key-drop miscompile —
+     since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing,
+     still ledgered in `cddl-matrix/ROADMAP.md` § findings), so depth is not the current
+     bottleneck.
 
 ## Explicitly not worth it (decided, not overlooked)
 
