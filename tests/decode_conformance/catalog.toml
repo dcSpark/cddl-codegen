@@ -1520,72 +1520,102 @@ type_name = "G"
 [[row.vector]]
 hex = "a161611825"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
 
 [[row.vector]]
 hex = "a16161190127"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616119015d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161611903a9"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "a161611903d1"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16161190466"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "a16161190607"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
 
 [[row.vector]]
 hex = "a161611906e0"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16161190b44"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "a1616119108b"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
 
 [[row.vector]]
 hex = "a1616265506c696e79"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16162676469736f626579"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616268416e676f6c612773"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "a16162686163637572736564"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
 
 [[row.vector]]
 hex = "a16162687468726573682773"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16162696469736365726e6564"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "a1616269696d70726f76697365"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "map-rep group-choice single-field variant emits map(1) + the field VALUE with the member key dropped (malformed/truncated CBOR); the decoder mirrors it, so spec-valid {\"a\": uint} / {\"b\": tstr} are rejected while the malformed form round-trips — see cddl-matrix/ROADMAP.md findings"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16162696f7264696e616c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616269707572636861736572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161626c62616c646572646173682773"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "grpchoice.sequence"

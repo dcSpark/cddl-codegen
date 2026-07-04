@@ -1,0 +1,18 @@
+; Map-representation group choices (`//` between map-keyed arms). A collapsed single-field
+; arm stores only its value in the enum, so its fixed member key must be written AND verified
+; on the wire — dropping it (the historical miscompile) produced malformed/truncated CBOR that
+; only our own decoder could read. Coverage:
+;   text_keyed      — text member keys ("a"/"b"): same key TYPE, so dispatch is brute-force
+;                     try-each-arm with per-arm key-VALUE verification.
+;   uint_keyed      — uint(value) member keys (1/2): same key TYPE, also brute-force.
+;   mixed_key_types — key TYPES differ (uint 1 vs text "b"): exercises the fast cbor-type
+;                     dispatch branch, each arm still verifying its key value.
+;   multi_field_arm — a multi-field arm alongside a single-field arm; dispatch must key on the
+;                     first member KEY type (text "a"), not the first value type (uint).
+;   fixed_value_arm — an arm carrying a fixed-value entry (1: 5) plus a non-fixed one; embeds as
+;                     an ordinary map-rep record (the array-only embed panic is fixed).
+text_keyed = { a: uint // b: tstr }
+uint_keyed = { 1: uint // 2: tstr }
+mixed_key_types = { 1: uint // b: tstr }
+multi_field_arm = { a: uint, x: tstr // b: tstr }
+fixed_value_arm = { 1: 5, 2: uint // 3: tstr }

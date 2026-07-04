@@ -1684,6 +1684,61 @@ fn corpus_inline_group_members_kept() {
     );
 }
 
+/// A collapsed map-representation group-choice arm (`{ a: uint // b: tstr }`) stores only its
+/// VALUE in the enum, so its fixed member key must be WRITTEN on serialize and VERIFIED on
+/// deserialize. The historical miscompile dropped the key entirely — emitting `map(1)` + the bare
+/// value (malformed/truncated CBOR) and dispatching decode on the VALUE type — so it round-tripped
+/// with itself while rejecting the spec-valid `{"a": n}`/`{"b": s}` form. The multi-field arm
+/// (`{ a: uint, x: tstr // b: tstr }`) was broken the same way on the decode side: dispatch keyed
+/// on the first VALUE type (uint) instead of the first member KEY type (text "a"). This asserts on
+/// the COMMITTED group_choice_map snapshots so neither regression can slip back via an unreviewed
+/// re-bless; the *executed* proof is the fixture's emit-tests round-trip in `feature_corpus_compiles`
+/// plus the decode-conformance accept vectors on the `group.choice` catalog row (a reverted
+/// key-dropping decoder mis-decodes the spec-valid `{"a": n}` foreign bytes and fails the replay
+/// gate).
+#[test]
+fn corpus_group_choice_map_key_written_and_verified() {
+    let ser = std::fs::read_to_string(
+        "tests/corpus/snapshots/group_choice_map/default__rust__src__serialization.rs.snap",
+    )
+    .expect("group_choice_map serialization snapshot missing");
+    // Serialize side: each collapsed arm writes its fixed member key between the map header and the
+    // value (text keys for TextKeyed, uint value-keys for UintKeyed) — dropping any of these is the
+    // malformed-CBOR miscompile.
+    for key_write in [
+        "serializer.write_text(\"a\")?;",
+        "serializer.write_text(\"b\")?;",
+        "serializer.write_unsigned_integer(1u64)?;",
+        "serializer.write_unsigned_integer(2u64)?;",
+    ] {
+        assert!(
+            ser.contains(key_write),
+            "group_choice_map serialize no longer writes the collapsed member key `{key_write}` — \
+             the map-rep group-choice key-drop miscompile is back"
+        );
+    }
+    // Deserialize side: each collapsed arm reads and VERIFIES its member key (a mismatch is a
+    // FixedValueMismatch). These checks vanish if the decoder reverts to dispatching on the value.
+    for key_verify in [
+        "if a_key != \"a\" {", // TextKeyed A arm
+        "if uint_key != 1 {",  // UintKeyed / MixedKeyTypes uint-key arm
+        "if text_key != 2 {",  // UintKeyed B arm (uint key 2)
+    ] {
+        assert!(
+            ser.contains(key_verify),
+            "group_choice_map deserialize no longer verifies the collapsed member key `{key_verify}` — \
+             the decoder is dispatching on the value again, not the key"
+        );
+    }
+    // Multi-field arm: decode must route through the 2-field embedded record (keying on the first
+    // member KEY), not dispatch on the first field's VALUE type.
+    assert!(
+        ser.contains("MultiFieldArm0::deserialize_as_embedded_group"),
+        "multi_field_arm no longer decodes via its embedded record — the first-value-type dispatch \
+         bug (matching uint before the text key) is back"
+    );
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;

@@ -1,0 +1,118 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub enum FixedValueArm {
+    FixedValueArm0(FixedValueArm0),
+    Text(String),
+}
+
+impl FixedValueArm {
+    pub fn new_fixed_value_arm0(key_2: u64) -> Self {
+        Self::FixedValueArm0(FixedValueArm0::new(key_2))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FixedValueArm0 {
+    pub key_2: u64,
+}
+
+impl FixedValueArm0 {
+    pub fn new(key_2: u64) -> Self {
+        Self { key_2 }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MixedKeyTypes {
+    U64(u64),
+    B(String),
+}
+
+impl MixedKeyTypes {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self::B(b)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MultiFieldArm {
+    MultiFieldArm0(MultiFieldArm0),
+    B(String),
+}
+
+impl MultiFieldArm {
+    pub fn new_multi_field_arm0(a: u64, x: String) -> Self {
+        Self::MultiFieldArm0(MultiFieldArm0::new(a, x))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self::B(b)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MultiFieldArm0 {
+    pub a: u64,
+    pub x: String,
+}
+
+impl MultiFieldArm0 {
+    pub fn new(a: u64, x: String) -> Self {
+        Self { a, x }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TextKeyed {
+    A(u64),
+    B(String),
+}
+
+impl TextKeyed {
+    pub fn new_a(a: u64) -> Self {
+        Self::A(a)
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self::B(b)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum UintKeyed {
+    U64(u64),
+    Text(String),
+}
+
+impl UintKeyed {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}

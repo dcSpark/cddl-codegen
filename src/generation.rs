@@ -6960,6 +6960,15 @@ impl EnumVariantInRust {
                 } else {
                     vec![]
                 };
+                // A collapsed map-rep arm writes+verifies a fixed member key on the wire; under
+                // preserve-encodings its layout is remembered in a `{var}_key_encoding` field, kept
+                // right after the value's encodings and before the outer `len_encoding`.
+                if cli.preserve_encodings
+                    && rep == Some(Representation::Map)
+                    && let Some(key) = &variant.key
+                {
+                    enc_fields.push(key_encoding_field(&name, key));
+                }
                 let (mut enum_types, mut names) = if ty.is_fixed_value() {
                     (vec![], vec![])
                 } else {
@@ -7320,6 +7329,157 @@ fn make_inline_deser_code(
     variant_deser_code.deser_code
 }
 
+/// Writes the fixed member key of a collapsed map-rep group-choice arm, between the map header and
+/// the value. Under `--preserve-encodings` it uses the variant's `{var}_key_encoding` field
+/// (captured directly from the match arm), mirroring the record map-key write path.
+fn push_map_choice_key_ser(
+    body: &mut dyn CodeBlock,
+    variant_var: &str,
+    key: &FixedValue,
+    cli: &Cli,
+) {
+    match key {
+        FixedValue::Uint(x) => {
+            let expr = format!("{x}u64");
+            // the key encoding var is a `Copy` `Option<Sz>` captured by ref → deref like the value
+            // path does via `encoding_var_is_ref`.
+            write_using_sz(
+                body,
+                "write_unsigned_integer",
+                "serializer",
+                &expr,
+                &expr,
+                "?;",
+                &format!("*{variant_var}_key_encoding"),
+                cli,
+            );
+        }
+        FixedValue::Text(s) => {
+            write_string_sz(
+                body,
+                "write_text",
+                "serializer",
+                &format!("\"{}\"", escape_rust_str(s)),
+                false,
+                "?;",
+                &format!("{variant_var}_key_encoding"),
+                cli,
+            );
+        }
+        _ => panic!("unsupported map choice key type (only uint/text are supported): {key:?}"),
+    }
+}
+
+/// Reads and verifies the fixed member key of a collapsed map-rep group-choice arm. A mismatch
+/// returns `Err` (in the brute-force path this becomes try-the-next-variant). Under
+/// `--preserve-encodings` it produces the `{var}_key_encoding` local consumed by the constructor.
+fn push_map_choice_key_deser(
+    body: &mut dyn CodeBlock,
+    variant_var: &str,
+    key: &FixedValue,
+    cli: &Cli,
+) {
+    match key {
+        FixedValue::Uint(x) => {
+            if cli.preserve_encodings {
+                body.line(&format!(
+                    "let ({variant_var}_key, {variant_var}_key_encoding) = raw.unsigned_integer_sz()?;"
+                ));
+            } else {
+                body.line(&format!("let {variant_var}_key = raw.unsigned_integer()?;"));
+            }
+            let mut cmp = Block::new(format!("if {variant_var}_key != {x}"));
+            cmp.line(format!(
+                "return Err(DeserializeFailure::FixedValueMismatch {{ found: Key::Uint({variant_var}_key), expected: Key::Uint({x}) }}.into());"
+            ));
+            body.push_block(cmp);
+            if cli.preserve_encodings {
+                body.line(&format!(
+                    "let {variant_var}_key_encoding = Some({variant_var}_key_encoding);"
+                ));
+            }
+        }
+        FixedValue::Text(s) => {
+            let escaped = escape_rust_str(s);
+            if cli.preserve_encodings {
+                body.line(&format!(
+                    "let ({variant_var}_key, {variant_var}_key_encoding) = raw.text_sz()?;"
+                ));
+            } else {
+                body.line(&format!("let {variant_var}_key = raw.text()?;"));
+            }
+            let mut cmp = Block::new(format!("if {variant_var}_key != \"{escaped}\""));
+            cmp.line(format!(
+                "return Err(DeserializeFailure::FixedValueMismatch {{ found: Key::Str({variant_var}_key), expected: Key::Str(String::from(\"{escaped}\")) }}.into());"
+            ));
+            body.push_block(cmp);
+            if cli.preserve_encodings {
+                body.line(&format!(
+                    "let {variant_var}_key_encoding = StringEncoding::from({variant_var}_key_encoding);"
+                ));
+            }
+        }
+        _ => panic!("unsupported map choice key type (only uint/text are supported): {key:?}"),
+    }
+}
+
+/// Full deserialization body for a collapsed map-rep group-choice arm that carries a fixed key:
+/// len-check, key read+verify, value read, final len-check, and the variant constructor. The map
+/// holds exactly one pair (key + value), so the length check is `Fixed(1)`. Used by both enum
+/// dispatch paths (type-match arm body / brute-force closure body).
+fn make_keyed_map_variant_deser_code(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    variant: &EnumVariant,
+    key: &FixedValue,
+    enum_gen_info: &EnumVariantInRust,
+    cli: &Cli,
+) -> DeserializationCode {
+    let variant_var = variant.name_as_var();
+    let ty = variant.rust_type();
+    let var_names_str = if cli.preserve_encodings {
+        encoding_var_names_str(types, &variant_var, ty, cli)
+    } else {
+        variant_var.clone()
+    };
+    // read + verify the fixed key
+    let mut inner = DeserializationCode::default();
+    push_map_choice_key_deser(&mut inner.content, &variant_var, key, cli);
+    inner.throws = true;
+    // read the value
+    let value_code = gen_scope.generate_deserialize(
+        types,
+        ty.into(),
+        DeserializeBeforeAfter::new(&format!("let {var_names_str} = "), ";", false),
+        DeserializeConfig::new(&variant_var),
+        cli,
+    );
+    value_code.add_to_code(&mut inner);
+    // Map holds a single pair — count of PAIRS is 1. We deliberately request the ARRAY-style
+    // final len check here: for maps `add_deserialize_final_len_check` skips the ending-Break
+    // consumption because record map deserializers are loops that consume the Break themselves —
+    // but this keyed arm is straight-line code, so an indefinite map (`bf .. ff`) would otherwise
+    // leave the trailing Break unread (spec-valid input then dies on "trailing data"). The Array
+    // branch emits exactly the needed `match len { Len => (), Indefinite => expect Break }`, and
+    // `Len`/`LenSz` are shared between array and map reads so the emitted code is rep-agnostic.
+    let mut deser_code = surround_in_len_checks(
+        inner,
+        RustStructCBORLen::Fixed(1),
+        Representation::Array,
+        cli,
+    );
+    if enum_gen_info.outer_vars == 0 {
+        deser_code.content.line(&format!(
+            "Ok({}::{}({}))",
+            name, variant.name, var_names_str
+        ));
+    } else {
+        enum_gen_info.generate_constructor(&mut deser_code.content, "Ok(", ")", None);
+    }
+    deser_code
+}
+
 // Generates a general enum e.g. Foo { A(A), B(B), C(C) } for types A, B, C
 // if generate_deserialize_directly, don't generate deserialize_as_embedded_group() and just inline it within deserialize()
 // This is useful for type choicecs which don't have any enclosing array/map tags, and thus don't benefit from exposing a
@@ -7644,6 +7804,17 @@ fn generate_enum(
                                 &n.to_string(),
                                 cli,
                             );
+                            // map-rep collapsed arm: write the fixed member key before the value
+                            if r == Representation::Map
+                                && let Some(key) = &variant.key
+                            {
+                                push_map_choice_key_ser(
+                                    &mut case_block,
+                                    &variant_var_name,
+                                    key,
+                                    cli,
+                                );
+                            }
                             gen_scope.generate_serialize(
                                 types,
                                 ty.into(),
@@ -7681,6 +7852,17 @@ fn generate_enum(
                                     Representation::Map => "write_map",
                                 };
                                 case_block.line(format!("serializer.{func_str}({len_str})?;"));
+                                // map-rep collapsed arm: write the fixed member key before the value
+                                if r == Representation::Map
+                                    && let Some(key) = &variant.key
+                                {
+                                    push_map_choice_key_ser(
+                                        &mut case_block,
+                                        &variant_var_name,
+                                        key,
+                                        cli,
+                                    );
+                                }
                                 indefinite
                             }
                             // type choice
@@ -7732,6 +7914,20 @@ fn generate_enum(
         match non_overlapping_types_match.as_mut() {
             Some((deser_type_match, _deser_covers_all_types)) => {
                 let variant_deser_code = match &variant.data {
+                    // map-rep collapsed arm with a fixed key: read+verify the key before the value
+                    EnumVariantData::RustType(_)
+                        if rep == Some(Representation::Map) && variant.key.is_some() =>
+                    {
+                        make_keyed_map_variant_deser_code(
+                            gen_scope,
+                            types,
+                            name,
+                            variant,
+                            variant.key.as_ref().unwrap(),
+                            &enum_gen_info,
+                            cli,
+                        )
+                    }
                     EnumVariantData::RustType(ty) => {
                         let var_names_str = if cli.preserve_encodings {
                             encoding_var_names_str(types, &variant.name_as_var(), ty, cli)
@@ -7837,6 +8033,31 @@ fn generate_enum(
             }
             None => {
                 let mut return_if_deserialized = match &variant.data {
+                    // map-rep collapsed arm with a fixed key: the closure reads+verifies the key
+                    // then the value and returns the fully-constructed variant (like the Inlined
+                    // path), so a key mismatch cleanly falls through to the next variant.
+                    EnumVariantData::RustType(_)
+                        if rep == Some(Representation::Map) && variant.key.is_some() =>
+                    {
+                        let variant_deser_code = make_keyed_map_variant_deser_code(
+                            gen_scope,
+                            types,
+                            name,
+                            variant,
+                            variant.key.as_ref().unwrap(),
+                            &enum_gen_info,
+                            cli,
+                        );
+                        let mut variant_deser = Block::new(
+                            "let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                        );
+                        variant_deser.after(")(raw);");
+                        variant_deser.push_all(variant_deser_code.content);
+                        deser_body.push_block(variant_deser);
+                        let mut return_if_deserialized = Block::new("match variant_deser");
+                        return_if_deserialized.line("Ok(variant) => return Ok(variant),");
+                        return_if_deserialized
+                    }
                     EnumVariantData::RustType(ty) => {
                         let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
                             gen_scope,
