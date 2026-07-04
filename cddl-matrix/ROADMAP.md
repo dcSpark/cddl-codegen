@@ -55,10 +55,17 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   subsuming the interim hand pins
   `tests/robustness/group_choice_map_{nonfixed_key,keyless_entry,unsupported_key}.cddl` (prune them
   when the projected fixtures land). While in there: `map-key.toml` enumerates only composite key
-  shapes (2 cells) — literal key KINDS (nint/float/bool) are the same under-enumeration one level
-  down, still the ask: no cell verdicts a nint/float record-map key, so its now-graceful rejection
-  (pinned by hand in `tests/robustness/record_map_unsupported_key.cddl` and its group-choice sibling)
-  is unverdicted by sweep. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
+  shapes (2 cells) — three more axes of the SAME cell are proven holes, each found by hand probing
+  instead of by sweep: key KIND (nint/float/bool — no cell verdicts a nint/float record-map key, so
+  its now-graceful rejection, pinned by hand in `tests/robustness/record_map_unsupported_key.cddl`
+  and its group-choice sibling, is unverdicted by sweep), key SPELLING (`k: v` vs `k => v` — not
+  cosmetic: the spellings take different internal routes), and entry ARITY (single vs multi-entry).
+  The spelling × arity corner is the proven instance: single-entry `{ 1 => uint }` panics for EVERY
+  key kind — uint/text included — because that form is table-detected with a fixed-value domain
+  (pinned by `tests/robustness/map_fixed_key_arrow_single.cddl`), while the identical wire entry
+  `{ 1: uint }` generates fine. Enumerate kind × spelling × arity so the sweep verdicts each cell
+  instead of hand probes finding them one panic at a time. This role work is also the enumerative
+  first stage of `tests/TESTING_ROADMAP.md` item 4's
   containment-example recombination: fuzz recombination is only as complete as the role set it
   recombines.
 - **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
@@ -75,6 +82,18 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   execution-gated and the projections subsume today's interim hand pins
   (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
   named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
+- **Identifier-hazard sweep (a NAME-shaped enumeration no construct axis can catch).** Two ledgered
+  findings are collisions between user-chosen names and the emitted Rust, not construct shapes: a
+  bareword map key that is a Rust keyword (`{ if: uint }`, `{ true: uint }` — a field named by the
+  keyword, invalid Rust caught only by the rustfmt gate) and a single-letter rule name colliding
+  with an emitted generic (`r`/`w` vs the reader/writer type params, § findings). Construct
+  enumeration can never surface these because the axis is the NAME: sweep hazardous identifiers
+  (the Rust keyword list, the emitted generic names, prelude/std type names like `Option`/`Int`) ×
+  name positions (rule name, bareword key, group name, `@name` directive) and assert each generated
+  crate passes the standalone compile gate. Build it as a projection in the
+  `project_robustness.ts` mold — hazard list × position templates emitting specs whose outcomes
+  land in the robustness catalog — converting both findings from hand pins into swept cells and
+  verdicting the rest of the keyword list we have never probed.
 
 ## 2. Running the verification suite
 
@@ -291,6 +310,20 @@ from a degenerate example.**
   field named by the keyword — invalid Rust, caught only by the rustfmt gate as a "generator bug"
   error. The class is a bareword key whose snake_case is a Rust keyword; candidate fix is raw
   identifiers (`r#if`) or a rename-with-suffix in field naming.
+- **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are cells of the
+  § 1 enumeration items, not separate tasks.** Nint intersects every containment role (fixed map
+  keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
+  preserve-encodings — partial), so probing any role re-surfaces a nint cell and per-finding
+  sessions keep landing small nint conversions without moving the support boundary. Two facts for
+  whoever picks this up: (1) upstream `cbor_event` issue #9 is NOT the blocker it appears — the
+  crate already ships full-range endpoints (`write_negative_integer_sz` / `negative_integer_sz`,
+  `i128`) and generation already uses them on the paths where the `i64` limit bites (`i64::MIN`,
+  preserve-encodings); (2) the actual full-range limiters are local: `FixedValue::Nint(isize)` in
+  the IR cannot represent -2^64..-(2^63+1), and the remaining plain `write_negative_integer(i64)`
+  call sites (e.g. `FixedValue::to_bytes`) cap fixed-value encoding at the `i64` range. Until a
+  consumer justifies the feature, new nint shapes land as graceful rejections + enumeration cells;
+  when one does, do the IR widening and the `_sz` sweep as one change, then flip the pinned
+  rejection rows (record path first, then the group-choice arm).
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail
