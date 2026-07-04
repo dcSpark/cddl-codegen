@@ -72,6 +72,14 @@ impl CBORReadLen {
     }
 }
 
+// allows a crate exported by cddl-codegen to serve as a --common-import-override target for
+// preserve-encodings=false crates, which construct CBORReadLen via From<cbor_event::Len>
+impl From<cbor_event::Len> for CBORReadLen {
+    fn from(len: cbor_event::Len) -> Self {
+        Self::new(len)
+    }
+}
+
 pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead + Seek>(
         raw: &mut Deserializer<R>,
