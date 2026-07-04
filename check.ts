@@ -254,6 +254,9 @@ const REGISTRY: Gate[] = [
     desc: "snapshot orphan check" },
   { id: "matrix_typecheck", tier: "local", kind: "fn", run: runMatrixTypecheck,
     desc: "tsc --noEmit over the cddl-matrix scripts (pinned local devDependency)" },
+  { id: "project_decode_conformance", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "project_decode_conformance.ts"], cwd: MATRIX,
+    script: "project_decode_conformance.ts", desc: "decode-conformance catalog drift gate (matrix.json + catalog.toml, no cargo)" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
@@ -262,6 +265,10 @@ const REGISTRY: Gate[] = [
   { id: "ir_conformance_corpus", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
     ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },
+  { id: "decode_conformance_replay", tier: "full", kind: "cmd",
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "decode_conformance_replay", "--", "--ignored", "--nocapture"],
+    ignoredTest: "decode_conformance_replay",
+    desc: "decode-conformance replay: committed catalog vectors decode (+ preserve byte-identity), oracle-free (manual, #[ignore]d)" },
   { id: "all_supported_constructs_generate_all_profiles", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "all_supported_constructs_generate_all_profiles", "--", "--ignored"],
     ignoredTest: "all_supported_constructs_generate_all_profiles",

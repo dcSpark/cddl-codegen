@@ -20,10 +20,10 @@ policy below). `local` is "run before considering work done" — the heavy corre
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
 `cddl-matrix/` once; the runtime stays dependency-free) live here, NOT in CI. `full` additionally runs the
-manual gates (the four `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
-`all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`,
-`cddl-matrix/verify.ts`, `corpus_detect.ts`, and the fuzz-crate compile-rot check) — run it before
-shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
+manual gates (the five `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
+`decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` /
+`feature_corpus_roundtrips_nondefault_profiles`, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
 every in-tier gate first).
@@ -192,6 +192,62 @@ cbor_event helpers — the same `write_*_sz` primitives the generated code encod
 raw-hex sets are the independent spec anchor for those modes. The projection validates every
 golden byte array in all three dirs (two-digit `0x??` literals, exactly one well-formed CBOR item)
 and hard-fails otherwise; regenerate + commit `COVERAGE.md` after editing any of them.
+
+### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
+
+The fourth gate direction. The three above are all blind to an **over-strict decoder**: round-trips
+only decode what they themselves encoded, the conformance oracles validate *our emitted* bytes
+(encode side), and the reject tests check that spec-INVALID input is refused. A generated decoder
+that rejects spec-VALID CBOR passes all of them — proven twice on this layer's first sweep (below).
+This layer feeds SPEC-DERIVED CBOR instances our code did *not* produce into the generated decoders
+and asserts they are accepted.
+
+- **The committed corpus** — `tests/decode_conformance/catalog.toml`, machine-produced (same
+  artifact class as `cddl-matrix/matrix.json`). The obligation set is PROJECTED from the matrix's
+  `supported` rows (features + containment cells + control-ops), never hand-curated: every
+  supported row carries ≥1 committed vector or a mechanical `pinned_reason` (no silent skips).
+  Vectors are minted by the ruby `cddl` gem's instance generator (`cddl <spec> generate` →
+  `diag2cbor.rb`) and committed only after validating against BOTH oracles — ruby `cddl validate`
+  AND the rust CLI as `cddl --ci validate` (without `--ci` the rust CLI prints the error but exits
+  0; a mint-time negative control feeds both oracles a known-bad instance so that trap can't
+  silently vacate the cross-check). Contested vectors are dropped, never committed. A rule with no
+  standalone decode surface (transparent alias / named table / c-enum — no nominal
+  `impl Deserialize`) is minted in **holder mode**: vectors wrap the rule in
+  `__probe_holder = [0, <rule>]` (prepended FIRST — both oracles root validation at a spec's first
+  rule) so decoding routes through the *generated* field-decode path rather than cbor_event's
+  blanket impls.
+- **Refresh flow** — `cd cddl-matrix && bun run verify.ts --mint-decode-foreign` (or
+  `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically). Generation is
+  randomized, so verdict stability comes from the COMMIT: the deterministic gates below replay
+  committed bytes only. A spec-valid vector the decoder rejects is written as a **class-less
+  `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
+  into `class = "bug"` (ledger it in `cddl-matrix/ROADMAP.md` § findings) or
+  `class = "limitation"` (cite `current_capacities.mdx` / the overlay note). `source = "hand"`
+  supplement vectors survive re-mints and are re-validated like any candidate.
+- **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
+  `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
+  per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
+  every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
+  can't silently launder a bug), then regenerates under `--preserve-encodings=true` and asserts
+  accept vectors decode AND re-encode **byte-identically** (the preserve contract is itself
+  decode-direction evidence). `PRESERVE_SKIP` (stale-guarded, like `EXPECTED_FAIL`) carries the
+  float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding.
+- **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
+  file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
+  means the vectors were validated against a spec the matrix no longer describes — re-mint),
+  reject-pin class/reason shape, and the hard-coded **seeded regression controls** — the
+  absent-instance vectors (`occur.optional` holder `[0, []]`, `type2.map` holder `[0, {}]`,
+  `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style.
+- **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors
+  as a default-on corroborating oracle (`--no-decode-foreign` / `VERIFY_DECODE_FOREIGN=0` opt-out),
+  recording an `accepts_foreign` evidence clause in the annotations. Corroboration only — it never
+  downgrades a support verdict; failures surface in the report's `decode_foreign_failures`.
+
+First-sweep payoff (both invisible to every self-consistent gate, both ledgered in
+`cddl-matrix/ROADMAP.md` § findings and pinned as `class="bug"` rejects): map-representation
+group-choice single-field variants emit **malformed CBOR** (member key dropped) that our decoder
+symmetrically round-trips while rejecting the spec-valid form; and `[* (int, tstr)]` silently
+narrows the inline-group occurrence to exactly-once, rejecting the spec-valid `[]`.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 

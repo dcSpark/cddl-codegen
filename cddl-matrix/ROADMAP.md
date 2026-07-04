@@ -20,9 +20,10 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 > real hand doc from it is a **clear win**.
 
 > **Findings ledger (F#)** from the cold critique (full write-up in git history): F1, F2, F4–F7 **done**;
-> **F3 partial** (support is execution-gated — round-trip + reject tests run per probe; the directional
-> encode/decode split is deferred — §3); **F8–F11 out of scope** (bottom). Only still-open findings are
-> sections below.
+> **F3 grounded** (support is execution-gated — round-trip + reject tests run per probe; per-direction
+> reference vectors exist for the decode direction via the decode-conformance harness, encode via the
+> conformance oracles — §3; only the thin Q4 query script remains); **F8–F11 out of scope** (bottom).
+> Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
 
@@ -36,8 +37,8 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   capability is proven, just not emitted as a standing artifact.
 - **Secondary query scripts (Q4/Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
   (profile/version diff) are largely already satisfied by `verify.ts`'s reconciliation + the F6 snapshot —
-  they need only thin query scripts. **Q4** (directional support) is blocked on F3's remaining
-  encode/decode split (§3).
+  they need only thin query scripts. **Q4** (directional support) is unblocked — the per-direction
+  evidence now exists (§3); what remains is only its thin query script.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -93,7 +94,7 @@ and stays out of CI.
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
 
-## 3. F3 — directional / enforcement support (execution-gated; encode/decode split deferred)
+## 3. F3 — directional / enforcement support (execution-gated; per-direction vectors grounded)
 
 Support is execution-gated: the probe generates with `--emit-tests=true` AND runs `cargo test`, so
 "supported" means *accept + compiles + the IR-minted round-trip and bounded-reject tests pass* wherever the
@@ -104,12 +105,17 @@ record holder (`__probe_holder = [0, <rule>]`, per-probe `embedded` bit) so thei
 only one they have) runs, and the evidence reads "round-trips when embedded"; the embed only UPGRADES
 evidence, never downgrades a verdict. Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode,
 round-trip, enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for
-both minting and embed-covered shapes; still deferred: the **encode vs decode** direction (a round-trip
-conflates them — splitting needs per-direction reference vectors, not just self-consistency). The embed
+both minting and embed-covered shapes, and the **decode direction now has its per-direction reference
+vectors**: the decode-conformance harness (`tests/decode_conformance/catalog.toml` + the
+`accepts_foreign` evidence clause `verify.ts` records per supported row — see `tests/README.md`
+§ "Decode-direction conformance") replays spec-derived instances our code did NOT produce, exactly the
+externally-derived input a round-trip conflates away. The encode direction's independent evidence
+remains the conformance-oracle family (`ir_conformance_corpus`, golden_hex). What's left for Q4 is only
+the thin query script that projects these per-direction evidence bits into the 5-way answer. The embed
 fallback already carries into the preserve/json profiles: the **emission axis** (`verify.ts` re-probes
 every default-`supported` row under each non-default codegen profile through the same rust-only
 generate → `cargo test` → embed pipeline, recorded as `emission.<name>.*` annotation keys — see
-`cddl-matrix/README.md`). Q4 stays blocked on the encode-vs-decode directional split alone.
+`cddl-matrix/README.md`).
 
 **Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
 (parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
@@ -224,6 +230,13 @@ from a degenerate example.**
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail
   under `--preserve-encodings`; generics on plain groups rejected.
+- **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
+  preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
+  `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding
+  metadata has no home on the enum). Tags over structs/arrays/maps preserve fine. Surfaced by the
+  decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded);
+  the emission-axis fill run (`tests/TESTING_ROADMAP.md` item 2) should re-surface it as an
+  `EMISSION DIVERGENCE` beyond the expected float class.
 - **Two-sided negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm — the negative range's
   bounds don't reach the field bounds check as `(Some,Some)`.
