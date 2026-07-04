@@ -347,63 +347,44 @@ fn cargo_toml_matrix() {
     });
 }
 
-/// The manifest changesets' append-only ledger gate (see `EVER_MANAGED_*` in `cargo_manifest.rs`).
+/// Drift gate for the derived `static/Cargo_{rust,wasm,json_gen}.toml` templates.
 ///
-/// The merge-not-clobber model is only version-safe if every key the tool has EVER managed stays
-/// *mentioned* by the changeset forever — re-emitted (`Set`/`SeedOnce`) or explicitly tombstoned
-/// (`Remove`). Deleting a template line or conditional without adding a tombstone would silently
-/// strand that key in every existing user manifest (unmentioned keys are deliberately never
-/// touched). Conditional deps are mentioned under EVERY flag combination (set-or-remove), so a
-/// single default-flag run suffices: this asserts mentioned-keys == ledger, in both directions.
+/// The templates are generated snapshots of each manifest's append-only change log
+/// (`static/manifest_changes/*.toml`), rendered by the SAME fold+apply the runtime uses — so the
+/// committed template is guaranteed to mean exactly what the log means. This pins them byte-for-byte:
+/// append a log entry (or edit the header) and forget to regenerate, and this fails with the bless
+/// command. `BLESS_MANIFEST_TEMPLATES=1 cargo test manifest_template_drift` rewrites them.
 #[test]
-fn cargo_manifest_managed_key_ledger() {
-    let input = std::env::temp_dir().join("cddl_codegen_ledger_gate.cddl");
-    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
-    let cli = cli_for(&input, &[]);
-    let per_manifest = crate::api::with_types(&cli, |types, raw| {
-        vec![
-            (
-                "rust",
-                "EVER_MANAGED_RUST",
-                crate::cargo_manifest::ops_for_rust(types, raw, &cli).unwrap(),
-                crate::cargo_manifest::EVER_MANAGED_RUST,
-            ),
-            (
-                "wasm",
-                "EVER_MANAGED_WASM",
-                crate::cargo_manifest::ops_for_wasm(&cli).unwrap(),
-                crate::cargo_manifest::EVER_MANAGED_WASM,
-            ),
-            (
-                "json-gen",
-                "EVER_MANAGED_JSON_GEN",
-                crate::cargo_manifest::ops_for_json_gen(&cli).unwrap(),
-                crate::cargo_manifest::EVER_MANAGED_JSON_GEN,
-            ),
-        ]
-    })
-    .unwrap();
-    for (manifest, ledger_name, ops, ledger) in per_manifest {
-        let mentioned: std::collections::BTreeSet<String> =
-            ops.iter().map(|(path, _)| path.join(".")).collect();
-        let ledger_set: std::collections::BTreeSet<String> =
-            ledger.iter().map(|s| (*s).to_owned()).collect();
-        if let Some(stranded) = ledger_set.difference(&mentioned).next() {
-            panic!(
-                "[{manifest}] `{stranded}` is in {ledger_name} but the changeset no longer \
-                 mentions it — existing user manifests would keep it as a stale key forever. \
-                 Either restore it (template line / conditional dep) or add it to the manifest's \
-                 tombstone list in cargo_manifest.rs. NEVER delete the ledger entry."
-            );
-        }
-        if let Some(new_key) = mentioned.difference(&ledger_set).next() {
-            panic!(
-                "[{manifest}] `{new_key}` is newly managed by the changeset — append it to \
-                 {ledger_name} in cargo_manifest.rs (the ledger is append-only; entries are never \
-                 removed, even if the key is later tombstoned)."
-            );
+fn manifest_template_drift() {
+    let static_dir = std::env::current_dir().unwrap().join("static");
+    let bless = std::env::var("BLESS_MANIFEST_TEMPLATES")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let cases = [
+        ("manifest_changes/rust.toml", "Cargo_rust.toml"),
+        ("manifest_changes/wasm.toml", "Cargo_wasm.toml"),
+        ("manifest_changes/json_gen.toml", "Cargo_json_gen.toml"),
+    ];
+    let mut stale = Vec::new();
+    for (log_name, template_name) in cases {
+        let raw = std::fs::read_to_string(static_dir.join(log_name)).unwrap();
+        let rendered =
+            crate::cargo_manifest::render_derived_template(&raw, log_name, template_name).unwrap();
+        let template_path = static_dir.join(template_name);
+        let committed = std::fs::read_to_string(&template_path).unwrap_or_default();
+        if rendered != committed {
+            if bless {
+                std::fs::write(&template_path, &rendered).unwrap();
+            } else {
+                stale.push(template_name);
+            }
         }
     }
+    assert!(
+        stale.is_empty(),
+        "derived manifest template(s) {stale:?} are stale vs their change logs; regenerate with \
+         `BLESS_MANIFEST_TEMPLATES=1 cargo test manifest_template_drift`"
+    );
 }
 
 /// The `--wasm-list-macro` flag: each `Vec<T>`-backed list wrapper collapses to a single
