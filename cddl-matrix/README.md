@@ -22,8 +22,9 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
 > it generates and compiles. A second, orthogonal **emission axis** re-probes every default-`supported`
 > row under each non-default codegen profile (`preserve`, `json`) and records a per-profile verdict
-> (`emission.<name>.status`); a row absent from that axis is not-yet-probed under non-default profiles
-> (only default-`supported` rows are probed). **Both flagship projections are
+> (`emission.<name>.status`) — the axis is **filled**: a row with no `emission` keys is one whose
+> default verdict is not `supported`, hence unsupported under every profile (a derived fact, since
+> only default-`supported` rows are probed). **Both flagship projections are
 > fully wired and now *generate* their hand docs:** `golden_hex` (encoding axis) and the corpus feature-axis
 > projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md` (the original north-star target,
 > now subsumed; `corpus_detect.ts` + `annotations/corpus/`). Any "seed / only `type2` worked" or "renderer

@@ -9,7 +9,10 @@ the scale report + cold-critique).
 reconciled/deterministic, with execution-gated support **per-feature, per-cell (role × feature), and
 per-control-op** (all 37 IANA ops probed): "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
-mint no test surface (recorded honestly in the evidence). Both flagship projections GENERATE their
+mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
+(every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
+see § findings) and supported rows carry decode-foreign corroboration clauses (77 rows / 695 committed
+vectors accepted, 0 failures). Both flagship projections GENERATE their
 hand docs and drift-check: `golden_hex` (encoding axis, Q3) and the `corpus` projection (feature axis Q2 +
 per-cell **role × feature** coverage). The north-star — subsuming `tests/corpus/COVERAGE.md` — is **DONE**
 (two independent cold reviews: "clear win").
@@ -79,7 +82,7 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   verdict — but no sweep cell covers the spelling/arity axes, so a swept cell would pin this FIXED
   routing (and the graceful nint/float/bool rejections) rather than rediscover it by hand. Enumerate
   kind × spelling × arity so the sweep verdicts each cell instead of hand probes finding them one at
-  a time. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
+  a time. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 3's
   containment-example recombination: fuzz recombination is only as complete as the role set it
   recombines.
 - **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
@@ -284,8 +287,9 @@ from a degenerate example.**
   dangling struct reference (non-compiling crate) under `--wasm=false` that both hit
   `pair = (int, tstr)`, `a = [* pair]`. Real `Vec<Synthesized>` / `Option`-style support for
   zero-permitting markers is a candidate feature; flipping the row to `ok` must not decay back to
-  silent narrowing. The decode-conformance row `contain.occurrence-target.grpent.inline_group` now
-  pins as a `pinned_reason` (generation fails standalone) in `tests/decode_conformance/catalog.toml`.
+  silent narrowing. The matrix cell `contain.occurrence-target.grpent.inline_group` is verdicted
+  `unsupported` (graceful exit 1), so it projects no decode-conformance obligation — its former
+  catalog row is removed (unsupported rows carry no row; the drift gate enforces this).
 - Single-letter rule names colliding with an emitted generic parameter generate non-compiling code:
   `r` hits the deserializer's reader generic `R` (`E0574`), `w` the serializer's writer generic `W`
   (`E0599` — `pub enum W` resolves to the type param inside `fn serialize<'se, W: Write>`). The class
@@ -344,15 +348,20 @@ from a degenerate example.**
   rejection rows (record path first, then the group-choice arm).
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
-- `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail
-  under `--preserve-encodings`; generics on plain groups rejected.
+- `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; generics on
+  plain groups rejected. Under `--preserve-encodings` the float gap is positional, and the emission axis
+  records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
+  (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
+  generation, so floats **as members** are the broken shape), while the choice-carrying prelude types
+  `number` / `time` panic outright (`emission.preserve = unsupported`).
 - **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
   preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
   `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding
   metadata has no home on the enum). Tags over structs/arrays/maps preserve fine. Surfaced by the
-  decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded);
-  the emission-axis fill run (`tests/TESTING_ROADMAP.md` item 2) should re-surface it as an
-  `EMISSION DIVERGENCE` beyond the expected float class.
+  decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded)
+  and now recorded on the emission axis (`contain.tag-content.type.choice` →
+  `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` — the only three
+  emission divergences the fill run found, all `preserve`-side.
 - **All-negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
   error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm. Mechanism (probed):
   an int-typed field's deserializer branches per CBOR sign (uint arm / nint arm) and each arm gets its
