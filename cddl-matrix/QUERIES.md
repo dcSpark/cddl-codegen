@@ -37,9 +37,14 @@ enforce-constraint}."
 - E.g. indefinite-length is commonly *decode-accept but encode-never*; `.size`/cut *enforcement* is
   where generators cut corners.
 - **Requires:** the support signal split into ≥5 directional facts, not one bit. → **needs F3.** A
-  single accept/reject/crash bit cannot answer this. (F3 is now grounded — round-trip + reject
-  execution gates, decode-direction vectors via the decode-conformance harness, encode via the
-  conformance oracles; see `ROADMAP.md` §3. What remains for Q4 is only its query script.)
+  single accept/reject/crash bit cannot answer this. (F3 is grounded — round-trip + reject execution
+  gates, decode-direction vectors via the decode-conformance harness, encode via the conformance
+  oracles; see `README.md` § "Directional support evidence".) **Answered by `query_q4_directional.ts`**, which projects those
+  per-direction evidence bits into the 5-way answer from `matrix.json` + `catalog.toml` (pure file
+  reads): default run prints the table grouped by axis (positional arg filters by id for the "for
+  construct C" form); `--check` runs the consistency invariants + vacuity floor as a gate. It reports
+  encode honestly as the round-trip half (no independent per-construct encode oracle) while decode
+  carries its independent per-construct foreign vectors — the asymmetry Q4 exists to expose.
 
 ### Q5 — Matrix self-completeness (per profile)
 "List every construct defined by CDDL profile P (grammar ∪ prelude ∪ control-op registry) that the
