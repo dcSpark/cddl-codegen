@@ -72,6 +72,19 @@ impl CBORReadLen {
     }
 }
 
+// allows a preserve-flavored crate to serve as a --common-import-override target for
+// preserve-encodings=false crates: they construct CBORReadLen via From<cbor_event::Len>, so we
+// promote the size-less Len to a canonical-sized LenSz
+impl From<cbor_event::Len> for CBORReadLen {
+    fn from(len: cbor_event::Len) -> Self {
+        let len_sz = match len {
+            cbor_event::Len::Len(n) => cbor_event::LenSz::Len(n, cbor_event::Sz::canonical(n)),
+            cbor_event::Len::Indefinite => cbor_event::LenSz::Indefinite,
+        };
+        Self::new(len_sz)
+    }
+}
+
 pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead + Seek>(
         raw: &mut Deserializer<R>,

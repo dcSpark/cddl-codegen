@@ -40,7 +40,7 @@ impl cbor_event::se::Serialize for ArrowValueKeys {
 impl Deserialize for ArrowValueKeys {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.map()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         (|| -> Result<_, DeserializeError> {
             let mut first = None;
             let mut second = None;
@@ -123,7 +123,7 @@ impl cbor_event::se::Serialize for ValueKeys {
 impl Deserialize for ValueKeys {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.map()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(2)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {

@@ -143,6 +143,8 @@ Overrides the location of the static exports (e.g. error.rs, serialization.rs, e
 
 This is particularly useful for combining multiple crates each generated using cddl-codegen where they all share a shared core directory where the static files are located.
 
+**Runtime-flavor contract:** a crate generated *without* `--preserve-encodings` can target a preserve-flavored common crate (like cml_core). The generated deserializers construct `CBORReadLen` through `From<cbor_event::Len>`, which every crate exported by cddl-codegen (and cml_core) provides, so the `cbor_event::Len` a non-preserve crate reads is accepted by a preserve-flavored `CBORReadLen`. The mirror direction is **not** supported: a crate generated *with* `--preserve-encodings` cannot target a non-preserve-flavored common crate (there is no `From<cbor_event::LenSz>`).
+
 **Default:** crate
 ```bash
 cddl-codegen --input=example --output=export --common-import-override=cml_core

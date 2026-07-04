@@ -65,7 +65,7 @@ impl cbor_event::se::Serialize for NullableCollField {
 impl Deserialize for NullableCollField {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(1)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
@@ -132,7 +132,7 @@ impl cbor_event::se::Serialize for NullableDenumField {
 impl Deserialize for NullableDenumField {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(1)?;
         read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
@@ -190,7 +190,7 @@ impl cbor_event::se::Serialize for NullableOptionalField {
 impl Deserialize for NullableOptionalField {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.array()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(1)?;
         (|| -> Result<_, DeserializeError> {
             let pre = Ok(raw.unsigned_integer()? as u64)

@@ -3010,7 +3010,8 @@ impl GenerationScope {
                             // 2) We need a different cbor read len var to pass into embedded deserialize
                             let read_len_overload = format!("{}_read_len", config.var_name);
                             deser_code.content.line(&format!(
-                                "let mut {read_len_overload} = CBORReadLen::new(len);"
+                                "let mut {read_len_overload} = {}(len);",
+                                cbor_read_len_ctor(cli)
                             ));
                             // inside of deserialize_as_embedded_group we only modify read_len for things we couldn't
                             // statically know beforehand. This was done for other areas that use plain groups in order
@@ -4339,8 +4340,15 @@ fn create_serialize_impls(
 }
 
 // Adds a fixed length check if length is fixed, reads the mandatory amount if there are optional fields, or nothing for dynamic lengths
-fn add_deserialize_initial_len_check(deser_body: &mut dyn CodeBlock, len_info: RustStructCBORLen) {
-    deser_body.line("let mut read_len = CBORReadLen::new(len);");
+fn add_deserialize_initial_len_check(
+    deser_body: &mut dyn CodeBlock,
+    len_info: RustStructCBORLen,
+    cli: &Cli,
+) {
+    deser_body.line(&format!(
+        "let mut read_len = {}(len);",
+        cbor_read_len_ctor(cli)
+    ));
     match len_info {
         RustStructCBORLen::Dynamic =>
             /*nothing*/
@@ -4473,7 +4481,7 @@ fn create_deserialize_impls(
                     ));
                 }
                 if let Some(len_info) = len_info {
-                    add_deserialize_initial_len_check(deser_body, len_info);
+                    add_deserialize_initial_len_check(deser_body, len_info, cli);
                 }
                 if generate_deserialize_embedded {
                     deser_body.line(
@@ -4493,7 +4501,7 @@ fn create_deserialize_impls(
                     ));
                 }
                 if let Some(len_info) = len_info {
-                    add_deserialize_initial_len_check(deser_body, len_info);
+                    add_deserialize_initial_len_check(deser_body, len_info, cli);
                 }
                 if generate_deserialize_embedded {
                     deser_body.line(
@@ -6922,6 +6930,20 @@ fn cbor_event_len_indef(cli: &Cli) -> &'static str {
     }
 }
 
+/// How to construct a `CBORReadLen` from the freshly-read `len`. In preserve mode `len` is a
+/// `cbor_event::LenSz`, matching `CBORReadLen::new`. In non-preserve mode `len` is a
+/// `cbor_event::Len`; going through `From<cbor_event::Len>` (instead of `new`) lets the same
+/// emission compile against either runtime flavor — crucially a preserve-flavored
+/// `--common-import-override` target (e.g. cml_core), whose `new` takes `LenSz`. Preserve stays on
+/// `new` because such external cores expose no `From<LenSz>`.
+fn cbor_read_len_ctor(cli: &Cli) -> &'static str {
+    if cli.preserve_encodings {
+        "CBORReadLen::new"
+    } else {
+        "CBORReadLen::from"
+    }
+}
+
 /// All the details about how a given EnumVariant will be structured in rust
 /// e.g. will it be a tuple or a named variant, what will the fields be called
 /// plus helpers to deal with how to pattern match/construct these without
@@ -7268,7 +7290,7 @@ fn surround_in_len_checks(
     cli: &Cli,
 ) -> DeserializationCode {
     let mut len_check_before = DeserializationCode::default();
-    add_deserialize_initial_len_check(&mut len_check_before.content, len_info);
+    add_deserialize_initial_len_check(&mut len_check_before.content, len_info, cli);
     main_deser_code.add_to_code(&mut len_check_before);
     main_deser_code = len_check_before;
     add_deserialize_final_len_check(&mut main_deser_code.content, Some(rep), len_info, cli);

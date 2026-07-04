@@ -36,7 +36,7 @@ impl Deserialize for FixedValueArm {
             let initial_position = raw.as_mut_ref().stream_position().unwrap();
             let mut errs = Vec::new();
             let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(2)?;
                 read_len.finish()?;
                 let ret = FixedValueArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
@@ -53,7 +53,7 @@ impl Deserialize for FixedValueArm {
                 }
             };
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let text_key = raw.unsigned_integer()?;
@@ -118,7 +118,7 @@ impl SerializeEmbeddedGroup for FixedValueArm0 {
 impl Deserialize for FixedValueArm0 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.map()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(2)?;
         read_len.finish()?;
         let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
@@ -232,7 +232,7 @@ impl Deserialize for MixedKeyTypes {
             let len = raw.map()?;
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => {
-                    let mut read_len = CBORReadLen::new(len);
+                    let mut read_len = CBORReadLen::from(len);
                     read_len.read_elems(1)?;
                     read_len.finish()?;
                     let uint_key = raw.unsigned_integer()?;
@@ -254,7 +254,7 @@ impl Deserialize for MixedKeyTypes {
                     Ok(MixedKeyTypes::U64(uint))
                 }
                 cbor_event::Type::Text => {
-                    let mut read_len = CBORReadLen::new(len);
+                    let mut read_len = CBORReadLen::from(len);
                     read_len.read_elems(1)?;
                     read_len.finish()?;
                     let b_key = raw.text()?;
@@ -310,7 +310,7 @@ impl Deserialize for MultiFieldArm {
             let initial_position = raw.as_mut_ref().stream_position().unwrap();
             let mut errs = Vec::new();
             let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(2)?;
                 read_len.finish()?;
                 let ret = MultiFieldArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
@@ -327,7 +327,7 @@ impl Deserialize for MultiFieldArm {
                 }
             };
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let b_key = raw.text()?;
@@ -392,7 +392,7 @@ impl SerializeEmbeddedGroup for MultiFieldArm0 {
 impl Deserialize for MultiFieldArm0 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         let len = raw.map()?;
-        let mut read_len = CBORReadLen::new(len);
+        let mut read_len = CBORReadLen::from(len);
         read_len.read_elems(2)?;
         read_len.finish()?;
         let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
@@ -518,7 +518,7 @@ impl Deserialize for TextKeyed {
             let initial_position = raw.as_mut_ref().stream_position().unwrap();
             let mut errs = Vec::new();
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let a_key = raw.text()?;
@@ -549,7 +549,7 @@ impl Deserialize for TextKeyed {
                 }
             };
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let b_key = raw.text()?;
@@ -615,7 +615,7 @@ impl Deserialize for UintKeyed {
             let initial_position = raw.as_mut_ref().stream_position().unwrap();
             let mut errs = Vec::new();
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let uint_key = raw.unsigned_integer()?;
@@ -646,7 +646,7 @@ impl Deserialize for UintKeyed {
                 }
             };
             let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
-                let mut read_len = CBORReadLen::new(len);
+                let mut read_len = CBORReadLen::from(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
                 let text_key = raw.unsigned_integer()?;

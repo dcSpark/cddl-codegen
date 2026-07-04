@@ -3314,6 +3314,26 @@ fn extern_deps() {
     );
 }
 
+/// The preserve-encodings=FALSE cell of the extern-deps surface. `extern_deps` (above) only probes
+/// `--common-import-override` WITH `--preserve-encodings=true`, so it never exercised a non-preserve
+/// crate targeting a preserve-flavored common crate — the real-world CML shape (a non-preserve crate
+/// importing `CBORReadLen` from preserve-flavored cml_core). That cell mismatches `Len` vs `LenSz`
+/// at construction and fails E0308 unless generation emits `CBORReadLen::from(len)` (going through
+/// `From<cbor_event::Len>`) in non-preserve mode. Same override + preserve-flavored stand-in crate
+/// as `extern_deps`, just without `--preserve-encodings`.
+#[test]
+fn extern_deps_non_preserve() {
+    run_test(
+        "extern-deps-non-preserve",
+        &["--common-import-override=extern_dep_crate"],
+        None,
+        &[],
+        &[],
+        true,
+        &["extern-dep-crate = { path = \"../../../extern-dep-crate\" }"],
+    );
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses
