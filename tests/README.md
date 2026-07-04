@@ -244,11 +244,16 @@ and asserts they are accepted.
   recording an `accepts_foreign` evidence clause in the annotations. Corroboration only — it never
   downgrades a support verdict; failures surface in the report's `decode_foreign_failures`.
 
-First-sweep payoff (both invisible to every self-consistent gate, both ledgered in
-`cddl-matrix/ROADMAP.md` § findings and pinned as `class="bug"` rejects): map-representation
-group-choice single-field variants emit **malformed CBOR** (member key dropped) that our decoder
-symmetrically round-trips while rejecting the spec-valid form; and `[* (int, tstr)]` silently
-narrows the inline-group occurrence to exactly-once, rejecting the spec-valid `[]`.
+First-sweep payoff — two miscompiles invisible to every self-consistent gate, each caught here by
+feeding spec-valid CBOR our code did not produce. Map-representation group-choice single-field
+variants emitted **malformed CBOR** (member key dropped) that our decoder symmetrically round-tripped
+while rejecting the spec-valid form; that is now **fixed**, and the fix is pinned decode-direction by
+the `group.choice` row's accept vectors (a reverted key-dropping decoder mis-decodes the spec-valid
+`{"a": n}` foreign bytes and fails the replay gate), with the emitted key-write/key-verify guarded
+against an unreviewed re-bless by `integration_tests::corpus_group_choice_map_key_written_and_verified`.
+Still open and ledgered in `cddl-matrix/ROADMAP.md` § findings (pinned `class="bug"` reject):
+`[* (int, tstr)]` silently narrows the inline-group occurrence to exactly-once, rejecting the
+spec-valid `[]`.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 

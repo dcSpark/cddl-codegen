@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: ir
 ---
 {
@@ -88,6 +88,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
                 EnumVariant {
                     name: RustStruct(
@@ -158,6 +159,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
             ],
             rep: Array,

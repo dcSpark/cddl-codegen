@@ -1629,6 +1629,50 @@ fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
     }
 }
 
+/// Classification of a single map-entry's key, used at the group-choice collapse site. Unlike
+/// `group_entry_to_key` (which `panic!`s on shapes the record path never legitimately sees), this
+/// never panics: unsupported/non-literal keys are reported as `NonFixed` so the caller can record a
+/// graceful rejection instead of aborting the whole run.
+enum MapKeyKind {
+    /// `k: v` / `k => 5` — a literal/bareword key we can write and verify.
+    Fixed(FixedValue),
+    /// `k => v` with a non-literal key type (e.g. `uint => tstr`) — a real table entry. Collapsing
+    /// it into an enum variant would silently drop the key type, so it is unsupported here.
+    NonFixed,
+    /// No member key present on this entry: a bare value (`{ uint // ... }`) or a (plain-)group
+    /// reference (`{ foo // ... }`) whose referenced struct owns its own keys.
+    Keyless,
+}
+
+fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
+    match entry {
+        GroupEntry::ValueMemberKey { ge, .. } => match ge.member_key.as_ref() {
+            None => MapKeyKind::Keyless,
+            Some(MemberKey::Value { value, .. }) => match value {
+                cddl::token::Value::UINT(x) => MapKeyKind::Fixed(FixedValue::Uint(*x)),
+                cddl::token::Value::INT(x) => MapKeyKind::Fixed(FixedValue::Nint(*x)),
+                cddl::token::Value::TEXT(x) => MapKeyKind::Fixed(FixedValue::Text(x.to_string())),
+                cddl::token::Value::FLOAT(x) => MapKeyKind::Fixed(FixedValue::Float(*x)),
+                _ => MapKeyKind::NonFixed,
+            },
+            Some(MemberKey::Bareword { ident, .. }) => {
+                MapKeyKind::Fixed(FixedValue::Text(ident.to_string()))
+            }
+            Some(MemberKey::Type1 { t1, .. }) => match &t1.type2 {
+                Type2::UintValue { value, .. } => MapKeyKind::Fixed(FixedValue::Uint(*value)),
+                Type2::IntValue { value, .. } => MapKeyKind::Fixed(FixedValue::Nint(*value)),
+                Type2::TextValue { value, .. } => {
+                    MapKeyKind::Fixed(FixedValue::Text(value.to_string()))
+                }
+                Type2::FloatValue { value, .. } => MapKeyKind::Fixed(FixedValue::Float(*value)),
+                _ => MapKeyKind::NonFixed,
+            },
+            Some(MemberKey::NonMemberKey { .. }) => MapKeyKind::NonFixed,
+        },
+        _ => MapKeyKind::Keyless,
+    }
+}
+
 fn parse_record_from_group_choice(
     types: &mut IntermediateTypes,
     rep: Representation,
@@ -1881,12 +1925,69 @@ pub fn parse_group(
                     });
                     let variant_ident =
                         VariantIdent::new_custom(convert_to_camel_case(&ident_name));
+                    // For a MAP-representation arm the single entry carries a member key that must
+                    // be written+verified on the wire (dropping it produces malformed CBOR). Carry
+                    // the fixed key on the variant; reject non-fixed/keyless entries gracefully
+                    // rather than silently miscompiling.
+                    let variant_key = if rep == Representation::Map {
+                        match group_entry_map_key_kind(group_entry) {
+                            // only uint/text keys are supported (parity with the record map path,
+                            // which panics on other key kinds at generation time — reject
+                            // gracefully up front instead of reaching that panic)
+                            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => {
+                                Some(key)
+                            }
+                            MapKeyKind::Fixed(other) => {
+                                let source_name = types
+                                    .source_rule_name(name)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| name.to_string());
+                                types.record_rejection(format!(
+                                    "rule `{source_name}`: unsupported map key kind in a group-choice \
+                                     arm (only uint/text keys are supported): {other:?}"
+                                ));
+                                None
+                            }
+                            MapKeyKind::Keyless if serialize_as_embedded => {
+                                // plain-group reference: the referenced struct owns its own keys.
+                                None
+                            }
+                            MapKeyKind::Keyless => {
+                                let source_name = types
+                                    .source_rule_name(name)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| name.to_string());
+                                types.record_rejection(format!(
+                                    "rule `{source_name}`: a map group-choice arm has an entry with \
+                                     no key. Each map entry needs a key: use `k: v` / `k => v`, or a \
+                                     table `{{ * k => v }}`."
+                                ));
+                                None
+                            }
+                            MapKeyKind::NonFixed => {
+                                let source_name = types
+                                    .source_rule_name(name)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| name.to_string());
+                                types.record_rejection(format!(
+                                    "rule `{source_name}`: a map group-choice arm has a non-fixed key \
+                                     (`k => v`). Collapsing it into an enum variant would drop the key \
+                                     type; this is unsupported. Use a fixed key (`k: v`) or a table \
+                                     `{{ * k => v }}` in its own rule."
+                                ));
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     EnumVariant::new(
                         variant_ident,
                         ty,
                         serialize_as_embedded,
                         rule_metadata.comment.clone(),
                     )
+                    .with_key(variant_key)
                     // None => {
                     //     // TODO: Weird case, group choice with only one fixed-value field.
                     //     // What should we do here? In the future we could make this a

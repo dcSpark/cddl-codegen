@@ -2341,6 +2341,11 @@ pub struct EnumVariant {
     pub data: EnumVariantData,
     pub serialize_as_embedded_group: bool,
     pub doc: Option<String>,
+    /// For a map-representation group choice arm that collapsed a single keyed entry
+    /// (`{ a: uint // ... }` → `A(u64)`), this holds the fixed member key (`a`). The value
+    /// still lives in `data`; the key is written before it on serialization and read+verified
+    /// before it on deserialization. `None` for array reps, type choices, and keyless entries.
+    pub key: Option<FixedValue>,
 }
 
 impl EnumVariant {
@@ -2355,6 +2360,7 @@ impl EnumVariant {
             data: EnumVariantData::RustType(rust_type),
             serialize_as_embedded_group,
             doc,
+            key: None,
         }
     }
 
@@ -2368,7 +2374,14 @@ impl EnumVariant {
             data: EnumVariantData::Inlined(embedded_record),
             serialize_as_embedded_group: false,
             doc,
+            key: None,
         }
+    }
+
+    /// Builder for the collapse site: attach the fixed member key of a collapsed map-rep arm.
+    pub fn with_key(mut self, key: Option<FixedValue>) -> Self {
+        self.key = key;
+        self
     }
 
     /// Gets the next CBOR type after the passed in rep (array/map) tag
@@ -2379,6 +2392,14 @@ impl EnumVariant {
         types: &IntermediateTypes,
         outer_rep: Option<Representation>,
     ) -> Option<Vec<CBORType>> {
+        // A collapsed map-rep arm dispatches on the type of its fixed member KEY, not its value:
+        // spec-valid bytes for `{ a: uint // ... }` start with the key `"a"`, so the first CBOR
+        // type after the map tag is the key's. (Array reps / type choices leave `key == None`.)
+        if outer_rep == Some(Representation::Map)
+            && let Some(key) = &self.key
+        {
+            return Some(vec![fixed_value_cbor_type(key)]);
+        }
         match &self.data {
             EnumVariantData::RustType(ty) => {
                 if ty.encodings.is_empty() && outer_rep.is_some() {
@@ -2389,14 +2410,7 @@ impl EnumVariant {
                             // we can't know this unless there's a way to provide this info
                             RustStructType::Extern => None,
                             RustStructType::Record(record) => {
-                                let mut ret = vec![];
-                                for field in record.fields.iter() {
-                                    ret.extend(field.rust_type.cbor_types(types));
-                                    if !field.optional {
-                                        break;
-                                    }
-                                }
-                                Some(ret)
+                                Self::record_first_cbor_types(types, record)
                             }
                             RustStructType::GroupChoice { .. } => None,
                             _ => Some(ty.cbor_types(types)),
@@ -2410,20 +2424,45 @@ impl EnumVariant {
             }
             EnumVariantData::Inlined(record) => {
                 if outer_rep.is_some() {
-                    let mut ret = vec![];
-                    for field in record.fields.iter() {
-                        ret.extend(field.rust_type.cbor_types(types));
-                        if !field.optional {
-                            break;
-                        }
-                    }
-                    Some(ret)
+                    Self::record_first_cbor_types(types, record)
                 } else {
                     Some(match record.rep {
                         Representation::Array => vec![CBORType::Array],
                         Representation::Map => vec![CBORType::Map],
                     })
                 }
+            }
+        }
+    }
+
+    /// The set of CBOR types the first data item of a record-representation arm can take, used for
+    /// enum dispatch. Arrays are positional: only the first (non-optional-prefix) field matters. A
+    /// map presents its entries in any order, so the first item is any KEY — dispatch must union
+    /// every field's key type. A non-fixed key (`k => v`) is unknowable → `None` (brute force).
+    fn record_first_cbor_types(
+        types: &IntermediateTypes,
+        record: &RustRecord,
+    ) -> Option<Vec<CBORType>> {
+        match record.rep {
+            Representation::Map => {
+                let mut ret = vec![];
+                for field in record.fields.iter() {
+                    match &field.key {
+                        Some(key) => ret.push(fixed_value_cbor_type(key)),
+                        None => return None,
+                    }
+                }
+                Some(ret)
+            }
+            Representation::Array => {
+                let mut ret = vec![];
+                for field in record.fields.iter() {
+                    ret.extend(field.rust_type.cbor_types(types));
+                    if !field.optional {
+                        break;
+                    }
+                }
+                Some(ret)
             }
         }
     }
@@ -2457,18 +2496,37 @@ impl EnumVariant {
             ConceptualRustType::Rust(ident) => {
                 if let RustStructType::Record(record) = types.rust_struct(ident).unwrap().variant()
                 {
-                    return record
-                        .fields
-                        .iter()
-                        .filter(|field| !field.rust_type.is_fixed_value())
-                        .count()
-                        <= 1;
+                    // Only ARRAY records can be inlined into an enum variant: the inlined
+                    // serializer (`generate_array_struct_serialization`) asserts array rep, and a
+                    // map record's keys must still be written/read via the record path. A map arm
+                    // with <=1 non-fixed fields therefore stays a named `GroupN` reference handled
+                    // by the (key-aware) record path instead of being embedded (which panicked).
+                    return record.rep == Representation::Array
+                        && record
+                            .fields
+                            .iter()
+                            .filter(|field| !field.rust_type.is_fixed_value())
+                            .count()
+                            <= 1;
                 }
                 false
             }
             ConceptualRustType::Alias(_, ty) => Self::can_embed_fields(types, ty),
             _ => false,
         }
+    }
+}
+
+/// The CBOR major type a fixed value serializes to — used to dispatch enum variants on their fixed
+/// map key. Mirrors `RustType::cbor_types` for `ConceptualRustType::Fixed`.
+fn fixed_value_cbor_type(value: &FixedValue) -> CBORType {
+    match value {
+        FixedValue::Uint(_) => CBORType::UnsignedInteger,
+        FixedValue::Nint(_) => CBORType::NegativeInteger,
+        FixedValue::Float(_) => CBORType::Special,
+        FixedValue::Text(_) => CBORType::Text,
+        FixedValue::Null => CBORType::Special,
+        FixedValue::Bool(_) => CBORType::Special,
     }
 }
 

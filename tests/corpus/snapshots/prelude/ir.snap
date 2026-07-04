@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: ir
 ---
 {
@@ -668,6 +668,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
                 EnumVariant {
                     name: Custom(
@@ -690,6 +691,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
             ],
         },
@@ -910,6 +912,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
                 EnumVariant {
                     name: Custom(
@@ -932,6 +935,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
             ],
         },
@@ -1070,6 +1074,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
                 EnumVariant {
                     name: Custom(
@@ -1092,6 +1097,7 @@ expression: ir
                     ),
                     serialize_as_embedded_group: false,
                     doc: None,
+                    key: None,
                 },
             ],
         },
