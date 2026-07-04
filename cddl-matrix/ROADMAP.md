@@ -156,7 +156,8 @@ from a degenerate example.**
   honest split:
   - **3 were degenerate-example artifacts** — the construct works; the example hit an *orthogonal* bug.
     Fixed with minimal *feature-isolating* examples: `memberkey.bareword`→`m = [name: tstr]`,
-    `occur.optional`→`g = [? name: tstr]` (single-field **arrays** dodge the single-field-**map** bug),
+    `occur.optional`→`g = [? name: tstr]` (single-field **arrays**, chosen when single-field **maps**
+    still panicked — that bug is fixed, so these could move to map forms on a future `verify.ts` refresh),
     `type2.map`→`foo = { * tstr => int }` (table). Now correctly `supported`.
   - **4 were genuine gaps** — top-level fixed-value / null **types** (`answer = 42`, `version = 5`,
     `marker = "v1"`, `x = null`) panic (`should not expose Fixed type in member`): cddl-codegen uses `Fixed`
