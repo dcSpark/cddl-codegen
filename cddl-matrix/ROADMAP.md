@@ -188,11 +188,13 @@ from a degenerate example.**
     **reported as real gaps** (➖ notes in the corpus overlay), not relabelled. The corpus touches them only
     as members — the **contextual** reality (the role × feature axis), held structurally by per-cell support.
 - **Anonymous-group limitation (pervasive contextual fact, surfaced by per-cell support).** An INLINE
-  anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value /
-  occurrence position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named** (a rule or
+  anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value
+  position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named** (a rule or
   `@name`). The one exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the per-(feature,
-  role) verdict genuinely differs, which is the whole point.
+  role) verdict genuinely differs, which is the whole point. An inline parenthesized group carrying an
+  occurrence marker (`[* (int, tstr)]`) is a distinct path: it is **rejected gracefully** (not a panic, and
+  no longer a silent narrowing — see the findings section below), with the same "name the group" remedy.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` / `cbor-payload` /
   `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so any panic is
   attributable to the real **anonymous-group** reason (an inline map inside a role needs a name), with no
@@ -224,14 +226,26 @@ from a degenerate example.**
   round-trip tests. `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field: under unique map
   keys they collapse to exactly-one, so mandatory is the honored semantics. Real support for `*` (an
   `Option<T>` field, like `?`) is a candidate feature; surfaced while testing the single-field struct-map fix.
-- **`*` occurrence on an inline array group is silently narrowed to exactly-once.** `a = [* (int, tstr)]`
-  generates a plain 2-field record (`A { index_0, index_1 }`), so the decoder rejects the spec-valid
-  empty array `[]` (and 2+ repetitions) — the array-side sibling of the fixed keyed-map-field
-  zero-occurrence narrowing above, caught the same way (round-trips green; only externally-derived
-  instances expose it). Pinned as a `class="bug"` reject vector on
-  `contain.occurrence-target.grpent.inline_group` in `tests/decode_conformance/catalog.toml`. A named
-  rule for the group (`pair = (int, tstr)`, `a = [* pair]`) generates the correct `Vec` shape, so the
-  narrowing is specific to the inline-group occurrence path.
+- An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
+  gracefully** (pinned by `tests/robustness/inline_group_occurrence.cddl` and
+  `map_inline_group_zero_occurrence.cddl`) rather than silently narrowed to an exactly-once record.
+  The narrowing generated decoders that reject valid CBOR carrying any other repetition count (the
+  spec-valid empty array `[]`, 2+ repetitions), invisible to round-trip tests. Boundaries: on the
+  ARRAY side any non-exactly-once marker rejects (`*` / `+` / `?` / `2*5` all admit a count the
+  flattened record can't represent), while `[1*1 (…)]` still generates — exactly-once IS the
+  semantics, so flattening the group away is sound. On the MAP side the f18d764 collapse boundary is
+  kept: a zero-permitting marker (`{ * (k: int) }`, which the inline-group wrapper hid from the
+  keyed-field fix) rejects, but `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field
+  (under unique map keys they collapse to exactly-one). The parenthesized table `{ * (int => tstr) }`
+  still generates a `BTreeMap` — the flatten preserves it and table detection fires on the inner
+  `k => v`. The rejection message recommends naming the group, and that named form now actually works
+  end to end: a plain group used solely as a `*` array element / table key/value is registered as a
+  concrete Array-rep struct, fixing an `is_enum` panic under `--wasm=true` (the default) and a
+  dangling struct reference (non-compiling crate) under `--wasm=false` that both hit
+  `pair = (int, tstr)`, `a = [* pair]`. Real `Vec<Synthesized>` / `Option`-style support for
+  zero-permitting markers is a candidate feature; flipping the row to `ok` must not decay back to
+  silent narrowing. The decode-conformance row `contain.occurrence-target.grpent.inline_group` now
+  pins as a `pinned_reason` (generation fails standalone) in `tests/decode_conformance/catalog.toml`.
 - Single-letter rule names colliding with an emitted generic parameter generate non-compiling code:
   `r` hits the deserializer's reader generic `R` (`E0574`), `w` the serializer's writer generic `W`
   (`E0599` — `pub enum W` resolves to the type param inside `fn serialize<'se, W: Write>`). The class

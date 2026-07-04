@@ -251,9 +251,12 @@ while rejecting the spec-valid form; that is now **fixed**, and the fix is pinne
 the `group.choice` row's accept vectors (a reverted key-dropping decoder mis-decodes the spec-valid
 `{"a": n}` foreign bytes and fails the replay gate), with the emitted key-write/key-verify guarded
 against an unreviewed re-bless by `integration_tests::corpus_group_choice_map_key_written_and_verified`.
-Still open and ledgered in `cddl-matrix/ROADMAP.md` § findings (pinned `class="bug"` reject):
-`[* (int, tstr)]` silently narrows the inline-group occurrence to exactly-once, rejecting the
-spec-valid `[]`.
+The array-side sibling — `[* (int, tstr)]` silently narrowing the inline-group occurrence to
+exactly-once, rejecting the spec-valid `[]` — is now **fixed** too: an occurrence marker on an inline
+group is rejected gracefully at generation time (pinned by
+`tests/robustness/inline_group_occurrence.cddl` + `map_inline_group_zero_occurrence.cddl`), so its
+decode-conformance row pins as a `pinned_reason` (generation fails standalone) rather than a
+`class="bug"` reject.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 
