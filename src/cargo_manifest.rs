@@ -248,6 +248,62 @@ const RUST_TOMBSTONES: &[&[&str]] = &[];
 const WASM_TOMBSTONES: &[&[&str]] = &[];
 const JSON_GEN_TOMBSTONES: &[&[&str]] = &[];
 
+/// Append-only ledgers of every key path each manifest's changeset has EVER managed (dotted form,
+/// under the default `cddl-lib` lib name). These are what make the "merge, not clobber" model safe
+/// across tool versions: a key that ever appeared in a user's manifest as tool-owned must forever be
+/// either re-emitted or explicitly tombstoned — otherwise deleting a template line silently strands
+/// the stale key in every existing user manifest (nothing would mention it again, and unmentioned
+/// keys are deliberately never touched).
+///
+/// Maintainer contract, enforced by `cargo_manifest_managed_key_ledger` (snapshot_tests):
+/// - **Add** a managed key (template line / conditional dep / stamp) → append it here.
+/// - **Remove** a managed key → delete its template line / conditional AND add it to the
+///   `*_TOMBSTONES` above; its ledger entry stays.
+/// - **Never delete a ledger entry** — that is the "delete an old log entry" move this construction
+///   exists to forbid.
+// dead_code: the only bin-target consumer is the #[cfg(test)] ledger gate.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const EVER_MANAGED_RUST: &[&str] = &[
+    "package.name",
+    "package.version",
+    "package.edition",
+    "package.metadata.cddl-codegen.generated-with",
+    "lib.crate-type",
+    "dependencies.cbor_event",
+    "dependencies.linked-hash-map",
+    "dependencies.derivative",
+    "dependencies.serde",
+    "dependencies.serde_json",
+    "dependencies.schemars",
+    "dependencies.hex",
+    "dependencies.wasm-bindgen",
+];
+#[cfg_attr(not(test), allow(dead_code))]
+pub const EVER_MANAGED_WASM: &[&str] = &[
+    "package.name",
+    "package.version",
+    "package.edition",
+    "package.metadata.cddl-codegen.generated-with",
+    "lib.crate-type",
+    "dependencies.cddl-lib",
+    "dependencies.cbor_event",
+    "dependencies.wasm-bindgen",
+    "dependencies.linked-hash-map",
+    "dependencies.serde",
+    "dependencies.serde_json",
+    "dependencies.serde-wasm-bindgen",
+];
+#[cfg_attr(not(test), allow(dead_code))]
+pub const EVER_MANAGED_JSON_GEN: &[&str] = &[
+    "package.name",
+    "package.version",
+    "package.edition",
+    "package.metadata.cddl-codegen.generated-with",
+    "dependencies.serde_json",
+    "dependencies.schemars",
+    "dependencies.cddl-lib",
+];
+
 /// The declarative changeset for `rust/Cargo.toml`: template keys + flag/type-conditional deps
 /// (set-or-remove) + tombstones + the write-only version stamp. Absorbs the conditional dep logic
 /// that used to string-push into the template.
