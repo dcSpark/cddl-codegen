@@ -1,6 +1,5 @@
 ---
 source: src/tests/robustness_tests.rs
-assertion_line: 409
 expression: catalog
 ---
 # generator outcome per malformed/edge input
@@ -16,9 +15,11 @@ generic_arity_mismatch     error (graceful)
 group_choice_map_keyless_entry error (graceful)
 group_choice_map_nonfixed_key error (graceful)
 group_choice_map_unsupported_key error (graceful)
+inline_group_occurrence    error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
 map_field_zero_occurrence  error (graceful)
+map_inline_group_zero_occurrence error (graceful)
 prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok

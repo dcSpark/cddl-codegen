@@ -362,6 +362,100 @@ fn zero_permitting_occurrence_on_keyed_map_field_rejects_gracefully() {
         .expect("`+` (lower bound >= 1) must still generate a mandatory field");
 }
 
+/// An occurrence marker on an inline (parenthesized) group — `[* (int, tstr)]`, `{ * (k: int) }` —
+/// used to be silently dropped by `flatten_group_entries`, narrowing the group to exactly-once and
+/// generating a decoder that rejects spec-valid CBOR with any other repetition count (invisible to
+/// round-trip tests). This pins the graceful rejection AND every boundary the fix must preserve:
+///   - array `* / + / ? / 2*5` on an inline group → Err (the marker admits ≠ 1 reps);
+///   - array `1*1 (…)` → Ok (exactly-once IS the semantics, so flattening stays sound);
+///   - map `{ * (k: int) }` / `{ ? (k: int, j: tstr) }` → Err (bypassed the f18d764 keyed-field fix
+///     because the inline-group wrapper hid the occurrence);
+///   - map `{ + (k: int) }` → Ok (under unique map keys `+` collapses to exactly-one → mandatory
+///     is honored semantics, the f18d764 boundary);
+///   - map `{ * (int => tstr) }` → Ok (a parenthesized table: flatten leaves the `*`, table
+///     detection fires on the inner `k => v`);
+///   - named `pair = (int, tstr)` + `a = [* pair]` → Ok (the workaround the message recommends).
+#[test]
+fn occurrence_marker_on_inline_group_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_inline_occur_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline_occur_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // Array side: every occurrence marker admitting ≠ 1 reps must reject, citing the rule + the
+    // "inline group" hint so the message is actionable.
+    for (spec, tag) in [
+        ("a = [* (int, tstr)]\n", "arr_star"),
+        ("a = [+ (int, tstr)]\n", "arr_plus"),
+        ("a = [? (int, tstr)]\n", "arr_opt"),
+        ("a = [2*5 (int, tstr)]\n", "arr_bounded"),
+    ] {
+        let msg =
+            run(spec, tag).expect_err("an occurrence marker on an inline array group must reject");
+        assert!(
+            msg.contains("inline group") && msg.contains("rule `a`"),
+            "rejection should name the rule and the inline group, got: {msg}"
+        );
+    }
+
+    // Array boundary: `1*1` IS exactly-once, so flattening it away is sound — must still generate.
+    run("a = [1*1 (int, tstr)]\n", "arr_exact_one")
+        .expect("`1*1` is exactly-once, so the inline group must still flatten and generate");
+
+    // Map side: the inline-group wrapper hid these from the f18d764 keyed-field occurrence fix.
+    // The remedy must be map-appropriate: naming the group does NOT help here (a plain-group
+    // reference inside a map record is itself unsupported — it hits the "map field has no key"
+    // rejection), so the message must point at `?` / the table form, not the array workaround.
+    let map_msg = run("a = { * (k: int) }\n", "map_star")
+        .expect_err("`{ * (k: int) }` permits absence, so it must reject like a bare `* k: int`");
+    assert!(
+        map_msg.contains("table") && !map_msg.contains("[* pair]"),
+        "map-side rejection must recommend a map remedy, not the array workaround, got: {map_msg}"
+    );
+    run("a = { ? (k: int, j: tstr) }\n", "map_opt").expect_err(
+        "`{ ? (…) }` permits absence, so it must reject rather than narrow to mandatory",
+    );
+
+    // Map boundary: `+` collapses to exactly-one under unique map keys → mandatory is honored.
+    run("a = { + (k: int) }\n", "map_plus")
+        .expect("`+` on a map inline group collapses to exactly-one — must still generate");
+
+    // The parenthesized table form must keep working (flatten drops the `*`, table detection fires).
+    run("a = { * (int => tstr) }\n", "map_table")
+        .expect("`{ * (int => tstr) }` is a parenthesized table and must still generate");
+
+    // The recommended workaround must generate under DEFAULT (wasm) flags. `generated_strings` runs
+    // with wasm on, and a plain group used SOLELY as a `*` array element must register + emit its
+    // struct (the array/table element paths call `set_rep_if_plain_group`, mirroring the record
+    // path) — otherwise `is_enum`/`for_rust_member` trip a `generic_instances` assert at generation.
+    run("pair = (int, tstr)\na = [* pair]\n", "named_workaround")
+        .expect("naming the group (`pair`) is the recommended workaround and must generate");
+    // Siblings that hit the same plain-group-registration gap and must also generate:
+    // single-element group as a `*` array element, and a plain group as a table VALUE (a CBOR map
+    // value can hold only one item, so the group is emitted as a nested-array-encoded struct).
+    run("pair = (int)\na = [* pair]\n", "named_single_element")
+        .expect("a single-element plain group as a `*` array element must generate");
+    run(
+        "pair = (int, tstr)\na = { * int => pair }\n",
+        "named_table_value",
+    )
+    .expect("a plain group as a table value must register + generate, not panic");
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");

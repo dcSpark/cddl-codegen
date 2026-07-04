@@ -958,22 +958,61 @@ enum GroupParsingType {
     WrappedBasicGroup(RustType),
 }
 
+/// Whether a single-choice inline group carrying this occurrence marker may be spliced into the
+/// parent entry list (pure grouping) rather than kept unflattened for downstream rejection.
+///
+/// Splicing DISCARDS the marker, narrowing the group to exactly-once. That is only sound when the
+/// marker already means exactly-once — `None` or `1*1` (any representation) — OR, on the MAP side,
+/// when the lower bound is ≥ 1: under unique map keys `+` / `n*m` collapse to exactly-one, so a
+/// mandatory field is the honored semantics (the f18d764 boundary). Every zero-permitting marker
+/// (`*`, `?`, `0*n`) and every array marker admitting 2+ reps (`+`, `2*5`) is kept unflattened so
+/// the caller can reject it instead of silently generating a decoder that rejects valid CBOR.
+fn inline_group_occurrence_flattens(occur: Option<&Occurrence>, rep: Representation) -> bool {
+    match occur.map(|o| &o.occur) {
+        // no marker, or an explicit exactly-once bound: splicing preserves the semantics.
+        None
+        | Some(Occur::Exact {
+            lower: Some(1),
+            upper: Some(1),
+            ..
+        }) => true,
+        // MAP side only: a lower bound ≥ 1 collapses to exactly-one under unique map keys, so
+        // dropping the marker (a mandatory field) is the honored semantics, not narrowing.
+        Some(Occur::OneOrMore { .. }) => rep == Representation::Map,
+        Some(Occur::Exact { lower: Some(l), .. }) => rep == Representation::Map && *l >= 1,
+        // zero-permitting (`*`, `?`, `0*n`) or 2+-admitting array markers: keep unflattened.
+        Some(_) => false,
+    }
+}
+
 /// Flatten single-choice `GroupEntry::InlineGroup`s into the parent entry list.
 ///
 /// A parenthesized group in entry position — `[(a, b)]` — is pure grouping, semantically `[a, b]`
 /// the cddl parser represents it as a `GroupEntry::InlineGroup` (which the downstream codegen has no support for)
 /// so we splice single-choice inline groups in before the struct/array/map dispatch.
 ///
+/// The inline group's OWN occurrence marker (`[* (a, b)]`) is honored: splicing drops it, so we
+/// only splice when dropping it is sound (see `inline_group_occurrence_flattens`). A marker that
+/// would be narrowed away is kept unflattened so `parse_group_type` / `parse_record_from_group_choice`
+/// can reject it gracefully rather than silently emit a wrong decoder.
+///
 /// Multi-choice inline groups are left as-is (unsupported).
 /// A no-op for entries with no inline groups, so other output is unchanged.
 fn flatten_group_entries<'a>(
     entries: &'a [(GroupEntry<'a>, OptionalComma<'a>)],
+    rep: Representation,
 ) -> Vec<&'a (GroupEntry<'a>, OptionalComma<'a>)> {
     let mut out = Vec::new();
     for entry in entries {
         match &entry.0 {
-            GroupEntry::InlineGroup { group, .. } if group.group_choices.len() == 1 => {
-                out.extend(flatten_group_entries(&group.group_choices[0].group_entries));
+            GroupEntry::InlineGroup { occur, group, .. }
+                if group.group_choices.len() == 1
+                    && inline_group_occurrence_flattens(occur.as_ref(), rep) =>
+            {
+                out.extend(flatten_group_entries(
+                    &group.group_choices[0].group_entries,
+                    rep,
+                ));
             }
             _ => out.push(entry),
         }
@@ -989,10 +1028,14 @@ fn parse_group_type<'a>(
     rep: Representation,
     cli: &Cli,
 ) -> GroupParsingType {
-    let entries = flatten_group_entries(&group_choice.group_entries);
+    let entries = flatten_group_entries(&group_choice.group_entries, rep);
     match rep {
         Representation::Array => {
-            if entries.len() == 1 {
+            // An unflattened `InlineGroup` here is a parenthesized group carrying an occurrence
+            // marker that would be silently narrowed (`[* (int, tstr)]`), or a multi-choice group.
+            // Fall through to `Heterogenous` so `parse_record_from_group_choice` rejects it
+            // gracefully rather than panicking on the unsupported element.
+            if entries.len() == 1 && !matches!(entries[0].0, GroupEntry::InlineGroup { .. }) {
                 let (entry, _has_comma) = entries[0];
                 let (elem_type, occur) = match entry {
                     GroupEntry::ValueMemberKey { ge, .. } => (
@@ -1003,7 +1046,7 @@ fn parse_group_type<'a>(
                         types.new_type(&CDDLIdent::new(ge.name.to_string()), cli),
                         &ge.occur,
                     ),
-                    _ => panic!("UNSUPPORTED_ARRAY_ELEMENT<{:?}>", entry),
+                    GroupEntry::InlineGroup { .. } => unreachable!("guarded above"),
                 };
                 let bounds = occur.as_ref().map(|o| match o.occur {
                     Occur::ZeroOrMore { .. } => (None, None),
@@ -1078,8 +1121,29 @@ fn parse_group_type<'a>(
                     // unsupported by design; fall through to the Heterogenous path where it is
                     // rejected gracefully. A multi-choice inline group here is out of scope.
                     GroupEntry::TypeGroupname { .. } => {}
-                    other @ GroupEntry::InlineGroup { .. } => {
-                        panic!("unsupported table map key (2): {:?}", other)
+                    GroupEntry::InlineGroup { group, .. } => {
+                        // `{ * (int => tstr) }` — a parenthesized table. The occurrence-aware
+                        // flatten leaves this `*` inline group unspliced (lower bound 0 on the map
+                        // side), so it surfaces here. If it wraps exactly one `k => v` table entry,
+                        // treat it like the unparenthesized table arm above. Anything else falls
+                        // through to `Heterogenous`, where the record path rejects it gracefully
+                        // (a multi-choice group, an occurrence-bearing struct group, …) rather than
+                        // panicking on an unsupported map key.
+                        if group.group_choices.len() == 1 {
+                            let inner = flatten_group_entries(
+                                &group.group_choices[0].group_entries,
+                                Representation::Array,
+                            );
+                            if inner.len() == 1
+                                && let GroupEntry::ValueMemberKey { ge, .. } = &inner[0].0
+                                && let Some(MemberKey::Type1 { t1, .. }) = &ge.member_key
+                            {
+                                let key_type = rust_type_from_type1(types, parent_visitor, t1, cli);
+                                let value_type =
+                                    rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                return GroupParsingType::HomogenousMap(key_type, value_type);
+                            }
+                        }
                     }
                 }
             }
@@ -1682,10 +1746,47 @@ fn parse_record_from_group_choice(
     cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
-    let fields = flatten_group_entries(&group_choice.group_entries)
+    let fields = flatten_group_entries(&group_choice.group_entries, rep)
         .into_iter()
         .enumerate()
         .filter_map(|(index, (group_entry, optional_comma))| {
+            // An unflattened `InlineGroup` reaching the record loop is a parenthesized group whose
+            // own occurrence marker would be silently narrowed to exactly-once (`[* (int, tstr)]`,
+            // `{ * (k: int) }`), or a bare multi-choice group in entry position. All three panic in
+            // `group_entry_to_field_name` / `group_entry_to_type` / `group_entry_optional`; reject
+            // gracefully here BEFORE they run, citing the rule's SOURCE spelling.
+            if let GroupEntry::InlineGroup { occur, .. } = group_entry {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                if occur.is_some() {
+                    // the remedy differs by representation: naming the group only helps arrays —
+                    // a plain-group reference inside a map record is itself unsupported (it hits
+                    // the "map field has no key" rejection), so don't send map users there.
+                    let remedy = match rep {
+                        Representation::Array => {
+                            "Name the group instead: `pair = (int, tstr)`, `a = [* pair]` — or \
+                             drop the parentheses for a single-element group (`[* int]`)."
+                        }
+                        Representation::Map => {
+                            "Use `?` on each field for optionality, or a table `{ * k => v }`."
+                        }
+                    };
+                    types.record_rejection(format!(
+                        "rule `{source_name}`: an occurrence marker on an inline group (`* (…)`) \
+                         would be silently narrowed to exactly-once (generated decoders would \
+                         reject valid CBOR with other repetition counts). {remedy}"
+                    ));
+                } else {
+                    types.record_rejection(format!(
+                        "rule `{source_name}`: an inline group choice (`(a // b)`) in entry \
+                         position is unsupported. Name the group instead (e.g. `g = (a // b)`, \
+                         then reference `g`)."
+                    ));
+                }
+                return None;
+            }
             let field_name = group_entry_to_field_name(
                 group_entry,
                 index,
@@ -1789,6 +1890,19 @@ fn parse_group_choice(
     };
     let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
         GroupParsingType::HomogenousArray(element_type, bounds) => {
+            // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
+            // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
+            // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
+            // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
+            // trip their "must be a struct or a generic instance" assert at generation time.
+            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+                types.set_rep_if_plain_group(
+                    parent_visitor,
+                    element_ident,
+                    Representation::Array,
+                    cli,
+                );
+            }
             if rule_metadata.newtype.is_some() {
                 // generate newtype over array
                 let mut array_type: RustType =
@@ -1809,6 +1923,22 @@ fn parse_group_choice(
             }
         }
         GroupParsingType::HomogenousMap(key_type, value_type) => {
+            // Same registration gap as the array arm above: a plain group used as a table key or
+            // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
+            // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
+            // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
+            // already commits to. Without this the ident stays an unregistered plain group and
+            // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
+            for member in [&key_type, &value_type] {
+                if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
+                    types.set_rep_if_plain_group(
+                        parent_visitor,
+                        member_ident,
+                        Representation::Array,
+                        cli,
+                    );
+                }
+            }
             if rule_metadata.newtype.is_some() {
                 // generate newtype over map
                 RustStruct::new_wrapper(
