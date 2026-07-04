@@ -44,6 +44,12 @@ changing the *runtime behaviour* of generated code usually means editing `static
   - *Reproducibility* (same input → byte-identical output): always `BTreeMap`/`BTreeSet`, never
     `HashMap` — hash iteration order breaks it.
   - *Canonical layout*: stable item ordering via `codegen`'s sort + `rustfmt` post-processing.
+  - *No prior-output dependence* — generation must not read the prior contents of the output
+    directory. The **one** exception is the generated `Cargo.toml`s: `export()` merges a declarative
+    changeset (`cargo_manifest.rs`) onto the existing manifest so user edits survive, but the
+    dependence is bounded to "keys the op set doesn't mention pass through; `SeedOnce` keys check
+    existence only." Nothing reads prior *tool* output to decide what to generate, so "run twice =
+    run once = clean run" still holds.
 - **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new

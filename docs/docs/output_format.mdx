@@ -20,6 +20,43 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
+## Generated `Cargo.toml` (merge, not clobber)
+
+The generated manifests — `rust/Cargo.toml`, and (when enabled) `wasm/Cargo.toml` and
+`wasm/json-gen/Cargo.toml` — are **not** overwritten wholesale on regeneration. Each run the tool
+applies a declarative changeset to whatever manifest already exists on disk (or to an empty document
+on a first run), so hand edits you make outside the keys the tool owns survive verbatim — comments,
+blank lines, formatting, key ordering, `[profile.*]` sections, and any dependencies you added are all
+preserved byte-for-byte.
+
+Every key falls into one of three categories:
+
+- **Tool-owned (rewritten every run).** `package.name`, `package.edition`, `lib.crate-type`, and the
+  entire `[dependencies]` set the generator emits (e.g. `cbor_event`, and the flag/type-conditional
+  deps `linked-hash-map`, `derivative`, `serde`, `serde_json`, `schemars`, `hex`, `wasm-bindgen`,
+  `serde-wasm-bindgen`). The dependency set is version-coupled to the emitted code, so the tool must
+  keep it in sync — **your edits to these keys are overwritten by design** (the same contract
+  `cargo add` makes). A conditional dep is emitted when its flag/type condition holds and *removed*
+  when it doesn't, so flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps
+  it pulled in, rather than stranding them.
+- **Seeded once.** `package.version` is written only if it's absent. After the initial `0.1.0`
+  (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
+  regenerations.
+- **Preserved (never touched).** Any key no changeset op mentions: your own dependencies,
+  `[profile]`/`[features]` tables, workspace inheritance lines, etc.
+
+The tool also writes a `package.metadata.cddl-codegen.generated-with` stamp recording the
+cddl-codegen version. It is write-only — the tool never reads it back (reading prior output would
+make generation depend on disk contents), so it's purely informational for debugging/support.
+
+If an existing manifest is **not valid TOML**, regeneration is a **hard error naming the file** — the
+tool never falls back to clobbering, because a parse failure is exactly the case where it can't
+safely tell your content apart from its own.
+
+Known limitation: changing `--lib-name` between runs leaves the old-name path dep behind in
+`wasm/Cargo.toml` (the changeset is keyed by the *current* name). The error is loud (a duplicate/
+unused dep) and the fix is to delete the stale line by hand.
+
 **Example Output**
 
 ![](/img/output.png)

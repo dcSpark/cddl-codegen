@@ -510,6 +510,20 @@ fn run_test(
     };
     let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
     println!("--------- running test: {dir} ---------");
+    // These export dirs are throwaway regen targets (not user-owned manifests), reused across runs
+    // only to amortize each crate's `target/`. Generation now MERGES the manifest instead of
+    // clobbering it, so the raw `test_deps` appended into these manifests below would otherwise
+    // accumulate (duplicate keys) across runs. Reset the manifests to a clean slate before
+    // regenerating so the harness's append model still holds; `target/` is left intact. (The
+    // user-facing manifest merge/preservation contract is exercised by
+    // `cargo_manifest_disk_round_trip`, not here.)
+    for manifest in [
+        "rust/Cargo.toml",
+        "wasm/Cargo.toml",
+        "wasm/json-gen/Cargo.toml",
+    ] {
+        let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{manifest}")));
+    }
     // build and run to generate code
     let mut cargo_run = tool_cmd("cargo");
     cargo_run.arg("run").arg("--").arg(format!(
@@ -1432,6 +1446,140 @@ fn flag_value_rejects_canonical_without_preserve() {
         crate::api::with_types(&cli, |_, _| ()).is_ok(),
         "--canonical-form with --preserve-encodings should be accepted"
     );
+}
+
+/// The manifest merge contract on real disk (the `cargo_manifest` changeset applied through
+/// `export`): a first run scaffolds `rust/Cargo.toml`; a user then hand-edits it (bumps the seeded
+/// `version`, adds their own dep + comments, tampers the version stamp); a regeneration must
+/// **preserve** the untouched user content and the `SeedOnce` version, **restore** the tool-owned
+/// stamp, and a third regeneration must be a byte-identical fixed point. Driven in-process via
+/// `generate_to_disk` (no subprocess/compile — this exercises the disk-merge path, not codegen
+/// correctness, which the compile gates cover). `--wasm=false` keeps it to the single rust manifest.
+#[test]
+fn cargo_manifest_disk_round_trip() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_manifest_rt_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let manifest = out.join("rust/Cargo.toml");
+
+    // First run: scaffolds the manifest with tool-owned keys + the write-only version stamp.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let first = std::fs::read_to_string(&manifest).unwrap();
+    let tool_version = env!("CARGO_PKG_VERSION");
+    assert!(
+        first.contains("cbor_event"),
+        "tool-owned dep missing:\n{first}"
+    );
+    assert!(
+        first.contains(&format!("generated-with = \"{tool_version}\"")),
+        "version stamp missing:\n{first}"
+    );
+
+    // Hand-edit: bump the seeded version, tamper the stamp, add a user dep with an inline comment,
+    // and prepend a top-of-file comment. All but the stamp must survive; the stamp must be restored.
+    let edited = format!(
+        "# hand-written top comment\n{}\nanyhow = \"1\" # user pin\n",
+        first
+            .replace("version = \"0.1.0\"", "version = \"9.9.9\"")
+            .replace(
+                &format!("generated-with = \"{tool_version}\""),
+                "generated-with = \"0.0.0-tampered\"",
+            )
+    );
+    std::fs::write(&manifest, &edited).unwrap();
+
+    // Second run: merge onto the edited manifest.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let second = std::fs::read_to_string(&manifest).unwrap();
+    assert!(
+        second.contains("version = \"9.9.9\""),
+        "SeedOnce version must survive regen:\n{second}"
+    );
+    assert!(
+        second.contains("anyhow = \"1\""),
+        "user-added dep must survive regen:\n{second}"
+    );
+    assert!(
+        second.contains("# hand-written top comment") && second.contains("# user pin"),
+        "user comments must survive regen:\n{second}"
+    );
+    assert!(
+        second.contains(&format!("generated-with = \"{tool_version}\"")),
+        "tool-owned stamp must be restored:\n{second}"
+    );
+    assert!(
+        !second.contains("0.0.0-tampered"),
+        "tampered stamp must be overwritten:\n{second}"
+    );
+    assert!(
+        second.contains("cbor_event"),
+        "tool-owned dep must persist:\n{second}"
+    );
+
+    // Third run: byte-identical fixed point.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let third = std::fs::read_to_string(&manifest).unwrap();
+    assert_eq!(
+        second, third,
+        "regeneration must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// A regeneration over an UNPARSEABLE existing manifest must be a hard error that names the file —
+/// never a silent clobber (a parse failure is exactly when the user has content we can't preserve).
+#[test]
+fn cargo_manifest_rejects_unparseable_existing() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_manifest_badtoml_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+
+    crate::api::generate_to_disk(&cli).unwrap();
+    let manifest = out.join("rust/Cargo.toml");
+    let garbage = "this is [[[ not valid toml";
+    std::fs::write(&manifest, garbage).unwrap();
+
+    let err = crate::api::generate_to_disk(&cli)
+        .expect_err("regeneration over unparseable manifest must error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("rust/Cargo.toml"),
+        "error must name the offending manifest, got: {msg}"
+    );
+    // the corrupt content is left untouched (not clobbered)
+    assert_eq!(std::fs::read_to_string(&manifest).unwrap(), garbage);
+
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// Compile gate for `--wasm-cbor-json-api-macro` — the third external-macro flag and, unlike its two

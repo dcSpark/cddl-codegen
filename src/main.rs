@@ -1,4 +1,5 @@
 pub(crate) mod api;
+pub(crate) mod cargo_manifest;
 pub(crate) mod cli;
 pub(crate) mod comment_ast;
 pub(crate) mod dep_graph;
