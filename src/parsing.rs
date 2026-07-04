@@ -1083,6 +1083,12 @@ fn parse_group_type<'a>(
             // Here we test if this is a struct vs a table.
             // struct: { x: int, y: int }, etc
             // table: { * int => tstr }, etc
+            // A literal-key arrow entry (`{ 1 => uint }`, `{ "a" => uint }`) is NOT a table: per RFC
+            // 8610 a fixed-value key `k => v` is the same wire entry as the colon spelling `k: v`, so
+            // it is a 1-field struct. Table detection therefore requires a NON-fixed key type; a fixed
+            // key falls through to `parse_record_from_group_choice` (where f49d862's classification
+            // generates uint/text and gracefully rejects nint/float/bool), avoiding a `Fixed`-domain
+            // table that panics in `for_rust_member`.
             // this assumes that all maps representing tables are homogenous
             // and contain no other fields. I am not sure if this is a guarantee in
             // cbor but I would hope that the cddl specs we are using follow this.
@@ -1094,9 +1100,19 @@ fn parse_group_type<'a>(
                                 // TODO: Do we need to handle cuts for what we're doing?
                                 // Does the range control operator matter?
                                 let key_type = rust_type_from_type1(types, parent_visitor, t1, cli);
-                                let value_type =
-                                    rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                return GroupParsingType::HomogenousMap(key_type, value_type);
+                                // Resolve through aliases so an aliased literal (`one = 1`) also
+                                // diverts to the record path instead of table-detecting a Fixed domain.
+                                if matches!(
+                                    key_type.conceptual_type.resolve_alias_shallow(),
+                                    ConceptualRustType::Fixed(_)
+                                ) {
+                                    // fixed-value key: fall through to the 1-element struct path
+                                    // (identical to the `MemberKey::Value` arm below).
+                                } else {
+                                    let value_type =
+                                        rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                    return GroupParsingType::HomogenousMap(key_type, value_type);
+                                }
                             }
                             Some(MemberKey::Value { .. }) => {
                                 // has a fixed value - this is just a 1-element struct
@@ -1139,9 +1155,18 @@ fn parse_group_type<'a>(
                                 && let Some(MemberKey::Type1 { t1, .. }) = &ge.member_key
                             {
                                 let key_type = rust_type_from_type1(types, parent_visitor, t1, cli);
-                                let value_type =
-                                    rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                return GroupParsingType::HomogenousMap(key_type, value_type);
+                                // same Fixed-domain guard as the single-entry table arm: a
+                                // parenthesized fixed-value key (`{ * (1 => uint) }`) must fall
+                                // through to Heterogenous → graceful record-path rejection, not build
+                                // a Fixed-domain table that panics in `for_rust_member`.
+                                if !matches!(
+                                    key_type.conceptual_type.resolve_alias_shallow(),
+                                    ConceptualRustType::Fixed(_)
+                                ) {
+                                    let value_type =
+                                        rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                    return GroupParsingType::HomogenousMap(key_type, value_type);
+                                }
                             }
                         }
                     }
@@ -1262,7 +1287,19 @@ fn group_entry_to_field_name(
                         },
                     }
                 }
-                MemberKey::Bareword { ident, .. } => ident.to_string(),
+                MemberKey::Bareword { ident, .. } => {
+                    // Honor a `@name` directive the same way the Value/Type1 arms do; otherwise the
+                    // directive is silently dropped on bareword-keyed entries (the same directive-drop
+                    // bug class the Type1 arm below fixes for arrow keys).
+                    let combined_comments =
+                        combine_comments(trailing_comments, &optional_comma.trailing_comments);
+                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
+                        RuleMetadata {
+                            name: Some(name), ..
+                        } => name,
+                        _ => ident.to_string(),
+                    }
+                }
                 MemberKey::Type1 { t1, .. } => {
                     // An integer arrow key `0 => x` is the Type1 spelling of the value key `0: x`, so
                     // honor a @name directive the same way the Value arm above does (falling back to
@@ -1275,6 +1312,11 @@ fn group_entry_to_field_name(
                         } => name,
                         _ => match &t1.type2 {
                             Type2::UintValue { value, .. } => format!("key_{value}"),
+                            // A quoted-text arrow key `"a" => v` is the Type1 spelling of the value
+                            // key `"a": v` / bareword `a:` (same wire key), so it must converge on the
+                            // same field name. Nint/float Type1 keys never reach naming — they are
+                            // rejected during key classification first — so no cases for them here.
+                            Type2::TextValue { value, .. } => value.to_string(),
                             _ => panic!(
                                 "Encountered Type1 member key in multi-field map - not supported: {:?}",
                                 entry
@@ -1707,6 +1749,17 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
                     MapKeyKind::Fixed(FixedValue::Text(value.to_string()))
                 }
                 Type2::FloatValue { value, .. } => MapKeyKind::Fixed(FixedValue::Float(*value)),
+                // `true`/`false` are boolean literals spelled as typenames; classify them as fixed
+                // Bool so a routed `{ true => uint }` gets the honest "unsupported fixed map key
+                // Bool(true)" rejection instead of the misleading non-fixed message (this also
+                // upgrades the group-choice-arm message for bool keys). Other typename keys stay
+                // NonFixed.
+                Type2::Typename { ident, .. } if ident.ident == "true" => {
+                    MapKeyKind::Fixed(FixedValue::Bool(true))
+                }
+                Type2::Typename { ident, .. } if ident.ident == "false" => {
+                    MapKeyKind::Fixed(FixedValue::Bool(false))
+                }
                 _ => MapKeyKind::NonFixed,
             },
             Some(MemberKey::NonMemberKey { .. }) => MapKeyKind::NonFixed,
@@ -1714,6 +1767,17 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
         _ => MapKeyKind::Keyless,
     }
 }
+
+/// Rust strict and reserved keywords (plus the 2024 additions `gen`/`try`). A struct field named by
+/// any of these is invalid Rust; `parse_record_from_group_choice` rejects such fields with the
+/// `@name` remedy rather than emitting source that only the rustfmt gate would catch.
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn",
+    "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
+    "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe",
+    "use", "where", "while", "async", "await", "try", "abstract", "become", "box", "do", "final",
+    "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "gen",
+];
 
 fn parse_record_from_group_choice(
     types: &mut IntermediateTypes,
@@ -1816,6 +1880,25 @@ fn parse_record_from_group_choice(
                 &mut generated_fields,
                 optional_comma,
             );
+            // A field whose EMITTED identifier is a Rust keyword (a bareword `if` key, or `If` which
+            // snake_cases to `if`) would emit invalid Rust caught only by the rustfmt gate. Reject it
+            // gracefully at parse time in BOTH representations (the array shape `[if: uint]` is equally
+            // affected). `field_name` is already the snake_cased emitted form, so checking it directly
+            // catches the case-converted hazards too. The remedy renames the field without touching
+            // the CBOR wire key (which stays the bareword text).
+            if RUST_KEYWORDS.contains(&field_name.as_str()) {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "rule `{source_name}`: field `{field_name}` is a Rust keyword and cannot be a \
+                     struct field identifier. Rename the field with a `; @name <other>` comment \
+                     directive on that entry — the CBOR wire key is unchanged (it stays the bareword \
+                     text)."
+                ));
+                return None;
+            }
             let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);

@@ -1898,6 +1898,17 @@ hex = "816a76696c6c61696e792773"
 source = "ruby-generate"
 expect = "accept"
 
+# INTERIM PIN: `memberkey.cut` (`m = { "a" ^ => int }`) became `supported` when literal-key arrow
+# single-entries were routed to the record path (a 1-field struct). It generates and decodes
+# standalone, so it is MINTABLE — this pin exists only because the ruby `cddl generate` mint oracle
+# was unavailable in the session that flipped the verdict. Re-mint real accept vectors with
+# `verify.ts --mint-decode-foreign --only=memberkey.cut` on the next full matrix fill.
+[[row]]
+id = "memberkey.cut"
+axis = "feature"
+example = "m = { \"a\" ^ => int }"
+pinned_reason = "interim: newly-supported via arrow-key record-path routing; not yet mechanically minted (ruby generate oracle unavailable this session) — re-mint with verify.ts --mint-decode-foreign --only=memberkey.cut"
+
 [[row]]
 id = "memberkey.type1"
 axis = "feature"

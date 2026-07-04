@@ -1,0 +1,10 @@
+; bareword map keys that are Rust keywords — `if` and `true`. A bareword key is sugar for the
+; identical text-string wire key, but the field is named by the identifier, so `{ if: uint }` /
+; `{ true: uint }` would emit a struct field literally named `if` / `true` — invalid Rust. This was
+; already a non-panic `error (graceful)` BEFORE the fix (the rustfmt gate turned the invalid source
+; into an `Err`); this fixture + comment pin that the error stays graceful, and the
+; `bareword_keyword_field_name_rejects_gracefully` unit test pins that it is now a REAL parse-time
+; rejection (naming the rule, the offending field, and the `; @name <other>` remedy), not a rustfmt
+; accident. The remedy renames the field without touching the CBOR wire key (it stays the bareword).
+kw = { if: uint }
+tf = { true: uint }

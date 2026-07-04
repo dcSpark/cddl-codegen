@@ -1,5 +1,5 @@
 ---
-source: src/robustness_tests.rs
+source: src/tests/robustness_tests.rs
 expression: catalog
 ---
 # generator outcome per matrix `unsupported` (panic-class) construct — a SCORECARD, not a contract.
@@ -32,7 +32,6 @@ ctl.printf                         PANIC
 ctl.regexp                         PANIC
 ctl.within                         PANIC
 genericparm.group                  PANIC
-memberkey.cut                      PANIC
 prelude.cbor-any                   PANIC
 prelude.eb16                       PANIC
 prelude.eb64legacy                 PANIC

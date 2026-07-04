@@ -279,6 +279,14 @@ fn bareword_and_quoted_keys_converge() {
         generate("foo = { \"a\": uint, \"b\": text }\n", "q2"),
         "2-field bareword and quoted map keys must generate identical output"
     );
+
+    // `@name` on a bareword key must be honored exactly as on a quoted key (it was silently dropped
+    // on barewords, unlike the Value/Type1 arms). With the same directive the two spellings converge.
+    assert_eq!(
+        generate("foo = { a: uint, ; @name renamed\n}\n", "bw_name"),
+        generate("foo = { \"a\": uint, ; @name renamed\n}\n", "q_name"),
+        "@name on a bareword key must converge with @name on the quoted key"
+    );
 }
 
 /// A keyless map entry (`{ bytes, uint }`) is rejected BY DESIGN — each map field needs a key — but
@@ -552,6 +560,180 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
         arm.contains("group-choice"),
         "the group-choice arm keeps its own arm-specific message, got: {arm}"
     );
+}
+
+/// A literal-key arrow entry `k => v` is the SAME wire entry as the colon spelling `k: v` (RFC 8610),
+/// so a single-entry fixed-value arrow key routes to the record path instead of table-detecting into
+/// a `ConceptualRustType::Fixed` domain (which panicked `for_rust_member`, intermediate.rs ~1876, for
+/// EVERY key kind — even uint/text). This pins that routing by asserting the arrow and colon
+/// spellings generate a BYTE-IDENTICAL crate, and that once on the record path every unsupported kind
+/// gets f49d862's graceful rejection. The Fixed-domain table detection is gone; a decay back to it
+/// would re-introduce the panic.
+#[test]
+fn fixed_key_arrow_single_entry_routes_to_record_path() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_arrow_route_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "arrow_route_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+    fn gen_out(spec: &str, tag: &str) -> std::collections::BTreeMap<String, String> {
+        run(spec, tag).unwrap_or_else(|e| panic!("`{spec}` must generate, got: {e}"))
+    }
+
+    // Byte-exact convergence: the arrow spelling of a literal key produces the identical crate as the
+    // colon spelling (single-entry, quoted-text, optional, and the multi-field mixed form — the
+    // multi-field arrow was a parsing.rs:1278 field-naming panic before the Type1 TextValue case).
+    assert_eq!(
+        gen_out("m = { 1 => uint }\n", "u_arrow"),
+        gen_out("m = { 1: uint }\n", "u_colon"),
+        "a single uint arrow key must converge with the colon spelling"
+    );
+    assert_eq!(
+        gen_out("m = { \"a\" => uint }\n", "t_arrow"),
+        gen_out("m = { \"a\": uint }\n", "t_colon"),
+        "a single text arrow key must converge with the colon spelling"
+    );
+    assert_eq!(
+        gen_out("m = { ? 1 => uint }\n", "opt_arrow"),
+        gen_out("m = { ? 1: uint }\n", "opt_colon"),
+        "an optional single arrow key must converge with the colon spelling"
+    );
+    assert_eq!(
+        gen_out("m = { \"a\" => uint, 1: uint }\n", "multi_arrow"),
+        gen_out("m = { \"a\": uint, 1: uint }\n", "multi_colon"),
+        "a multi-field mixed arrow/colon record must converge with the all-colon spelling"
+    );
+
+    // Graceful rejections once on the record path: nint/float get the unsupported-fixed-kind message,
+    // bool mentions its value, a zero-permitting occurrence gets f18d764's occurrence message, and an
+    // aliased literal domain (`one = 1`) rejects (formerly a for_rust_member panic).
+    let nint =
+        run("m = { -1 => uint }\n", "nint").expect_err("nint arrow key must reject gracefully");
+    assert!(
+        nint.contains("unsupported fixed map key"),
+        "nint arrow key should get the unsupported-fixed-kind message, got: {nint}"
+    );
+    let flt =
+        run("m = { 1.5 => uint }\n", "flt").expect_err("float arrow key must reject gracefully");
+    assert!(
+        flt.contains("unsupported fixed map key"),
+        "float arrow key should get the unsupported-fixed-kind message, got: {flt}"
+    );
+    let boolean =
+        run("m = { true => uint }\n", "bool").expect_err("bool arrow key must reject gracefully");
+    assert!(
+        boolean.contains("Bool"),
+        "bool arrow key should mention Bool in its message, got: {boolean}"
+    );
+    let star = run("m = { * 1 => uint }\n", "star").expect_err(
+        "a zero-permitting occurrence on a routed arrow key must reject (silent narrowing is wrong)",
+    );
+    assert!(
+        star.contains("zero-permitting occurrence"),
+        "a `*` arrow key should get the zero-permitting occurrence message, got: {star}"
+    );
+    // An aliased literal key `one = 1` resolves through the alias to a Fixed domain, so it diverts to
+    // the record path where it is classified NonFixed (a Type1 typename key) and rejected — any
+    // record-path rejection message is acceptable; we pin the non-fixed one that actually fires.
+    let aliased = run("one = 1\nm = { one => uint }\n", "aliased")
+        .expect_err("an aliased literal arrow key domain must reject gracefully, not panic");
+    assert!(
+        aliased.contains("rule `m`") && aliased.contains("non-fixed"),
+        "an aliased literal arrow key is classified NonFixed on the record path, got: {aliased}"
+    );
+
+    // Boundaries that must KEEP generating: a multi-entry fixed-key arrow map, ordinary tables, and a
+    // parenthesized table (the parenthesized-FIXED case `{ * (1 => uint) }` instead falls through to
+    // a graceful record-path rejection, tested below).
+    run("m = { 1 => uint, 2 => tstr }\n", "two_fixed")
+        .expect("a multi-entry fixed-key arrow map must keep generating");
+    run("m = { * uint => tstr }\n", "table_uint").expect("a uint-keyed table must keep generating");
+    run("m = { * nint => uint }\n", "table_nint").expect("a nint-keyed table must keep generating");
+    run("m = { * (int => tstr) }\n", "table_paren")
+        .expect("a parenthesized non-fixed table must keep generating");
+    // `{ * (1 => uint) }` — a parenthesized FIXED-value key — must fall through to a graceful record
+    // rejection (zero-permitting occurrence), not build a Fixed-domain table that panics.
+    run("m = { * (1 => uint) }\n", "table_paren_fixed").expect_err(
+        "a parenthesized fixed-value key must reject gracefully, not build a Fixed table",
+    );
+}
+
+/// A bareword map/array key that is a Rust keyword (`{ if: uint }`, `[if: uint]`, `{ true: uint }`)
+/// emits a struct field literally named by the keyword — invalid Rust, formerly caught only by the
+/// rustfmt gate as a "generator bug". Reject it at parse time with the `@name` remedy. Honoring
+/// `@name` on bareword keys (formerly silently dropped) is what makes the remedy work. Pins the
+/// message (rule + field + `@name`), that the remedy actually generates the renamed field, and that
+/// ordinary barewords still generate.
+#[test]
+fn bareword_keyword_field_name_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_kw_field_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "kw_field_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // A keyword field name rejects gracefully, naming the rule, the offending field, and the @name
+    // remedy — in BOTH map and array representations (the array shape `[if: uint]` is equally hit).
+    for (spec, tag, rule, field) in [
+        ("kw = { if: uint }\n", "map_if", "kw", "if"),
+        ("kw = { true: uint }\n", "map_true", "kw", "true"),
+        ("a = [if: uint]\n", "arr_if", "a", "if"),
+        // A bareword `If` snake_cases to `if`, so the CONVERTED (emitted) form must be checked.
+        ("kw = { If: uint }\n", "map_Cap_if", "kw", "if"),
+    ] {
+        let msg = run(spec, tag)
+            .expect_err("a keyword field name must reject gracefully, not reach the rustfmt gate");
+        assert!(
+            msg.contains(&format!("rule `{rule}`"))
+                && msg.contains(&format!("`{field}`"))
+                && msg.contains("@name"),
+            "rejection should name the rule, the offending field, and the @name remedy, got: {msg}"
+        );
+    }
+
+    // The verified remedy generates: a `; @name branch` directive renames the field to `branch`
+    // (the CBOR wire key stays the bareword `if`), and the generated lib.rs must contain `branch`.
+    let files = run("kw = { if: uint, ; @name branch\n}\n", "remedy")
+        .expect("the @name remedy must generate a valid crate");
+    let lib = files
+        .iter()
+        .find(|(name, _)| name.contains("lib.rs"))
+        .map(|(_, src)| src.clone())
+        .unwrap_or_default();
+    assert!(
+        lib.contains("branch"),
+        "the @name remedy must emit a field named `branch`, got lib.rs without it"
+    );
+
+    // Boundary: an ordinary bareword field still generates.
+    run("m = { foo: uint }\n", "ordinary")
+        .expect("an ordinary bareword field must keep generating");
 }
 
 #[test]

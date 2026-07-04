@@ -60,12 +60,14 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   its now-graceful rejection, pinned by hand in `tests/robustness/record_map_unsupported_key.cddl`
   and its group-choice sibling, is unverdicted by sweep), key SPELLING (`k: v` vs `k => v` — not
   cosmetic: the spellings take different internal routes), and entry ARITY (single vs multi-entry).
-  The spelling × arity corner is the proven instance: single-entry `{ 1 => uint }` panics for EVERY
-  key kind — uint/text included — because that form is table-detected with a fixed-value domain
-  (pinned by `tests/robustness/map_fixed_key_arrow_single.cddl`), while the identical wire entry
-  `{ 1: uint }` generates fine. Enumerate kind × spelling × arity so the sweep verdicts each cell
-  instead of hand probes finding them one panic at a time. This role work is also the enumerative
-  first stage of `tests/TESTING_ROADMAP.md` item 4's
+  The spelling × arity corner is the proven instance: single-entry `{ 1 => uint }` now routes to the
+  record path (byte-identical to the colon spelling `{ 1: uint }`, pinned by
+  `tests/robustness/map_fixed_key_arrow_single.cddl` and the
+  `fixed_key_arrow_single_entry_routes_to_record_path` unit test), where each key KIND gets its
+  verdict — but no sweep cell covers the spelling/arity axes, so a swept cell would pin this FIXED
+  routing (and the graceful nint/float/bool rejections) rather than rediscover it by hand. Enumerate
+  kind × spelling × arity so the sweep verdicts each cell instead of hand probes finding them one at
+  a time. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
   containment-example recombination: fuzz recombination is only as complete as the role set it
   recombines.
 - **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
@@ -82,18 +84,20 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   execution-gated and the projections subsume today's interim hand pins
   (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
   named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
-- **Identifier-hazard sweep (a NAME-shaped enumeration no construct axis can catch).** Two ledgered
-  findings are collisions between user-chosen names and the emitted Rust, not construct shapes: a
-  bareword map key that is a Rust keyword (`{ if: uint }`, `{ true: uint }` — a field named by the
-  keyword, invalid Rust caught only by the rustfmt gate) and a single-letter rule name colliding
-  with an emitted generic (`r`/`w` vs the reader/writer type params, § findings). Construct
-  enumeration can never surface these because the axis is the NAME: sweep hazardous identifiers
-  (the Rust keyword list, the emitted generic names, prelude/std type names like `Option`/`Int`) ×
-  name positions (rule name, bareword key, group name, `@name` directive) and assert each generated
-  crate passes the standalone compile gate. Build it as a projection in the
+- **Identifier-hazard sweep (a NAME-shaped enumeration no construct axis can catch).** These are
+  collisions between user-chosen names and the emitted Rust, not construct shapes: a bareword map key
+  that is a Rust keyword (`{ if: uint }`, `{ true: uint }`) is now rejected at parse time with the
+  `@name` remedy (pinned by hand in `tests/robustness/map_bareword_keyword_key.cddl` and the
+  `bareword_keyword_field_name_rejects_gracefully` unit test), but a single-letter rule name colliding
+  with an emitted generic (`r`/`w` vs the reader/writer type params, § findings) is still an open
+  compile failure. Construct enumeration can never surface these because the axis is the NAME: sweep
+  hazardous identifiers (the Rust keyword list, the emitted generic names, prelude/std type names like
+  `Option`/`Int`) × name positions (rule name, bareword key, group name, `@name` directive) and assert
+  each generated crate passes the standalone compile gate. Build it as a projection in the
   `project_robustness.ts` mold — hazard list × position templates emitting specs whose outcomes
-  land in the robustness catalog — converting both findings from hand pins into swept cells and
-  verdicting the rest of the keyword list we have never probed.
+  land in the robustness catalog — so a swept keyword-in-bareword cell pins the FIXED graceful
+  rejection instead of the fix being a hand pin, and the rest of the keyword list we have never
+  probed gets verdicted alongside the still-open generic-collision case.
 
 ## 2. Running the verification suite
 
@@ -298,18 +302,30 @@ from a degenerate example.**
   generating. The group-choice-arm rejection was already graceful (`group_choice_map_unsupported_key`)
   and now matches the record path. Real nint/float key support stays the candidate feature; flipping
   either row to `ok` requires real support, not a decay back to a panic.
-- A single-entry fixed-value ARROW key `{ k => v }` (all key kinds — `{ 1 => uint }`, `{ "a" => uint }`,
-  `{ -1 => uint }`, `{ true => uint }`) takes the table path with a `ConceptualRustType::Fixed` domain
-  and panics in `for_rust_member` ("should not expose Fixed type in member", intermediate.rs ~1876) —
-  a CBOR map value can hold only one item, so the single `k => v` is detected as a homogenous table
-  whose key type is a fixed value that has no rust-member representation. Pinned by
-  `tests/robustness/map_fixed_key_arrow_single.cddl` (PANIC row). Candidate fix: route literal-key
-  arrow single-entries to the record path (RFC 8610: `k => v` with a literal key is the same wire
-  entry as `k: v`), or reject gracefully.
-- A bareword map key that is a Rust keyword (`kw = { if: uint }`, `{ true: uint }`) emits a struct
-  field named by the keyword — invalid Rust, caught only by the rustfmt gate as a "generator bug"
-  error. The class is a bareword key whose snake_case is a Rust keyword; candidate fix is raw
-  identifiers (`r#if`) or a rename-with-suffix in field naming.
+- A single-entry fixed-value ARROW key `{ k => v }` **routes to the record path**, byte-identical to
+  the colon spelling `{ k: v }` (RFC 8610: a literal-key `k => v` is the same wire entry as `k: v`).
+  Table detection now requires a NON-fixed key type — resolved through aliases, so an aliased literal
+  domain (`one = 1; { one => uint }`) diverts too — so the `ConceptualRustType::Fixed` table domain
+  that panicked `for_rust_member` ("should not expose Fixed type in member", intermediate.rs ~1876)
+  for every key kind is gone. On the record path each key kind gets f49d862's classification: uint and
+  text generate (byte-converging with the colon spelling), while nint/float/bool and aliased-literal
+  domains reject gracefully. The `{ "a" => uint }` and multi-field mixed forms additionally needed a
+  `Type2::TextValue` field-naming case (converging on the same field name as `{ "a": uint }`). Pinned
+  by `tests/robustness/map_fixed_key_arrow_single.cddl` (`ok` row) and the
+  `fixed_key_arrow_single_entry_routes_to_record_path` unit test (byte-exact convergence + the graceful
+  rejections). A decay back to table-detecting fixed domains would re-expose the panic.
+- A bareword map/array key that is a Rust keyword (`kw = { if: uint }`, `{ true: uint }`, `[if: uint]`,
+  and `If` which snake_cases to `if`) is **rejected at parse time** — the emitted (snake_cased) field
+  identifier is checked against the Rust keyword list in `parse_record_from_group_choice`, citing the
+  rule and the offending field and pointing at the `@name` remedy (a `; @name <other>` directive that
+  renames the field while leaving the CBOR wire key as the bareword text). Making the remedy work
+  required fixing `@name` being silently dropped on bareword-keyed entries (the Bareword arm of
+  `group_entry_to_field_name` ignored comment metadata, unlike the Value/Type1 arms). Formerly the
+  keyword field emitted invalid Rust caught only by the rustfmt gate as a "generator bug" error.
+  Pinned by `tests/robustness/map_bareword_keyword_key.cddl` (`error (graceful)` — the row was already
+  a non-panic Err via the rustfmt gate; the fixture pins the error stays graceful) and the
+  `bareword_keyword_field_name_rejects_gracefully` unit test (the parse-time rejection and the
+  generating remedy).
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are cells of the
   § 1 enumeration items, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
