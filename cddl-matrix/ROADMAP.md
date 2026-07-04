@@ -98,6 +98,21 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   land in the robustness catalog — so a swept keyword-in-bareword cell pins the FIXED graceful
   rejection instead of the fix being a hand pin, and the rest of the keyword list we have never
   probed gets verdicted alongside the still-open generic-collision case.
+- **Directive × attachment-position cells for the `dsl.*` features (fourth proven instance of the
+  same under-enumeration).** Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
+  `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
+  position, but the mechanism is per-position code (`group_entry_to_field_name` has a separate
+  metadata read per MemberKey arm), so a directive can silently no-op in an unenumerated position —
+  proven twice for `@name` alone: silently dropped on arrow-keyed entries (fixed when integer arrow
+  keys landed) and again on bareword-keyed entries (fixed with the Rust-keyword rejection, whose
+  `@name` remedy only works because of that fix — a remedy we would have printed while it was
+  broken). Enumerate directive × position (rule, bareword key, value key, arrow key, group-choice
+  arm, array member) cells where the docs claim the directive applies, asserting an OBSERVABLE
+  effect in the output (a renamed field, a doc comment) or a clean error — silently-ignored is the
+  failure mode being swept for. Distinct from the REJECTED doc-snippet prose harness
+  (`tests/TESTING_ROADMAP.md` § "Explicitly not worth it"): that decision was about docs drifting
+  from behavior; this is behavior enumeration — the snapshot corpus pins positions it samples, and
+  both `@name` drops were in positions it did not.
 
 ## 2. Running the verification suite
 

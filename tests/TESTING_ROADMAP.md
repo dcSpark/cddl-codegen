@@ -160,7 +160,10 @@ is still a default-profile claim — next-steps item 2 below.
 - A docs-vs-behavior conformance harness for `comment_dsl.mdx` / `output_format.mdx` (snippet
   extraction + output spot-checks): emitted output is already pinned by the snapshot corpus and
   DSL-name drift by the `cddl-matrix/verify.ts` forward lint; a doc-snippet system is heavy
-  machinery for prose drift that review catches at its actual rate. (The `example/`-half of this
+  machinery for prose drift that review catches at its actual rate. NB this decision covers PROSE
+  drift only — the separate class of a directive silently no-oping in an unenumerated attachment
+  position (`@name` was dropped on arrow keys once and bareword keys once, both found by hand) is
+  a real gap with its own item: the directive × position cells in `cddl-matrix/ROADMAP.md` § 1. (The `example/`-half of this
   decision — gating the getting-started command — was accepted and shipped as
   `integration_tests::getting_started_example`.)
 - Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
