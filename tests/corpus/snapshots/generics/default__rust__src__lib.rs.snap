@@ -1,57 +1,9 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(clippy::too_many_arguments)]
-
-pub mod error;
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-pub mod serialization;
-
-use crate::error::*;
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
-
-#[derive(Clone, Debug)]
-pub struct PairUse {
-    pub k: u64,
-    pub v: String,
-}
-
-impl PairUse {
-    pub fn new(k: u64, v: String) -> Self {
-        Self { k, v }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RangedContainer {
-    pub value: u64,
-}
-
-impl RangedContainer {
-    pub fn new(value: u64) -> Result<Self, DeserializeError> {
-        if value < 1 || value > 10 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: value as isize,
-                min: Some(1),
-                max: Some(10),
-            }
-            .into());
-        }
-        Ok(Self { value })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct UintContainer {
-    pub value: u64,
-}
-
-impl UintContainer {
-    pub fn new(value: u64) -> Self {
-        Self { value }
-    }
-}
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

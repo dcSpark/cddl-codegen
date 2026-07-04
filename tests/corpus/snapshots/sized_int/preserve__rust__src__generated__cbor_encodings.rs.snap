@@ -1,0 +1,20 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct BoundedIntsEncoding {
+    pub len_encoding: LenEncoding,
+    pub u_8_encoding: Option<cbor_event::Sz>,
+    pub u_16_encoding: Option<cbor_event::Sz>,
+    pub u_32_encoding: Option<cbor_event::Sz>,
+    pub i_8_encoding: Option<cbor_event::Sz>,
+    pub i_64_encoding: Option<cbor_event::Sz>,
+}

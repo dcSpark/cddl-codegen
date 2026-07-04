@@ -1,45 +1,9 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(clippy::too_many_arguments)]
-
-pub mod error;
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-pub mod serialization;
-
-use crate::error::*;
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
-
-pub type NestedArr = Vec<Nums>;
-
-pub type Nums = Vec<u64>;
-
-#[derive(Clone, Debug)]
-pub struct OptHolder {
-    pub x: u64,
-    pub f: Option<Nums>,
-}
-
-impl OptHolder {
-    pub fn new(x: u64) -> Self {
-        Self { x, f: None }
-    }
-}
-
-pub type Passthru = Vec<u64>;
-
-pub type PassthruMap = BTreeMap<u64, Passthru>;
-
-pub type PassthruTags = BTreeMap<u64, String>;
-
-pub type PassthruTagsMap = BTreeMap<u64, PassthruTags>;
-
-pub type TaggedList = Vec<Tags>;
-
-pub type Tags = BTreeMap<u64, String>;
-
-pub type ValueMap = BTreeMap<u64, Nums>;
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

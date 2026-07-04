@@ -1,64 +1,9 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: content
 ---
-#![allow(clippy::too_many_arguments)]
-
-pub mod error;
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
-
-pub mod serialization;
-
-use crate::error::*;
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
-
-pub type Bounded = Vec<u64>;
-
-#[derive(Clone, Debug)]
-pub struct OccurrenceHolder {
-    pub o: OneOrMore,
-    pub b: Bounded,
-    pub inline_bounded: Vec<String>,
-}
-
-impl OccurrenceHolder {
-    pub fn new(
-        o: OneOrMore,
-        b: Bounded,
-        inline_bounded: Vec<String>,
-    ) -> Result<Self, DeserializeError> {
-        if o.len() < 1 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: o.len() as isize,
-                min: Some(1),
-                max: None,
-            }
-            .into());
-        }
-        if b.len() < 2 || b.len() > 5 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: b.len() as isize,
-                min: Some(2),
-                max: Some(5),
-            }
-            .into());
-        }
-        if inline_bounded.len() < 1 || inline_bounded.len() > 3 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: inline_bounded.len() as isize,
-                min: Some(1),
-                max: Some(3),
-            }
-            .into());
-        }
-        Ok(Self {
-            o,
-            b,
-            inline_bounded,
-        })
-    }
-}
-
-pub type OneOrMore = Vec<u64>;
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

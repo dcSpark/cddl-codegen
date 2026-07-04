@@ -1,0 +1,81 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for WrappedArr {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for element in self.0.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for WrappedArr {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let mut inner_arr = Vec::new();
+        let len = raw.array()?;
+        while match len {
+            cbor_event::Len::Len(n) => (inner_arr.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
+                }
+            }
+            inner_arr.push(raw.unsigned_integer()? as u64);
+        }
+        Ok(Self(inner_arr))
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedMap {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
+        for (key, value) in self.0.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(&value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for WrappedMap {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let mut inner_table = BTreeMap::new();
+        let inner_len = raw.map()?;
+        while match inner_len {
+            cbor_event::Len::Len(n) => (inner_table.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = inner_len {
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
+                }
+            }
+            let inner_key = raw.unsigned_integer()? as u64;
+            let inner_value = raw.text()? as String;
+            if inner_table.insert(inner_key, inner_value).is_some() {
+                return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into());
+            }
+        }
+        Ok(Self(inner_table))
+    }
+}

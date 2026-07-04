@@ -1,0 +1,444 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DataEnum(cddl_lib::DataEnum);
+
+#[wasm_bindgen]
+impl DataEnum {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DataEnum, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<DataEnum, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::DataEnum::new_uint(uint))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::DataEnum::new_text(text))
+    }
+
+    pub fn kind(&self) -> DataEnumKind {
+        match &self.0 {
+            cddl_lib::DataEnum::U64(_) => DataEnumKind::U64,
+            cddl_lib::DataEnum::Text(_) => DataEnumKind::Text,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::DataEnum::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::DataEnum::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::DataEnum> for DataEnum {
+    fn from(native: cddl_lib::DataEnum) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DataEnum> for cddl_lib::DataEnum {
+    fn from(wasm: DataEnum) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DataEnum> for DataEnum {
+    fn as_ref(&self) -> &cddl_lib::DataEnum {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum DataEnumKind {
+    U64,
+    Text,
+}
+
+pub type MaybeColl = Option<NumsArr>;
+
+pub type MaybeDenum = Option<DataEnum>;
+
+pub type MaybeUint = Option<u64>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableCollField(cddl_lib::NullableCollField);
+
+#[wasm_bindgen]
+impl NullableCollField {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableCollField, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NullableCollField, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn c(&self) -> MaybeColl {
+        self.0.c.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(c: Option<NumsArr>) -> Self {
+        Self(cddl_lib::NullableCollField::new(c.map(Into::into)))
+    }
+}
+
+impl From<cddl_lib::NullableCollField> for NullableCollField {
+    fn from(native: cddl_lib::NullableCollField) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableCollField> for cddl_lib::NullableCollField {
+    fn from(wasm: NullableCollField) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableCollField> for NullableCollField {
+    fn as_ref(&self) -> &cddl_lib::NullableCollField {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableCollMap(cddl_lib::NullableCollMap);
+
+#[wasm_bindgen]
+impl NullableCollMap {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn insert(&mut self, key: u64, value: Option<NumsArr>) -> MaybeColl {
+        self.0
+            .insert(key, value.map(Into::into))
+            .flatten()
+            .map(Into::into)
+    }
+
+    /// Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn get(&self, key: u64) -> MaybeColl {
+        self.0
+            .get(&key)
+            .map(|v| v.clone().map(Into::into))
+            .flatten()
+    }
+
+    /// Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).
+    pub fn has(&self, key: u64) -> bool {
+        self.0.get(&key).is_some()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::NullableCollMap> for NullableCollMap {
+    fn from(native: cddl_lib::NullableCollMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableCollMap> for cddl_lib::NullableCollMap {
+    fn from(wasm: NullableCollMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableCollMap> for NullableCollMap {
+    fn as_ref(&self) -> &cddl_lib::NullableCollMap {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableDenumField(cddl_lib::NullableDenumField);
+
+#[wasm_bindgen]
+impl NullableDenumField {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableDenumField, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NullableDenumField, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn d(&self) -> MaybeDenum {
+        self.0.d.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(d: Option<DataEnum>) -> Self {
+        Self(cddl_lib::NullableDenumField::new(d.map(Into::into)))
+    }
+}
+
+impl From<cddl_lib::NullableDenumField> for NullableDenumField {
+    fn from(native: cddl_lib::NullableDenumField) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableDenumField> for cddl_lib::NullableDenumField {
+    fn from(wasm: NullableDenumField) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableDenumField> for NullableDenumField {
+    fn as_ref(&self) -> &cddl_lib::NullableDenumField {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableMapValue(cddl_lib::NullableMapValue);
+
+#[wasm_bindgen]
+impl NullableMapValue {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn insert(&mut self, key: u64, value: Option<u64>) -> MaybeUint {
+        self.0.insert(key, value).flatten()
+    }
+
+    /// Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn get(&self, key: u64) -> MaybeUint {
+        self.0.get(&key).copied().flatten()
+    }
+
+    /// Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).
+    pub fn has(&self, key: u64) -> bool {
+        self.0.get(&key).is_some()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::NullableMapValue> for NullableMapValue {
+    fn from(native: cddl_lib::NullableMapValue) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableMapValue> for cddl_lib::NullableMapValue {
+    fn from(wasm: NullableMapValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableMapValue> for NullableMapValue {
+    fn as_ref(&self) -> &cddl_lib::NullableMapValue {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableOptionalField(cddl_lib::NullableOptionalField);
+
+#[wasm_bindgen]
+impl NullableOptionalField {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableOptionalField, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NullableOptionalField, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn pre(&self) -> u64 {
+        self.0.pre
+    }
+
+    pub fn set_field0(&mut self, field0: Option<u64>) {
+        self.0.field0 = Some(field0)
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn field0(&self) -> MaybeUint {
+        self.0.field0.flatten()
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_field0(&self) -> bool {
+        self.0.field0.is_some()
+    }
+
+    pub fn new(pre: u64) -> Self {
+        Self(cddl_lib::NullableOptionalField::new(pre))
+    }
+}
+
+impl From<cddl_lib::NullableOptionalField> for NullableOptionalField {
+    fn from(native: cddl_lib::NullableOptionalField) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableOptionalField> for cddl_lib::NullableOptionalField {
+    fn from(wasm: NullableOptionalField) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableOptionalField> for NullableOptionalField {
+    fn as_ref(&self) -> &cddl_lib::NullableOptionalField {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NumsArr(Vec<u64>);
+
+#[wasm_bindgen]
+impl NumsArr {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for NumsArr {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NumsArr> for Vec<u64> {
+    fn from(wasm: NumsArr) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for NumsArr {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}

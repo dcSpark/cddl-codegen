@@ -14,6 +14,19 @@ use crate::intermediate::{
 };
 use crate::utils::{cbor_type_code_str, convert_to_snake_case};
 
+/// The seed-once thin root written to each generated crate's `src/lib.rs` on the first export only
+/// (rust, wasm, and json-gen all share this same content). All regenerated code lives under
+/// `src/generated/**` (a subtree the tool always clobbers); this root is user-owned after its first
+/// write and never overwritten (existence-only, mirroring `ManifestOp::SeedOnce`), so hand-added
+/// modules/re-exports/attrs survive every regeneration.
+const SEEDED_CRATE_ROOT: &str = "\
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;
+";
+
 #[derive(Debug, Clone)]
 struct SerializeConfig<'a> {
     /// the name of the variable where this is accessed, e.g. "self.foo" or "field" (e.g. for if let Some(field) = self.foo)
@@ -926,16 +939,20 @@ impl GenerationScope {
             scope: &ModuleScope,
             content: &mut codegen::Scope,
             imports: &BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            // The crate-root prefix for cross-scope references within the SAME crate: both the rust
+            // and wasm crates nest their generated tree one level (`crate::generated`). Root-scope
+            // items and non-exported scopes are still reached relatively.
+            crate_prefix: &str,
         ) {
             // might not exist if we don't use stuff from other scopes
             if let Some(scope_imports) = imports.get(scope) {
                 for (import_scope, idents) in scope_imports.iter() {
                     let import_scope = if *import_scope == *ROOT_SCOPE {
-                        Cow::from("crate")
+                        Cow::from(crate_prefix.to_owned())
                     } else if *scope == *ROOT_SCOPE || !import_scope.export() {
                         Cow::from(import_scope.to_string())
                     } else {
-                        Cow::from(format!("crate::{import_scope}"))
+                        Cow::from(format!("{crate_prefix}::{import_scope}"))
                     };
                     #[allow(clippy::comparison_chain)]
                     if idents.len() > 1 {
@@ -964,7 +981,7 @@ impl GenerationScope {
         // imports for generated structs from other files (struct files)
         let rust_imports = types.scope_references(false);
         for (scope, content) in self.rust_scopes.iter_mut() {
-            add_imports_from_scope_refs(scope, content, &rust_imports);
+            add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated");
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
             // but the code to figure that out would be potentially complex.
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
@@ -1062,8 +1079,9 @@ impl GenerationScope {
             // wasm imports
             let wasm_imports = types.scope_references(true);
             for (scope, content) in self.wasm_scopes.iter_mut() {
-                // imports from other struct modules
-                add_imports_from_scope_refs(scope, content, &wasm_imports);
+                // imports from other struct modules; the wasm generated tree nests one level under
+                // `crate::generated` (same as the rust crate)
+                add_imports_from_scope_refs(scope, content, &wasm_imports, "crate::generated");
                 // common imports
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
@@ -1178,7 +1196,7 @@ impl GenerationScope {
                 }
             }
             files.insert(
-                "rust/src/serialization.rs".to_owned(),
+                "rust/src/generated/serialization.rs".to_owned(),
                 rustfmt_generated_string(&merged.to_string())?.into_owned(),
             );
         }
@@ -1214,6 +1232,17 @@ impl GenerationScope {
 
         for (rel_path, content) in &files {
             let path = rust_dir.join(rel_path);
+            // Seed-once thin roots: each generated crate's root `lib.rs` (rust, wasm, json-gen) is
+            // written only if absent (existence check only — the same bounded exception the manifest
+            // changeset carves out of the no-prior-output invariant). Everything else under
+            // `generated/**` clobbers as always.
+            if matches!(
+                rel_path.as_str(),
+                "rust/src/lib.rs" | "wasm/src/lib.rs" | "wasm/json-gen/src/lib.rs"
+            ) && path.exists()
+            {
+                continue;
+            }
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -1225,7 +1254,7 @@ impl GenerationScope {
             // error.rs
             std::fs::copy(
                 cli.static_dir.join("error.rs"),
-                rust_dir.join("rust/src/error.rs"),
+                rust_dir.join("rust/src/generated/error.rs"),
             )?;
 
             // ordered_hash_map.rs
@@ -1243,7 +1272,7 @@ impl GenerationScope {
                     )?);
                 }
                 std::fs::write(
-                    rust_dir.join("rust/src/ordered_hash_map.rs"),
+                    rust_dir.join("rust/src/generated/ordered_hash_map.rs"),
                     rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
                 )?;
             }
@@ -1335,22 +1364,32 @@ impl GenerationScope {
     ) -> std::io::Result<BTreeMap<String, String>> {
         let mut out = BTreeMap::new();
 
-        // rust lib.rs / {module}/mod.rs
+        // rust generated/mod.rs (merged ROOT_SCOPE content + module decls + inner crate attrs) /
+        // generated/{module}/mod.rs. The tool-owned generated tree lives under `generated/`; the
+        // crate root `lib.rs` is a seed-once thin root (added below) that the tool never clobbers.
         Self::merge_scopes_to_strings(
             &mut out,
-            "rust/src",
+            "rust/src/generated",
             self.rust_lib_scope.clone(),
             &self.rust_scopes,
-            "lib.rs",
+            "mod.rs",
             "mod.rs",
         )?;
+
+        // The seed-once thin root: written to `rust/src/lib.rs` only if absent (existence-only,
+        // mirroring `ManifestOp::SeedOnce`). Included in the producer so clean runs / snapshots carry
+        // it, but `export`'s write loop skips it when the file already exists so user edits survive.
+        out.insert(
+            "rust/src/lib.rs".to_owned(),
+            rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
+        );
 
         // serialization.rs (generated impls only; export prepends the static prelude to the root)
         let mut serialize_scope = codegen::Scope::new();
         serialize_scope.append(&self.rust_serialize_lib_scope);
         Self::merge_scopes_to_strings(
             &mut out,
-            "rust/src",
+            "rust/src/generated",
             serialize_scope,
             &self.serialize_scopes,
             "serialization.rs",
@@ -1362,10 +1401,10 @@ impl GenerationScope {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
                 if scope.export() {
                     let path = if *scope == *ROOT_SCOPE {
-                        "rust/src/cbor_encodings.rs".to_owned()
+                        "rust/src/generated/cbor_encodings.rs".to_owned()
                     } else {
                         format!(
-                            "rust/src/{}/cbor_encodings.rs",
+                            "rust/src/generated/{}/cbor_encodings.rs",
                             scope.components().join("/")
                         )
                     };
@@ -1392,14 +1431,21 @@ impl GenerationScope {
 
         // wasm crate
         if cli.wasm {
+            // Same split as the rust crate: the tool-owned generated tree lives under
+            // `wasm/src/generated/` (root scope + inner crate attrs in `mod.rs`), and the crate root
+            // `wasm/src/lib.rs` is a seed-once thin root (added below) the tool never clobbers.
             Self::merge_scopes_to_strings(
                 &mut out,
-                "wasm/src",
+                "wasm/src/generated",
                 self.wasm_lib_scope.clone(),
                 &self.wasm_scopes,
-                "lib.rs",
+                "mod.rs",
                 "mod.rs",
             )?;
+            out.insert(
+                "wasm/src/lib.rs".to_owned(),
+                rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
+            );
             out.insert(
                 "wasm/Cargo.toml".to_owned(),
                 crate::cargo_manifest::apply(
@@ -1439,9 +1485,17 @@ impl GenerationScope {
             lib_export_fn.vis("pub").push_all(self.json_lines.clone());
             lib_scope.push_fn(lib_export_fn);
             lib_str.push_str(&lib_scope.to_string());
+            // Same split as the other crate roots: the generated `macro_rules!` + `export_schemas`
+            // live under `wasm/json-gen/src/generated/mod.rs`, exposed through the seed-once thin
+            // root's glob re-export (so `<lib>_json_schema_gen::export_schemas()` in main.rs still
+            // resolves). `main.rs` stays fully tool-owned and unchanged.
+            out.insert(
+                "wasm/json-gen/src/generated/mod.rs".to_owned(),
+                rustfmt_generated_string(&lib_str)?.into_owned(),
+            );
             out.insert(
                 "wasm/json-gen/src/lib.rs".to_owned(),
-                rustfmt_generated_string(&lib_str)?.into_owned(),
+                rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
 
             let mut main_scope = codegen::Scope::new();

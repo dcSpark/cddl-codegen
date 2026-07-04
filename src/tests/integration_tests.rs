@@ -476,9 +476,11 @@ fn reference_codec_differential_self_check() {
 fn append_raw_bytes_defs(out: &std::path::Path) {
     use std::io::Write;
     let rust_def = std::fs::read_to_string("tests/external_rust_raw_bytes_def").unwrap();
+    // Append into the generated root scope (see `run_test`): the raw-bytes defs need the root scope's
+    // imports and `use serialization::*;`, which live in `generated/mod.rs`, not the thin `lib.rs`.
     let mut rust_lib = std::fs::OpenOptions::new()
         .append(true)
-        .open(out.join("rust/src/lib.rs"))
+        .open(out.join("rust/src/generated/mod.rs"))
         .unwrap();
     rust_lib
         .write_all(b"\n\nuse serialization::*;\n\n")
@@ -486,9 +488,11 @@ fn append_raw_bytes_defs(out: &std::path::Path) {
     rust_lib.write_all(rust_def.as_bytes()).unwrap();
     std::mem::drop(rust_lib);
     let wasm_def = std::fs::read_to_string("tests/external_wasm_raw_bytes_def").unwrap();
+    // Append into the generated root scope: the wasm defs carry `#[wasm_bindgen]`, whose macro is
+    // brought into scope by a private `use` in `generated/mod.rs` (not re-exported to the thin `lib.rs`).
     let mut wasm_lib = std::fs::OpenOptions::new()
         .append(true)
-        .open(out.join("wasm/src/lib.rs"))
+        .open(out.join("wasm/src/generated/mod.rs"))
         .unwrap();
     wasm_lib.write_all(b"\n\n").unwrap();
     wasm_lib.write_all(wasm_def.as_bytes()).unwrap();
@@ -524,6 +528,19 @@ fn run_test(
     ] {
         let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{manifest}")));
     }
+    // Each crate root `lib.rs` (rust, wasm, json-gen) is now a seed-once thin root the tool never
+    // clobbers. The committed fixture exports still carry the pre-split monolithic `lib.rs` (full
+    // generated content); left in place, seed-once would preserve it and it would collide with the
+    // regenerated `generated/**` subtree (duplicate definitions). Delete them so the tool re-seeds a
+    // clean thin root each run. (The survival-across-edits contract is covered by
+    // `thin_root_seed_once`/`thin_root_wiring_survives`.)
+    for root in [
+        "rust/src/lib.rs",
+        "wasm/src/lib.rs",
+        "wasm/json-gen/src/lib.rs",
+    ] {
+        let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{root}")));
+    }
     // build and run to generate code
     let mut cargo_run = tool_cmd("cargo");
     cargo_run.arg("run").arg("--").arg(format!(
@@ -550,10 +567,14 @@ fn run_test(
         eprintln!("{}", String::from_utf8(cargo_run_result.stderr).unwrap());
     }
     assert!(cargo_run_result.status.success());
-    // copy tests into generated code
+    // Copy tests into generated code. The generated root scope (with the cross-module `use` imports
+    // the appended tests' `use super::*;` relies on) now lives in `generated/mod.rs`, not the thin
+    // seed-once `lib.rs`; append there so the per-fixture tests see exactly the imports they did when
+    // the old monolithic `lib.rs` WAS the root scope. `generated/mod.rs` is regenerated every run, so
+    // appends don't accumulate across reruns of the same throwaway export dir.
     let mut lib_rs = std::fs::OpenOptions::new()
         .append(true)
-        .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
+        .open(test_path.join(format!("{export_path}/rust/src/generated/mod.rs")))
         .unwrap();
     // some external files/tests pasted in might need this
     lib_rs
@@ -636,9 +657,12 @@ fn run_test(
     // copy external wasm defs if they exist
     for external_wasm_file_path in external_wasm_file_paths {
         println!("trying to open: {external_wasm_file_path:?}");
+        // Append into the generated root scope (`generated/mod.rs`, the faithful equivalent of the
+        // old monolithic wasm `lib.rs`): externs carry `#[wasm_bindgen]` and reference the generated
+        // wrapper types, both resolved there (see the wasm half of `append_raw_bytes_defs`).
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
+            .open(test_path.join(format!("{export_path}/wasm/src/generated/mod.rs")))
             .unwrap();
         let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
         wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
@@ -652,13 +676,14 @@ fn run_test(
         }
     }
     if wasm_expected && wasm_test_path.exists() {
-        // The hook is only real if the file's contents actually land in the crate: append into
-        // wasm/src/lib.rs exactly like tests.rs into rust/src/lib.rs. A generated wasm crate ships
-        // no #[test]s of its own, so without the append `cargo test` runs zero tests and passes
+        // The hook is only real if the file's contents actually land in the crate: append into the
+        // generated root scope (`generated/mod.rs`, the equivalent of the old monolithic wasm root)
+        // exactly like tests.rs into `rust/src/generated/mod.rs`. A generated wasm crate ships no
+        // #[test]s of its own, so without the append `cargo test` runs zero tests and passes
         // vacuously (which is what this branch silently did before).
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
+            .open(test_path.join(format!("{export_path}/wasm/src/generated/mod.rs")))
             .unwrap();
         let test_wasm_rs = std::fs::read_to_string(&wasm_test_path).unwrap();
         wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
@@ -915,7 +940,7 @@ fn feature_corpus_compiles() {
                 }
             }
             if emit_tests
-                && std::fs::read_to_string(out.join("rust/src/lib.rs"))
+                && std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
                     .unwrap_or_default()
                     .contains("mod cddl_generated_tests")
             {
@@ -1306,7 +1331,7 @@ fn wasm_list_macro_compiles() {
         );
         // vacuous-pass guard: the gate only gates the macro path if the flag actually collapsed
         // the list wrappers into invocations (5 at landing; see the fixture's header comment).
-        let lib = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+        let lib = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
         let n_invocations = lib.matches("impl_wasm_list!(").count();
         assert!(
             n_invocations >= 5,
@@ -1562,6 +1587,156 @@ fn cargo_manifest_disk_round_trip() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The `lib.rs` seed-once contract (the thin-root counterpart of the manifest changeset): a first
+/// export seeds a thin root (`mod generated; pub use generated::*;`) and emits every generated file
+/// under `rust/src/generated/**`; the root is thereafter user-owned and NEVER rewritten — an
+/// existence check only, mirroring `ManifestOp::SeedOnce`. Deleting a generated file and hand-editing
+/// the root, then re-exporting, must leave the root byte-identical and restore the subtree; a third
+/// run is a byte-identical fixed point. In-process via `generate_to_disk` (no compile — the compile +
+/// behavioral coverage of the split lives in the `extern_deps` fixture and the snapshot corpus).
+#[test]
+fn thin_root_seed_once() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_thin_seed_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=true",
+    ]);
+    let lib_rs = out.join("rust/src/lib.rs");
+    let generated_mod = out.join("rust/src/generated/mod.rs");
+
+    // First run: seeds the thin root and emits the generated subtree.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let seeded = std::fs::read_to_string(&lib_rs).unwrap();
+    assert!(
+        seeded.contains("mod generated;"),
+        "seeded root must declare the generated module:\n{seeded}"
+    );
+    assert!(
+        seeded.contains("pub use generated::*;"),
+        "seeded root must glob-re-export the generated module:\n{seeded}"
+    );
+    assert!(
+        !seeded.contains("struct Foo"),
+        "generated type definitions must live under generated/, not the thin root:\n{seeded}"
+    );
+    assert!(
+        generated_mod.exists(),
+        "generated/mod.rs must exist after the first export"
+    );
+
+    // The wasm crate root gets the identical seed-once split.
+    let wasm_seeded = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+    assert!(
+        wasm_seeded.contains("mod generated;") && wasm_seeded.contains("pub use generated::*;"),
+        "the wasm crate root must be seeded with the same thin root:\n{wasm_seeded}"
+    );
+    assert!(
+        out.join("wasm/src/generated/mod.rs").exists(),
+        "wasm generated/mod.rs must exist after the first export"
+    );
+
+    // The root is now user-owned: hand-edit it and delete a generated file.
+    let user_edited = format!("{seeded}\npub mod utils;\n");
+    std::fs::write(&lib_rs, &user_edited).unwrap();
+    std::fs::remove_file(&generated_mod).unwrap();
+
+    // Second run: existence-only — the root is preserved verbatim, the subtree restored.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert_eq!(
+        user_edited, after,
+        "seed-once root must survive regeneration byte-for-byte"
+    );
+    assert!(
+        generated_mod.exists(),
+        "the generated subtree must be restored on re-export"
+    );
+
+    // Third run: byte-identical fixed point.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let third = std::fs::read_to_string(&lib_rs).unwrap();
+    assert_eq!(
+        after, third,
+        "seed-once root must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The wiring-survival regression (the CML cip25 clobber, mechanized): a hand-wired thin root that
+/// wires a user-supplied module (`pub mod utils; pub use utils::Helper;` — the extern-type shape)
+/// must survive regeneration untouched, and the user module must be left in place while the generated
+/// subtree is regenerated beside it. This is the failure the whole feature exists to prevent. The
+/// compile and behavioral proof of the same split is delegated to the `extern_deps` fixture (which
+/// builds and runs a real crate through the harness); this gate pins byte-level survival cheaply.
+#[test]
+fn thin_root_wiring_survives() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_thin_wire_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let lib_rs = out.join("rust/src/lib.rs");
+    let utils_rs = out.join("rust/src/utils.rs");
+
+    // First run seeds the thin root; the user then hand-wires an extern-type module into it.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let hand_wired =
+        "// hand-wired root\nmod generated;\npub use generated::*;\npub mod utils;\npub use utils::Helper;\n"
+            .to_owned();
+    std::fs::write(&lib_rs, &hand_wired).unwrap();
+    std::fs::write(&utils_rs, "pub struct Helper;\n").unwrap();
+
+    // Regenerate over the same directory: the hand wiring must survive.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let after = std::fs::read_to_string(&lib_rs).unwrap();
+    assert_eq!(
+        hand_wired, after,
+        "hand wiring in the thin root must survive regeneration byte-for-byte"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&utils_rs).unwrap(),
+        "pub struct Helper;\n",
+        "the user-supplied module must be left untouched"
+    );
+    assert!(
+        out.join("rust/src/generated/mod.rs").exists(),
+        "the generated subtree must be regenerated beside the user module"
+    );
+
+    // A further regeneration is still a fixed point for the user-owned root.
+    crate::api::generate_to_disk(&cli).unwrap();
+    assert_eq!(
+        hand_wired,
+        std::fs::read_to_string(&lib_rs).unwrap(),
+        "thin root must remain a byte-identical fixed point across runs"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// A regeneration over an UNPARSEABLE existing manifest must be a hard error that names the file —
 /// never a silent clobber (a parse failure is exactly when the user has content we can't preserve).
 #[test]
@@ -1662,7 +1837,7 @@ fn wasm_cbor_json_api_macro_compiles() {
     );
     // vacuous-pass guard: only gates the macro path if the flag actually collapsed the inline API
     // into invocations (11 at landing over tests/canonical).
-    let lib = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+    let lib = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
     let n_invocations = lib.matches("cbor_json_api!(").count();
     assert!(
         n_invocations >= 8,
@@ -1734,7 +1909,7 @@ fn nullable_wasm() {
 #[test]
 fn corpus_exclusive_range_upper_bound() {
     let lib = std::fs::read_to_string(
-        "tests/corpus/snapshots/exclusive_range/default__rust__src__lib.rs.snap",
+        "tests/corpus/snapshots/exclusive_range/default__rust__src__generated__mod.rs.snap",
     )
     .expect("exclusive_range lib snapshot missing");
     assert!(
@@ -1759,7 +1934,7 @@ fn corpus_exclusive_range_upper_bound() {
 #[test]
 fn corpus_occurrence_bounds_enforced() {
     let ser = std::fs::read_to_string(
-        "tests/corpus/snapshots/occurrence/default__rust__src__serialization.rs.snap",
+        "tests/corpus/snapshots/occurrence/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("occurrence serialization snapshot missing");
     for check in [
@@ -1793,7 +1968,7 @@ fn corpus_occurrence_bounds_enforced() {
 #[test]
 fn corpus_special_map_key_supported() {
     let ser = std::fs::read_to_string(
-        "tests/corpus/snapshots/special_map_key/default__rust__src__serialization.rs.snap",
+        "tests/corpus/snapshots/special_map_key/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("special_map_key serialization snapshot missing");
     assert!(
@@ -1836,7 +2011,7 @@ fn preserve_encodings_supports_floats() {
 #[test]
 fn corpus_inline_group_members_kept() {
     let lib = std::fs::read_to_string(
-        "tests/corpus/snapshots/inline_group/default__rust__src__lib.rs.snap",
+        "tests/corpus/snapshots/inline_group/default__rust__src__generated__mod.rs.snap",
     )
     .expect("inline_group lib snapshot missing");
     assert!(
@@ -1844,7 +2019,7 @@ fn corpus_inline_group_members_kept() {
         "inline_group snapshot no longer keeps both spliced members — the [(uint, tstr)] member-drop bug is back"
     );
     let ser = std::fs::read_to_string(
-        "tests/corpus/snapshots/inline_group/default__rust__src__serialization.rs.snap",
+        "tests/corpus/snapshots/inline_group/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("inline_group serialization snapshot missing");
     assert!(
@@ -1868,7 +2043,7 @@ fn corpus_inline_group_members_kept() {
 #[test]
 fn corpus_group_choice_map_key_written_and_verified() {
     let ser = std::fs::read_to_string(
-        "tests/corpus/snapshots/group_choice_map/default__rust__src__serialization.rs.snap",
+        "tests/corpus/snapshots/group_choice_map/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("group_choice_map serialization snapshot missing");
     // Serialize side: each collapsed arm writes its fixed member key between the map header and the
@@ -2076,8 +2251,12 @@ fn emit_tests_execute() {
         false,
         &[CDDL_ORACLE_DEP],
     );
-    let lib = std::fs::read_to_string("tests/preserve-encodings/export_emit_tests/rust/src/lib.rs")
-        .unwrap();
+    // The emitted generated-test module now lands in the generated root (`generated/mod.rs`), not the
+    // thin seed-once `lib.rs`.
+    let lib = std::fs::read_to_string(
+        "tests/preserve-encodings/export_emit_tests/rust/src/generated/mod.rs",
+    )
+    .unwrap();
     assert!(
         lib.contains("mod cddl_generated_tests"),
         "--emit-tests emitted no generated-test module"
@@ -2136,6 +2315,13 @@ fn emit_wasm_tests_execute() {
     let export = "export_emit_wasm_tests";
     let export_path = test_path.join(export);
 
+    // The rust and wasm crate roots are seed-once thin roots the tool never clobbers; a stale
+    // monolithic root left in this persistent export dir would survive and collide with the freshly
+    // regenerated `generated/**` subtree (plus the externs appended below). Clear them so the tool
+    // re-seeds clean thin roots.
+    let _ = std::fs::remove_file(export_path.join("rust/src/lib.rs"));
+    let _ = std::fs::remove_file(export_path.join("wasm/src/lib.rs"));
+
     // generate the crate(s)
     let generate = tool_cmd("cargo")
         .arg("run")
@@ -2158,9 +2344,11 @@ fn emit_wasm_tests_execute() {
     // COMPILE — append just the production externs it references (extern types + custom serializers),
     // NOT the rust test suite (deser_test/tests.rs), whose core-specific `--emit-tests` incompat is
     // out of scope here (see the doc comment).
+    // Append the production externs into the generated root scope (`generated/mod.rs`), where the
+    // cross-module imports and `use serialization::*;` they need resolve (see `run_test`).
     let mut rust_lib = std::fs::OpenOptions::new()
         .append(true)
-        .open(export_path.join("rust/src/lib.rs"))
+        .open(export_path.join("rust/src/generated/mod.rs"))
         .unwrap();
     rust_lib.write_all(b"\nuse serialization::*;\n").unwrap();
     for f in ["external_rust_defs", "custom_serialization"] {
@@ -2176,8 +2364,10 @@ fn emit_wasm_tests_execute() {
     std::mem::drop(rust_lib);
 
     // The wasm crate: append the extern wasm defs it references + the hand-written tests_wasm.rs
-    // (which runs beside the emitted module as the plausibility cross-check).
-    let wasm_lib_path = export_path.join("wasm/src/lib.rs");
+    // (which runs beside the emitted module as the plausibility cross-check). Append into the
+    // generated root scope (`generated/mod.rs`, the equivalent of the old monolithic wasm root),
+    // where `#[wasm_bindgen]` and the generated wrapper types resolve (see `run_test`).
+    let wasm_lib_path = export_path.join("wasm/src/generated/mod.rs");
     let mut wasm_lib = std::fs::OpenOptions::new()
         .append(true)
         .open(&wasm_lib_path)
@@ -2463,8 +2653,9 @@ fn ir_conformance_corpus() {
         // `cddl_conformance::validate` call) but STILL dumps its minted bytes for the ruby sweep.
         if rust_oracle {
             // wire in the shared oracle helpers (cddl_oracle_load_spec / assert_cddl_conforms) that the
-            // emitted cddl_conformance::validate calls resolve to — append them to lib.rs, like run_test
-            // appends deser_test_conformance.rs into the preserve fixture.
+            // emitted cddl_conformance::validate calls resolve to. They resolve as `crate::…`
+            // (emit_tests.rs), so they belong at the crate root `lib.rs` (which seed-once preserves) —
+            // NOT under `generated/`. The emitted validate CALLS themselves live in `generated/mod.rs`.
             let mut lib_rs = std::fs::OpenOptions::new()
                 .append(true)
                 .open(&lib_rs_path)
@@ -2484,7 +2675,9 @@ fn ir_conformance_corpus() {
             std::mem::drop(cargo_toml);
         }
 
-        let lib_src = std::fs::read_to_string(&lib_rs_path).unwrap();
+        // The emitted generated-test module (and its `cddl_conformance::validate(..)` calls) lives in
+        // the generated root, `generated/mod.rs`, not the thin seed-once `lib.rs`.
+        let lib_src = std::fs::read_to_string(rust_dir.join("src/generated/mod.rs")).unwrap();
         // vacuity: did this fixture actually emit any conformance call? (a fixture whose only
         // round-trip types are transparent array/table aliases emits none — see occurrence). Only
         // meaningful for rust-oracle fixtures; a RUST_ORACLE_SKIP fixture emits none by design.
@@ -3381,7 +3574,8 @@ fn deserialize_depth_limit_guards_recursion() {
     );
 
     // sanity: the guard acquisition line was actually emitted into the recursive deserializer
-    let ser_on = std::fs::read_to_string(out_on.join("rust/src/serialization.rs")).unwrap();
+    let ser_on =
+        std::fs::read_to_string(out_on.join("rust/src/generated/serialization.rs")).unwrap();
     assert!(
         ser_on.contains("DepthGuard::acquire(64usize)?"),
         "guard-on output is missing the depth-guard acquisition — the flag emitted nothing"
@@ -3449,7 +3643,8 @@ fn hostile_deep_rejects_without_aborting() {
         "generation (guard off) failed\n{}",
         String::from_utf8_lossy(&gen_off.stderr)
     );
-    let ser_off = std::fs::read_to_string(out_off.join("rust/src/serialization.rs")).unwrap();
+    let ser_off =
+        std::fs::read_to_string(out_off.join("rust/src/generated/serialization.rs")).unwrap();
     assert!(
         !ser_off.contains("DepthGuard"),
         "guard-off output must not carry any DepthGuard runtime or acquisition (default-off is byte-identical to today)"
@@ -3690,7 +3885,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
                 }
                 continue;
             }
-            if std::fs::read_to_string(out.join("rust/src/lib.rs"))
+            if std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
                 .unwrap_or_default()
                 .contains("mod cddl_generated_tests")
             {
@@ -3848,7 +4043,10 @@ fn decode_replay_run(
     let module = format!(
         "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {{\n    use super::*;\n    use super::serialization::*;\n{fns}}}\n"
     );
-    let lib_path = out.join("crate/rust/src/lib.rs");
+    // Append into the generated root scope (`generated/mod.rs`): the replay module's `use super::*;` /
+    // `use super::serialization::*;` need the root scope's imports and its sibling serialization
+    // module, which live there rather than in the thin seed-once `lib.rs`.
+    let lib_path = out.join("crate/rust/src/generated/mod.rs");
     let existing = std::fs::read_to_string(&lib_path).unwrap();
     std::fs::write(&lib_path, existing + &module).unwrap();
 
@@ -3867,10 +4065,14 @@ fn decode_replay_run(
     );
     let mut results = std::collections::BTreeMap::new();
     for line in combined.lines() {
-        // libtest: "test __foreign_decode_replay::accept_0 ... ok" / "... FAILED"
+        // libtest: "test <path>__foreign_decode_replay::accept_0 ... ok" / "... FAILED". The module
+        // is appended into `generated/mod.rs`, so its libtest path is `generated::__foreign_…`; match
+        // the module marker anywhere after `test ` so the parse is agnostic to the parent module path.
+        let line = line.trim_start();
         if let Some(rest) = line
-            .trim_start()
-            .strip_prefix("test __foreign_decode_replay::")
+            .strip_prefix("test ")
+            .and_then(|r| r.split_once("__foreign_decode_replay::"))
+            .map(|(_, r)| r)
             && let Some((name, tail)) = rest.split_once(" ... ")
         {
             let tail = tail.trim();

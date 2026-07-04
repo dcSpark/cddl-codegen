@@ -1,0 +1,57 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct WrappedArr(Vec<u64>);
+
+impl WrappedArr {
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u64>> for WrappedArr {
+    fn from(inner: Vec<u64>) -> Self {
+        WrappedArr::new(inner)
+    }
+}
+
+impl From<WrappedArr> for Vec<u64> {
+    fn from(wrapper: WrappedArr) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrappedMap(BTreeMap<u64, String>);
+
+impl WrappedMap {
+    pub fn new(inner: BTreeMap<u64, String>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<u64, String>> for WrappedMap {
+    fn from(inner: BTreeMap<u64, String>) -> Self {
+        WrappedMap::new(inner.clone().into())
+    }
+}
+
+impl From<WrappedMap> for BTreeMap<u64, String> {
+    fn from(wrapper: WrappedMap) -> Self {
+        wrapper.0
+    }
+}

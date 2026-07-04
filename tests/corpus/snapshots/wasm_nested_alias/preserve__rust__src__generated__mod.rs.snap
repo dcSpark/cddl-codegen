@@ -1,0 +1,56 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::OptHolderEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type NestedArr = Vec<Nums>;
+
+pub type Nums = Vec<u64>;
+
+#[derive(Clone, Debug)]
+pub struct OptHolder {
+    pub x: u64,
+    pub f: Option<Nums>,
+    pub encodings: Option<OptHolderEncoding>,
+}
+
+impl OptHolder {
+    pub fn new(x: u64) -> Self {
+        Self {
+            x,
+            f: None,
+            encodings: None,
+        }
+    }
+}
+
+pub type Passthru = Vec<u64>;
+
+pub type PassthruMap = OrderedHashMap<u64, Passthru>;
+
+pub type PassthruTags = OrderedHashMap<u64, String>;
+
+pub type PassthruTagsMap = OrderedHashMap<u64, PassthruTags>;
+
+pub type TaggedList = Vec<Tags>;
+
+pub type Tags = OrderedHashMap<u64, String>;
+
+pub type ValueMap = OrderedHashMap<u64, Nums>;

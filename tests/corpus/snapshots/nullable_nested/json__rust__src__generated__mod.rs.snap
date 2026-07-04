@@ -1,0 +1,77 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum DataEnum {
+    U64(u64),
+    Text(String),
+}
+
+impl DataEnum {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+pub type MaybeColl = Option<NumsArr>;
+
+pub type MaybeDenum = Option<DataEnum>;
+
+pub type MaybeUint = Option<u64>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NullableCollField {
+    pub c: MaybeColl,
+}
+
+impl NullableCollField {
+    pub fn new(c: MaybeColl) -> Self {
+        Self { c }
+    }
+}
+
+pub type NullableCollMap = BTreeMap<u64, MaybeColl>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NullableDenumField {
+    pub d: MaybeDenum,
+}
+
+impl NullableDenumField {
+    pub fn new(d: MaybeDenum) -> Self {
+        Self { d }
+    }
+}
+
+pub type NullableMapValue = BTreeMap<u64, MaybeUint>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NullableOptionalField {
+    pub pre: u64,
+    pub field0: Option<MaybeUint>,
+}
+
+impl NullableOptionalField {
+    pub fn new(pre: u64) -> Self {
+        Self { pre, field0: None }
+    }
+}
+
+pub type NumsArr = Vec<u64>;

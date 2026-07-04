@@ -1,0 +1,154 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for GroupChoice {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            GroupChoice::GroupChoice0 {
+                index_1,
+                len_encoding,
+                index_0_encoding,
+                index_1_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(2))?;
+                serializer.write_unsigned_integer_sz(0u64, fit_sz(0u64, *index_0_encoding))?;
+                serializer
+                    .write_unsigned_integer_sz(*index_1, fit_sz(*index_1, *index_1_encoding))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            GroupChoice::GroupChoice1 {
+                index_1,
+                len_encoding,
+                index_0_encoding,
+                index_1_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(2))?;
+                serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *index_0_encoding))?;
+                serializer.write_text_sz(
+                    &index_1,
+                    index_1_encoding.to_str_len_sz(index_1.len() as u64),
+                )?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for GroupChoice {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                let index_0_encoding = (|| -> Result<_, DeserializeError> {
+                    let (index_0_value, index_0_encoding) = raw.unsigned_integer_sz()?;
+                    if index_0_value != 0 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(index_0_value),
+                            expected: Key::Uint(0),
+                        }
+                        .into());
+                    }
+                    Ok(Some(index_0_encoding))
+                })()
+                .map_err(|e| e.annotate("index_0"))?;
+                let (index_1, index_1_encoding) = raw
+                    .unsigned_integer_sz()
+                    .map_err(Into::<DeserializeError>::into)
+                    .map(|(x, enc)| (x, Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("index_1"))?;
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::GroupChoice0 {
+                    index_1,
+                    len_encoding,
+                    index_0_encoding,
+                    index_1_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("GroupChoice0"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                let index_0_encoding = (|| -> Result<_, DeserializeError> {
+                    let (index_0_value, index_0_encoding) = raw.unsigned_integer_sz()?;
+                    if index_0_value != 1 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(index_0_value),
+                            expected: Key::Uint(1),
+                        }
+                        .into());
+                    }
+                    Ok(Some(index_0_encoding))
+                })()
+                .map_err(|e| e.annotate("index_0"))?;
+                let (index_1, index_1_encoding) = raw
+                    .text_sz()
+                    .map_err(Into::<DeserializeError>::into)
+                    .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("index_1"))?;
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::GroupChoice1 {
+                    index_1,
+                    len_encoding,
+                    index_0_encoding,
+                    index_1_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("GroupChoice1"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeError::new(
+                "GroupChoice",
+                DeserializeFailure::NoVariantMatchedWithCauses(errs),
+            ))
+        })()
+        .map_err(|e| e.annotate("GroupChoice"))
+    }
+}

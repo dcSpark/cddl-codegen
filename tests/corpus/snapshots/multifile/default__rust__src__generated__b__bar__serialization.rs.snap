@@ -1,0 +1,323 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use crate::generated::serialization::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Bar {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(
+            4 + match &self.derp {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.key_5 {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.baz {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_unsigned_integer(1u64)?;
+        match &self.key_1 {
+            Some(x) => {
+                serializer.write_unsigned_integer(*x)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        if let Some(field) = &self.key_5 {
+            serializer.write_unsigned_integer(5u64)?;
+            serializer.write_text(&field)?;
+        }
+        if let Some(field) = &self.baz {
+            serializer.write_text("baz")?;
+            field.serialize(serializer)?;
+        }
+        serializer.write_text("foo")?;
+        serializer.write_tag(1337u64)?;
+        serializer.write_array(cbor_event::Len::Len(self.foo.len() as u64))?;
+        for element in self.foo.iter() {
+            element.serialize(serializer)?;
+        }
+        if let Some(field) = &self.derp {
+            serializer.write_text("derp")?;
+            serializer.write_unsigned_integer(*field)?;
+        }
+        serializer.write_text("five")?;
+        serializer.write_unsigned_integer(5u64)?;
+        serializer.write_text("foo_map")?;
+        serializer.write_map(cbor_event::Len::Len(self.foo_map.len() as u64))?;
+        for (key, value) in self.foo_map.iter() {
+            key.serialize(serializer)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Bar {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.map()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(4)?;
+        (|| -> Result<_, DeserializeError> {
+            let mut key_1 = None;
+            let mut key_5 = None;
+            let mut baz = None;
+            let mut foo = None;
+            let mut derp = None;
+            let mut five_present = false;
+            let mut foo_map = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => Some(raw.unsigned_integer()? as u64),
+                                        false => {
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("key_1"))?,
+                            );
+                        }
+                        5 => {
+                            if key_5.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(5)).into());
+                            }
+                            key_5 = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    Ok(raw.text()? as String)
+                                })()
+                                .map_err(|e| e.annotate("key_5"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(
+                                DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                            )
+                        }
+                    },
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "baz" => {
+                            if baz.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "baz".into(),
+                                ))
+                                .into());
+                            }
+                            baz = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    Baz::deserialize(raw)
+                                })()
+                                .map_err(|e| e.annotate("baz"))?,
+                            );
+                        }
+                        "foo" => {
+                            if foo.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "foo".into(),
+                                ))
+                                .into());
+                            }
+                            foo = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    match raw.tag()? {
+                                        1337 => {
+                                            let mut foo_arr = Vec::new();
+                                            let len = raw.array()?;
+                                            while match len {
+                                                cbor_event::Len::Len(n) => {
+                                                    (foo_arr.len() as u64) < n
+                                                }
+                                                cbor_event::Len::Indefinite => true,
+                                            } {
+                                                if let cbor_event::Len::Indefinite = len {
+                                                    if raw.cbor_type()? == cbor_event::Type::Special
+                                                        && raw.special_break()?
+                                                    {
+                                                        break;
+                                                    }
+                                                }
+                                                foo_arr.push(Foo::deserialize(raw)?);
+                                            }
+                                            Ok(foo_arr)
+                                        }
+                                        tag => Err(DeserializeFailure::TagMismatch {
+                                            found: tag,
+                                            expected: 1337,
+                                        }
+                                        .into()),
+                                    }
+                                })()
+                                .map_err(|e| e.annotate("foo"))?,
+                            );
+                        }
+                        "derp" => {
+                            if derp.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "derp".into(),
+                                ))
+                                .into());
+                            }
+                            derp = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    Ok(raw.unsigned_integer()? as u64)
+                                })()
+                                .map_err(|e| e.annotate("derp"))?,
+                            );
+                        }
+                        "five" => {
+                            if five_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "five".into(),
+                                ))
+                                .into());
+                            }
+                            five_present = (|| -> Result<_, DeserializeError> {
+                                let five_value = raw.unsigned_integer()?;
+                                if five_value != 5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(five_value),
+                                        expected: Key::Uint(5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("five"))?;
+                        }
+                        "foo_map" => {
+                            if foo_map.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "foo_map".into(),
+                                ))
+                                .into());
+                            }
+                            foo_map = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut foo_map_table = BTreeMap::new();
+                                    let foo_map_len = raw.map()?;
+                                    while match foo_map_len {
+                                        cbor_event::Len::Len(n) => (foo_map_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if let cbor_event::Len::Indefinite = foo_map_len {
+                                            if raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
+                                            }
+                                        }
+                                        let foo_map_key = Foo::deserialize(raw)?;
+                                        let foo_map_value = Foo::deserialize(raw)?;
+                                        if foo_map_table
+                                            .insert(foo_map_key.clone(), foo_map_value)
+                                            .is_some()
+                                        {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Str(String::from(
+                                                    "some complicated/unsupported type",
+                                                )),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    Ok(foo_map_table)
+                                })()
+                                .map_err(|e| e.annotate("foo_map"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let foo = match foo {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("foo")))
+                            .into(),
+                    )
+                }
+            };
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            if !five_present {
+                return Err(
+                    DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("five")))
+                        .into(),
+                );
+            }
+            let foo_map =
+                match foo_map {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("foo_map"),
+                        ))
+                        .into())
+                    }
+                };
+            read_len.finish()?;
+            Ok(Self {
+                foo,
+                derp,
+                key_1,
+                key_5,
+                foo_map,
+                baz,
+            })
+        })()
+        .map_err(|e| e.annotate("Bar"))
+    }
+}

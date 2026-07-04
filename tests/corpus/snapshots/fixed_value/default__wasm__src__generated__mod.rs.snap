@@ -1,0 +1,57 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FixedFields(cddl_lib::FixedFields);
+
+#[wasm_bindgen]
+impl FixedFields {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedFields, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::FixedFields::new(a))
+    }
+}
+
+impl From<cddl_lib::FixedFields> for FixedFields {
+    fn from(native: cddl_lib::FixedFields) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedFields> for cddl_lib::FixedFields {
+    fn from(wasm: FixedFields) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedFields> for FixedFields {
+    fn as_ref(&self) -> &cddl_lib::FixedFields {
+        &self.0
+    }
+}

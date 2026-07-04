@@ -2,33 +2,8 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-macro_rules! gen_json_schema {
-    ($name:ty) => {
-        let dest_path =
-            std::path::Path::new(&"schemas").join(&format!("{}.json", stringify!($name)));
-        std::fs::write(
-            &dest_path,
-            serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap(),
-        )
-        .unwrap();
-    };
-}
-
-pub fn export_schemas() {
-    let schema_path = std::path::Path::new(&"schemas");
-    if !schema_path.exists() {
-        std::fs::create_dir(schema_path).unwrap();
-    }
-    gen_json_schema!(cddl_lib::BytesWrapper);
-    gen_json_schema!(cddl_lib::CustomWrapper);
-    gen_json_schema!(cddl_lib::I16Wrapper);
-    gen_json_schema!(cddl_lib::I64Wrapper);
-    gen_json_schema!(cddl_lib::Int);
-    gen_json_schema!(cddl_lib::IntWrapper);
-    gen_json_schema!(cddl_lib::NintWrapper);
-    gen_json_schema!(cddl_lib::StrWrapper);
-    gen_json_schema!(cddl_lib::StructWrapper);
-    gen_json_schema!(cddl_lib::TableHolder);
-    gen_json_schema!(cddl_lib::U64Wrapper);
-    gen_json_schema!(cddl_lib::U8Wrapper);
-}
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;

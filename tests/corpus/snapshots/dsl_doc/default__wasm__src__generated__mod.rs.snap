@@ -1,0 +1,64 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+/// struct documentation here
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Documented(cddl_lib::Documented);
+
+#[wasm_bindgen]
+impl Documented {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Documented, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> String {
+        self.0.foo.clone()
+    }
+
+    pub fn bar(&self) -> u64 {
+        self.0.bar
+    }
+
+    /// * `foo` - this is a field-level comment
+    /// * `bar` - bar is a u64
+    pub fn new(foo: String, bar: u64) -> Self {
+        Self(cddl_lib::Documented::new(foo, bar))
+    }
+}
+
+impl From<cddl_lib::Documented> for Documented {
+    fn from(native: cddl_lib::Documented) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Documented> for cddl_lib::Documented {
+    fn from(wasm: Documented) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Documented> for Documented {
+    fn as_ref(&self) -> &cddl_lib::Documented {
+        &self.0
+    }
+}

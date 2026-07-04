@@ -1,0 +1,158 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for WrappedArr {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.inner.len() as u64),
+        )?;
+        for (i, element) in self.inner.iter().enumerate() {
+            let inner_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inner_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*element, fit_sz(*element, inner_elem_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.inner_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for WrappedArr {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let mut inner_arr = Vec::new();
+        let len = raw.array_sz()?;
+        let inner_encoding = len.into();
+        let mut inner_elem_encodings = Vec::new();
+        while match len {
+            cbor_event::LenSz::Len(n, _) => (inner_arr.len() as u64) < n,
+            cbor_event::LenSz::Indefinite => true,
+        } {
+            if let cbor_event::LenSz::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
+                }
+            }
+            let (inner_elem, inner_elem_encoding) =
+                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+            inner_arr.push(inner_elem);
+            inner_elem_encodings.push(inner_elem_encoding);
+        }
+        let (inner, inner_encoding, inner_elem_encodings) =
+            (inner_arr, inner_encoding, inner_elem_encodings);
+        Ok(Self {
+            inner,
+            encodings: Some(WrappedArrEncoding {
+                inner_encoding,
+                inner_elem_encodings,
+            }),
+        })
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedMap {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.inner.len() as u64),
+        )?;
+        for (key, value) in self.inner.iter() {
+            let inner_key_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inner_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*key, fit_sz(*key, inner_key_encoding))?;
+            let inner_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inner_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_text_sz(
+                &value,
+                inner_value_encoding.to_str_len_sz(value.len() as u64),
+            )?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.inner_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for WrappedMap {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let mut inner_table = OrderedHashMap::new();
+        let inner_len = raw.map_sz()?;
+        let inner_encoding = inner_len.into();
+        let mut inner_key_encodings = BTreeMap::new();
+        let mut inner_value_encodings = BTreeMap::new();
+        while match inner_len {
+            cbor_event::LenSz::Len(n, _) => (inner_table.len() as u64) < n,
+            cbor_event::LenSz::Indefinite => true,
+        } {
+            if let cbor_event::LenSz::Indefinite = inner_len {
+                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                    break;
+                }
+            }
+            let (inner_key, inner_key_encoding) =
+                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+            let (inner_value, inner_value_encoding) = raw
+                .text_sz()
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+            if inner_table.insert(inner_key, inner_value).is_some() {
+                return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into());
+            }
+            inner_key_encodings.insert(inner_key, inner_key_encoding);
+            inner_value_encodings.insert(inner_key, inner_value_encoding);
+        }
+        let (inner, inner_encoding, inner_key_encodings, inner_value_encodings) = (
+            inner_table,
+            inner_encoding,
+            inner_key_encodings,
+            inner_value_encodings,
+        );
+        Ok(Self {
+            inner,
+            encodings: Some(WrappedMapEncoding {
+                inner_encoding,
+                inner_key_encodings,
+                inner_value_encodings,
+            }),
+        })
+    }
+}

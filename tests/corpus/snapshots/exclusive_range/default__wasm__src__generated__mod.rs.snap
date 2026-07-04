@@ -1,0 +1,59 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExclusiveRange(cddl_lib::ExclusiveRange);
+
+#[wasm_bindgen]
+impl ExclusiveRange {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExclusiveRange, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn v(&self) -> u64 {
+        self.0.v
+    }
+
+    pub fn new(v: u64) -> Result<ExclusiveRange, JsError> {
+        cddl_lib::ExclusiveRange::new(v)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::ExclusiveRange> for ExclusiveRange {
+    fn from(native: cddl_lib::ExclusiveRange) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExclusiveRange> for cddl_lib::ExclusiveRange {
+    fn from(wasm: ExclusiveRange) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ExclusiveRange> for ExclusiveRange {
+    fn as_ref(&self) -> &cddl_lib::ExclusiveRange {
+        &self.0
+    }
+}

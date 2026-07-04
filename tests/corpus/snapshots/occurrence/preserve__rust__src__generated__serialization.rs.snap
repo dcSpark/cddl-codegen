@@ -1,0 +1,231 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for OccurrenceHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(3),
+        )?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.o_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.o.len() as u64),
+        )?;
+        for (i, element) in self.o.iter().enumerate() {
+            let o_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.o_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*element, fit_sz(*element, o_elem_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.o_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.b_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.b.len() as u64),
+        )?;
+        for (i, element) in self.b.iter().enumerate() {
+            let b_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.b_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*element, fit_sz(*element, b_elem_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.b_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inline_bounded_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.inline_bounded.len() as u64),
+        )?;
+        for (i, element) in self.inline_bounded.iter().enumerate() {
+            let inline_bounded_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inline_bounded_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_text_sz(
+                &element,
+                inline_bounded_elem_encoding.to_str_len_sz(element.len() as u64),
+            )?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.inline_bounded_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OccurrenceHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array_sz()?;
+        let len_encoding: LenEncoding = len.into();
+        let mut read_len = CBORReadLen::new(len);
+        read_len.read_elems(3)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let (o, o_encoding, o_elem_encodings) = (|| -> Result<_, DeserializeError> {
+                let mut o_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let o_encoding = len.into();
+                let mut o_elem_encodings = Vec::new();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (o_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if let cbor_event::LenSz::Indefinite = len {
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
+                        }
+                    }
+                    let (o_elem, o_elem_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    o_arr.push(o_elem);
+                    o_elem_encodings.push(o_elem_encoding);
+                }
+                if o_arr.len() < 1 {
+                    return Err(DeserializeFailure::RangeCheck {
+                        found: o_arr.len() as isize,
+                        min: Some(1),
+                        max: None,
+                    }
+                    .into());
+                }
+                Ok((o_arr, o_encoding, o_elem_encodings))
+            })()
+            .map_err(|e| e.annotate("o"))?;
+            let (b, b_encoding, b_elem_encodings) = (|| -> Result<_, DeserializeError> {
+                let mut b_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let b_encoding = len.into();
+                let mut b_elem_encodings = Vec::new();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (b_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if let cbor_event::LenSz::Indefinite = len {
+                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
+                        }
+                    }
+                    let (b_elem, b_elem_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    b_arr.push(b_elem);
+                    b_elem_encodings.push(b_elem_encoding);
+                }
+                if b_arr.len() < 2 || b_arr.len() > 5 {
+                    return Err(DeserializeFailure::RangeCheck {
+                        found: b_arr.len() as isize,
+                        min: Some(2),
+                        max: Some(5),
+                    }
+                    .into());
+                }
+                Ok((b_arr, b_encoding, b_elem_encodings))
+            })()
+            .map_err(|e| e.annotate("b"))?;
+            let (inline_bounded, inline_bounded_encoding, inline_bounded_elem_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut inline_bounded_arr = Vec::new();
+                    let len = raw.array_sz()?;
+                    let inline_bounded_encoding = len.into();
+                    let mut inline_bounded_elem_encodings = Vec::new();
+                    while match len {
+                        cbor_event::LenSz::Len(n, _) => (inline_bounded_arr.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if let cbor_event::LenSz::Indefinite = len {
+                            if raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
+                            }
+                        }
+                        let (inline_bounded_elem, inline_bounded_elem_encoding) = raw
+                            .text_sz()
+                            .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                        inline_bounded_arr.push(inline_bounded_elem);
+                        inline_bounded_elem_encodings.push(inline_bounded_elem_encoding);
+                    }
+                    if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {
+                        return Err(DeserializeFailure::RangeCheck {
+                            found: inline_bounded_arr.len() as isize,
+                            min: Some(1),
+                            max: Some(3),
+                        }
+                        .into());
+                    }
+                    Ok((
+                        inline_bounded_arr,
+                        inline_bounded_encoding,
+                        inline_bounded_elem_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("inline_bounded"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OccurrenceHolder {
+                o,
+                b,
+                inline_bounded,
+                encodings: Some(OccurrenceHolderEncoding {
+                    len_encoding,
+                    o_encoding,
+                    o_elem_encodings,
+                    b_encoding,
+                    b_elem_encodings,
+                    inline_bounded_encoding,
+                    inline_bounded_elem_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OccurrenceHolder"))
+    }
+}

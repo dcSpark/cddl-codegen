@@ -1,9 +1,0 @@
----
-source: src/snapshot_tests.rs
-expression: content
----
-use super::*;
-use crate::error::*;
-use cbor_event::de::Deserializer;
-use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};

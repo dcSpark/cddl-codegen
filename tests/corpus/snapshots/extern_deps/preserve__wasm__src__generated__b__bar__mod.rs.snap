@@ -1,0 +1,92 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::generated::a::Baz;
+use crate::generated::{FooList, MapFooToFoo};
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bar(cddl_lib::b::bar::Bar);
+
+#[wasm_bindgen]
+impl Bar {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Bar, JsError> {
+        extern_dep_crate::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn foo(&self) -> FooList {
+        self.0.foo.clone().into()
+    }
+
+    pub fn set_derp(&mut self, derp: u64) {
+        self.0.derp = Some(derp)
+    }
+
+    pub fn derp(&self) -> Option<u64> {
+        self.0.derp
+    }
+
+    pub fn key_1(&self) -> Option<u64> {
+        self.0.key_1
+    }
+
+    pub fn set_key_5(&mut self, key_5: String) {
+        self.0.key_5 = Some(key_5)
+    }
+
+    pub fn key_5(&self) -> Option<String> {
+        self.0.key_5.clone()
+    }
+
+    pub fn foo_map(&self) -> MapFooToFoo {
+        self.0.foo_map.clone().into()
+    }
+
+    pub fn set_baz(&mut self, baz: &Baz) {
+        self.0.baz = Some(baz.clone().into())
+    }
+
+    pub fn baz(&self) -> Option<Baz> {
+        self.0.baz.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(foo: &FooList, key_1: Option<u64>, foo_map: &MapFooToFoo) -> Self {
+        Self(cddl_lib::b::bar::Bar::new(
+            foo.clone().into(),
+            key_1,
+            foo_map.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::b::bar::Bar> for Bar {
+    fn from(native: cddl_lib::b::bar::Bar) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bar> for cddl_lib::b::bar::Bar {
+    fn from(wasm: Bar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::b::bar::Bar> for Bar {
+    fn as_ref(&self) -> &cddl_lib::b::bar::Bar {
+        &self.0
+    }
+}
+
+pub type BarTypedef = Bar;
