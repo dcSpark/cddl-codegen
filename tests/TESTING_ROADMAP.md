@@ -147,9 +147,9 @@ is still a default-profile claim — next-steps item 2 below.
      them should go through the corpus projection (so coverage stays mechanically checkable), not
      a hand-picked fixture list. json/wasm decode surfaces are likewise unminted. The breadth
      layer's first sweep caught two decoder bugs (the map-rep group-choice key-drop miscompile —
-     since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing,
-     still ledgered in `cddl-matrix/ROADMAP.md` § findings), so depth is not the current
-     bottleneck.
+     since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing —
+     since fixed as a graceful rejection, pinned by `tests/robustness/inline_group_occurrence.cddl`
+     with its row re-minted as a `pinned_reason`), so depth is not the current bottleneck.
 
 ## Explicitly not worth it (decided, not overlooked)
 
