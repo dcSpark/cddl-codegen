@@ -84,7 +84,10 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
 - **`cargo_toml_matrix`** — a small curated `input × profile` matrix that snapshots every distinct
   generated `Cargo.toml` dependency combination (the type-conditional `hex`/`wasm-bindgen` deps
   toggled independently). The per-feature corpus skips `Cargo.toml` as near-constant noise, and
-  `whole_program` doesn't produce every combination, so this is where they're all pinned.
+  `whole_program` doesn't produce every combination, so this is where they're all pinned. Beyond the
+  snapshots it asserts each conditional dep is present *exactly* when its flag/type condition holds —
+  the absence half guards the manifest changeset's set-or-**remove** contract (a dep whose condition
+  turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs`).
 - **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
   combination (it ships verbatim into every crate but is assembled differently per flag).
 
@@ -146,6 +149,15 @@ documented flag *value* that no named profile exercises (`--annotate-fields=fals
 path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emits a non-compiling
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
+
+`cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
+manifest merge contract on real disk (the only place generation reads prior output — see
+`cargo_manifest.rs` and AGENTS.md's determinism note): user edits outside tool-owned keys survive a
+regen, the seeded `package.version` stays bumped, tool-owned keys (incl. the version stamp) are
+restored, a further regen is a byte-identical fixed point, and an unparseable existing manifest is a
+hard error naming the file rather than a clobber. Note for harness authors: because manifests merge
+rather than clobber, `run_test` deletes the three manifests in its reused export dirs before
+regenerating — its raw-appended `test_deps` would otherwise accumulate across runs.
 
 `getting_started_example` pins the documented first-run experience: it generates from
 `example/test.cddl` — the spec `docs/docs/getting_started.mdx` tells a newcomer to run verbatim —
