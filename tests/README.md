@@ -87,12 +87,15 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   `whole_program` doesn't produce every combination, so this is where they're all pinned. Beyond the
   snapshots it asserts each conditional dep is present *exactly* when its flag/type condition holds —
   the absence half guards the manifest changeset's set-or-**remove** contract (a dep whose condition
-  turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs`).
-  Its sibling `cargo_manifest_managed_key_ledger` enforces the changeset's append-only ledger
-  (`EVER_MANAGED_*` in `cargo_manifest.rs`): every key the tool has *ever* managed must stay
-  mentioned — re-emitted or explicitly tombstoned — so deleting a template line without adding a
-  tombstone (which would silently strand the stale key in existing user manifests) fails loudly
-  with the fix in the message.
+  turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs`). The
+  unconditional keys come from a per-manifest append-only change log (`static/manifest_changes/*.toml`,
+  the single source of truth — format and editing rules in `static/manifest_changes/README.md`);
+  its fold reader hard-errors on non-contiguous ids or a malformed
+  entry, so a key the tool ever managed can never be silently unmentioned (removals become permanent
+  tombstones by appending a `remove` entry). Its sibling `manifest_template_drift` pins the derived
+  `static/Cargo_*.toml` templates — generated snapshots of the logs, never read at runtime —
+  byte-for-byte, failing with `BLESS_MANIFEST_TEMPLATES=1 cargo test manifest_template_drift` when a
+  log changes without regenerating them.
 - **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
   combination (it ships verbatim into every crate but is assembled differently per flag).
 

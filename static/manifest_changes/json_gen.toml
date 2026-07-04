@@ -1,0 +1,33 @@
+# Append-only change log for the generated `wasm/json-gen/Cargo.toml`.
+# APPEND-ONLY: never edit, delete, or renumber an existing entry — change = append (last write
+# wins), removal = append `remove = true`. Format and rules: README.md in this folder.
+
+[[change]]
+id = 1
+path = "package.name"
+set = '"cddl-lib-json-schema-gen"'
+
+[[change]]
+id = 2
+path = "package.version"
+seed = '"0.0.1"'
+
+[[change]]
+id = 3
+path = "package.edition"
+set = '"2024"'
+
+[[change]]
+id = 4
+path = "dependencies.serde_json"
+set = '"1.0.57"'
+
+[[change]]
+id = 5
+path = "dependencies.schemars"
+set = '"1.2.1"'
+
+[[change]]
+id = 6
+path = "dependencies.cddl-lib"
+set = '{ path = "../../rust" }'
