@@ -117,6 +117,25 @@ is a lint, not the closed-world spine — see "What is a feature?"):
 - **control operators** are derived from the **IANA registry** (authoritative & cross-RFC), so that axis is
   complete by construction and stays current as new RFCs register operators.
 
+## Directional support evidence (Q4)
+
+On top of the execution-gated per-row verdict (see the `annotations/` row above),
+`query_q4_directional.ts` projects each row into `QUERIES.md` Q4's 5-way answer **{accept, encode,
+decode, round-trip, enforce-constraint}** from pure file reads (`matrix.json` +
+`tests/decode_conformance/catalog.toml` — no cargo/oracles); `--check` is its consistency + vacuity
+gate (`check.ts` local tier).
+
+**The encode/decode asymmetry is durable and load-bearing.** **Decode** has INDEPENDENT per-construct
+evidence: the catalog's `expect="accept"` foreign vectors are spec-derived CBOR our own encoder never
+produced (executed by the `decode_conformance_replay` gate; see `tests/README.md` § "Decode-direction
+conformance") — exactly the direction a round-trip conflates away. **Encode** has NO independent
+per-construct oracle — its independent evidence is corpus-level only (`golden_hex`,
+`ir_conformance_corpus`) — so the query reports encode strictly as the round-trip half
+(`encode = yes iff round-trip = yes`) and never claims a stronger per-construct encode fact.
+
+Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
+(⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
+
 ## Evidence/id convention
 
 `id`s and evidence use **spec anchors (production / RFC section) and grep-able code anchors, never line

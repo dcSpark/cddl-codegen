@@ -20,10 +20,11 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 > real hand doc from it is a **clear win**.
 
 > **Findings ledger (F#)** from the cold critique (full write-up in git history): F1, F2, F4–F7 **done**;
-> **F3 grounded** (support is execution-gated — round-trip + reject tests run per probe; per-direction
+> **F3 done** (support is execution-gated — round-trip + reject tests run per probe; per-direction
 > reference vectors exist for the decode direction via the decode-conformance harness, encode via the
-> conformance oracles — §3; only the thin Q4 query script remains); **F8–F11 out of scope** (bottom).
-> Only still-open findings are sections below.
+> conformance oracles; the 5-way Q4 answer is projected by `query_q4_directional.ts` — see `README.md`
+> § "Directional support evidence"; the still-open enforcement-vector gap is a § 1 item); **F8–F11
+> out of scope** (bottom). Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
 
@@ -35,10 +36,21 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   profile-filtered support/gap logic (a `query_q1_gaps.ts` prototype was built and removed as premature —
   rebuild it here, against the real doc). Q1 stays a `QUERIES.md` definition-of-done query meanwhile — the
   capability is proven, just not emitted as a standing artifact.
-- **Secondary query scripts (Q4/Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
+- **Secondary query scripts (Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
   (profile/version diff) are largely already satisfied by `verify.ts`'s reconciliation + the F6 snapshot —
-  they need only thin query scripts. **Q4** (directional support) is unblocked — the per-direction
-  evidence now exists (§3); what remains is only its thin query script.
+  they need only thin query scripts, built in the `query_q4_directional.ts` mold (a pure
+  `matrix.json` read with a `--check` consistency + vacuity gate wired into `check.ts`'s local tier).
+- **Enforcement reject vectors (Q4's `enforce` axis is unverified).** The committed decode-conformance
+  catalog ships zero classified `expect="reject"` vectors — each prior one was bug-class, pruned as the
+  bug behind it was fixed — so every supported enforcement-bearing row (`ctl.*` plus `memberkey.cut`)
+  projects `enforce = unverified (no reject vector)`. The missing evidence class is DURABLE
+  constraint-violation vectors: spec-derived CBOR that *violates* a constraint the row claims to
+  enforce (an over-`.size` string, a below-`.ge` value, a cut-violating map) and must be rejected by
+  the generated decoder — not tied to any bug, so never pruned. Mint them for the supported `ctl.*`
+  ops (+ cut) and give them their own catalog class if the existing `{bug, limitation}` reject-pin
+  classes don't fit. `query_q4_directional.ts --check`'s vacuity floor already tightens automatically:
+  the moment a classified reject vector lands, it requires a real `enforce = yes (bounded-reject)`
+  projection.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -163,38 +175,13 @@ and stays out of CI.
   evidence class). Pure `matrix.json` read (no cargo/oracles), so it's a fast CI gate. **(CI)**
 - `bun run corpus_detect.ts` — runs the `featuresIn` + role-aware (`rolesIn`) self-checks and prints the
   text-scan + role-aware floor diagnostics. The role floor builds/runs `examples/ast_roles.rs` (needs cargo).
+- `bun run query_q4_directional.ts` — **answers `QUERIES.md` Q4**: projects the per-direction F3 evidence
+  into the 5-way `{accept, encode, decode, round-trip, enforce-constraint}` table, grouped by axis
+  (a positional id-substring arg filters to the "for construct C" form). Pure `matrix.json` +
+  `tests/decode_conformance/catalog.toml` reads — no cargo/oracles, like `project_decode_conformance.ts`.
+  `--check` runs the consistency invariants + vacuity floor as a gate (check.ts `local` tier).
 
-## 3. F3 — directional / enforcement support (execution-gated; per-direction vectors grounded)
-
-Support is execution-gated: the probe generates with `--emit-tests=true` AND runs `cargo test`, so
-"supported" means *accept + compiles + the IR-minted round-trip and bounded-reject tests pass* wherever the
-type mints a test surface (a per-probe `minted` bit keeps the evidence honest — `x = any` mints nothing
-AND fails to compile, so it stays unsupported). Shapes with no STANDALONE surface — transparent aliases,
-bounded/newtype-able aliases, named tables/arrays, pure c-enums — are re-probed wrapped in a synthetic
-record holder (`__probe_holder = [0, <rule>]`, per-probe `embedded` bit) so their embed-site wire path (the
-only one they have) runs, and the evidence reads "round-trips when embedded"; the embed only UPGRADES
-evidence, never downgrades a verdict. Of `QUERIES.md` Q4's 5-way split **{accept, encode, decode,
-round-trip, enforce-constraint}**, round-trip and (bounds-class) enforce-constraint are now grounded for
-both minting and embed-covered shapes, and the **decode direction now has its per-direction reference
-vectors**: the decode-conformance harness (`tests/decode_conformance/catalog.toml` + the
-`accepts_foreign` evidence clause `verify.ts` records per supported row — see `tests/README.md`
-§ "Decode-direction conformance") replays spec-derived instances our code did NOT produce, exactly the
-externally-derived input a round-trip conflates away. The encode direction's independent evidence
-remains the conformance-oracle family (`ir_conformance_corpus`, golden_hex). What's left for Q4 is only
-the thin query script that projects these per-direction evidence bits into the 5-way answer. The embed
-fallback already carries into the preserve/json profiles: the **emission axis** (`verify.ts` re-probes
-every default-`supported` row under each non-default codegen profile through the same rust-only
-generate → `cargo test` → embed pipeline, recorded as `emission.<name>.*` annotation keys — see
-`cddl-matrix/README.md`).
-
-**Not a corpus blocker.** The corpus projection consumes the directional ⚠️ distinction
-(parsed-but-not-honored: cuts, sockets, float-under-`preserve`) via **hand-asserted overlay notes**, not
-execution — those stay hand-asserted even now: cut/socket semantics are validation concerns a round-trip
-can't observe. Float-under-`preserve` is now execution-grounded on the emission axis (`verify.ts` probes
-each default-`supported` row under `preserve`/`json`), but the corpus projection's ⚠️ note stays
-hand-asserted because it is a per-corpus-fixture annotation, not a per-master-row verdict.
-
-## 4. F4 / F5 follow-ons (only when their consumer exists)
+## 3. F4 / F5 follow-ons (only when their consumer exists)
 
 - **F5 (encoding precision):** the encoding axis is already major-type-dependent (no impossible cells). The
   golden_hex projection lists uncovered legal cells *globally*; the remaining work is per-*construct*
@@ -203,7 +190,7 @@ hand-asserted because it is a per-corpus-fixture annotation, not a per-master-ro
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
   if a *tag-semantic* consumer of the master appears.
 
-## 5. Expansion (when relevant)
+## 4. Expansion (when relevant)
 
 - **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). Add other CDDL profiles (e.g. the modules drafts) if needed, and bump cddl-codegen's
