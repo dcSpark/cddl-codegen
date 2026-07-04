@@ -111,6 +111,22 @@ is still a default-profile claim — next-steps item 2 below.
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
+6. **Decode-direction conformance: accept-what-the-spec-accepts (medium).** Every execution gate we
+   have is blind to a decoder that is *too strict*: round-trips are self-consistent (they only decode
+   what they themselves encoded), the conformance oracle validates *our emitted* bytes against the
+   spec (encode-side only), and the reject tests check the opposite direction (invalid input is
+   refused). A generated decoder that rejects spec-VALID CBOR passes all of them — proven concretely
+   by the zero-permitting-occurrence narrowing (`{ * t: uint }` generated a mandatory field whose
+   decoder rejected the spec-valid `{}`; caught only by ad-hoc review, and the master matrix would
+   have verdicted it "supported" had a probe existed, since it round-trips). The missing system:
+   feed SPEC-DERIVED instances we did not produce into the generated decoder — laziest source first,
+   the ruby `cddl` gem's instance *generator* (`cddl <spec> generate`, already an installed verify.ts
+   oracle) piped into `from_cbor_bytes` per corpus fixture; escalate to hand reference vectors only
+   where the generator's coverage is too thin (it produces one instance shape, not edge cases). This
+   is the same gap as the matrix's deferred encode/decode directional split
+   (`cddl-matrix/ROADMAP.md` §3, Q4): per-direction reference vectors, not self-consistency — one
+   implementation should serve both consumers.
+
 ## Explicitly not worth it (decided, not overlooked)
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
