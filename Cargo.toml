@@ -24,6 +24,10 @@ clap = { version = "4.5", features = ["derive"] }
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
 nom = "8"
 pathdiff = "0.2.3"
+# Format-preserving TOML DOM (the crate `cargo add`/`cargo remove` use). Powers the declarative
+# Cargo.toml changeset model in `cargo_manifest.rs`: untouched keys/comments/formatting of a
+# user-edited manifest survive regeneration byte-for-byte. `default-features` keeps `parse`+`display`.
+toml_edit = "0.25"
 # default-features=false to drop the optional `regex` dep; `real-sys` (the actual lookup impl) is
 # off by default in which 8, so enable it explicitly.
 which = { version = "8", optional = true, default-features = false, features = ["real-sys"] }

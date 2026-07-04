@@ -306,6 +306,41 @@ fn cargo_toml_matrix() {
                 let toml = files
                     .get("rust/Cargo.toml")
                     .unwrap_or_else(|| panic!("no rust/Cargo.toml for {}/{}", label, profile));
+
+                // Each conditional dep is set-or-REMOVE, never set-or-skip: assert every one is
+                // present exactly when its flag/type condition holds and ABSENT otherwise. A
+                // snapshot alone only pins the bytes; this makes the absence contract a first-class
+                // assertion (so a regression that stops emitting the `Remove` op — stranding a
+                // stale dep on a flag flip — fails here, not just silently in a diff).
+                let has = |key: &str| {
+                    toml.lines()
+                        .any(|l| l.trim_start().starts_with(&format!("{key} =")))
+                };
+                let preserve = extra.contains(&"--preserve-encodings=true");
+                let serde = extra.contains(&"--json-serde-derives=true");
+                let schema = extra.contains(&"--json-schema-export=true");
+                // matrix inputs isolate the type-conditional deps to their labels; wasm defaults on.
+                let hex = label == "hex";
+                let wasm_bindgen = label == "wasm_bindgen";
+                for (key, expected) in [
+                    ("linked-hash-map", preserve),
+                    ("derivative", preserve),
+                    ("serde", serde),
+                    ("serde_json", serde),
+                    ("schemars", schema),
+                    ("hex", hex),
+                    ("wasm-bindgen", wasm_bindgen),
+                ] {
+                    assert_eq!(
+                        has(key),
+                        expected,
+                        "conditional dep `{key}` presence wrong for {label}/{profile} \
+                         (expected present={expected})\n{toml}"
+                    );
+                }
+                // cbor_event is unconditional; sanity-check the presence helper isn't vacuous.
+                assert!(has("cbor_event"), "cbor_event must always be present");
+
                 insta::assert_snapshot!(format!("{}__{}", label, profile), toml);
             }
         }

@@ -1,11 +1,14 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: toml
 ---
 [package]
 name = "cddl-lib"
 version = "0.1.0"
 edition = "2024"
+
+[package.metadata.cddl-codegen]
+generated-with = "0.1.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

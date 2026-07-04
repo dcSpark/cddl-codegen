@@ -1183,6 +1183,35 @@ impl GenerationScope {
             );
         }
 
+        // Manifests merge into whatever is already on disk (the declarative changeset) rather than
+        // clobbering, so user edits to keys the tool doesn't own survive regeneration. This is the
+        // ONLY place output depends on prior directory contents, and only as the changeset contract
+        // allows: keys no op mentions pass through, `SeedOnce` checks existence. An unparseable
+        // existing manifest is a hard error naming the file (see `cargo_manifest::apply`) — never a
+        // silent clobber. `generated_files` above produced these same manifests against an empty
+        // document; here we re-derive them against the on-disk file before the common write loop.
+        let mut manifest_ops = vec![(
+            "rust/Cargo.toml",
+            crate::cargo_manifest::ops_for_rust(types, export_raw_bytes_encoding_trait, cli)?,
+        )];
+        if cli.wasm {
+            manifest_ops.push(("wasm/Cargo.toml", crate::cargo_manifest::ops_for_wasm(cli)?));
+        }
+        if cli.json_schema_export {
+            manifest_ops.push((
+                "wasm/json-gen/Cargo.toml",
+                crate::cargo_manifest::ops_for_json_gen(cli)?,
+            ));
+        }
+        for (rel_path, ops) in &manifest_ops {
+            if files.contains_key(*rel_path) {
+                let existing = std::fs::read_to_string(rust_dir.join(rel_path)).ok();
+                let merged = crate::cargo_manifest::apply(ops, existing.as_deref(), rel_path)
+                    .map_err(std::io::Error::other)?;
+                files.insert((*rel_path).to_owned(), merged);
+            }
+        }
+
         for (rel_path, content) in &files {
             let path = rust_dir.join(rel_path);
             if let Some(parent) = path.parent() {
@@ -1292,54 +1321,6 @@ impl GenerationScope {
         concat_files(&serialize_paths)
     }
 
-    /// The generated rust crate `Cargo.toml` (static template + conditionally-added dependencies).
-    fn rust_cargo_toml(
-        types: &IntermediateTypes,
-        export_raw_bytes_encoding_trait: bool,
-        cli: &Cli,
-    ) -> std::io::Result<String> {
-        let mut rust_cargo_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_rust.toml"))?;
-        if cli.preserve_encodings {
-            rust_cargo_toml.push_str("linked-hash-map = \"0.5.3\"\n");
-            rust_cargo_toml.push_str("derivative = \"2.2.0\"\n");
-        }
-        if cli.json_serde_derives {
-            rust_cargo_toml.push_str("serde = { version = \"1.0\", features = [\"derive\"] }\n");
-            rust_cargo_toml.push_str("serde_json = \"1.0.57\"\n");
-        }
-        if cli.json_schema_export {
-            rust_cargo_toml.push_str("schemars = \"1.2.1\"\n");
-        }
-        if export_raw_bytes_encoding_trait
-            || types
-                .rust_structs()
-                .iter()
-                .any(|(_, rust_struct)| match &rust_struct.variant {
-                    RustStructType::Wrapper { wrapped, .. } => {
-                        !rust_struct.config().custom_json
-                            && matches!(
-                                wrapped.resolve_alias_shallow(),
-                                ConceptualRustType::Primitive(Primitive::Bytes)
-                            )
-                    }
-                    _ => false,
-                })
-        {
-            rust_cargo_toml.push_str("hex = \"0.4.3\"\n");
-        }
-        if cli.wasm
-            && types
-                .rust_structs()
-                .values()
-                .any(|rust_struct: &crate::intermediate::RustStruct| {
-                    matches!(rust_struct.variant(), RustStructType::CStyleEnum { .. })
-                })
-        {
-            rust_cargo_toml.push_str("wasm-bindgen = \"0.2\"\n");
-        }
-        Ok(rust_cargo_toml.replace("cddl-lib", &cli.lib_name))
-    }
-
     /// Single producer for every generated source file (post-rustfmt), keyed by path relative to
     /// the crate root (e.g. "rust/src/lib.rs"). Used by BOTH [`Self::export`] (which writes these
     /// to disk, after prepending the static serialization prelude to the root serialization.rs)
@@ -1396,10 +1377,17 @@ impl GenerationScope {
             }
         }
 
-        // rust Cargo.toml (template + conditional deps)
+        // rust Cargo.toml — declarative changeset applied to an empty document (pure, so the
+        // snapshot tests keep consuming the same producer). `export` re-applies the same ops onto
+        // any on-disk manifest so user edits survive.
         out.insert(
             "rust/Cargo.toml".to_owned(),
-            Self::rust_cargo_toml(types, export_raw_bytes_encoding_trait, cli)?,
+            crate::cargo_manifest::apply(
+                &crate::cargo_manifest::ops_for_rust(types, export_raw_bytes_encoding_trait, cli)?,
+                None,
+                "rust/Cargo.toml",
+            )
+            .map_err(std::io::Error::other)?,
         );
 
         // wasm crate
@@ -1412,25 +1400,27 @@ impl GenerationScope {
                 "lib.rs",
                 "mod.rs",
             )?;
-            let mut wasm_toml = std::fs::read_to_string(cli.static_dir.join("Cargo_wasm.toml"))?;
-            if cli.json_serde_derives {
-                wasm_toml.push_str("serde = \"1.0\"\n");
-                wasm_toml.push_str("serde_json = \"1.0.57\"\n");
-                wasm_toml.push_str("serde-wasm-bindgen = \"0.6.5\"\n");
-            }
             out.insert(
                 "wasm/Cargo.toml".to_owned(),
-                wasm_toml.replace("cddl-lib", &cli.lib_name),
+                crate::cargo_manifest::apply(
+                    &crate::cargo_manifest::ops_for_wasm(cli)?,
+                    None,
+                    "wasm/Cargo.toml",
+                )
+                .map_err(std::io::Error::other)?,
             );
         }
 
         // json-gen crate for exporting JSON schemas
         if cli.json_schema_export {
-            let json_gen_toml =
-                std::fs::read_to_string(cli.static_dir.join("Cargo_json_gen.toml"))?;
             out.insert(
                 "wasm/json-gen/Cargo.toml".to_owned(),
-                json_gen_toml.replace("cddl-lib", &cli.lib_name),
+                crate::cargo_manifest::apply(
+                    &crate::cargo_manifest::ops_for_json_gen(cli)?,
+                    None,
+                    "wasm/json-gen/Cargo.toml",
+                )
+                .map_err(std::io::Error::other)?,
             );
 
             let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");

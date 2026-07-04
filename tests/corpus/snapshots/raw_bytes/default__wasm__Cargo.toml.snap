@@ -7,6 +7,9 @@ name = "cddl-lib-wasm"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.cddl-codegen]
+generated-with = "0.1.0"
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
