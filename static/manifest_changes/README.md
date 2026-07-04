@@ -27,7 +27,9 @@ set = '"2.4.0"'                       # a TOML value literal, as a string
 
 Each entry has `id`, `path`, and **exactly one** of:
 
-- `set = '<value>'` — tool-owned key, written every run (overwrites user edits by design)
+- `set = '<value>'` — tool-owned key, written every run (overwrites user edits by design; the
+  exception is `dependencies.*` keys, which merge field-level into an existing entry — the user's
+  `optional`/features/compatible pins survive; see `docs/docs/output_format.mdx`)
 - `seed = '<value>'` — written only if the key is absent (e.g. `package.version`: the user's bump
   survives)
 - `remove = true` — tombstone: delete the key from user manifests (kept in the log forever)
