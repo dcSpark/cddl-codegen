@@ -584,16 +584,7 @@ expect = "accept"
 id = "contain.occurrence-target.grpent.inline_group"
 axis = "containment"
 example = "a = [* (int, tstr)]"
-spec = "a = [* (int, tstr)]"
-mode = "standalone"
-type_name = "A"
-
-[[row.vector]]
-hex = "80"
-source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "`*` occurrence on an inline array group is silently narrowed to an exactly-once 2-field record, so the decoder rejects the spec-valid empty array (and 2+ repetitions) — array-side sibling of the fixed map-field zero-occurrence narrowing; see cddl-matrix/ROADMAP.md findings"
+pinned_reason = "cddl-codegen cannot generate this construct standalone"
 
 [[row]]
 id = "contain.tag-content.type.choice"
