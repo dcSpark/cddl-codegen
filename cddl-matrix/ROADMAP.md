@@ -60,6 +60,20 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   cell. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
   containment-example recombination: fuzz recombination is only as complete as the role set it
   recombines.
+- **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
+  under-enumeration).** The inline-group occurrence fix exposed both. (a) `occurrence-target.toml`
+  samples one marker (`*`) in one rep (array) per occupant, so the full narrowing blast radius
+  (`+` / `?` / `n*m`, and the map-rep form `{ * (k: int) }` that bypassed the keyed-field fix) was
+  found by hand probing, not by sweep — the marker KIND and the rep are axes of the cell, like the
+  group-choice-arm rep above. (b) No containment role anywhere has a NAMED-group-reference occupant
+  (`pair = (int, tstr)`, `a = [* pair]`): the anonymous-group limitation's own remedy ("name it") is
+  systematically unverdicted per role, which is how the sole-use plain-group registration bug (an
+  `is_enum` panic under wasm and a non-compiling crate without it) survived every gate until an
+  ad-hoc probe hit it. Add marker-kind × rep cells to the occurrence-target role and a
+  `grpent.named_group`-style occupant to each containment role, so `verify.ts` verdicts them
+  execution-gated and the projections subsume today's interim hand pins
+  (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
+  named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
 
 ## 2. Running the verification suite
 
