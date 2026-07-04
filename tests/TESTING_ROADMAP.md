@@ -111,21 +111,15 @@ is still a default-profile claim — next-steps item 2 below.
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-6. **Decode-direction conformance: accept-what-the-spec-accepts (medium).** Every execution gate we
-   have is blind to a decoder that is *too strict*: round-trips are self-consistent (they only decode
-   what they themselves encoded), the conformance oracle validates *our emitted* bytes against the
-   spec (encode-side only), and the reject tests check the opposite direction (invalid input is
-   refused). A generated decoder that rejects spec-VALID CBOR passes all of them — proven concretely
-   by the zero-permitting-occurrence narrowing (`{ * t: uint }` generated a mandatory field whose
-   decoder rejected the spec-valid `{}`; caught only by ad-hoc review, and the master matrix would
-   have verdicted it "supported" had a probe existed, since it round-trips). The missing system:
-   feed SPEC-DERIVED instances we did not produce into the generated decoder — laziest source first,
-   the ruby `cddl` gem's instance *generator* (`cddl <spec> generate`, already an installed verify.ts
-   oracle) piped into `from_cbor_bytes` per corpus fixture; escalate to hand reference vectors only
-   where the generator's coverage is too thin (it produces one instance shape, not edge cases). This
-   is the same gap as the matrix's deferred encode/decode directional split
-   (`cddl-matrix/ROADMAP.md` §3, Q4): per-direction reference vectors, not self-consistency — one
-   implementation should serve both consumers.
+6. **Extend the decode-conformance corpus with composition depth (low).** The shipped
+   decode-direction harness (`tests/README.md` § "Decode-direction conformance") keys its obligation
+   set on the matrix's minimal per-construct examples — breadth, not depth. The corpus fixtures
+   (`tests/corpus/*.cddl`) add the composition depth those minimal examples lack; extending the
+   harness to mint vectors for them should go through the corpus projection (so coverage stays
+   mechanically checkable), not a hand-picked fixture list. json/wasm decode surfaces are likewise
+   unminted. Do this when the breadth layer's findings are fixed — its first sweep already caught
+   two decoder bugs (malformed map-rep group-choice emission; inline-group occurrence narrowing —
+   both in `cddl-matrix/ROADMAP.md` § findings), so depth is not the current bottleneck.
 
 ## Explicitly not worth it (decided, not overlooked)
 

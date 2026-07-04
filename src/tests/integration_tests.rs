@@ -3510,3 +3510,470 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
         failures.join("\n\n")
     );
 }
+
+// ===== decode-conformance replay (D5) ===============================================================
+
+/// One catalog `[[row]]` with vectors, distilled to what the replay needs: `spec` (what codegen
+/// consumed), the rust `type_name` the vectors decode through, and each vector's `(hex, accept?)`.
+/// Pinned/vectorless rows are skipped by construction (nothing to replay), so they never reach here.
+struct ReplayRow {
+    id: String,
+    spec: String,
+    type_name: String,
+    vectors: Vec<(String, bool)>, // (hex, is_accept)
+}
+
+/// Turn `"820080"` into the `0x82, 0x00, 0x80` a Rust byte-array literal wants (mirrors verify.ts's
+/// `replayInDir`, so the two harnesses feed the decoder byte-identical inputs).
+fn hex_to_byte_literals(hex: &str) -> String {
+    hex.as_bytes()
+        .chunks(2)
+        .map(|pair| format!("0x{}", std::str::from_utf8(pair).unwrap()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Generate a crate from `spec` into `out` (default flags unless `extra` adds e.g.
+/// `--preserve-encodings=true`), no `--wasm`, no `--emit-tests` — replay needs only the lib. Returns
+/// the `cargo run` result so the caller can tell a generation abort (float `unimplemented!` under
+/// preserve) from a later compile/decode outcome. The generator uses the repo's warm `./target`
+/// exactly like `feature_corpus_compiles`; only the generated crate's own `cargo test` is redirected
+/// to the shared scratch target.
+fn decode_replay_generate(
+    spec: &str,
+    out: &std::path::Path,
+    extra: &[&str],
+) -> std::process::Output {
+    let _ = std::fs::remove_dir_all(out);
+    std::fs::create_dir_all(out).unwrap();
+    let spec_file = out.join("__spec.cddl");
+    std::fs::write(&spec_file, format!("{}\n", spec.trim_end_matches('\n'))).unwrap();
+    tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", spec_file.to_str().unwrap()))
+        .arg(format!("--output={}", out.join("crate").to_str().unwrap()))
+        .arg("--wasm=false")
+        .args(extra)
+        .output()
+        .unwrap()
+}
+
+/// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
+/// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
+/// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
+/// vector" (a verdict) from "crate didn't build" (a preserve-side generation/compile finding). The
+/// module mirrors verify.ts's `replayInDir`: accept => `from_cbor_bytes` must be Ok; reject =>
+/// must be Err; under preserve each accept ALSO asserts `to_cbor_bytes()` byte-identity (the preserve
+/// contract is itself decode-direction evidence — the decoder captured the exact input encoding).
+/// The two preserve-failure panic messages are distinct so a byte-identity mismatch (decodes Ok,
+/// re-encodes differently) is reported apart from a plain decode failure.
+fn decode_replay_run(
+    out: &std::path::Path,
+    type_name: &str,
+    vectors: &[(String, bool)],
+    preserve: bool,
+    target_dir: &std::path::Path,
+) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
+    let mut fns = String::new();
+    for (i, (hex, is_accept)) in vectors.iter().enumerate() {
+        let bytes = hex_to_byte_literals(hex);
+        let (name, body) = if *is_accept {
+            let name = format!("accept_{i}");
+            let body = if preserve {
+                format!(
+                    "let decoded = {type_name}::from_cbor_bytes(BYTES).expect(\"PRESERVE_DECODE_FAILED\");\n\
+                     \x20       assert_eq!(decoded.to_cbor_bytes(), BYTES.to_vec(), \"PRESERVE_BYTE_MISMATCH\");"
+                )
+            } else {
+                format!(
+                    "{type_name}::from_cbor_bytes(BYTES).expect(\"accept vector must decode\");"
+                )
+            };
+            (name, body)
+        } else {
+            let name = format!("reject_{i}");
+            let body = format!(
+                "assert!({type_name}::from_cbor_bytes(BYTES).is_err(), \"reject vector must NOT decode\");"
+            );
+            (name, body)
+        };
+        fns.push_str(&format!(
+            "\n    #[test]\n    fn {name}() {{\n        const BYTES: &[u8] = &[{bytes}];\n        {body}\n    }}\n"
+        ));
+    }
+    let module = format!(
+        "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {{\n    use super::*;\n    use super::serialization::*;\n{fns}}}\n"
+    );
+    let lib_path = out.join("crate/rust/src/lib.rs");
+    let existing = std::fs::read_to_string(&lib_path).unwrap();
+    std::fs::write(&lib_path, existing + &module).unwrap();
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("crate/rust"))
+        .env("CARGO_TARGET_DIR", target_dir)
+        .arg("--")
+        .arg("__foreign_decode_replay")
+        .output()
+        .unwrap();
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let mut results = std::collections::BTreeMap::new();
+    for line in combined.lines() {
+        // libtest: "test __foreign_decode_replay::accept_0 ... ok" / "... FAILED"
+        if let Some(rest) = line
+            .trim_start()
+            .strip_prefix("test __foreign_decode_replay::")
+            && let Some((name, tail)) = rest.split_once(" ... ")
+        {
+            let tail = tail.trim();
+            if tail == "ok" {
+                results.insert(name.to_string(), true);
+            } else if tail == "FAILED" {
+                results.insert(name.to_string(), false);
+            }
+        }
+    }
+    if results.len() != vectors.len() {
+        // No/partial result lines => the crate did not compile (or libtest output drifted).
+        return (None, combined);
+    }
+    (Some(results), combined)
+}
+
+/// Deterministic decode-direction replay of the committed `tests/decode_conformance/catalog.toml`
+/// corpus (no oracles — the bytes were spec-cross-validated at mint time). Per active row: generate
+/// the crate from `spec`, replay every vector through the generated decoder (accept => Ok, reject
+/// pin => Err), then regenerate under `--preserve-encodings=true` and replay the ACCEPT vectors
+/// asserting decode-Ok AND `to_cbor_bytes()` byte-identity. A reject pin that now decodes Ok fails
+/// the gate (re-bless protection); a `PRESERVE_SKIP` row that starts working fails it (stale-entry
+/// guard, mirroring `all_supported_constructs_generate_all_profiles`'s EXPECTED_FAIL).
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~108s warm (~112s cold), well past the ~90s
+/// plain-`#[test]` threshold (77 rows × up to two full generate+`cargo test` crate builds), so it is
+/// a `full`-tier check.ts gate rather than riding the always-on `test` gate. Its own scratch dir +
+/// `cddl_codegen_decode_conformance` target so it never collides with the corpus/wasm gates when
+/// `cargo test` runs tests in parallel; `acquire_scratch_lock` serializes same-checkout runs.
+#[ignore = "manual/local decode-conformance replay gate (heavy: per-catalog-row crate builds under two profiles): cargo test --bin cddl-codegen decode_conformance_replay -- --ignored --nocapture"]
+#[test]
+fn decode_conformance_replay() {
+    if !tool_exists("cargo") {
+        return;
+    }
+
+    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. EXPECTED
+    // members are the native-float class: a float struct/element field hits the pre-existing
+    // `unimplemented!` in generation.rs ("preserve_encodings is not implemented for float"), the same
+    // gap the `preserve_encodings_supports_floats` stub tracks. `prelude.float/float32/float64` are
+    // floats directly; `prelude.number` (int / float) and `prelude.time` (~= number) carry a float
+    // arm. A row here that starts generating+replaying cleanly under preserve is a stale entry and
+    // fails the gate (the float gap closed — unblock it and drop it from this list).
+    const PRESERVE_SKIP: &[(&str, &str)] = &[
+        (
+            "prelude.float",
+            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
+        ),
+        (
+            "prelude.float32",
+            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
+        ),
+        (
+            "prelude.float64",
+            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
+        ),
+        (
+            "prelude.number",
+            "`number` (int / float) carries the native-float arm that is unimplemented under \
+             --preserve-encodings (generation.rs; see the preserve_encodings_supports_floats stub)",
+        ),
+        (
+            "prelude.time",
+            "`time` (~= number) carries the native-float arm that is unimplemented under \
+             --preserve-encodings (generation.rs; see the preserve_encodings_supports_floats stub)",
+        ),
+        // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
+        // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
+        // `assert!(!cli.preserve_encodings)` in generation.rs's tagged-enum serialize path, guarding
+        // an unimplemented case (its own `// TODO: how to even store these?`): the per-variant
+        // encoding metadata preserve needs has no home on the enum. Tags on structs/arrays/maps
+        // (contain.tag-content.type2.{array,map}, contain.tag-content.type.choice's non-choice
+        // siblings) preserve fine — only the tag-over-choice combination is unimplemented. Default-
+        // profile decode of this row is fully replayed above; only its preserve leg is skipped.
+        (
+            "contain.tag-content.type.choice",
+            "tag over a type-choice enum is unimplemented under --preserve-encodings \
+             (generation.rs `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path, \
+             with a standing `TODO: how to even store these?`) — a pre-existing generator gap, not a \
+             decoder issue; the default-profile decode of this row still replays",
+        ),
+    ];
+    // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
+    // bytes (decodes Ok, `to_cbor_bytes()` != input). Empty at HEAD — no row exhibits this. A newly-
+    // appearing byte-identity mismatch is a FINDING to triage, not something to bury here; adding it
+    // needs a reason, and a listed row that starts round-tripping byte-identically fails the gate.
+    const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
+
+    let catalog_path = std::path::Path::new("tests/decode_conformance/catalog.toml");
+    let catalog_src = std::fs::read_to_string(catalog_path)
+        .unwrap_or_else(|e| panic!("cannot read {catalog_path:?}: {e}"));
+    let doc: toml::Value = toml::from_str(&catalog_src).expect("catalog.toml is valid TOML");
+    let all_rows = doc
+        .get("row")
+        .and_then(|v| v.as_array())
+        .expect("catalog.toml has [[row]] entries");
+    // A truncated parse (bad slice, wrong path) must not pass vacuously: the committed corpus has 93
+    // rows (77 active + 16 pinned/vectorless), so a read that sees far fewer means something broke.
+    assert!(
+        all_rows.len() >= 90,
+        "catalog parsed only {} rows (expected >= 90) — truncated/incorrect parse",
+        all_rows.len()
+    );
+
+    // Distil the active (has-vectors) rows; pinned/vectorless rows have nothing to replay.
+    let mut rows: Vec<ReplayRow> = Vec::new();
+    for row in all_rows {
+        let vectors_toml = match row.get("vector").and_then(|v| v.as_array()) {
+            Some(v) if !v.is_empty() => v,
+            _ => continue,
+        };
+        let id = row.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+        let spec = row
+            .get("spec")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `spec`"))
+            .to_string();
+        let type_name = row
+            .get("type_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `type_name`"))
+            .to_string();
+        let vectors = vectors_toml
+            .iter()
+            .map(|v| {
+                let hex = v.get("hex").and_then(|x| x.as_str()).unwrap().to_string();
+                let expect = v.get("expect").and_then(|x| x.as_str()).unwrap();
+                (hex, expect == "accept")
+            })
+            .collect();
+        rows.push(ReplayRow {
+            id,
+            spec,
+            type_name,
+            vectors,
+        });
+    }
+
+    let scratch_name = format!("cddl_codegen_decode_conformance_{:016x}", checkout_hash());
+    // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
+    // other's crates via the `remove_dir_all` below (the `ir_conformance_corpus` pattern).
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let preserve_skip: std::collections::BTreeMap<&str, &str> =
+        PRESERVE_SKIP.iter().copied().collect();
+    let expected_mismatch: std::collections::BTreeMap<&str, &str> =
+        EXPECTED_MISMATCH.iter().copied().collect();
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut preserve_skip_used: std::collections::BTreeSet<&str> =
+        std::collections::BTreeSet::new();
+    let mut mismatch_used: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut rows_replayed = 0usize;
+    let mut vectors_replayed = 0usize;
+
+    for row in &rows {
+        // ---- default profile: accept => Ok, reject pin => Err ----
+        let out = root.join(format!("{}__default", foreign_scratch_ident(&row.id)));
+        let dgen = decode_replay_generate(&row.spec, &out, &[]);
+        if !dgen.status.success() {
+            failures.push(format!(
+                "{}: default-profile generation failed (an active catalog row must generate)\n{}",
+                row.id,
+                String::from_utf8_lossy(&dgen.stderr)
+            ));
+            let _ = std::fs::remove_dir_all(&out);
+            continue;
+        }
+        match decode_replay_run(&out, &row.type_name, &row.vectors, false, &target_dir) {
+            (Some(results), _) => {
+                rows_replayed += 1;
+                vectors_replayed += row.vectors.len();
+                for (i, (hex, is_accept)) in row.vectors.iter().enumerate() {
+                    let name = if *is_accept {
+                        format!("accept_{i}")
+                    } else {
+                        format!("reject_{i}")
+                    };
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    if passed {
+                        continue;
+                    }
+                    if *is_accept {
+                        failures.push(format!(
+                            "{}: default decode REJECTED a spec-valid accept vector {hex} — the \
+                             decoder is over-strict (the exact class this gate exists to catch)",
+                            row.id
+                        ));
+                    } else {
+                        failures.push(format!(
+                            "{}: reject pin {hex} now DECODES Ok — bug apparently fixed or decoder \
+                             loosened; re-triage/unpin the catalog row (re-bless protection)",
+                            row.id
+                        ));
+                    }
+                }
+            }
+            (None, combined) => {
+                failures.push(format!(
+                    "{}: default-profile crate did not compile / produced no replay results\n{}",
+                    row.id, combined
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&out);
+
+        // ---- preserve profile: ACCEPT vectors only, decode-Ok AND byte-identity ----
+        let accepts: Vec<(String, bool)> =
+            row.vectors.iter().filter(|(_, a)| *a).cloned().collect();
+        let skip_reason = preserve_skip.get(row.id.as_str()).copied();
+        let mismatch_reason = expected_mismatch.get(row.id.as_str()).copied();
+
+        let pout = root.join(format!("{}__preserve", foreign_scratch_ident(&row.id)));
+        let pgen = decode_replay_generate(&row.spec, &pout, &["--preserve-encodings=true"]);
+        let preserve_ok: bool;
+        if !pgen.status.success() {
+            // Generation aborted (the float class). A finding unless allowlisted.
+            preserve_ok = false;
+            if let Some(_reason) = skip_reason {
+                preserve_skip_used.insert(row.id.as_str());
+            } else {
+                failures.push(format!(
+                    "{}: preserve-profile generation failed and the row is NOT on PRESERVE_SKIP — a \
+                     finding: either a real preserve generation regression, or add it to \
+                     PRESERVE_SKIP with an honest reason\n{}",
+                    row.id,
+                    String::from_utf8_lossy(&pgen.stderr)
+                ));
+            }
+        } else {
+            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir) {
+                (Some(results), combined) => {
+                    let all_pass = results.values().all(|&p| p);
+                    preserve_ok = all_pass;
+                    if !all_pass {
+                        let byte_mismatch = combined.contains("PRESERVE_BYTE_MISMATCH");
+                        let decode_failed = combined.contains("PRESERVE_DECODE_FAILED");
+                        if mismatch_reason.is_some() {
+                            mismatch_used.insert(row.id.as_str());
+                        } else if skip_reason.is_some() {
+                            // A PRESERVE_SKIP row that compiles but still can't replay counts as
+                            // "used" (its preserve leg legitimately fails).
+                            preserve_skip_used.insert(row.id.as_str());
+                        } else {
+                            let kind = if byte_mismatch {
+                                "re-encodes to DIFFERENT bytes (decodes Ok but `to_cbor_bytes()` != \
+                                 input — the preserve byte-identity contract is broken)"
+                            } else if decode_failed {
+                                "fails to DECODE an accept vector under preserve"
+                            } else {
+                                "fails preserve replay for an unrecognized reason"
+                            };
+                            failures.push(format!(
+                                "{}: preserve profile {kind} — a finding: report it and pin with a \
+                                 reason (PRESERVE_SKIP for gen/compile, EXPECTED_MISMATCH for \
+                                 byte-identity)\n{combined}",
+                                row.id
+                            ));
+                        }
+                    }
+                }
+                (None, combined) => {
+                    // Compiled-away: no result lines => the preserve crate did not build.
+                    preserve_ok = false;
+                    if skip_reason.is_some() {
+                        preserve_skip_used.insert(row.id.as_str());
+                    } else {
+                        failures.push(format!(
+                            "{}: preserve-profile crate did not compile and the row is NOT on \
+                             PRESERVE_SKIP — a finding: fix it or add it to PRESERVE_SKIP with an \
+                             honest reason\n{combined}",
+                            row.id
+                        ));
+                    }
+                }
+            }
+        }
+        // Stale-entry guards: an allowlisted row that now fully round-trips under preserve must be
+        // removed from its list (the gap it documents has closed).
+        if preserve_ok && skip_reason.is_some() {
+            failures.push(format!(
+                "{}: on PRESERVE_SKIP but now generates + replays cleanly under preserve — the gap \
+                 closed; remove it from PRESERVE_SKIP",
+                row.id
+            ));
+        }
+        if preserve_ok && mismatch_reason.is_some() {
+            failures.push(format!(
+                "{}: on EXPECTED_MISMATCH but now re-encodes byte-identically under preserve — \
+                 remove it from EXPECTED_MISMATCH",
+                row.id
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&pout);
+    }
+
+    // Stale-list guards for allowlist entries whose row never appeared (renamed/dropped from the
+    // corpus): every PRESERVE_SKIP / EXPECTED_MISMATCH id must have been exercised.
+    for (id, _) in PRESERVE_SKIP {
+        if !preserve_skip_used.contains(id) {
+            failures.push(format!(
+                "PRESERVE_SKIP lists '{id}' but no active catalog row exercised it — stale entry, remove it"
+            ));
+        }
+    }
+    for (id, _) in EXPECTED_MISMATCH {
+        if !mismatch_used.contains(id) {
+            failures.push(format!(
+                "EXPECTED_MISMATCH lists '{id}' but no active catalog row exercised it — stale entry, remove it"
+            ));
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+
+    // Vacuity floors from the real minted corpus (77 active rows, 676 vectors at HEAD; floors set
+    // just under so ordinary corpus churn doesn't false-fail, while a collapsed parse or a
+    // silently-degraded generation loop that replays almost nothing still fails the gate).
+    assert!(
+        rows_replayed >= 70,
+        "only {rows_replayed} catalog rows were replayed (expected >= 70) — the corpus or the \
+         generation loop shrank"
+    );
+    assert!(
+        vectors_replayed >= 600,
+        "only {vectors_replayed} vectors were replayed (expected >= 600) — the corpus or the \
+         generation loop shrank"
+    );
+    assert!(
+        failures.is_empty(),
+        "decode-conformance replay found {} problem(s):\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
+/// A catalog row id (`occur.optional`, `contain.array-element.type.choice`) -> a filesystem-safe
+/// scratch dir fragment (the ids carry `.` and `-`, fine for paths but kept tidy/unique here).
+fn foreign_scratch_ident(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}

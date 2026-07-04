@@ -39,3 +39,7 @@ insta = "1.48"
 ciborium = "0.2"
 # `half` gates the `decode::Tokenizer` + `data::Token` stream API the differential drives.
 minicbor = { version = "0.26", features = ["half"] }
+# Harness-side ONLY (never a generated-crate dep): `decode_conformance_replay` parses the committed
+# `tests/decode_conformance/catalog.toml` corpus (same class as ciborium/minicbor above). Navigated
+# via `toml::Value` — no serde derives of our own.
+toml = "0.8"
