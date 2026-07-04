@@ -1,0 +1,10 @@
+; struct-map (record) fixed member keys OUTSIDE the supported uint/text kinds — a nint key and a
+; float key. Only uint and text fixed keys are implemented on the record path (the map-key write
+; path and, under --preserve-encodings, `{name}_key_encoding` / `key_encoding_field`); a nint/float
+; key formerly panicked generation (`unsupported map key type`). Rejected gracefully instead — the
+; key is classified before field naming, so the message points at the uint/text keys and the table
+; `{ * k => v }` alternative. Flipping this row to `ok` means real nint/float key support landed (do
+; not decay back to a panic). The group-choice-arm sibling is
+; tests/robustness/group_choice_map_unsupported_key.cddl (flip the record path first).
+neg = { -1: uint, 1: uint }
+flt = { 1.5: uint }

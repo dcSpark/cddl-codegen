@@ -1,0 +1,9 @@
+; a single-entry fixed-value ARROW key — `m = { 1 => uint }`. This pins a DIFFERENT, pre-existing
+; panic than the record-map key rejection: a single `k => v` entry whose key is a fixed VALUE (ANY
+; kind — even uint/text) takes the TABLE path with a `ConceptualRustType::Fixed` domain, and
+; `for_rust_member` panics ("should not expose Fixed type in member", intermediate.rs ~1876). Do NOT
+; fix this here — it is pinned as a tracked-known PANIC row and ledgered in cddl-matrix/ROADMAP.md
+; § "Bugs / gaps surfaced as findings". Candidate fix: route literal-key arrow single-entries to the
+; record path (RFC 8610: `k => v` with a literal key is the same wire entry as `k: v`) or reject
+; gracefully.
+m = { 1 => uint }

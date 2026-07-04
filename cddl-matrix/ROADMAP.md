@@ -56,8 +56,9 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   `tests/robustness/group_choice_map_{nonfixed_key,keyless_entry,unsupported_key}.cddl` (prune them
   when the projected fixtures land). While in there: `map-key.toml` enumerates only composite key
   shapes (2 cells) — literal key KINDS (nint/float/bool) are the same under-enumeration one level
-  down; the record-path nint-key generation panic (§ findings) was never verdicted for lack of a
-  cell. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
+  down, still the ask: no cell verdicts a nint/float record-map key, so its now-graceful rejection
+  (pinned by hand in `tests/robustness/record_map_unsupported_key.cddl` and its group-choice sibling)
+  is unverdicted by sweep. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 4's
   containment-example recombination: fuzz recombination is only as complete as the role set it
   recombines.
 - **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
@@ -264,13 +265,32 @@ from a degenerate example.**
   `r` hits the deserializer's reader generic `R` (`E0574`), `w` the serializer's writer generic `W`
   (`E0599` — `pub enum W` resolves to the type param inside `fn serialize<'se, W: Write>`). The class
   is "camel-cased rule name == an emitted generic"; candidate fix is collision-proof generic names.
-- **Nint/float fixed map keys panic generation on the record path.** `neg = { -1: uint }` →
-  `unsupported map key type for Neg.key__1: Nint(-1)` (the map-key write path and
-  `key_encoding_field` implement only uint/text keys). Group-choice arms with such keys are rejected
-  gracefully up front (pinned by `tests/robustness/group_choice_map_unsupported_key.cddl`); the
-  record path still panics. Candidate fix: graceful rejection or real nint/float key support —
-  do the record path first, then lift the group-choice rejection. No matrix example samples a
-  nint/float map key, which is why the panic was never verdicted.
+- Nint/float fixed map keys on a struct-map record are **rejected gracefully** (pinned by
+  `tests/robustness/record_map_unsupported_key.cddl`) rather than panicking generation — only uint
+  and text fixed keys are implemented (the map-key write path and, under `--preserve-encodings`,
+  `key_encoding_field`), so `neg = { -1: uint }` used to abort with `unsupported map key type for
+  Neg.key__1: Nint(-1)`. The key is now classified at parsing BEFORE field naming, which also
+  converts two adjacent panics into the same graceful rejection: an arrow key mixed into a record
+  map (`{ -1 => uint, 1: uint }`) and a non-fixed key mixed in (`{ uint => tstr, 1: uint }`), both of
+  which formerly panicked at `group_entry_to_field_name` (parsing.rs:1278) before any key check could
+  run. Classifying first also makes the `--preserve-encodings` panic site (`key_encoding_field`'s
+  `unimplemented!`) unreachable for rejected specs. Boundaries kept: uint/text keys (`{ 1: uint }`,
+  `{ "a": uint }`) and the printed remedy — a table `{ * nint => v }` in its own rule — keep
+  generating. The group-choice-arm rejection was already graceful (`group_choice_map_unsupported_key`)
+  and now matches the record path. Real nint/float key support stays the candidate feature; flipping
+  either row to `ok` requires real support, not a decay back to a panic.
+- A single-entry fixed-value ARROW key `{ k => v }` (all key kinds — `{ 1 => uint }`, `{ "a" => uint }`,
+  `{ -1 => uint }`, `{ true => uint }`) takes the table path with a `ConceptualRustType::Fixed` domain
+  and panics in `for_rust_member` ("should not expose Fixed type in member", intermediate.rs ~1876) —
+  a CBOR map value can hold only one item, so the single `k => v` is detected as a homogenous table
+  whose key type is a fixed value that has no rust-member representation. Pinned by
+  `tests/robustness/map_fixed_key_arrow_single.cddl` (PANIC row). Candidate fix: route literal-key
+  arrow single-entries to the record path (RFC 8610: `k => v` with a literal key is the same wire
+  entry as `k: v`), or reject gracefully.
+- A bareword map key that is a Rust keyword (`kw = { if: uint }`, `{ true: uint }`) emits a struct
+  field named by the keyword — invalid Rust, caught only by the rustfmt gate as a "generator bug"
+  error. The class is a bareword key whose snake_case is a Rust keyword; candidate fix is raw
+  identifiers (`r#if`) or a rename-with-suffix in field naming.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; floats fail

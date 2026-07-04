@@ -19,8 +19,10 @@ inline_group_occurrence    error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
 map_field_zero_occurrence  error (graceful)
+map_fixed_key_arrow_single PANIC
 map_inline_group_zero_occurrence error (graceful)
 prelude_biguint            ok
+record_map_unsupported_key error (graceful)
 self_recursive             ok
 single_bareword_map_field  ok
 undefined_generic          error (graceful)

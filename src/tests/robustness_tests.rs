@@ -456,6 +456,104 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
     .expect("a plain group as a table value must register + generate, not panic");
 }
 
+/// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
+/// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
+/// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because
+/// `group_entry_to_field_name` itself panics at parsing.rs:1278 on non-uint Type1 (arrow) member
+/// keys, the key must be classified BEFORE field naming — which also converts the arrow-multi and
+/// non-fixed-mixed field-naming panics into graceful rejections. Pins the messages, the two arrow
+/// spellings, the preserve-encodings profile (which formerly panicked at a DIFFERENT site), and the
+/// uint/text/table boundaries that must keep generating. The group-choice arm keeps its own message.
+#[test]
+fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
+    fn run_with(
+        spec: &str,
+        tag: &str,
+        preserve: bool,
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rec_map_key_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rec_map_key_unused",
+        ];
+        if preserve {
+            args.push("--preserve-encodings=true");
+        }
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        run_with(spec, tag, false)
+    }
+
+    // A nint/float fixed key on a record map must reject gracefully, naming the rule and pointing at
+    // the uint/text keys and the table remedy (formerly `unsupported map key type` panic at
+    // generation, or `key_encoding_field`'s `unimplemented!` under --preserve-encodings).
+    for (spec, tag, rule) in [
+        ("neg = { -1: uint }\n", "neg", "neg"),
+        ("flt = { 1.5: uint }\n", "flt", "flt"),
+        ("m = { -1: uint, 1: uint }\n", "mixed", "m"),
+        ("m = { ? -1: uint }\n", "opt", "m"),
+    ] {
+        let msg = run(spec, tag)
+            .expect_err("a nint/float fixed map key on a record must reject gracefully, not panic");
+        assert!(
+            msg.contains(&format!("rule `{rule}`"))
+                && msg.contains("uint")
+                && msg.contains("text")
+                && msg.contains("table"),
+            "rejection should name the rule, cite uint/text, and offer the table remedy, got: {msg}"
+        );
+    }
+
+    // Arrow spellings that used to panic at field naming (parsing.rs:1278) BEFORE the key match
+    // could run — classifying before naming converts them to graceful rejections.
+    let arrow_kind = run("m = { -1 => uint, 1: uint }\n", "arrow_nint").expect_err(
+        "a nint arrow key mixed into a record map used to panic at field naming; must reject",
+    );
+    assert!(
+        arrow_kind.contains("rule `m`") && arrow_kind.contains("unsupported fixed map key"),
+        "arrow nint key should get the unsupported-fixed-kind message (classified Fixed(Nint), \
+         not NonFixed), got: {arrow_kind}"
+    );
+    let arrow_nonfixed = run("m = { uint => tstr, 1: uint }\n", "arrow_nonfixed").expect_err(
+        "a non-fixed key mixed into a record map used to panic at field naming; must reject",
+    );
+    assert!(
+        arrow_nonfixed.contains("rule `m`") && arrow_nonfixed.contains("non-fixed"),
+        "a non-fixed key mixed into a record map should get the non-fixed message, got: {arrow_nonfixed}"
+    );
+
+    // Under --preserve-encodings the record path formerly panicked at a DIFFERENT site
+    // (`key_encoding_field`'s `unimplemented!`). The parse-time rejection must fire before it.
+    run_with("neg = { -1: uint }\n", "neg_preserve", true)
+        .expect_err("the parse-time rejection must fire before the preserve-encodings panic site");
+
+    // Boundaries that must KEEP generating: supported fixed keys and the printed table remedy.
+    run("m = { 1: uint }\n", "uint_ok").expect("a uint fixed map key must still generate");
+    run("m = { \"a\": uint }\n", "text_ok").expect("a text fixed map key must still generate");
+    run("m = { * nint => uint }\n", "table_remedy")
+        .expect("the printed remedy — a nint-keyed table — must generate");
+
+    // The group-choice arm stays graceful with its own arm-specific message.
+    let arm = run("neg = { -1: uint // b: tstr }\n", "arm")
+        .expect_err("a nint key in a map group-choice arm must reject gracefully");
+    assert!(
+        arm.contains("group-choice"),
+        "the group-choice arm keeps its own arm-specific message, got: {arm}"
+    );
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");
