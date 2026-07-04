@@ -1669,34 +1669,12 @@ fn group_entry_to_type(
     }
 }
 
-fn group_entry_to_key(entry: &GroupEntry) -> Option<FixedValue> {
-    match entry {
-        GroupEntry::ValueMemberKey { ge, .. } => match ge.member_key.as_ref()? {
-            MemberKey::Value { value, .. } => match value {
-                cddl::token::Value::UINT(x) => Some(FixedValue::Uint(*x)),
-                cddl::token::Value::INT(x) => Some(FixedValue::Nint(*x)),
-                cddl::token::Value::TEXT(x) => Some(FixedValue::Text(x.to_string())),
-                cddl::token::Value::FLOAT(x) => Some(FixedValue::Float(*x)),
-                _ => panic!("unsupported map identifier(1): {:?}", value),
-            },
-            MemberKey::Bareword { ident, .. } => Some(FixedValue::Text(ident.to_string())),
-            MemberKey::Type1 { t1, .. } => match &t1.type2 {
-                Type2::UintValue { value, .. } => Some(FixedValue::Uint(*value)),
-                Type2::IntValue { value, .. } => Some(FixedValue::Nint(*value)),
-                Type2::TextValue { value, .. } => Some(FixedValue::Text(value.to_string())),
-                Type2::FloatValue { value, .. } => Some(FixedValue::Float(*value)),
-                _ => panic!("unsupported map identifier(2): {:?}", entry),
-            },
-            MemberKey::NonMemberKey { .. } => panic!("Please open a github issue with repro steps"),
-        },
-        _ => None,
-    }
-}
-
-/// Classification of a single map-entry's key, used at the group-choice collapse site. Unlike
-/// `group_entry_to_key` (which `panic!`s on shapes the record path never legitimately sees), this
-/// never panics: unsupported/non-literal keys are reported as `NonFixed` so the caller can record a
-/// graceful rejection instead of aborting the whole run.
+/// Classification of a single map-entry's key, used at both the group-choice collapse site and the
+/// record map path. It never `panic!`s: unsupported/non-literal keys are reported as `NonFixed` (and
+/// keyless entries as `Keyless`) so the caller can record a graceful rejection instead of aborting
+/// the whole run. This matters on the record path because `group_entry_to_field_name` itself panics
+/// on non-uint Type1 (arrow) member keys, so the key must be classified through here BEFORE field
+/// naming runs.
 enum MapKeyKind {
     /// `k: v` / `k => 5` — a literal/bareword key we can write and verify.
     Fixed(FixedValue),
@@ -1787,6 +1765,51 @@ fn parse_record_from_group_choice(
                 }
                 return None;
             }
+            // For a map record, classify the member key BEFORE field naming: only uint/text fixed
+            // keys are implemented (the map-key write path and, under --preserve-encodings,
+            // `key_encoding_field`), and `group_entry_to_field_name` PANICS at parsing.rs:1278 on
+            // non-uint Type1 (arrow) member keys — so an unsupported key must be rejected here,
+            // before naming runs. `group_entry_map_key_kind` never panics.
+            let map_key = if rep == Representation::Map {
+                match group_entry_map_key_kind(group_entry) {
+                    // supported: carry the classified key forward (no separate key lookup needed).
+                    MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => {
+                        Some(key)
+                    }
+                    // cite the rule by its SOURCE spelling (`neg`), not the camel-cased RustIdent —
+                    // the user is looking at their CDDL, not our output.
+                    MapKeyKind::Fixed(other) => {
+                        let source_name = types
+                            .source_rule_name(name)
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| name.to_string());
+                        types.record_rejection(format!(
+                            "rule `{source_name}`: unsupported fixed map key {other:?} — only uint \
+                             and text fixed keys are implemented on the record path (the map-key \
+                             write path and `{{name}}_key_encoding`). Use a uint or text key, or a \
+                             table `{{ * k => v }}` in its own rule."
+                        ));
+                        return None;
+                    }
+                    MapKeyKind::NonFixed => {
+                        let source_name = types
+                            .source_rule_name(name)
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| name.to_string());
+                        types.record_rejection(format!(
+                            "rule `{source_name}`: a non-fixed key (`k => v`) mixed into a record \
+                             map is unsupported. Use a fixed uint/text key (`k: v`), or a table \
+                             `{{ * k => v }}` in its own rule."
+                        ));
+                        return None;
+                    }
+                    // keyless: fall through — the existing "map field has no key" rejection below
+                    // (which needs the field name) handles it exactly as before.
+                    MapKeyKind::Keyless => None,
+                }
+            } else {
+                None
+            };
             let field_name = group_entry_to_field_name(
                 group_entry,
                 index,
@@ -1808,7 +1831,10 @@ fn parse_record_from_group_choice(
                         .source_rule_name(name)
                         .map(str::to_owned)
                         .unwrap_or_else(|| name.to_string());
-                    match group_entry_to_key(group_entry) {
+                    // `map_key` was classified before field naming (unsupported/non-fixed keys
+                    // already returned None); `Some` is a supported uint/text key, `None` is a
+                    // keyless entry that falls to the "map field has no key" rejection below.
+                    match map_key {
                         Some(key) => {
                             // A ZERO-permitting occurrence (`*`, `0*n`, `*n`) on a keyed map field
                             // means the entry may be ABSENT (RFC 8610), but the record path would
@@ -2062,8 +2088,7 @@ pub fn parse_group(
                     let variant_key = if rep == Representation::Map {
                         match group_entry_map_key_kind(group_entry) {
                             // only uint/text keys are supported (parity with the record map path,
-                            // which panics on other key kinds at generation time — reject
-                            // gracefully up front instead of reaching that panic)
+                            // which also rejects other fixed key kinds gracefully at parsing)
                             MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => {
                                 Some(key)
                             }
