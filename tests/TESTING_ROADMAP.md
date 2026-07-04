@@ -31,8 +31,9 @@ executes across the default suite, the corpus, and the matrix (whose "supported"
 execution-gated, with an embed-site fallback for shapes that mint no standalone surface); the
 generated wasm crate is compiled AND round-tripped by the same systematic gates; and malformed
 emission is a hard generator error. Their living documentation is `tests/README.md` (suite-side)
-and `cddl-matrix/README.md` (probe-side). One north-star frontier remains: the matrix's own verdict
-is still a default-profile claim — next-steps item 2 below.
+and `cddl-matrix/README.md` (probe-side). The verdict is no longer a default-profile-only claim:
+every default-`supported` row is also probed per non-default emission profile (`preserve`, `json`)
+and against foreign spec-derived decode vectors, both recorded in the committed annotations.
 
 ## Recommended next steps, in priority order
 
@@ -52,36 +53,12 @@ is still a default-profile claim — next-steps item 2 below.
    `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
    baseline survivor map.
 
-2. **Run the per-emission-profile regeneration and commit the filled axis.** The `emission` axis is
-   IMPLEMENTED in `verify.ts` (design: `draft/profile-axis-design.md`): every default-`supported`
-   feature / containment cell / control-op is re-probed under each non-default codegen profile
-   (`preserve`, `json` — the flag sets extracted from `src/tests/mod.rs`'s `ALL_PROFILES`), through
-   the same rust-only generate → `cargo test` → embed-fallback pipeline, recorded as
-   `emission.<name>.*` annotation keys. It was committed WITHOUT verdicts (rows have no `emission`
-   keys until a passing run fills them; all drift gates stay green). The remaining step is the slow
-   fill: run the DEFAULT wasm-on pipeline (multi-hour; a `--no-wasm` run strips committed wasm
-   evidence and must NOT be committed):
-   `cd cddl-matrix && bun run build_matrix.ts && bun run verify.ts && bun run build_matrix.ts`
-   (the second `build_matrix` refreshes `matrix.json` from the rewritten annotations). Then, in a
-   fresh session, review the **EMISSION DIVERGENCES** console section (expected: the float class
-   under `preserve` — `prelude.number`, `prelude.time`, the float prelude types, which hit
-   `unimplemented!` — see the `preserve_encodings_supports_floats` stub — AND
-   `contain.tag-content.type.choice` under `preserve`, the already-ledgered tag-over-a-type-choice
-   generation panic in `cddl-matrix/ROADMAP.md` § findings; ANYTHING else divergent is a
-   finding to surface, not to engineer away). This run also fills the decode-foreign evidence
-   clauses (`accepts_foreign` — see `tests/README.md` § "Decode-direction conformance"); review the
-   **DECODE-FOREIGN FAILURES** section the same way (expected: empty). Then run
-   `bun run check.ts fast`, commit the regenerated
-   `annotations/cddl_codegen.toml` + `matrix.json`, then PRUNE this item, fix the north-star paragraph
-   above (drop the "still a default-profile claim" frontier), and delete
-   `draft/profile-axis-prompt.md` + `draft/profile-axis-design.md`.
-
-3. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
+2. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
 
-4. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
+3. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
    surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
    the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
    role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
@@ -102,7 +79,7 @@ is still a default-profile claim — next-steps item 2 below.
    the `//` arm is currently not a containment role at all) is ledgered concretely in
    `cddl-matrix/ROADMAP.md` § 1 and should land before or with the fuzzer.
 
-5. **Small independent residuals (low).**
+4. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
      `#6.n(5)` — the tag is irrelevant). Generation aborts in `intermediate.rs`
      (`should not expose Fixed type in member, only needed for serializaiton: Fixed(Uint(5))`)
@@ -128,7 +105,7 @@ is still a default-profile claim — next-steps item 2 below.
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-6. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
+5. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
    depth.**
    - **Encoding variants (medium — cheap and self-contained).** Every committed accept vector is
      definite-length, minimal-width CBOR by mint construction (ruby `generate` → `diag2cbor.rb`),
@@ -167,7 +144,13 @@ is still a default-profile claim — next-steps item 2 below.
   decision — gating the getting-started command — was accepted and shipped as
   `integration_tests::getting_started_example`.)
 - Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
-  *combinations* worth testing; revisit only if a flag-interaction bug actually slips through.
+  *combinations* worth testing, so the full powerset stays out of scope. One escaped interaction
+  earned its own standing gate rather than the whole powerset: `--common-import-override` ×
+  `--preserve-encodings=false` targeting a preserve-flavored common crate emitted
+  `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). The extern-deps surface is now
+  probed under both preserve flavors — `integration_tests::extern_deps` (preserve) and
+  `integration_tests::extern_deps_non_preserve` (non-preserve, compiled against the preserve-flavored
+  `extern-dep-crate` stand-in) — so that specific cell is pinned without enumerating the rest.
   Every individual flag *value* now appears in some profile or test: the five that previously
   didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
   `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`

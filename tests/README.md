@@ -274,9 +274,9 @@ against an unreviewed re-bless by `integration_tests::corpus_group_choice_map_ke
 The array-side sibling — `[* (int, tstr)]` silently narrowing the inline-group occurrence to
 exactly-once, rejecting the spec-valid `[]` — is now **fixed** too: an occurrence marker on an inline
 group is rejected gracefully at generation time (pinned by
-`tests/robustness/inline_group_occurrence.cddl` + `map_inline_group_zero_occurrence.cddl`), so its
-decode-conformance row pins as a `pinned_reason` (generation fails standalone) rather than a
-`class="bug"` reject.
+`tests/robustness/inline_group_occurrence.cddl` + `map_inline_group_zero_occurrence.cddl`), so the
+matrix verdicts its cell `unsupported` and it projects no decode-conformance obligation (no catalog
+row) rather than a `class="bug"` reject.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 

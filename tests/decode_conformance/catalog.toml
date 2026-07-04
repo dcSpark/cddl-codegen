@@ -1,4 +1,4 @@
-# Decode-conformance catalog (TESTING_ROADMAP item 6). MACHINE-PRODUCED by the mint:
+# Decode-conformance catalog. MACHINE-PRODUCED by the mint:
 #   bun run verify.ts --mint-decode-foreign            # full refresh
 #   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest
 # Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,
@@ -579,12 +579,6 @@ expect = "accept"
 hex = "a2616bca39032c616a19063c"
 source = "ruby-generate"
 expect = "accept"
-
-[[row]]
-id = "contain.occurrence-target.grpent.inline_group"
-axis = "containment"
-example = "a = [* (int, tstr)]"
-pinned_reason = "cddl-codegen cannot generate this construct standalone"
 
 [[row]]
 id = "contain.tag-content.type.choice"

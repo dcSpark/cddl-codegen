@@ -68,7 +68,7 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
 };
 
-// --- EMISSION-PROFILE axis (TESTING_ROADMAP item 2) ----------------------------------------------
+// --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
 // Second, orthogonal axis on the support verdict: besides the DEFAULT-flags verdict (`status`), a
 // default-supported row is ALSO probed under each non-default emission profile — the CLI flag sets that
 // drive meaningfully different generation paths (preserve-encodings, json-serde/schema). The single
@@ -619,7 +619,7 @@ function embedDetail(detail: string, embedded?: boolean): string {
   return detail.replace("compiles (no minted round-trip surface)", "compiles; round-trips when embedded (synthetic record holder)");
 }
 
-// EMISSION-PROFILE probe (TESTING_ROADMAP item 2): re-run the row's example through EACH non-default
+// EMISSION-PROFILE probe: re-run the row's example through EACH non-default
 // emission profile, reusing the exact same rust-only pipeline (generate -> cargo test -> classify ->
 // embed-fallback-if-unminted) with the profile's flags appended. Runs ONLY when the row's default
 // verdict is supported (caller-enforced), so any non-supported entry here is a genuine profile
@@ -691,7 +691,7 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
 }
 
 // ==================================================================================================
-// DECODE-CONFORMANCE HARNESS (TESTING_ROADMAP item 6): the fourth gate direction — feed SPEC-DERIVED
+// DECODE-CONFORMANCE HARNESS (the fourth gate direction) — feed SPEC-DERIVED
 // CBOR our code did NOT produce into the generated decoders and assert acceptance. `--mint-decode-foreign`
 // (re)builds the committed catalog (D3); the default-on D4 oracle in the probe loops replays it as
 // corroboration. All helpers are hoisted `function`s so the mint (called right after the warm-up) and
@@ -751,7 +751,7 @@ function parseCatalog(path: string): Map<string, CatalogRow> {
 // subset re-emits every other row byte-identically. Header mirrors annotations/cddl_codegen.toml's style.
 function composeCatalog(rows: CatalogRow[]): string {
   const L: string[] = [
-    "# Decode-conformance catalog (TESTING_ROADMAP item 6). MACHINE-PRODUCED by the mint:",
+    "# Decode-conformance catalog. MACHINE-PRODUCED by the mint:",
     "#   bun run verify.ts --mint-decode-foreign            # full refresh",
     "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
     "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
@@ -1117,7 +1117,7 @@ if (WASM_PROBE) {
   }
 }
 
-// Warm one known-good minting spec per EMISSION PROFILE (TESTING_ROADMAP item 2): the json profile
+// Warm one known-good minting spec per EMISSION PROFILE: the json profile
 // pulls serde/schemars deps, so without this the first json probe's dep build could exceed
 // PROBE_TIMEOUT and false-fail. Shares COMPILE_TARGET so subsequent per-profile `cargo test`s stay
 // incremental. Doubles as the per-profile pipeline self-test — an unhealthy profile aborts the run
@@ -1250,7 +1250,7 @@ if (!SMOKE && controlop_support.length && !controlop_support.some(c => c.support
   process.exit(2);
 }
 
-// Emission-axis harness-health guard (TESTING_ROADMAP item 2), same shape as the three default-axis
+// Emission-axis harness-health guard, same shape as the three default-axis
 // guards above: per emission profile, if >=1 row was probed under it but ZERO came back supported, that
 // is an implausible verdict shape (a broken profile pipeline degraded mid-run) — refuse to write.
 // Skipped under --smoke.
@@ -1326,7 +1326,7 @@ const annoLines: string[] = [
   // byte-identical to a pre-feature run (the wasm-oracle opt-out discipline, applied to the header too).
   ...(DECODE_FOREIGN ? [
     "#",
-    "# DECODE-FOREIGN clause (the fourth gate direction, TESTING_ROADMAP item 6): a supported row's",
+    "# DECODE-FOREIGN clause (the fourth gate direction): a supported row's",
     "#   `evidence` gains one of `; accepts N foreign spec-derived vector(s)` / `; foreign-vector decode",
     "#   FAILED (…)` / `; no committed decode vectors (see catalog)`. This is the DEFAULT-ON decode-foreign",
     "#   oracle: it regenerates from tests/decode_conformance/catalog.toml's committed `spec` and replays",
