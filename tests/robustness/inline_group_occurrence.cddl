@@ -1,0 +1,10 @@
+; an occurrence marker on an inline (parenthesized) ARRAY group — `[* (int, tstr)]` — used to be
+; silently dropped, narrowing the group to exactly-once: the generated decoder then rejected
+; spec-valid CBOR carrying any other repetition count (a round-trip test can't see this; only data
+; from another conformant producer does). Rejected gracefully instead — the marker on the inline
+; group is honored, not narrowed away. The fix's message recommends naming the group
+; (`pair = (int, tstr)`, `a = [* pair]`) or dropping the parentheses for a single-element group
+; (`[* int]`). Flipping this row to `ok` requires REAL `Vec<Synthesized>` support (a candidate
+; feature), not a decay back to silent narrowing. `[1*1 (…)]` stays `ok`: exactly-once IS the
+; semantics, so flattening the group away is sound there.
+a = [* (int, tstr)]
