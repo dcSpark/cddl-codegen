@@ -201,6 +201,24 @@ from a degenerate example.**
   round-trip tests. `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field: under unique map
   keys they collapse to exactly-one, so mandatory is the honored semantics. Real support for `*` (an
   `Option<T>` field, like `?`) is a candidate feature; surfaced while testing the single-field struct-map fix.
+- **Map-rep group-choice single-field variants emit MALFORMED CBOR (and the matrix verdicts them
+  "supported").** `g = { a: uint // b: tstr }` collapses each arm to a bare enum variant and its
+  serializer writes `map(1)` + the field VALUE with the member key dropped — `a1 00` / `a1 6161`, a
+  truncated CBOR item every independent decoder rejects (`cbor2diag`: "Out of bytes"). The generated
+  deserializer mirrors the same wrong shape (dispatches on the VALUE type right after the map header),
+  so it round-trips green and REJECTS the spec-valid `{"a": 5}` / `{"b": "x"}` — a symmetric wire-format
+  miscompile invisible to every self-consistent gate. Surfaced by the decode-conformance harness's
+  first sweep; pinned as `class="bug"` reject vectors on `group.choice` in
+  `tests/decode_conformance/catalog.toml` (fixing it flips those pins red → unpin per the re-triage
+  protocol). Array-rep group choices are unaffected (their fixed prefixes really are wire-resolved).
+- **`*` occurrence on an inline array group is silently narrowed to exactly-once.** `a = [* (int, tstr)]`
+  generates a plain 2-field record (`A { index_0, index_1 }`), so the decoder rejects the spec-valid
+  empty array `[]` (and 2+ repetitions) — the array-side sibling of the fixed keyed-map-field
+  zero-occurrence narrowing above, caught the same way (round-trips green; only externally-derived
+  instances expose it). Pinned as a `class="bug"` reject vector on
+  `contain.occurrence-target.grpent.inline_group` in `tests/decode_conformance/catalog.toml`. A named
+  rule for the group (`pair = (int, tstr)`, `a = [* pair]`) generates the correct `Vec` shape, so the
+  narrowing is specific to the inline-group occurrence path.
 - A single-letter rule named `r` collides with the deserializer's reader generic `R` → `E0574`.
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element.

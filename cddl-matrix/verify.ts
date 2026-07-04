@@ -33,9 +33,9 @@
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { ROOT, loadMatrixInputs, stableJson } from "./lib";
 
 process.chdir(ROOT);
@@ -112,6 +112,27 @@ const smokeArg = process.argv.find(a => a.startsWith("--smoke="));
 const SMOKE_N = smokeArg ? parseInt(smokeArg.slice("--smoke=".length), 10) : 0;
 const SMOKE = SMOKE_N > 0;
 
+// --mint-decode-foreign (D3, decode-conformance harness): (re)generate the committed decode catalog
+// (tests/decode_conformance/catalog.toml) from the matrix's supported rows and EXIT — writes ONLY the
+// catalog, never annotations/verify_report.json, and skips the reconcile/probe loops (it inserts itself
+// right after the shared-target warm-up and process.exit()s before the normal probe pipeline). See
+// runMintDecodeForeign. `--only=id,id,…` re-mints just that subset, preserving every other committed row
+// verbatim (parsed back through the same deterministic writer).
+const MINT_DECODE = process.argv.includes("--mint-decode-foreign");
+const onlyArg = process.argv.find(a => a.startsWith("--only="));
+const MINT_ONLY = onlyArg
+  ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
+  : null;
+// K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
+const FOREIGN_K = 10;
+// The committed catalog the mint writes and the D4 corroborating oracle reads.
+const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalog.toml");
+// The synthetic holder wrapping a rule with no standalone decode surface (transparent alias / named
+// table / c-enum): the field decode routes through cddl-codegen's GENERATED code, not cbor_event's
+// blanket impl, so the holder is what actually exercises the decoder for those shapes. Prepended FIRST
+// so both oracles root validation at it (rust prints "Root type for validation: <first rule>").
+const FOREIGN_HOLDER_RULE = "__probe_holder";
+
 interface Derived {
   valid_a: boolean; valid_b: boolean; spec_valid: boolean; parser_limitation: boolean;
   support: string; support_detail: string; out_of_profile: boolean; status: string;
@@ -124,6 +145,9 @@ interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
   ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean;
   minted_wasm?: boolean; wasm_roundtrips?: number;
+  // Decode-foreign oracle (D4): whether the generated decoder accepted the committed spec-derived
+  // vectors, and how many accept vectors were replayed. Undefined when opted out (byte-identical output).
+  accepts_foreign?: boolean; foreign_vectors?: number;
   // Embed-fallback outcome (feature/control-op loops only, when the base probe minted nothing):
   // true = round-trips inside a synthetic record holder; false = holder minted but round-trip failed;
   // undefined = not applicable (base already minted) or the synthetic was un-embeddable/failed to generate.
@@ -136,6 +160,7 @@ interface ContainmentCorr {
   parser_limitation: boolean; contradiction: boolean; example: string;
   codegen: number; compile: number; test: number; minted: boolean;
   minted_wasm?: boolean; wasm_roundtrips?: number;
+  accepts_foreign?: boolean; foreign_vectors?: number;  // decode-foreign oracle (D4), iff supported
   support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
   emission?: Record<string, EmissionOutcome>;  // per-emission-profile verdicts (iff support === "supported")
 }
@@ -165,6 +190,10 @@ if (!existsSync(RUST_CDDL)) {
   console.error(`HARNESS FAILURE: rust cddl oracle not found at '${RUST_CDDL}' (set RUST_CDDL or build the sibling repo).`);
   process.exit(2);
 }
+// diag2cbor.rb (cbor-diag gem) ships in the same binstub dir as the ruby `cddl` gem. The mint pipes
+// ruby's diagnostic-notation `generate` output through it to raw CBOR. Only the mint requires it, so
+// its absence is a hard failure THERE (checked in runMintDecodeForeign), not for a normal verify run.
+const DIAG2CBOR = RUBY_CDDL ? join(dirname(RUBY_CDDL), "diag2cbor.rb") : null;
 
 const splitlines = (t: string): string[] => {
   const a = t.split(/\r\n|\r|\n/);
@@ -360,6 +389,23 @@ const WASM_PROBE =
   !process.argv.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
 const ccOutWasm = join(probeDir, "cc_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
+
+// DEFAULT-ON decode-foreign oracle (D4; opt out with `--no-decode-foreign` argv or
+// VERIFY_DECODE_FOREIGN=0 env): for each SUPPORTED probe row whose committed catalog entry still matches
+// the matrix example, regenerate from the catalog `spec` (own out dir, shared COMPILE_TARGET — deps are
+// already warm), append the same `__foreign_decode_replay` module, and `cargo test` it, feeding
+// spec-derived CBOR our code did NOT produce into the generated decoder. CORROBORATES ONLY — it never
+// changes a support verdict; a failure is recorded as evidence + rolled into decode_foreign_failures.
+// Opted out -> the per-probe fields stay undefined, so the report/annotation output is byte-identical to
+// a pre-feature run (the wasm-oracle opt-out pattern).
+const DECODE_FOREIGN =
+  !process.argv.includes("--no-decode-foreign") &&
+  !["0", "false"].includes((process.env.VERIFY_DECODE_FOREIGN ?? "").toLowerCase());
+const ccOutForeign = join(probeDir, "cc_out_foreign");
+// The committed vectors keyed by matrix row id (empty in the mint path / when opted out / before the
+// catalog is first committed). Loaded once; a missing file is not an error here (D6 gates completeness).
+const catalogRows: Map<string, CatalogRow> =
+  DECODE_FOREIGN && !MINT_DECODE && existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map();
 
 function runExit(cmd: string[], cwd?: string, env?: Record<string, string>, timeoutS = PROBE_TIMEOUT): number {
   const r = Bun.spawnSync(cmd, {
@@ -644,6 +690,391 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
   return { valid_a, valid_b, spec_valid, parser_limitation, support, support_detail, out_of_profile, status };
 }
 
+// ==================================================================================================
+// DECODE-CONFORMANCE HARNESS (TESTING_ROADMAP item 6): the fourth gate direction — feed SPEC-DERIVED
+// CBOR our code did NOT produce into the generated decoders and assert acceptance. `--mint-decode-foreign`
+// (re)builds the committed catalog (D3); the default-on D4 oracle in the probe loops replays it as
+// corroboration. All helpers are hoisted `function`s so the mint (called right after the warm-up) and
+// the probe loops (below) can share them regardless of textual order.
+// ==================================================================================================
+interface CatalogVector { hex: string; source: string; expect: string; class?: string; reason?: string }
+interface CatalogRow {
+  id: string; axis: string; example: string;
+  pinned_reason?: string;                             // set => the row has no vectors (names the cause)
+  spec?: string; mode?: string; type_name?: string;   // set together when NOT pinned
+  vectors: CatalogVector[];
+}
+interface ForeignOutcome { accepts_foreign?: boolean; foreign_vectors?: number }
+interface ReplayVec { hex: string; name: string; expectOk: boolean }
+
+// JSON string escaping is a valid TOML basic string (same trick as the annotation writer's `tomlStr`,
+// but hoisted so the mint can use it BEFORE that `const` is initialized).
+function foreignTomlStr(s: string): string { return JSON.stringify(s); }
+// A matrix row id (`occur.optional`, `ctl.size`) -> a valid, unique Rust test-fn ident fragment.
+function foreignIdent(id: string): string { return id.replace(/[^A-Za-z0-9]/g, "_"); }
+
+// Mirror of src/utils.rs `convert_to_camel_case` (rule ident -> Rust PascalCase type name): uppercase the
+// first char and any char after `_`/`-`, drop `$`/`@`. A mismatch only degrades a standalone row to holder
+// mode (the `impl Deserialize for <Name>` grep misses), never a wrong verdict.
+function toCamelCase(ident: string): string {
+  let out = "", upper = true;
+  for (const c of ident) {
+    if (c === "_" || c === "-") upper = true;
+    else if (c === "$" || c === "@") { /* ignored, as in the generator */ }
+    else { out += upper ? c.toUpperCase() : c; upper = false; }
+  }
+  return out;
+}
+
+function parseCatalog(path: string): Map<string, CatalogRow> {
+  const doc = Bun.TOML.parse(readFileSync(path, "utf8")) as { row?: any[] };
+  const map = new Map<string, CatalogRow>();
+  for (const r of doc.row ?? []) {
+    const vectors: CatalogVector[] = (r.vector ?? []).map((v: any) => ({
+      hex: String(v.hex), source: String(v.source), expect: String(v.expect),
+      class: v.class !== undefined ? String(v.class) : undefined,
+      reason: v.reason !== undefined ? String(v.reason) : undefined,
+    }));
+    map.set(String(r.id), {
+      id: String(r.id), axis: String(r.axis), example: String(r.example),
+      pinned_reason: r.pinned_reason !== undefined ? String(r.pinned_reason) : undefined,
+      spec: r.spec !== undefined ? String(r.spec) : undefined,
+      mode: r.mode !== undefined ? String(r.mode) : undefined,
+      type_name: r.type_name !== undefined ? String(r.type_name) : undefined,
+      vectors,
+    });
+  }
+  return map;
+}
+
+// Compose the catalog TOML deterministically (rows by id, vectors by hex) so a re-mint of any `--only`
+// subset re-emits every other row byte-identically. Header mirrors annotations/cddl_codegen.toml's style.
+function composeCatalog(rows: CatalogRow[]): string {
+  const L: string[] = [
+    "# Decode-conformance catalog (TESTING_ROADMAP item 6). MACHINE-PRODUCED by the mint:",
+    "#   bun run verify.ts --mint-decode-foreign            # full refresh",
+    "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
+    "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
+    "# cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated",
+    '# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
+    "# supplement vectors (both re-validated mechanically at the next mint).",
+    "#",
+    "# mode: standalone = a nominal `impl Deserialize for <type_name>` decodes the vector directly;",
+    "#       holder = the rule is a transparent alias / named table / c-enum with no standalone decoder,",
+    "#       so vectors are instances of `__probe_holder = [0, <rule>]` and decode routes through the",
+    "#       GENERATED field-decode code (cbor_event's blanket impl would otherwise make it vacuous).",
+    "# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject row additionally",
+    "#       carries class (bug | limitation) + reason; a reject WITHOUT them is the mint's triage-pending",
+    "#       state — the drift gate stays RED until a human classifies it.",
+    "# pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.",
+    "",
+  ];
+  for (const row of [...rows].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    L.push("[[row]]");
+    L.push(`id = ${foreignTomlStr(row.id)}`);
+    L.push(`axis = ${foreignTomlStr(row.axis)}`);
+    L.push(`example = ${foreignTomlStr(row.example)}`);
+    if (row.pinned_reason !== undefined) {
+      L.push(`pinned_reason = ${foreignTomlStr(row.pinned_reason)}`);
+    } else {
+      L.push(`spec = ${foreignTomlStr(row.spec ?? "")}`);
+      L.push(`mode = ${foreignTomlStr(row.mode ?? "")}`);
+      L.push(`type_name = ${foreignTomlStr(row.type_name ?? "")}`);
+      for (const v of [...row.vectors].sort((a, b) => (a.hex < b.hex ? -1 : a.hex > b.hex ? 1 : 0))) {
+        L.push("");
+        L.push("[[row.vector]]");
+        L.push(`hex = ${foreignTomlStr(v.hex)}`);
+        L.push(`source = ${foreignTomlStr(v.source)}`);
+        L.push(`expect = ${foreignTomlStr(v.expect)}`);
+        if (v.expect === "reject") {
+          if (v.class !== undefined) L.push(`class = ${foreignTomlStr(v.class)}`);
+          if (v.reason !== undefined) L.push(`reason = ${foreignTomlStr(v.reason)}`);
+        }
+      }
+    }
+    L.push("");
+  }
+  return L.join("\n").replace(/\s+$/, "") + "\n";
+}
+
+// Generate the crate from `spec` (default flags, no --wasm, no --emit-tests — replay needs only the lib).
+function foreignGenCrate(outDir: string, spec: string): number {
+  writeFileSync(probeFile, spec.replace(/\n*$/, "\n"));
+  rmSync(outDir, { recursive: true, force: true });
+  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${outDir}`, "--wasm=false"], CODEGEN_DIR);
+}
+// Standalone decode surface = a nominal `impl Deserialize for <typeName>` (in lib.rs or serialization.rs).
+// Its absence (transparent aliases: Vec/BTreeMap/u64 targets) means decode must be exercised via a holder.
+function crateHasDeserialize(outDir: string, typeName: string): boolean {
+  const re = new RegExp(`impl Deserialize for ${typeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+  for (const f of ["lib.rs", "serialization.rs"]) {
+    const p = join(outDir, "rust", "src", f);
+    if (existsSync(p) && re.test(readFileSync(p, "utf8"))) return true;
+  }
+  return false;
+}
+
+// A #[cfg(test)] replay module appended to a generated lib.rs: one test per vector, decoding a byte-array
+// literal through `<decodeType>::from_cbor_bytes` exactly as the emitted tests call it (`use
+// super::serialization::*` brings the trait method into scope). accept => assert Ok; reject => assert Err.
+// Runs `cargo test` (shared warm target) and parses per-test pass/fail. Returns null on a COMPILE failure
+// (no test result lines) so callers can tell "decoder rejected a vector" (a verdict) from "crate didn't
+// build" (a harness/detection problem).
+function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map<string, boolean> | null {
+  const libPath = join(outDir, "rust", "src", "lib.rs");
+  const fns = vecs.map(v => {
+    const bytes = (v.hex.match(/../g) ?? []).map(b => `0x${b}`).join(", ");
+    const body = v.expectOk
+      ? `${decodeType}::from_cbor_bytes(BYTES).expect("accept vector must decode");`
+      : `assert!(${decodeType}::from_cbor_bytes(BYTES).is_err(), "reject vector must NOT decode");`;
+    return `    #[test]\n    fn ${v.name}() {\n        const BYTES: &[u8] = &[${bytes}];\n        ${body}\n    }`;
+  }).join("\n");
+  const mod = `\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {\n    use super::*;\n    use super::serialization::*;\n${fns}\n}\n`;
+  writeFileSync(libPath, readFileSync(libPath, "utf8") + mod);
+  const run = () => Bun.spawnSync(
+    ["cargo", "test", "--manifest-path", join(outDir, "rust", "Cargo.toml"), "--", "__foreign_decode_replay"],
+    { cwd: CODEGEN_DIR, env: { ...process.env, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000 },
+  );
+  let r = run();
+  if (r.exitedDueToTimeout) r = run();  // one transient retry, mirroring runProbe
+  if (r.exitedDueToTimeout) { console.error(`HARNESS FAILURE: replay cargo test timed out twice (${outDir}).`); process.exit(2); }
+  const out = (r.stdout?.toString() ?? "") + (r.stderr?.toString() ?? "");
+  const res = new Map<string, boolean>();
+  for (const m of out.matchAll(/test __foreign_decode_replay::(\w+) \.\.\. (ok|FAILED)/g)) res.set(m[1], m[2] === "ok");
+  if (res.size !== vecs.length) return null;  // compile error / missing tests -> not a verdict
+  return res;
+}
+
+// ruby `cddl <spec> generate 1` emits ONE diagnostic-notation instance on stdout; diag2cbor.rb converts
+// diag (stdin) -> raw CBOR (stdout). Both are needed to mint candidate vectors.
+function rubyGenDiag(spec: string): { diag: string; exit: number } {
+  writeFileSync(probeFile, spec.replace(/\n*$/, "\n"));
+  const r = Bun.spawnSync([RUBY_CDDL!, probeFile, "generate", "1"], { stdout: "pipe", stderr: "ignore", timeout: PROBE_TIMEOUT * 1000 });
+  return { diag: r.stdout?.toString() ?? "", exit: r.exitCode ?? -1 };
+}
+function diagToHex(diag: string): string | null {
+  const r = Bun.spawnSync([DIAG2CBOR!], { stdin: new TextEncoder().encode(diag), stdout: "pipe", stderr: "ignore" });
+  if ((r.exitCode ?? -1) !== 0) return null;
+  const buf = Buffer.from(r.stdout ?? new Uint8Array());
+  return buf.length ? buf.toString("hex") : null;
+}
+// Both oracles must accept a candidate against `spec` (rust needs --ci to exit nonzero on invalid — the
+// startup negative control guards that flag). Returns the two exit codes; accept iff BOTH are 0.
+function validateBoth(spec: string, hex: string): { ruby: number; rust: number } {
+  writeFileSync(probeFile, spec.replace(/\n*$/, "\n"));
+  const cbor = join(probeDir, "foreign_cand.cbor");
+  writeFileSync(cbor, Buffer.from(hex, "hex"));
+  const ruby = runExit([RUBY_CDDL!, probeFile, "validate", cbor]);
+  const rust = runExit([RUST_CDDL, "--ci", "validate", "--cddl", probeFile, "--cbor", cbor]);
+  return { ruby, rust };
+}
+
+// --- D4: the default-on corroborating oracle (called from the three probe loops on supported rows) ---
+function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
+  if (!DECODE_FOREIGN) return {};                                   // opted out -> byte-identical output
+  const row = catalogRows.get(id);
+  if (!row || row.pinned_reason !== undefined || row.spec === undefined || row.type_name === undefined)
+    return { foreign_vectors: 0 };                                  // no usable committed entry
+  if (row.example !== matrixExample) return { foreign_vectors: 0 };  // stale entry (D6 hard-gates drift)
+  const accepts = row.vectors.filter(v => v.expect === "accept");
+  const rejects = row.vectors.filter(v => v.expect === "reject");
+  if (accepts.length === 0) return { foreign_vectors: 0 };
+  if (foreignGenCrate(ccOutForeign, row.spec) !== 0) return { accepts_foreign: false, foreign_vectors: accepts.length };
+  const vecs: ReplayVec[] = [
+    ...accepts.map((v, i) => ({ hex: v.hex, name: `accept_${i}`, expectOk: true })),
+    ...rejects.map((v, i) => ({ hex: v.hex, name: `reject_${i}`, expectOk: false })),
+  ];
+  const res = replayInDir(ccOutForeign, vecs, row.type_name);       // null (compile fail) -> not-accepts
+  return { accepts_foreign: res !== null && vecs.every(v => res.get(v.name) === true), foreign_vectors: accepts.length };
+}
+// Evidence suffix (wasmEvidence twin). "" when opted out so an opted-out run's annotations are unchanged.
+function decodeForeignEvidence(fo?: ForeignOutcome): string {
+  if (!fo || fo.foreign_vectors === undefined) return "";
+  if (fo.foreign_vectors === 0) return "; no committed decode vectors (see catalog)";
+  return fo.accepts_foreign
+    ? `; accepts ${fo.foreign_vectors} foreign spec-derived vector(s)`
+    : `; foreign-vector decode FAILED (${fo.foreign_vectors} vector(s))`;
+}
+
+// --- D3: mint one row (returns its CatalogRow; accumulates triage/pin-break/dropped notes) -----------
+function mintRow(id: string, axis: string, example: string, prev: CatalogRow | undefined,
+                 triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
+  const pin = (reason: string): CatalogRow => ({ id, axis, example, pinned_reason: reason, vectors: [] });
+  // COMPILE_GATE_EXEMPT rows reference user-supplied code, so their crate GENERATES (exit 0) but can
+  // never compile standalone — the replay `cargo test` would fail as a compile error, not a decode
+  // verdict. Pin them upfront (same exemption, same reason, as the support probe's compile gate).
+  if (Object.hasOwn(COMPILE_GATE_EXEMPT, id))
+    return pin(`references user-supplied code; crate cannot compile standalone (${COMPILE_GATE_EXEMPT[id]})`);
+  const rule = firstRuleName(example);
+  if (!rule) return pin("no parseable rule head in the example");
+
+  if (foreignGenCrate(ccOut, example) !== 0) return pin("cddl-codegen cannot generate this construct standalone");
+  const typeName = toCamelCase(rule.name);
+  let mode: string, spec: string, decodeType: string;
+  if (crateHasDeserialize(ccOut, typeName)) {
+    mode = "standalone"; spec = example; decodeType = typeName;
+  } else {
+    if (rule.generic) return pin(`generic rule '${rule.name}' needs type args; not standalone-decodable and not embeddable`);
+    spec = `${FOREIGN_HOLDER_RULE} = [0, ${rule.name}]\n${example}`;
+    if (foreignGenCrate(ccOut, spec) !== 0) return pin("synthetic holder failed to generate");
+    decodeType = toCamelCase(FOREIGN_HOLDER_RULE);
+    if (!crateHasDeserialize(ccOut, decodeType)) return pin("synthetic holder minted no standalone decode surface");
+    mode = "holder";
+  }
+  // ccOut now holds the crate generated from `spec`.
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  let lastRubyExit = 0;
+  for (let i = 0; i < FOREIGN_K; i++) {
+    const g = rubyGenDiag(spec);
+    if (g.exit !== 0) { lastRubyExit = g.exit; continue; }
+    const hex = diagToHex(g.diag);
+    if (hex && !seen.has(hex)) { seen.add(hex); candidates.push(hex); }
+  }
+  const handVecs = (prev?.vectors ?? []).filter(v => v.source === "hand");
+  const rejectPins = (prev?.vectors ?? []).filter(v => v.expect === "reject");
+  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0)
+    return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})`);
+
+  // Two-oracle validate. Reject-intended pins take precedence over accept-intended for a shared hex.
+  const rejectHexes = new Set(rejectPins.map(v => v.hex));
+  const acDedup = new Map<string, { hex: string; source: string }>();
+  for (const c of [
+    ...candidates.filter(h => !rejectHexes.has(h)).map(h => ({ hex: h, source: "ruby-generate" })),
+    ...handVecs.filter(v => v.expect === "accept" && !rejectHexes.has(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
+  ]) if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
+
+  const validatedAccept: { hex: string; source: string }[] = [];
+  for (const c of acDedup.values()) {
+    const { ruby, rust } = validateBoth(spec, c.hex);
+    if (ruby === 0 && rust === 0) validatedAccept.push(c);
+    else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
+  }
+  const validatedRejectPins: CatalogVector[] = [];
+  for (const p of rejectPins) {
+    const { ruby, rust } = validateBoth(spec, p.hex);
+    if (ruby === 0 && rust === 0) validatedRejectPins.push(p);
+    else dropped.push(`${id}/${p.hex} (reject pin no longer spec-valid; ruby ${ruby} rust ${rust})`);
+  }
+  if (validatedAccept.length === 0 && validatedRejectPins.length === 0) {
+    // Every candidate was contested (an oracle rejected its own generator's output, or the two
+    // disagree) — an oracle-artifact class, not a decoder verdict: nothing validated ever reached our
+    // decoder, so there is no vector to commit and no triage to run. Pin mechanically; the per-vector
+    // `dropped` log records each contested instance for review.
+    return pin("all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)");
+  }
+
+  const vecs: ReplayVec[] = [
+    ...validatedAccept.map((c, i) => ({ hex: c.hex, name: `${foreignIdent(id)}_a${i}`, expectOk: true })),
+    ...validatedRejectPins.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_r${i}`, expectOk: false })),
+  ];
+  const res = replayInDir(ccOut, vecs, decodeType);
+  if (res === null) { console.error(`HARNESS FAILURE: replay crate for '${id}' failed to compile (decodeType=${decodeType}, mode=${mode}) — detection bug; refusing to mint.`); process.exit(2); }
+
+  const outVecs: CatalogVector[] = [];
+  validatedAccept.forEach((c, i) => {
+    if (res.get(`${foreignIdent(id)}_a${i}`) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    else {
+      outVecs.push({ hex: c.hex, source: c.source, expect: "reject" });  // class-less: triage-pending
+      triage.push(`${id}/${c.hex} (mode=${mode}, type=${decodeType}): spec-valid but decoder REJECTED`);
+    }
+  });
+  validatedRejectPins.forEach((p, i) => {
+    outVecs.push(p);  // keep the row either way (re-confirmed pin, or kept for human re-triage)
+    if (res.get(`${foreignIdent(id)}_r${i}`) !== true)
+      pinBreak.push(`${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+  });
+  return { id, axis, example, spec, mode, type_name: decodeType, vectors: outVecs };
+}
+
+function runMintDecodeForeign(): never {
+  if (!RUBY_CDDL) { console.error("HARNESS FAILURE: --mint-decode-foreign needs the ruby cddl reference (generate + validate); none resolved."); process.exit(2); }
+  if (!DIAG2CBOR || !existsSync(DIAG2CBOR)) { console.error(`HARNESS FAILURE: diag2cbor.rb not found beside the ruby cddl binstub (looked at '${DIAG2CBOR}'); the cbor-diag gem is required to mint.`); process.exit(2); }
+
+  // Negative control (after warm-up): a known-bad instance must be rejected by BOTH oracles (rust via
+  // --ci) AND our decoder — else the cross-check is vacated (this is what catches a --ci-flag regression).
+  {
+    const spec = "n = uint";
+    const badHex = "627878";  // text "xx" — invalid for a uint
+    const { ruby, rust } = validateBoth(spec, badHex);
+    if (ruby === 0 || rust === 0) {
+      console.error(`HARNESS FAILURE: decode-conformance negative control was ACCEPTED by an oracle (ruby exit ${ruby}, rust --ci exit ${rust}); the two-oracle cross-check is not rejecting invalid CBOR (check the --ci flag). Refusing to mint.`);
+      process.exit(2);
+    }
+    if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
+    const res = replayInDir(ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
+    if (res === null || res.get("neg_control") !== true) {
+      console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
+      process.exit(2);
+    }
+    console.log("[mint] negative control OK (known-bad instance rejected by ruby, rust --ci, and our decoder).");
+  }
+
+  const matrix = JSON.parse(readFileSync(`${ROOT}/matrix.json`, "utf8"));
+  const anno: { id: string; status: string }[] = matrix.annotations?.cddl_codegen ?? [];
+  const exampleOf = new Map<string, { axis: string; example: string }>();
+  for (const f of matrix.features ?? []) if (f.example !== undefined) exampleOf.set(f.id, { axis: "feature", example: f.example });
+  for (const c of matrix.containment ?? []) if (c.example !== undefined) exampleOf.set(c.id, { axis: "containment", example: c.example });
+  for (const o of matrix.control_operators ?? []) if (o.example !== undefined) exampleOf.set(o.id, { axis: "control_op", example: o.example });
+  const supported = [...new Set(anno.filter(r => r.status === "supported").map(r => r.id))].sort();
+  if (supported.length < 80) { console.error(`HARNESS FAILURE: matrix.json reports only ${supported.length} supported rows (< 80 floor) — an implausibly small obligation set; refusing to mint.`); process.exit(2); }
+
+  const existing = existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map<string, CatalogRow>();
+  const outRows = new Map<string, CatalogRow>();
+  if (MINT_ONLY) {
+    const unknown = [...MINT_ONLY].filter(id => !supported.includes(id));
+    if (unknown.length) { console.error(`HARNESS FAILURE: --only names row(s) not 'supported' in matrix.json: ${unknown.join(", ")}`); process.exit(2); }
+    for (const [rid, row] of existing) if (!MINT_ONLY.has(rid)) outRows.set(rid, row);  // preserve verbatim
+  }
+  const toMint = supported.filter(id => (MINT_ONLY ? MINT_ONLY.has(id) : true));
+
+  const triage: string[] = [];   // spec-valid vectors our decoder REJECTED (new, class-less) -> exit 1
+  const pinBreak: string[] = []; // committed reject pins that now decode -> exit 1
+  const dropped: string[] = [];  // contested / oracle-artifact vectors dropped (logged, not committed)
+  const pinnedRows: string[] = [];
+  for (const id of toMint) {
+    const meta = exampleOf.get(id);
+    if (!meta) { console.error(`HARNESS FAILURE: supported row '${id}' has no example in matrix.json — cannot mint.`); process.exit(2); }
+    const row = mintRow(id, meta.axis, meta.example, existing.get(id), triage, pinBreak, dropped);
+    if (row.pinned_reason !== undefined) pinnedRows.push(`${id}: ${row.pinned_reason}`);
+    outRows.set(id, row);
+    const tag = row.pinned_reason !== undefined ? `PINNED (${row.pinned_reason})` : `${row.mode}, ${row.vectors.length} vector(s) [${row.type_name}]`;
+    console.log(`[mint] ${id}: ${tag}`);
+  }
+
+  const content = composeCatalog([...outRows.values()]);
+  try { Bun.TOML.parse(content); }
+  catch (e) { console.error(`HARNESS FAILURE: composed catalog.toml does not parse as TOML (${e}) — a writer bug, not a verdict. Refusing to write.`); process.exit(2); }
+  mkdirSync(dirname(CATALOG_PATH), { recursive: true });
+  writeFileSync(CATALOG_PATH, content);
+
+  const active = [...outRows.values()].filter(r => r.pinned_reason === undefined);
+  const nVectors = active.reduce((n, r) => n + r.vectors.length, 0);
+  const eq = "=".repeat(80);
+  console.log(`\n${eq}`);
+  console.log(`DECODE-CONFORMANCE MINT ${MINT_ONLY ? `(--only=${[...MINT_ONLY].sort().join(",")})` : "(full)"}`);
+  console.log(eq);
+  console.log(`rows written        : ${outRows.size} (minted ${toMint.length}, preserved ${outRows.size - toMint.length})`);
+  console.log(`active / pinned     : ${active.length} active, ${outRows.size - active.length} pinned_reason`);
+  console.log(`vectors             : ${nVectors} across ${active.length} active row(s)`);
+  console.log(`modes               : standalone=${active.filter(r => r.mode === "standalone").length} holder=${active.filter(r => r.mode === "holder").length}`);
+  if (pinnedRows.length) { console.log("\nPINNED (mechanically un-mintable):"); for (const p of pinnedRows) console.log(`  - ${p}`); }
+  if (dropped.length) { console.log("\nDROPPED VECTORS (contested / oracle artifact — not committed):"); for (const d of dropped) console.log(`  - ${d}`); }
+  console.log(`\nwrote ${CATALOG_PATH}`);
+  if (triage.length) {
+    console.log("\nTRIAGE-PENDING (spec-valid vectors our decoder REJECTED — committed as class-less reject rows; the drift gate stays RED until a human classifies each):");
+    for (const t of triage) console.log(`  - ${t}`);
+  }
+  if (pinBreak.length) {
+    console.log("\nPIN RE-CHECK FAILURES (committed reject pins that now decode — re-triage/unpin):");
+    for (const p of pinBreak) console.log(`  - ${p}`);
+  }
+  if (triage.length || pinBreak.length) { console.log("\nRESULT: MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
+  console.log("\nRESULT: MINT PASS");
+  process.exit(0);
+}
+
 // Warm the shared compile target ONCE (deps + the libtest harness build here; per-probe `cargo test`
 // is then incremental and fits PROBE_TIMEOUT). Without this the first probe's test would eat the whole
 // dep build and risk a spurious timeout -> false "does not round-trip". A trivial valid spec that MINTS
@@ -666,6 +1097,11 @@ if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tes
   console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, cargo test exit ${warmTest}, minted=${warmLib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
   process.exit(2);
 }
+
+// --mint-decode-foreign (D3): the rust warm-up above hot the shared target; mint per-row now and EXIT,
+// skipping the wasm/emission warm-ups and all probe loops (they are below and never run). Writes ONLY
+// the catalog, never annotations/verify_report.json.
+if (MINT_DECODE) runMintDecodeForeign();
 
 // Warm the WASM target the same way when the wasm probe is on (the default): the first wasm crate build (wasm-bindgen
 // + the libtest harness) can exceed PROBE_TIMEOUT, which would false-fail the first per-probe wasm test.
@@ -713,7 +1149,10 @@ for (const f of featureList) {
   // (a) — unsupported-at-default is unsupported everywhere, a derived fact recorded by ABSENCE of keys).
   // status === "supported" captures COMPILE_GATE_EXEMPT and vendor rows (both land status="supported").
   const emission = d.status === "supported" ? probeEmissions(f.id, f.example) : undefined;
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, embedded, emission, ...d });
+  // Decode-foreign oracle (D4): corroborate a supported verdict by replaying the committed spec-derived
+  // vectors through the generated decoder. Never changes `d.support`.
+  const foreign = d.status === "supported" ? decodeForeignProbe(f.id, f.example) : {};
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
 }
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
@@ -750,11 +1189,13 @@ for (const c of containCells) {
   // Emission-profile axis, same scoping rule (a) as the feature loop: probe preserve/json iff the cell's
   // default per-cell verdict is supported.
   const emission = support === "supported" ? probeEmissions(c.id, c.example!) : undefined;
+  const foreign = support === "supported" ? decodeForeignProbe(c.id, c.example!) : {};
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
     ruby: a, rust: b, parser_limitation, contradiction, example: c.example!,
     codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted,
-    minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, support, emission,
+    minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips,
+    accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, support, emission,
   });
 }
 
@@ -763,7 +1204,7 @@ for (const c of containCells) {
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
-interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string; emission?: Record<string, EmissionOutcome> }
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string; emission?: Record<string, EmissionOutcome>; accepts_foreign?: boolean; foreign_vectors?: number }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
 // ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
 // simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
@@ -790,7 +1231,8 @@ for (const co of controlOpCells) {
   const embedded = embedFallback(co.id, co.example!, cg);
   // Emission-profile axis, same scoping rule (a): probe preserve/json iff the op's default verdict is supported.
   const emission = v.supported ? probeEmissions(co.id, co.example!) : undefined;
-  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example!, emission });
+  const foreign = v.supported ? decodeForeignProbe(co.id, co.example!) : {};
+  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example!, emission, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors });
 }
 
 // Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
@@ -879,6 +1321,18 @@ const annoLines: string[] = [
   "#   means the row's default verdict is NOT supported, so it is unsupported under EVERY profile — a",
   "#   DERIVED fact, not silent inheritance. Emission verdicts are NEVER hand-authored; only a passing",
   "#   verify.ts run writes them. Until that run the committed file simply has no emission keys.",
+  // The decode-foreign header paragraph is emitted ONLY when the oracle is on, so an opted-out run
+  // (--no-decode-foreign / VERIFY_DECODE_FOREIGN=0) — whose per-row evidence also omits the clause — is
+  // byte-identical to a pre-feature run (the wasm-oracle opt-out discipline, applied to the header too).
+  ...(DECODE_FOREIGN ? [
+    "#",
+    "# DECODE-FOREIGN clause (the fourth gate direction, TESTING_ROADMAP item 6): a supported row's",
+    "#   `evidence` gains one of `; accepts N foreign spec-derived vector(s)` / `; foreign-vector decode",
+    "#   FAILED (…)` / `; no committed decode vectors (see catalog)`. This is the DEFAULT-ON decode-foreign",
+    "#   oracle: it regenerates from tests/decode_conformance/catalog.toml's committed `spec` and replays",
+    "#   spec-derived CBOR our code did NOT produce through the generated decoder — CORROBORATION ONLY, it",
+    "#   never changes a verdict.",
+  ] : []),
   "",
 ];
 // Emit the per-emission-profile dotted keys for one probed row, profiles sorted by name for
@@ -893,7 +1347,7 @@ function pushEmissionLines(emission?: Record<string, EmissionOutcome>) {
   }
 }
 for (const pr of probe_results) {
-  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
+  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
   if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
@@ -912,7 +1366,7 @@ annoLines.push("");
 for (const c of containment_corroboration.filter(c => c.support !== null)) {
   const roundtrips = c.test === 0 ? (c.minted ? "ok" : "n/a (nothing minted)") : "fail";
   const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}; round-trips=${roundtrips}` : "";
-  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c.minted_wasm, c.wasm_roundtrips)}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
+  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c.minted_wasm, c.wasm_roundtrips)}${decodeForeignEvidence({ accepts_foreign: c.accepts_foreign, foreign_vectors: c.foreign_vectors })}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(c.id)}`);
   annoLines.push(`status = ${tomlStr(c.support!)}`);
@@ -925,7 +1379,7 @@ for (const c of containment_corroboration.filter(c => c.support !== null)) {
 annoLines.push("# --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---");
 annoLines.push("");
 for (const co of controlop_support) {
-  const ev = `probe (control-op): cddl-codegen ${embedDetail(co.detail, co.embedded)}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
+  const ev = `probe (control-op): cddl-codegen ${embedDetail(co.detail, co.embedded)}${decodeForeignEvidence({ accepts_foreign: co.accepts_foreign, foreign_vectors: co.foreign_vectors })}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(co.id)}`);
   annoLines.push(`status = ${tomlStr(co.support)}`);
@@ -1000,6 +1454,31 @@ for (const prof of EMISSION_PROFILES) {
   };
 }
 
+// DECODE-FOREIGN oracle roll-up (D4): supported rows whose committed spec-derived vectors the generated
+// decoder REJECTED. Corroboration only — these never changed a support verdict; surfaced like EMISSION
+// DIVERGENCES so a regression is loud. Undefined `accepts_foreign` (opted out / no catalog entry / not
+// supported) is not a failure.
+interface DecodeForeignFailure { id: string; vectors: number }
+const decode_foreign_failures: DecodeForeignFailure[] = [];
+const collectForeignFailure = (id: string, af?: boolean, fv?: number) => {
+  if (af === false) decode_foreign_failures.push({ id, vectors: fv ?? 0 });
+};
+for (const pr of probe_results) collectForeignFailure(pr.id, pr.accepts_foreign, pr.foreign_vectors);
+for (const c of containment_corroboration) collectForeignFailure(c.id, c.accepts_foreign, c.foreign_vectors);
+for (const co of controlop_support) collectForeignFailure(co.id, co.accepts_foreign, co.foreign_vectors);
+decode_foreign_failures.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const foreignAll = [
+  ...probe_results.map(r => ({ af: r.accepts_foreign, fv: r.foreign_vectors })),
+  ...containment_corroboration.map(r => ({ af: r.accepts_foreign, fv: r.foreign_vectors })),
+  ...controlop_support.map(r => ({ af: r.accepts_foreign, fv: r.foreign_vectors })),
+];
+const decodeForeignCounts = {
+  rows_corroborated: foreignAll.filter(r => r.af === true).length,
+  rows_no_vectors: foreignAll.filter(r => r.af === undefined && r.fv === 0).length,
+  rows_failed: decode_foreign_failures.length,
+  vectors_accepted: foreignAll.filter(r => r.af === true).reduce((n, r) => n + (r.fv ?? 0), 0),
+};
+
 const report = {
   gaps,
   cddl_codegen_gaps,
@@ -1020,6 +1499,9 @@ const report = {
   containment_missing_example,
   emission_profiles: EMISSION_PROFILES.map(p => p.name),
   emission_divergences,
+  // Conditional so an opted-out run's verify_report.json is byte-identical to a pre-feature run (the
+  // per-probe accepts_foreign/foreign_vectors are already omitted when undefined; this omits the roll-up).
+  ...(DECODE_FOREIGN ? { decode_foreign_failures } : {}),
   target_profile: CDDL_CODEGEN_TARGET_PROFILE,
   summary: {
     features: features.length,
@@ -1055,6 +1537,7 @@ const report = {
     containment_missing_example: containment_missing_example.length,
     emission: emissionCounts,
     emission_divergent: emission_divergences.length,
+    ...(DECODE_FOREIGN ? { decode_foreign: decodeForeignCounts } : {}),
     harness_timeouts_retried,
   },
 };
@@ -1122,6 +1605,12 @@ for (const u of uncertain) console.log(`  - ${u}`);
 
 console.log("\nEMISSION DIVERGENCES (" + emission_divergences.length + "; default-supported but unsupported under a non-default emission profile):");
 for (const dv of emission_divergences) console.log(`  - ${dv.id} [emission=${dv.profile}]: ${dv.detail}`);
+
+if (DECODE_FOREIGN) {
+  console.log("\nDECODE-FOREIGN FAILURES (" + decode_foreign_failures.length + "; supported row whose committed spec-derived vectors the generated decoder REJECTED — corroboration only, verdict unchanged):");
+  for (const df of decode_foreign_failures) console.log(`  - ${df.id} (${df.vectors} accept vector(s))`);
+  console.log(`decode-foreign     : corroborated=${decodeForeignCounts.rows_corroborated} row(s) (${decodeForeignCounts.vectors_accepted} vector(s)); no-vectors=${decodeForeignCounts.rows_no_vectors}; failed=${decodeForeignCounts.rows_failed}`);
+}
 
 if (controlop_missing_example.length) {
   console.log("\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):");
