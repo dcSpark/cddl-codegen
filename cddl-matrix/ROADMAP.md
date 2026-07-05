@@ -502,6 +502,10 @@ evidence. Remaining:
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
 `~/.cargo/bin/cddl`), and cddl-codegen builds from this repo. The compile-gate reuses
 `integration_tests::feature_corpus_compiles`' pattern (shared `CARGO_TARGET_DIR`, one-time dep warm-up).
+**Pin the rust oracle to an immutable copy for a long run**: `verify.ts`'s default `RUST_CDDL` path is
+a sibling checkout's `target/debug/cddl`, which is an ACTIVE development tree (it carries `local-fixes`
+for upstream bugs) — a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
+somewhere immutable and point `RUST_CDDL` there before a multi-probe run.
 
 ## Explicitly out of scope (decided, not overlooked)
 
