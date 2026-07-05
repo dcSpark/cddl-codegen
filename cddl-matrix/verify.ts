@@ -966,8 +966,9 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   //   class="constraint" — spec-INVALID CBOR that violates a constraint the row enforces. Keep iff
   //     BOTH oracles still REJECT it (nonzero exit); a constraint vector that has BECOME spec-valid is
   //     upstream spec drift and is dropped/flagged. NOTE: the rust oracle (cddl 0.10.x) does NOT
-  //     enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne/.ge`) — it accepts in-type
-  //     boundary violations — so a boundary-violating vector on those rows cannot pass this
+  //     enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne/.ge`) over a `uint` target
+  //     (int-target controls ARE enforced — draft/rust-cddl-uint-control-op-gap.md) — it accepts
+  //     in-type boundary violations — so a boundary-violating vector on those rows cannot pass this
   //     both-reject gate; those rows stay `enforce = unverified` by design (ROADMAP § findings). A
   //     constraint vector must be BASE-TYPE-VALID (only the constraint rejects it) — a type-violation
   //     vector is not enforcement evidence. `.size`, `.cbor`, and cut qualify on that standard.

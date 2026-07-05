@@ -51,7 +51,9 @@
  * cut-violating map value; scoped to the row's single-member example, where the value-type check IS the
  * constraint surface). The numeric range/equality ops (`.le/.lt/.gt/.eq/.ne/.ge`) do NOT — deliberately:
  * cddl-codegen's decoder DOES enforce them (it emits a RangeCheck), but the rust corroborating oracle
- * (`cddl` 0.10.x) does NOT enforce numeric control ops in validation — it accepts a boundary violation
+ * (`cddl` 0.10.x) does NOT enforce numeric control ops over a `uint` target in validation (the
+ * committed probe examples are all uint-based; `int`-target controls ARE enforced — see
+ * `draft/rust-cddl-uint-control-op-gap.md`) — it accepts a boundary violation
  * like `11` for `uint .le 10` — so an in-type boundary-violating vector cannot pass the two-oracle
  * spec-invalid gate the catalog requires (ruby rejects it, rust does not). Rather than engineer green
  * with a type-violation vector (a negative for `uint .ge 0` — which tests the uint base type, not the

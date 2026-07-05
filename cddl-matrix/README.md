@@ -143,8 +143,9 @@ instance of its base type), certified spec-invalid by BOTH oracles at mint and d
 generated decoder — so `ctl.size`, `ctl.cbor` and `memberkey.cut` project
 `enforce = yes (bounded-reject)`. The numeric range/eq ops (`.le/.lt/.gt/.eq/.ne/.ge`) stay
 `unverified`: cddl-codegen's decoder enforces them (it emits a `RangeCheck`), but the rust
-corroborating oracle does not, so their in-type boundary-violating vectors cannot pass the both-reject
-gate — an honest oracle-coverage gap (ROADMAP § findings), not engineered green with a type-violation
+corroborating oracle does not enforce them over the committed examples' `uint` target (int-target
+controls it does enforce — ROADMAP § findings + § 1), so their in-type boundary-violating vectors
+cannot pass the both-reject gate — an honest oracle-coverage gap, not engineered green with a type-violation
 vector (which would test the base type, not the constraint). `ctl.default` is `n/a` (it governs an
 absent field — no rejectable instance).
 

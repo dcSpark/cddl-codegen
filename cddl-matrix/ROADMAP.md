@@ -38,6 +38,14 @@ subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold revie
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
+- **Turn the numeric-op enforcement rows green (`ctl.{le,lt,gt,eq,ne,ge}`).** The rust oracle's
+  uint-target gap (§ findings; repro + upstream report text in `draft/rust-cddl-uint-control-op-gap.md`)
+  blocks constraint vectors on the committed `uint`-based probe examples. Either wait out the upstream
+  fix, or switch the six examples in `control_examples.toml` to `int`-targeted forms with literal
+  bounds (both oracles verified rejecting today; give `.ge` a non-vacuous bound like `int .ge 5`), then
+  re-run `verify.ts` to re-mint the rows' evidence and hand-add the constraint vectors. On landing,
+  widen `query_q4_directional.ts`'s pinned `EXPECTED_ENFORCE_YES` set — the flip must come from real
+  vectors, not from loosening the base-type-valid standard.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -261,25 +269,30 @@ from a degenerate example.**
   an unsupported cell.
 
 **Oracle-coverage gap (NOT a cddl-codegen bug — surfaced by the enforcement reject vectors):**
-- The rust `cddl` CLI oracle (0.10.x, both the `~/.cargo/bin/cddl` build and the sibling repo) does
-  **not enforce the numeric range/equality control operators** (`.le` / `.lt` / `.gt` / `.eq` / `.ne`)
-  during `validate` — it accepts a boundary violation like `0x0b` (11) against `x = uint .le 10`
-  (verified: `cddl --ci validate` exits 0). cddl-codegen's generated decoder DOES enforce them (it emits
-  a `RangeCheck` on deserialize and rejects the violation), and the ruby reference oracle rejects them
-  too. But the decode-conformance catalog certifies a `class="constraint"` vector as spec-INVALID only
-  when BOTH oracles reject it (the inverse of the accept gate), so these rows cannot carry an in-type
-  boundary-violating constraint vector and honestly project `enforce = unverified (no reject vector)`
-  rather than being engineered green with a type-violation vector (which would test the base type, not
-  the constraint). `ctl.ge` sits with them: its committed example `x = uint .ge 0` has a bound that is
-  vacuous over its base type — NO in-type violation exists, so the only candidate vector (a negative)
-  is a type violation, not enforcement evidence. The three rows whose violating vector IS
-  base-type-valid — `ctl.size` (a valid bstr of the wrong length), `ctl.cbor` (a valid bstr whose
-  payload is CBOR null, not a uint), `memberkey.cut` (a well-formed map whose cut value is text, not
-  int — scoped to the row's single-member example) — are rejected by both oracles and DO carry
-  constraint vectors (`enforce = yes (bounded-reject)`). Closing the gap needs a rust oracle that enforces numeric
-  control ops (upstream `cddl` fix or a replacement corroborator); until then the enforcement axis is
-  intentionally partial and `query_q4_directional.ts --check` pins the exact green set so neither side
-  drifts.
+- The rust `cddl` CLI oracle (0.10.5) does **not enforce the numeric range/equality control operators
+  over a `uint` target** (`.le` / `.lt` / `.gt` / `.eq` / `.ne` / `.ge`) during `validate` — it accepts
+  a boundary violation like `0x0b` (11) against `x = uint .le 10` (`cddl --ci validate` exits 0). The
+  gap is **target-type-specific**: the identical controls over `int` ARE enforced (full repro matrix +
+  the ready-to-file upstream report: `draft/rust-cddl-uint-control-op-gap.md`). cddl-codegen's generated
+  decoder DOES enforce them (it emits a `RangeCheck` on deserialize and rejects the violation), and the
+  ruby reference oracle rejects them too. But the decode-conformance catalog certifies a
+  `class="constraint"` vector as spec-INVALID only when BOTH oracles reject it (the inverse of the
+  accept gate), and the committed probe examples for these ops are all `uint`-based
+  (`control_examples.toml`), so these rows cannot carry an in-type boundary-violating constraint vector
+  and honestly project `enforce = unverified (no reject vector)` rather than being engineered green
+  with a type-violation vector (which would test the base type, not the constraint). `ctl.ge` sits with
+  them: its committed example `x = uint .ge 0` has a bound that is vacuous over its base type — NO
+  in-type violation exists, so the only candidate vector (a negative) is a type violation, not
+  enforcement evidence. The three rows whose violating vector IS base-type-valid — `ctl.size` (a valid
+  bstr of the wrong length), `ctl.cbor` (a valid bstr whose payload is CBOR null, not a uint),
+  `memberkey.cut` (a well-formed map whose cut value is text, not int — scoped to the row's
+  single-member example) — are rejected by both oracles and DO carry constraint vectors
+  (`enforce = yes (bounded-reject)`). Two paths close it (either suffices, detailed in the draft note):
+  the upstream `cddl` fix, or switching the six ops' probe examples to `int`-targeted forms with
+  literal bounds (verified today: both oracles then reject the violations) — the latter costs a
+  `verify.ts` re-probe to re-mint each row's evidence, so it is a § 1-sized item for a session with the
+  oracle toolchain warm. Until then the enforcement axis is intentionally partial and
+  `query_q4_directional.ts --check` pins the exact green set so neither side drifts.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
