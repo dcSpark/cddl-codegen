@@ -49,6 +49,10 @@ script = [
 ]
 ```
 
+Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
+emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
+emitted type name, rename the `foo` identifier.
+
 ## @newtype
 
 With code like `foo = uint` this creates an alias e.g. `pub type Foo = u64;` in rust. When we use `foo = uint ; @newtype` it instead creates a `pub struct Foo(u64);`.
@@ -221,6 +225,9 @@ pub enum DocsGroupchoice {
 ```
 
 Due to the comment dsl parsing this doc comment cannot contain the character `@`.
+
+Known limitation: on a type choice of fixed values only (a dataless enum, e.g. `foo = 0 / 1`),
+per-variant `@doc` is currently not emitted; it works on data-carrying variants (e.g. `uint / tstr`).
 
 
 ## _CDDL_CODEGEN_EXTERN_TYPE_

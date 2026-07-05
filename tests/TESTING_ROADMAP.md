@@ -142,7 +142,8 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
   machinery for prose drift that review catches at its actual rate. NB this decision covers PROSE
   drift only — the separate class of a directive silently no-oping in an unenumerated attachment
   position (`@name` was dropped on arrow keys once and bareword keys once, both found by hand) is
-  a real gap with its own item: the directive × position cells in `cddl-matrix/ROADMAP.md` § 1. (The `example/`-half of this
+  a real class with its own standing system: the directive × attachment-position sweep
+  `src/tests/dsl_position_tests.rs`, hard-asserted against `comment_dsl.mdx`'s claims. (The `example/`-half of this
   decision — gating the getting-started command — was accepted and shipped as
   `integration_tests::getting_started_example`.)
 - Full `2^N` flag powerset / PICT pairwise — the curated named profiles cover the flag
