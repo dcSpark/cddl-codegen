@@ -1894,6 +1894,126 @@
       "spec": "disallowed"
     },
     {
+      "example": "t = { a: uint // b: tstr }",
+      "feature": "memberkey.bareword",
+      "id": "contain.group-choice-arm.memberkey.bareword.map",
+      "note": "Baseline map-representation group-choice arm with a bareword text key. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = { 1: uint // b: tstr }",
+      "feature": "memberkey.value",
+      "id": "contain.group-choice-arm.memberkey.value.map",
+      "note": "Map-representation group-choice arm with a supported fixed uint key. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = { \"k\": uint // b: tstr }",
+      "feature": "memberkey.value",
+      "id": "contain.group-choice-arm.memberkey.value.text_map",
+      "note": "Map-representation group-choice arm with a supported fixed text key. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "neg = { -1: uint // b: tstr }",
+      "feature": "memberkey.value",
+      "id": "contain.group-choice-arm.memberkey.value.nint_map",
+      "note": "Map-representation group-choice arm with a fixed negative integer key. Key writing/verification is only implemented for uint/text keys, matching the record map path; real nint support should land there before this flips to supported. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "flt = { 1.5: uint // b: tstr }",
+      "feature": "memberkey.value",
+      "id": "contain.group-choice-arm.memberkey.value.float_map",
+      "note": "Map-representation group-choice arm with a fixed float key. Key writing/verification is only implemented for uint/text keys, matching the record map path; real float-key support should land there before this flips to supported. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = { uint => tstr // b: tstr }",
+      "feature": "memberkey.type1",
+      "id": "contain.group-choice-arm.memberkey.type1.map",
+      "note": "Map-representation group-choice arm with a non-fixed key (`k => v`). Collapsing such an arm into an enum variant has nowhere to store the key and used to silently drop it; supporting this requires real table-arm dispatch. RFC8610 §2.2.2, §3.5.2.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "g = { bytes // b: tstr }",
+      "feature": "grpent.member",
+      "id": "contain.group-choice-arm.grpent.member.map",
+      "note": "Map-representation group-choice arm whose entry has no member key. A CBOR map arm must write key/value pairs, so a keyless arm has no well-formed wire shape; the Ruby reference rejects it as a map entry without member key while the Rust oracle accepts the grammar. A plain-group arm works because the referenced group owns its keys.",
+      "role": "role.group-choice-arm",
+      "spec": "disallowed"
+    },
+    {
+      "example": "g = { grp // b: tstr }\ngrp = (a: uint)",
+      "feature": "grpent.groupname",
+      "id": "contain.group-choice-arm.grpent.groupname.map",
+      "note": "Map-representation group-choice arm that references a named group; the referenced group owns the map keys. RFC8610 §2.2.1, §2.2.2.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = { a: uint, b: tstr // c: bytes }",
+      "feature": "grpchoice.sequence",
+      "id": "contain.group-choice-arm.grpchoice.sequence.map",
+      "note": "Map-representation group-choice arm with multiple fields, pinning arm dispatch for a whole grpchoice sequence rather than a single entry. RFC8610 §2.2.1, §2.2.2.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = { a: 0 // b: tstr }",
+      "feature": "type2.value",
+      "id": "contain.group-choice-arm.type2.value.map",
+      "note": "Map-representation group-choice arm with a fixed-value member type, a distinct dispatch/generation surface from fixed keys. RFC8610 §2.1, §2.2.2.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ uint // tstr ]",
+      "feature": "grpent.member",
+      "id": "contain.group-choice-arm.grpent.member.array",
+      "note": "Baseline array-representation group-choice arm: arms are positional entries and carry no map keys. RFC8610 §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ a: uint, b: tstr // c: bytes ]",
+      "feature": "grpchoice.sequence",
+      "id": "contain.group-choice-arm.grpchoice.sequence.array",
+      "note": "Array-representation group-choice arm with multiple entries, pinning arm dispatch for a whole grpchoice sequence. RFC8610 §2.2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ grp // tstr ]\ngrp = (uint, uint)",
+      "feature": "grpent.groupname",
+      "id": "contain.group-choice-arm.grpent.groupname.array",
+      "note": "Array-representation group-choice arm that references a named group. RFC8610 §2.2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ (uint, tstr) // bytes ]",
+      "feature": "grpent.inline_group",
+      "id": "contain.group-choice-arm.grpent.inline_group.array",
+      "note": "Array-representation group-choice arm containing an inline parenthesized group. RFC8610 §2.2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ {a: int, b: uint} // tstr ]",
+      "feature": "type2.map",
+      "id": "contain.group-choice-arm.type2.map.array",
+      "note": "Array-representation group-choice arm containing an anonymous map type; this isolates the anonymous-composite generation limit inside a `//` arm. RFC8610 §2.2.2, §3.4, §3.5.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
       "example": "m = { [int] => tstr }",
       "feature": "type2.array",
       "id": "contain.map-key.type2.array",
@@ -1908,6 +2028,150 @@
       "note": "A memberkey is a `type1`, which does NOT include the `/` type-choice (a `type`); the bare form `{ int / tstr => bool }` is rejected by both oracles. Parenthesizing — `(int / tstr)` — turns it into a type2 and is then a valid key. RFC8610 §3.5.2; ABNF memberkey / type1 (type1 excludes type-choice).",
       "role": "role.map-key",
       "spec": "disallowed"
+    },
+    {
+      "example": "m = { 1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.uint_colon_single",
+      "note": "Single-entry struct map with a fixed uint colon key. RFC8610 §3.5.1.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 2: uint, 1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.uint_colon_multi",
+      "note": "Multi-entry struct map with a fixed uint colon key plus a sibling, pinning arity-sensitive record routing. RFC8610 §3.5.1.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1 => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.uint_arrow_single",
+      "note": "Single-entry fixed-value arrow key. A literal-key `k => v` is the same wire entry as `k: v`, so it must route to the record path rather than table-detecting a fixed domain.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 2 => uint, 1: uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.uint_arrow_multi",
+      "note": "Multi-entry fixed-value arrow key with a sibling, pinning arrow-key record routing beyond the single-entry case. RFC8610 §3.5.2.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { \"k\": uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.text_colon_single",
+      "note": "Single-entry struct map with a fixed text colon key. RFC8610 §3.5.1.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { \"k\": uint, 1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.text_colon_multi",
+      "note": "Multi-entry struct map with a fixed text colon key plus a sibling. RFC8610 §3.5.1.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { \"k\" => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.text_arrow_single",
+      "note": "Single-entry fixed text arrow key; equivalent wire shape to the colon spelling but a distinct parser/generator route. RFC8610 §3.5.2.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { \"k\" => uint, 1: uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.text_arrow_multi",
+      "note": "Multi-entry fixed text arrow key with a sibling, pinning arrow-key record routing. RFC8610 §3.5.2.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "neg = { -1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.nint_colon_single",
+      "note": "Single-entry struct map with a fixed negative integer key. Only uint/text fixed keys are implemented on the record path; this should reject gracefully until real nint key support lands.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "neg = { -1: uint, 1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.nint_colon_multi",
+      "note": "Multi-entry struct map with a fixed negative integer key plus a supported sibling, matching the hand-pin shape for unsupported record-map keys.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "neg = { -1 => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.nint_arrow_single",
+      "note": "Single-entry fixed negative integer arrow key; it must reject gracefully rather than exposing a fixed-domain table path.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "neg = { -1 => uint, 1: uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.nint_arrow_multi",
+      "note": "Multi-entry fixed negative integer arrow key with a sibling; unsupported nint fixed keys should reject gracefully on the record path.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "flt = { 1.5: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.float_colon_single",
+      "note": "Single-entry struct map with a fixed float key. Only uint/text fixed keys are implemented on the record path; this should reject gracefully until real float key support lands.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "flt = { 1.5: uint, 1: uint }",
+      "feature": "memberkey.value",
+      "id": "contain.map-key.memberkey.value.float_colon_multi",
+      "note": "Multi-entry struct map with a fixed float key plus a supported sibling. Unsupported float fixed keys should reject gracefully, not panic.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "flt = { 1.5 => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.float_arrow_single",
+      "note": "Single-entry fixed float arrow key; it must reject gracefully rather than exposing a fixed-domain table path.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "flt = { 1.5 => uint, 1: uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.float_arrow_multi",
+      "note": "Multi-entry fixed float arrow key with a sibling; unsupported float fixed keys should reject gracefully on the record path.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { true => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.bool_arrow_single",
+      "note": "Single-entry fixed bool arrow key. Bool fixed keys are expressible through `true => v`; the colon spelling `true:` is a bareword text key and is intentionally not a bool cell.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { true => uint, 1: uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.bool_arrow_multi",
+      "note": "Multi-entry fixed bool arrow key with a sibling. Unsupported bool fixed keys should reject gracefully rather than panic.",
+      "role": "role.map-key",
+      "spec": "allowed"
     },
     {
       "example": "m = { k: int / tstr, j: uint }",
@@ -1962,6 +2226,94 @@
       "feature": "grpent.inline_group",
       "id": "contain.occurrence-target.grpent.inline_group",
       "note": "One occurrence applies to a whole parenthesized sub-group, repeating the entire entry tuple: `[* (int, tstr)]`. RFC8610 §3.2, §2.2; ABNF grpent / [occur] inline-group.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [+ (int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.plus_array",
+      "note": "A one-or-more occurrence on an inline array group repeats the tuple. The generator should reject rather than silently narrowing the group to exactly once; supporting this requires real Vec-of-synthesized-group support. RFC8610 §3.2, §3.4.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [? (int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.optional_array",
+      "note": "An optional occurrence on an inline array group permits the tuple to be absent. The generator should reject rather than silently narrowing the group to exactly once. RFC8610 §3.2, §3.4.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [2*5 (int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.bounded_array",
+      "note": "A bounded occurrence on an inline array group repeats the tuple. The generator should reject rather than silently narrowing the group to exactly once. RFC8610 §3.2, §3.4.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [1*1 (int, tstr)]",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.exactly_once_array",
+      "note": "An exactly-once occurrence on an inline array group has exactly the same semantics as flattening the group once, so flattening is sound. RFC8610 §3.2, §3.4.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = { * (k: int) }",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.zero_map",
+      "note": "A zero-permitting occurrence on an inline map group permits the keyed entry to be absent. The generator should reject rather than silently narrowing it to mandatory; supporting this requires real Option-style support for zero-permitting map markers. RFC8610 §3.2, §3.5.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = { + (k: int) }",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.plus_map",
+      "note": "A one-or-more occurrence on an inline map group collapses to mandatory under unique map keys, so flattening to one keyed field is sound. RFC8610 §3.2, §3.5.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = { * (int => tstr) }",
+      "feature": "grpent.inline_group",
+      "id": "contain.occurrence-target.grpent.inline_group.table_map",
+      "note": "A zero-or-more occurrence on a parenthesized table entry remains a table (`BTreeMap`) rather than a zero-permitting struct field. RFC8610 §3.2, §3.5.2.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "plain = { * t: uint }",
+      "feature": "memberkey.bareword",
+      "id": "contain.occurrence-target.memberkey.bareword.zero_map",
+      "note": "A zero-permitting occurrence on a keyed struct-map field permits the entry to be absent. The generator should reject gracefully rather than silently narrowing it to mandatory; `?` is the supported optional spelling. RFC8610 §3.2, §3.5.1.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "multi = { a: uint, 0*1 b: uint }",
+      "feature": "memberkey.bareword",
+      "id": "contain.occurrence-target.memberkey.bareword.zero_bounded_map",
+      "note": "A bounded occurrence with lower bound zero on a keyed struct-map field permits absence. The generator should reject gracefully rather than silently narrowing it to mandatory. RFC8610 §3.2, §3.5.1.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [* pair]\npair = (int, tstr)",
+      "feature": "grpent.groupname",
+      "id": "contain.occurrence-target.grpent.groupname",
+      "note": "A zero-or-more occurrence can target a named group reference; naming the group is the supported workaround for repeated tuple groups and pins the sole-use plain-group registration path. RFC8610 §2.2.1, §3.2.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { * grp }\ngrp = (k: int)",
+      "feature": "grpent.groupname",
+      "id": "contain.occurrence-target.grpent.groupname.table_map",
+      "note": "A zero-or-more occurrence can target a named group reference in map representation; this probes the named-group map occupant rather than an inline table. RFC8610 §2.2.1, §3.2, §3.5.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4008,10 +4360,16 @@
       "title": "Tag content"
     },
     {
-      "desc": "A member of a type choice (`/`) or group choice (`//`).",
-      "grammar": "RFC8610 ABNF: type (type1 *(\"/\" type1)) ; grpchoice",
+      "desc": "A member of a type choice (`/`).",
+      "grammar": "RFC8610 ABNF: type (type1 *(\"/\" type1))",
       "id": "role.choice-member",
       "title": "Choice alternative"
+    },
+    {
+      "desc": "A `//` group-choice arm as a container; map-rep arms carry member keys, array-rep arms do not.",
+      "grammar": "RFC8610 ABNF: grpchoice = group *(S \"//\" S group)",
+      "id": "role.group-choice-arm",
+      "title": "Group-choice arm"
     },
     {
       "desc": "The entry an occurrence indicator (`?`, `*`, `+`, `n*m`) applies to.",

@@ -1,0 +1,2 @@
+arr = [int]
+m = { k: ~arr, j: uint }

@@ -27,3 +27,91 @@ feature = "grpent.inline_group"
 spec = "allowed"
 note = "One occurrence applies to a whole parenthesized sub-group, repeating the entire entry tuple: `[* (int, tstr)]`. RFC8610 §3.2, §2.2; ABNF grpent / [occur] inline-group."
 example = "a = [* (int, tstr)]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.plus_array"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A one-or-more occurrence on an inline array group repeats the tuple. The generator should reject rather than silently narrowing the group to exactly once; supporting this requires real Vec-of-synthesized-group support. RFC8610 §3.2, §3.4."
+example = "a = [+ (int, tstr)]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.optional_array"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "An optional occurrence on an inline array group permits the tuple to be absent. The generator should reject rather than silently narrowing the group to exactly once. RFC8610 §3.2, §3.4."
+example = "a = [? (int, tstr)]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.bounded_array"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A bounded occurrence on an inline array group repeats the tuple. The generator should reject rather than silently narrowing the group to exactly once. RFC8610 §3.2, §3.4."
+example = "a = [2*5 (int, tstr)]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.exactly_once_array"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "An exactly-once occurrence on an inline array group has exactly the same semantics as flattening the group once, so flattening is sound. RFC8610 §3.2, §3.4."
+example = "a = [1*1 (int, tstr)]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.zero_map"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A zero-permitting occurrence on an inline map group permits the keyed entry to be absent. The generator should reject rather than silently narrowing it to mandatory; supporting this requires real Option-style support for zero-permitting map markers. RFC8610 §3.2, §3.5."
+example = "a = { * (k: int) }"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.plus_map"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A one-or-more occurrence on an inline map group collapses to mandatory under unique map keys, so flattening to one keyed field is sound. RFC8610 §3.2, §3.5."
+example = "a = { + (k: int) }"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.inline_group.table_map"
+role = "role.occurrence-target"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "A zero-or-more occurrence on a parenthesized table entry remains a table (`BTreeMap`) rather than a zero-permitting struct field. RFC8610 §3.2, §3.5.2."
+example = "a = { * (int => tstr) }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.bareword.zero_map"
+role = "role.occurrence-target"
+feature = "memberkey.bareword"
+spec = "allowed"
+note = "A zero-permitting occurrence on a keyed struct-map field permits the entry to be absent. The generator should reject gracefully rather than silently narrowing it to mandatory; `?` is the supported optional spelling. RFC8610 §3.2, §3.5.1."
+example = "plain = { * t: uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.bareword.zero_bounded_map"
+role = "role.occurrence-target"
+feature = "memberkey.bareword"
+spec = "allowed"
+note = "A bounded occurrence with lower bound zero on a keyed struct-map field permits absence. The generator should reject gracefully rather than silently narrowing it to mandatory. RFC8610 §3.2, §3.5.1."
+example = "multi = { a: uint, 0*1 b: uint }"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.groupname"
+role = "role.occurrence-target"
+feature = "grpent.groupname"
+spec = "allowed"
+note = "A zero-or-more occurrence can target a named group reference; naming the group is the supported workaround for repeated tuple groups and pins the sole-use plain-group registration path. RFC8610 §2.2.1, §3.2."
+example = "a = [* pair]\npair = (int, tstr)"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.groupname.table_map"
+role = "role.occurrence-target"
+feature = "grpent.groupname"
+spec = "allowed"
+note = "A zero-or-more occurrence can target a named group reference in map representation; this probes the named-group map occupant rather than an inline table. RFC8610 §2.2.1, §3.2, §3.5."
+example = "m = { * grp }\ngrp = (k: int)"

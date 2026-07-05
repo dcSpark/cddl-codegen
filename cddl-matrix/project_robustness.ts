@@ -29,8 +29,9 @@
  * fine under generate-only; an out-of-profile panic still panics), the --check cross-check derives the
  * expected label PER ROW from the row's evidence class (below), not uniformly.
  *
- * contain.* (role x feature) cells are deliberately excluded from ALL three dirs — they carry no
- * standalone probe example and are a different axis (the role x feature corpus already covers them).
+ * contain.* (role x feature) cells are projected too. Their support probes use a cell-specific
+ * evidence vocabulary (`probe (cell): cddl-codegen exit ...`), but still map onto the same three
+ * generate-only outcome catalogs.
  *
  * Run from cddl-matrix/:
  *   bun run project_robustness.ts          -> (re)writes all three fixture dirs from matrix.json
@@ -49,6 +50,11 @@ const CHECK = process.argv.includes("--check");
 // reasons, and generate-only observes each differently). Returns null if the evidence shape is one
 // this catalog should never contain (a hard drift: the vocabulary drifted; the caller fails loud).
 function rejectExpectedLabel(evidence: string): string | null {
+  if (evidence.startsWith("probe (cell): cddl-codegen exit 1")) return "error (graceful)";
+  // Cell support can be downgraded by post-generation compile/test gaps. A generate-only reject
+  // catalog fixture will still record `ok` for those rows, same as feature-level compile gaps.
+  if (evidence.startsWith("probe (cell): cddl-codegen exit 0;")) return "ok";
+  if (evidence.startsWith("probe (cell): cddl-codegen exit 101")) return "PANIC";
   if (evidence.includes("rejected at parse/lex")) return "error (graceful)";
   // The gap is POST-generation (won't compile, or emitted round-trip tests fail); a generate-only
   // pass legitimately succeeds, so the catalog records `ok`. This is not drift — the reject catalog
@@ -64,17 +70,23 @@ function rejectExpectedLabel(evidence: string): string | null {
   return null;
 }
 
+function isPanicEvidence(evidence: string): boolean {
+  return evidence.includes("panic (exit 101)") || evidence.startsWith("probe (cell): cddl-codegen exit 101");
+}
+
 interface Ann { id: string; status: string; evidence?: string }
 interface Ex { id: string; example: string }
 const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
   features: Ex[];
+  containment: Ex[];
   control_operators: Ex[];
   annotations: { cddl_codegen: Ann[] };
 };
 
-// id -> minimal example, for features + control-ops only (contain.* cells have no standalone example).
+// id -> minimal example. Features/control-ops use their support-probe examples; containment cells use
+// their role-specific cell examples.
 const exampleById = new Map<string, string>(
-  [...matrix.features, ...matrix.control_operators].map(f => [f.id, f.example]),
+  [...matrix.features, ...matrix.control_operators, ...matrix.containment].map(f => [f.id, f.example]),
 );
 
 const supported: Ex[] = [];
@@ -88,19 +100,18 @@ const rejectEvidenceDrift: string[] = [];
 for (const a of matrix.annotations.cddl_codegen) {
   const ex = exampleById.get(a.id);
   if (ex === undefined) {
-    // contain.* (per-cell role × feature) rows legitimately carry no standalone example; ANY other
-    // dropped id is a feature/control-op with no example to project = a silent coverage gap. Surface it.
-    if (!a.id.startsWith("contain.")) droppedNoExample.push(`${a.id} (${a.status})`);
+    // Any annotated row without a projectable example is a silent coverage gap. Surface it.
+    droppedNoExample.push(`${a.id} (${a.status})`);
     continue;
   }
   const evidence = a.evidence ?? "";
   if (a.status === "supported") supported.push({ id: a.id, example: ex });
-  else if (a.status === "unsupported" && evidence.includes("panic (exit 101)"))
+  else if (a.status === "unsupported" && isPanicEvidence(evidence))
     panic.push({ id: a.id, example: ex });
   // Reject catalog: non-panic unsupported rows (parse-rejected, generates-but-doesn't-compile) plus
   // every out_of_profile row (which can itself be panic-class, e.g. type2.tag_head_type).
   else if (
-    (a.status === "unsupported" && !evidence.includes("panic (exit 101)")) ||
+    (a.status === "unsupported" && !isPanicEvidence(evidence)) ||
     a.status === "out_of_profile"
   ) {
     reject.push({ id: a.id, example: ex });
