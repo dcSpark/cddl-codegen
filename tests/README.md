@@ -662,10 +662,11 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) t
 > (`ok` / `error (graceful)` / `PANIC`, a scorecard — a committed `PANIC` is a tracked-known gap, a NEW
 > one is a regression); `identifier_hazard_crates_compile` (`#[ignore]`, check.ts full tier) *compiles*
 > the `ok` cells — bundling each position's non-pinned hazards into one crate to avoid ~hundreds of
-> `cargo check`s, minus a pinned `EXPECTED_COMPILE_FAIL` set (today: `r` in the struct rule-name, enum
-> rule-name, and group-name positions; `w` in the enum rule-name position only — struct-shaped `w`
-> genuinely compiles) asserted to fail INDIVIDUALLY so the pins flip loudly when the generic-collision
-> fix lands.
+> `cargo check`s, minus a pinned `EXPECTED_COMPILE_FAIL` set of known does-not-compile cells asserted
+> to fail INDIVIDUALLY so a pin flips loudly when its fix lands (currently EMPTY: the shape-dependent
+> `r`/`w` generic-collision pins it launched with were flipped by the collision-proof generic names —
+> `pick_generic_name` renames the emitted `R`/`W` off any defined ident, pinned by
+> `generic_names_are_collision_proofed_against_rw_idents`).
 > A non-pinned bundle that fails to compile is a NEW hazard finding to add to the pin list (with a
 > reason) and report — not to paper over by editing the generator.
 
