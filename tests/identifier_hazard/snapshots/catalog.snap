@@ -1,0 +1,399 @@
+---
+source: src/tests/identifier_hazard_tests.rs
+expression: catalog
+---
+# identifier-hazard sweep: generation outcome per (name-position × hazardous identifier) — a
+# SCORECARD, not a contract. A committed PANIC is a TRACKED-KNOWN gap (today: rule/group names
+# whose camel-cased form is a reserved Rust type name or a CDDL keyword hit the `assert!` guards
+# in `RustIdent::new`, intermediate.rs:1146/1152 — a deliberate reservation, but via panic
+# rather than a graceful `record_rejection`; candidate fix, not blessed-correct). A NEW panic —
+# a cell FLIPPING to PANIC, or a panic decaying to a silently-wrong `ok` — is a regression:
+# hazardous names must reject gracefully, never `panic!`/`assert!`. `ok` is generate-only — a
+# rule/group name that generates but does NOT compile (the r/w generic collision) still records
+# `ok`; the compile verdict is the `identifier_hazard_crates_compile` gate (full tier).
+# Source: src/tests/identifier_hazard_tests.rs.
+
+rule-name       as         ok
+rule-name       break      ok
+rule-name       const      ok
+rule-name       continue   ok
+rule-name       crate      ok
+rule-name       dyn        ok
+rule-name       else       ok
+rule-name       enum       ok
+rule-name       extern     ok
+rule-name       false      PANIC
+rule-name       fn         PANIC
+rule-name       for        ok
+rule-name       if         ok
+rule-name       impl       ok
+rule-name       in         ok
+rule-name       let        ok
+rule-name       loop       ok
+rule-name       match      ok
+rule-name       mod        ok
+rule-name       move       ok
+rule-name       mut        ok
+rule-name       pub        ok
+rule-name       ref        ok
+rule-name       return     ok
+rule-name       self       PANIC
+rule-name       Self       PANIC
+rule-name       static     ok
+rule-name       struct     ok
+rule-name       super      ok
+rule-name       trait      ok
+rule-name       true       PANIC
+rule-name       type       ok
+rule-name       unsafe     ok
+rule-name       use        ok
+rule-name       where      ok
+rule-name       while      ok
+rule-name       async      ok
+rule-name       await      ok
+rule-name       try        ok
+rule-name       abstract   ok
+rule-name       become     ok
+rule-name       box        PANIC
+rule-name       do         ok
+rule-name       final      ok
+rule-name       macro      ok
+rule-name       override   ok
+rule-name       priv       ok
+rule-name       typeof     ok
+rule-name       unsized    ok
+rule-name       virtual    ok
+rule-name       yield      ok
+rule-name       gen        ok
+rule-name       r          ok
+rule-name       w          ok
+rule-name       option     PANIC
+rule-name       some       PANIC
+rule-name       none       PANIC
+rule-name       result     PANIC
+rule-name       ok         PANIC
+rule-name       err        PANIC
+rule-name       vec        PANIC
+rule-name       string     PANIC
+rule-name       int        ok
+rule-name       error      ok
+rule-name-enum  as         ok
+rule-name-enum  break      ok
+rule-name-enum  const      ok
+rule-name-enum  continue   ok
+rule-name-enum  crate      ok
+rule-name-enum  dyn        ok
+rule-name-enum  else       ok
+rule-name-enum  enum       ok
+rule-name-enum  extern     ok
+rule-name-enum  false      PANIC
+rule-name-enum  fn         PANIC
+rule-name-enum  for        ok
+rule-name-enum  if         ok
+rule-name-enum  impl       ok
+rule-name-enum  in         ok
+rule-name-enum  let        ok
+rule-name-enum  loop       ok
+rule-name-enum  match      ok
+rule-name-enum  mod        ok
+rule-name-enum  move       ok
+rule-name-enum  mut        ok
+rule-name-enum  pub        ok
+rule-name-enum  ref        ok
+rule-name-enum  return     ok
+rule-name-enum  self       PANIC
+rule-name-enum  Self       PANIC
+rule-name-enum  static     ok
+rule-name-enum  struct     ok
+rule-name-enum  super      ok
+rule-name-enum  trait      ok
+rule-name-enum  true       PANIC
+rule-name-enum  type       ok
+rule-name-enum  unsafe     ok
+rule-name-enum  use        ok
+rule-name-enum  where      ok
+rule-name-enum  while      ok
+rule-name-enum  async      ok
+rule-name-enum  await      ok
+rule-name-enum  try        ok
+rule-name-enum  abstract   ok
+rule-name-enum  become     ok
+rule-name-enum  box        PANIC
+rule-name-enum  do         ok
+rule-name-enum  final      ok
+rule-name-enum  macro      ok
+rule-name-enum  override   ok
+rule-name-enum  priv       ok
+rule-name-enum  typeof     ok
+rule-name-enum  unsized    ok
+rule-name-enum  virtual    ok
+rule-name-enum  yield      ok
+rule-name-enum  gen        ok
+rule-name-enum  r          ok
+rule-name-enum  w          ok
+rule-name-enum  option     PANIC
+rule-name-enum  some       PANIC
+rule-name-enum  none       PANIC
+rule-name-enum  result     PANIC
+rule-name-enum  ok         PANIC
+rule-name-enum  err        PANIC
+rule-name-enum  vec        PANIC
+rule-name-enum  string     PANIC
+rule-name-enum  int        ok
+rule-name-enum  error      ok
+map-key         as         error (graceful)
+map-key         break      error (graceful)
+map-key         const      error (graceful)
+map-key         continue   error (graceful)
+map-key         crate      error (graceful)
+map-key         dyn        error (graceful)
+map-key         else       error (graceful)
+map-key         enum       error (graceful)
+map-key         extern     error (graceful)
+map-key         false      error (graceful)
+map-key         fn         error (graceful)
+map-key         for        error (graceful)
+map-key         if         error (graceful)
+map-key         impl       error (graceful)
+map-key         in         error (graceful)
+map-key         let        error (graceful)
+map-key         loop       error (graceful)
+map-key         match      error (graceful)
+map-key         mod        error (graceful)
+map-key         move       error (graceful)
+map-key         mut        error (graceful)
+map-key         pub        error (graceful)
+map-key         ref        error (graceful)
+map-key         return     error (graceful)
+map-key         self       error (graceful)
+map-key         Self       error (graceful)
+map-key         static     error (graceful)
+map-key         struct     error (graceful)
+map-key         super      error (graceful)
+map-key         trait      error (graceful)
+map-key         true       error (graceful)
+map-key         type       error (graceful)
+map-key         unsafe     error (graceful)
+map-key         use        error (graceful)
+map-key         where      error (graceful)
+map-key         while      error (graceful)
+map-key         async      error (graceful)
+map-key         await      error (graceful)
+map-key         try        error (graceful)
+map-key         abstract   error (graceful)
+map-key         become     error (graceful)
+map-key         box        error (graceful)
+map-key         do         error (graceful)
+map-key         final      error (graceful)
+map-key         macro      error (graceful)
+map-key         override   error (graceful)
+map-key         priv       error (graceful)
+map-key         typeof     error (graceful)
+map-key         unsized    error (graceful)
+map-key         virtual    error (graceful)
+map-key         yield      error (graceful)
+map-key         gen        error (graceful)
+map-key         r          ok
+map-key         w          ok
+map-key         option     ok
+map-key         some       ok
+map-key         none       ok
+map-key         result     ok
+map-key         ok         ok
+map-key         err        ok
+map-key         vec        ok
+map-key         string     ok
+map-key         int        ok
+map-key         error      ok
+array-key       as         error (graceful)
+array-key       break      error (graceful)
+array-key       const      error (graceful)
+array-key       continue   error (graceful)
+array-key       crate      error (graceful)
+array-key       dyn        error (graceful)
+array-key       else       error (graceful)
+array-key       enum       error (graceful)
+array-key       extern     error (graceful)
+array-key       false      error (graceful)
+array-key       fn         error (graceful)
+array-key       for        error (graceful)
+array-key       if         error (graceful)
+array-key       impl       error (graceful)
+array-key       in         error (graceful)
+array-key       let        error (graceful)
+array-key       loop       error (graceful)
+array-key       match      error (graceful)
+array-key       mod        error (graceful)
+array-key       move       error (graceful)
+array-key       mut        error (graceful)
+array-key       pub        error (graceful)
+array-key       ref        error (graceful)
+array-key       return     error (graceful)
+array-key       self       error (graceful)
+array-key       Self       error (graceful)
+array-key       static     error (graceful)
+array-key       struct     error (graceful)
+array-key       super      error (graceful)
+array-key       trait      error (graceful)
+array-key       true       error (graceful)
+array-key       type       error (graceful)
+array-key       unsafe     error (graceful)
+array-key       use        error (graceful)
+array-key       where      error (graceful)
+array-key       while      error (graceful)
+array-key       async      error (graceful)
+array-key       await      error (graceful)
+array-key       try        error (graceful)
+array-key       abstract   error (graceful)
+array-key       become     error (graceful)
+array-key       box        error (graceful)
+array-key       do         error (graceful)
+array-key       final      error (graceful)
+array-key       macro      error (graceful)
+array-key       override   error (graceful)
+array-key       priv       error (graceful)
+array-key       typeof     error (graceful)
+array-key       unsized    error (graceful)
+array-key       virtual    error (graceful)
+array-key       yield      error (graceful)
+array-key       gen        error (graceful)
+array-key       r          ok
+array-key       w          ok
+array-key       option     ok
+array-key       some       ok
+array-key       none       ok
+array-key       result     ok
+array-key       ok         ok
+array-key       err        ok
+array-key       vec        ok
+array-key       string     ok
+array-key       int        ok
+array-key       error      ok
+group-name      as         error (graceful)
+group-name      break      error (graceful)
+group-name      const      error (graceful)
+group-name      continue   error (graceful)
+group-name      crate      error (graceful)
+group-name      dyn        error (graceful)
+group-name      else       error (graceful)
+group-name      enum       error (graceful)
+group-name      extern     error (graceful)
+group-name      false      PANIC
+group-name      fn         PANIC
+group-name      for        error (graceful)
+group-name      if         error (graceful)
+group-name      impl       error (graceful)
+group-name      in         error (graceful)
+group-name      let        error (graceful)
+group-name      loop       error (graceful)
+group-name      match      error (graceful)
+group-name      mod        error (graceful)
+group-name      move       error (graceful)
+group-name      mut        error (graceful)
+group-name      pub        error (graceful)
+group-name      ref        error (graceful)
+group-name      return     error (graceful)
+group-name      self       PANIC
+group-name      Self       PANIC
+group-name      static     error (graceful)
+group-name      struct     error (graceful)
+group-name      super      error (graceful)
+group-name      trait      error (graceful)
+group-name      true       PANIC
+group-name      type       error (graceful)
+group-name      unsafe     error (graceful)
+group-name      use        error (graceful)
+group-name      where      error (graceful)
+group-name      while      error (graceful)
+group-name      async      error (graceful)
+group-name      await      error (graceful)
+group-name      try        error (graceful)
+group-name      abstract   error (graceful)
+group-name      become     error (graceful)
+group-name      box        PANIC
+group-name      do         error (graceful)
+group-name      final      error (graceful)
+group-name      macro      error (graceful)
+group-name      override   error (graceful)
+group-name      priv       error (graceful)
+group-name      typeof     error (graceful)
+group-name      unsized    error (graceful)
+group-name      virtual    error (graceful)
+group-name      yield      error (graceful)
+group-name      gen        error (graceful)
+group-name      r          ok
+group-name      w          ok
+group-name      option     PANIC
+group-name      some       PANIC
+group-name      none       PANIC
+group-name      result     PANIC
+group-name      ok         PANIC
+group-name      err        PANIC
+group-name      vec        PANIC
+group-name      string     PANIC
+group-name      int        PANIC
+group-name      error      ok
+name-directive  as         error (graceful)
+name-directive  break      error (graceful)
+name-directive  const      error (graceful)
+name-directive  continue   error (graceful)
+name-directive  crate      error (graceful)
+name-directive  dyn        error (graceful)
+name-directive  else       error (graceful)
+name-directive  enum       error (graceful)
+name-directive  extern     error (graceful)
+name-directive  false      error (graceful)
+name-directive  fn         error (graceful)
+name-directive  for        error (graceful)
+name-directive  if         error (graceful)
+name-directive  impl       error (graceful)
+name-directive  in         error (graceful)
+name-directive  let        error (graceful)
+name-directive  loop       error (graceful)
+name-directive  match      error (graceful)
+name-directive  mod        error (graceful)
+name-directive  move       error (graceful)
+name-directive  mut        error (graceful)
+name-directive  pub        error (graceful)
+name-directive  ref        error (graceful)
+name-directive  return     error (graceful)
+name-directive  self       error (graceful)
+name-directive  Self       error (graceful)
+name-directive  static     error (graceful)
+name-directive  struct     error (graceful)
+name-directive  super      error (graceful)
+name-directive  trait      error (graceful)
+name-directive  true       error (graceful)
+name-directive  type       error (graceful)
+name-directive  unsafe     error (graceful)
+name-directive  use        error (graceful)
+name-directive  where      error (graceful)
+name-directive  while      error (graceful)
+name-directive  async      error (graceful)
+name-directive  await      error (graceful)
+name-directive  try        error (graceful)
+name-directive  abstract   error (graceful)
+name-directive  become     error (graceful)
+name-directive  box        error (graceful)
+name-directive  do         error (graceful)
+name-directive  final      error (graceful)
+name-directive  macro      error (graceful)
+name-directive  override   error (graceful)
+name-directive  priv       error (graceful)
+name-directive  typeof     error (graceful)
+name-directive  unsized    error (graceful)
+name-directive  virtual    error (graceful)
+name-directive  yield      error (graceful)
+name-directive  gen        error (graceful)
+name-directive  r          ok
+name-directive  w          ok
+name-directive  option     ok
+name-directive  some       ok
+name-directive  none       ok
+name-directive  result     ok
+name-directive  ok         ok
+name-directive  err        ok
+name-directive  vec        ok
+name-directive  string     ok
+name-directive  int        ok
+name-directive  error      ok

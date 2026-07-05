@@ -11,6 +11,7 @@
 //! (`cargo insta test -- snapshot_tests robustness`, `cargo test --bin cddl-codegen <name>`), so
 //! the paths must keep containing `snapshot_tests`, `robustness`, and the documented fn names.
 
+pub(crate) mod identifier_hazard_tests;
 pub(crate) mod integration_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod snapshot_tests;

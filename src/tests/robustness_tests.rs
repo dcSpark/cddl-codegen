@@ -15,10 +15,12 @@
 use crate::cli::Cli;
 use clap::Parser;
 
-/// The global panic hook is process-wide, so the two tests that silence it (`input_robustness_catalog`
-/// and `unsupported_construct_panic_catalog`) must not run their take/set/restore concurrently — an
-/// interleave could leave the silent hook installed for the rest of the run. Serialize them on this lock
-/// (poison-tolerant: a panic mid-section only means the *other* test re-silences, which is harmless).
+/// The global panic hook is process-wide, so every test that silences it (`input_robustness_catalog`,
+/// `unsupported_construct_panic_catalog`, and the identifier-hazard sweep's generation catalog) must
+/// not run their take/set/restore concurrently — an interleave could leave the silent hook installed
+/// for the rest of the run. Serialize them on this lock (poison-tolerant: a panic mid-section only
+/// means the *other* caller re-silences, which is harmless). The lock is per-fn-internal, so any
+/// caller of `with_thread_silenced_panics` participates — including callers in other test modules.
 static PANIC_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Silence panic output from THIS test's thread for the duration of `f` (the deliberate
@@ -27,7 +29,7 @@ static PANIC_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// message of any UNRELATED test that fails during the window — its failure would report with no
 /// diagnostics. Filter by thread id instead, delegating other threads' panics to the
 /// previously-installed hook.
-fn with_thread_silenced_panics<T>(f: impl FnOnce() -> T) -> T {
+pub(crate) fn with_thread_silenced_panics<T>(f: impl FnOnce() -> T) -> T {
     let _guard = PANIC_HOOK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let prev: std::sync::Arc<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync> =
         std::sync::Arc::from(std::panic::take_hook());
