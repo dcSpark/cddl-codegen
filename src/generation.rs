@@ -2688,38 +2688,35 @@ impl GenerationScope {
                             deser_primitive(config.final_exprs, "unsigned_integer", "x", "x")
                         }
                         Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
-                            // we need to only look at poisitve or negative bounds to avoid comparing e.g. a u64 with a negative
-                            let positive_bounds = type_cfg.bounds.map(|(lower, upper)| {
-                                (lower.filter(|l| *l > 0), upper.filter(|u| *u > 0))
-                            });
-                            let negative_bounds = type_cfg.bounds.map(|(lower, upper)| {
-                                (lower.filter(|l| *l < 0), upper.filter(|u| *u < 0))
-                            });
+                            // A signed int splits across two CBOR major types (uint arm / nint arm),
+                            // so we classify the value window per arm: a bound may be vacuous here
+                            // (drop it), constraining (keep it), or exclude the arm's whole sign
+                            // domain (reject unconditionally). The uint arm reads a `u64` and so can
+                            // never compare against a negative bound — hence the classification
+                            // rather than a raw full-window check.
+                            let uint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Uint);
+                            let nint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Nint);
                             let mut type_check = Block::new(format!(
                                 "{}match {}.cbor_type()?",
                                 before_after.before_str(false),
                                 deserializer_name
                             ));
                             if cli.preserve_encodings {
-                                let bounds_fn =
-                                    |bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
-                                        // always convert error to have consistent E for the and_then
-                                        Some(bounds) => Cow::Owned(format!(
-                                            "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
-                                            convert_err_to_ours,
-                                            bounds_check_if_block(
-                                                bounds,
-                                                &bounds_check_expr(*p, "x"),
-                                                false
-                                            ),
-                                        )),
-                                        None => Cow::Borrowed(""),
-                                    };
+                                let bounds_fn = |arm: &SignArmBounds| match sign_arm_if_block(
+                                    arm, "x", false,
+                                ) {
+                                    // always convert error to have consistent E for the and_then
+                                    Some(if_block) => Cow::Owned(format!(
+                                        "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
+                                        convert_err_to_ours, if_block,
+                                    )),
+                                    None => Cow::Borrowed(""),
+                                };
                                 let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                                 pos.line(format!(
                                     "let (x, enc) = {}.unsigned_integer_sz(){}?;",
                                     deserializer_name,
-                                    bounds_fn(&positive_bounds)
+                                    bounds_fn(&uint_arm)
                                 ))
                                 .line(format!("(x as {}, Some(enc))", p))
                                 .after(",");
@@ -2729,20 +2726,31 @@ impl GenerationScope {
                                 neg.line(format!(
                                     "let (x, enc) = {}.negative_integer_sz(){}?;",
                                     deserializer_name,
-                                    bounds_fn(&negative_bounds)
+                                    bounds_fn(&nint_arm)
                                 ))
                                 .line(format!("(x as {}, Some(enc))", p))
                                 .after(",");
                                 type_check.push_block(neg);
                             } else {
+                                let non_preserve_arm_fn = |arm: &SignArmBounds, x: &str| {
+                                    match sign_arm_if_block(arm, x, false) {
+                                        // always convert error to have consistent E for the and_then
+                                        Some(if_block) => Cow::Owned(format!(
+                                            "{}.and_then(|{}| {} else {{ Ok({}) }})",
+                                            convert_err_to_ours, x, if_block, x,
+                                        )),
+                                        None => Cow::Borrowed(""),
+                                    }
+                                };
                                 type_check
                                 .line(format!(
                                     "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}? as {},",
                                     deserializer_name,
-                                    non_preserve_bounds_fn("x", &positive_bounds),
+                                    non_preserve_arm_fn(&uint_arm, "x"),
                                     p));
                                 // https://github.com/primetype/cbor_event/issues/9
-                                // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints
+                                // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints.
+                                // The _sz reader yields the real signed value, so the nint arm checks the full window directly (no sign partition needed).
                                 if *p == Primitive::I64 {
                                     let bounds_fn = match &type_cfg.bounds {
                                         Some(bounds) => Cow::Owned(format!(
@@ -2764,7 +2772,7 @@ impl GenerationScope {
                                     type_check.line(format!(
                                         "_ => {}.negative_integer(){}? as {},",
                                         deserializer_name,
-                                        non_preserve_bounds_fn("x", &negative_bounds),
+                                        non_preserve_arm_fn(&nint_arm, "x"),
                                         p
                                     ));
                                 }
@@ -4019,36 +4027,131 @@ pub(crate) fn nint_bounds_to_u64(
     )
 }
 
+fn range_check_err(e: &str, min: Option<i128>, max: Option<i128>, return_err: bool) -> String {
+    let possible_return = if return_err { "return " } else { "" };
+    let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
+    format!(
+        "{{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
+        possible_return,
+        e,
+        opt(min),
+        opt(max),
+    )
+}
+
 fn bounds_check_if_block(
     bounds: &(Option<i128>, Option<i128>),
     e: &str,
     return_err: bool,
 ) -> String {
-    let possible_return = if return_err { "return " } else { "" };
+    let cond = match bounds {
+        // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
+        // EXCLUSION of the single value between them, not an (unsatisfiable) window
+        (Some(min), Some(max)) if min > max => format!("{e} == {}", min - 1),
+        (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
+        (None, Some(max)) => format!("{e} > {max}"),
+        (Some(min), None) => format!("{e} < {min}"),
+        // `classify_sign_arm` never emits a `Check` with both bounds absent (it returns
+        // `Unconstrained` instead), and every other caller passes a real range, so this is
+        // unreachable by construction rather than a silent panic on empty windows.
+        (None, None) => unreachable!("bounds_check_if_block called with no bounds"),
+    };
     format!(
-        "if {} {{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
-        match bounds {
-            // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
-            // EXCLUSION of the single value between them, not an (unsatisfiable) window
-            (Some(min), Some(max)) if min > max => format!("{e} == {}", min - 1),
-            (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
-            (None, Some(max)) => format!("{e} > {max}"),
-            (Some(min), None) => format!("{e} < {min}"),
-            (None, None) => unreachable!(),
-        },
-        possible_return,
-        e,
-        if let Some(b) = bounds.0 {
-            format!("Some({b})")
-        } else {
-            "None".into()
-        },
-        if let Some(b) = bounds.1 {
-            format!("Some({b})")
-        } else {
-            "None".into()
-        },
+        "if {} {}",
+        cond,
+        range_check_err(e, bounds.0, bounds.1, return_err)
     )
+}
+
+/// The two CBOR sign arms a signed int can decode from (unsigned-integer major type vs
+/// negative-integer major type). A value window is classified independently per arm.
+#[derive(Clone, Copy)]
+enum SignArm {
+    /// values >= 0, read as a `u64` — a check here can never compare against a negative literal
+    Uint,
+    /// values <= -1, read as the real signed value via `negative_integer_sz`
+    Nint,
+}
+
+/// How a value window projects onto one CBOR sign arm.
+enum SignArmBounds {
+    /// The window imposes no constraint on this arm (bounds vacuous here) — emit no check.
+    Unconstrained,
+    /// The window narrows to these (possibly one-sided) bounds on this arm — emit the check.
+    Check((Option<i128>, Option<i128>)),
+    /// The window excludes this arm's entire sign domain — every value it decodes is out of
+    /// range. Reject unconditionally, reporting the ORIGINAL window (not the empty projection).
+    Empty((Option<i128>, Option<i128>)),
+}
+
+/// Project a value window onto one CBOR sign arm. Distinguishes "vacuous in this arm" (drop the
+/// bound) from "this arm's whole sign domain is excluded" (unconditional reject) — conflating the
+/// two is what made the old per-arm filter panic on all-negative / zero-upper windows.
+fn classify_sign_arm(bounds: &Option<(Option<i128>, Option<i128>)>, arm: SignArm) -> SignArmBounds {
+    let bounds = match bounds {
+        Some(b) => *b,
+        None => return SignArmBounds::Unconstrained,
+    };
+    // `.ne N` exclusion encoding: min > max excludes the single value min-1. Route the exclusion
+    // check to whichever arm the excluded value lives in; the other arm has nothing to check.
+    if let (Some(min), Some(max)) = bounds
+        && min > max
+    {
+        let excluded_here = match arm {
+            SignArm::Uint => (min - 1) >= 0,
+            SignArm::Nint => (min - 1) < 0,
+        };
+        return if excluded_here {
+            SignArmBounds::Check((Some(min), Some(max)))
+        } else {
+            SignArmBounds::Unconstrained
+        };
+    }
+    let (lower, upper) = bounds;
+    match arm {
+        SignArm::Uint => {
+            // uint arm covers values >= 0
+            if matches!(upper, Some(u) if u < 0) {
+                // upper < 0 → no non-negative value is in range
+                return SignArmBounds::Empty((lower, upper));
+            }
+            // lower <= 0 is vacuous for a u64; upper >= 0 is kept (u == 0 emits `x > 0`)
+            let narrowed_lower = lower.filter(|l| *l > 0);
+            if narrowed_lower.is_none() && upper.is_none() {
+                SignArmBounds::Unconstrained
+            } else {
+                SignArmBounds::Check((narrowed_lower, upper))
+            }
+        }
+        SignArm::Nint => {
+            // nint arm covers values <= -1
+            if matches!(lower, Some(l) if l >= 0) {
+                // lower >= 0 → no negative value is in range
+                return SignArmBounds::Empty((lower, upper));
+            }
+            // upper >= -1 is vacuous for a nint; lower <= -1 is kept
+            let narrowed_upper = upper.filter(|u| *u < -1);
+            if lower.is_none() && narrowed_upper.is_none() {
+                SignArmBounds::Unconstrained
+            } else {
+                SignArmBounds::Check((lower, narrowed_upper))
+            }
+        }
+    }
+}
+
+/// The `if <cond> { Err(RangeCheck..) }` for one classified sign arm, or `None` when the arm
+/// needs no check. The `Empty` case rejects unconditionally (`if true`) rather than emitting the
+/// real comparison, since the uint arm can't compare a `u64` against a negative bound.
+fn sign_arm_if_block(arm: &SignArmBounds, e: &str, return_err: bool) -> Option<String> {
+    match arm {
+        SignArmBounds::Unconstrained => None,
+        SignArmBounds::Check(bounds) => Some(bounds_check_if_block(bounds, e, return_err)),
+        SignArmBounds::Empty(orig) => Some(format!(
+            "if true {}",
+            range_check_err(e, orig.0, orig.1, return_err)
+        )),
+    }
 }
 
 fn declare_modules(

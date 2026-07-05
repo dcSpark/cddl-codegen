@@ -200,6 +200,19 @@ pub struct SecondEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct SignBoundsEncoding {
+    pub len_encoding: LenEncoding,
+    pub all_neg_encoding: Option<cbor_event::Sz>,
+    pub upto_zero_encoding: Option<cbor_event::Sz>,
+    pub le_neg_encoding: Option<cbor_event::Sz>,
+    pub le_pos_encoding: Option<cbor_event::Sz>,
+    pub ge_pos_encoding: Option<cbor_event::Sz>,
+    pub ne_pos_encoding: Option<cbor_event::Sz>,
+    pub ne_neg_encoding: Option<cbor_event::Sz>,
+    pub straddle_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct SignedIntsEncoding {
     pub len_encoding: LenEncoding,
     pub u_8_encoding: Option<cbor_event::Sz>,

@@ -3981,6 +3981,383 @@ impl DeserializeEmbeddedGroup for Second {
     }
 }
 
+impl cbor_event::se::Serialize for SignBounds {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(8))?;
+        if self.all_neg >= 0 {
+            serializer.write_unsigned_integer(self.all_neg as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.all_neg as i128,
+                cbor_event::Sz::canonical((self.all_neg + 1).abs() as u64),
+            )?;
+        }
+        if self.upto_zero >= 0 {
+            serializer.write_unsigned_integer(self.upto_zero as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.upto_zero as i128,
+                cbor_event::Sz::canonical((self.upto_zero + 1).abs() as u64),
+            )?;
+        }
+        if self.le_neg >= 0 {
+            serializer.write_unsigned_integer(self.le_neg as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.le_neg as i128,
+                cbor_event::Sz::canonical((self.le_neg + 1).abs() as u64),
+            )?;
+        }
+        if self.le_pos >= 0 {
+            serializer.write_unsigned_integer(self.le_pos as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.le_pos as i128,
+                cbor_event::Sz::canonical((self.le_pos + 1).abs() as u64),
+            )?;
+        }
+        if self.ge_pos >= 0 {
+            serializer.write_unsigned_integer(self.ge_pos as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.ge_pos as i128,
+                cbor_event::Sz::canonical((self.ge_pos + 1).abs() as u64),
+            )?;
+        }
+        if self.ne_pos >= 0 {
+            serializer.write_unsigned_integer(self.ne_pos as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.ne_pos as i128,
+                cbor_event::Sz::canonical((self.ne_pos + 1).abs() as u64),
+            )?;
+        }
+        if self.ne_neg >= 0 {
+            serializer.write_unsigned_integer(self.ne_neg as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.ne_neg as i128,
+                cbor_event::Sz::canonical((self.ne_neg + 1).abs() as u64),
+            )?;
+        }
+        if self.straddle >= 0 {
+            serializer.write_unsigned_integer(self.straddle as u64)?;
+        } else {
+            serializer.write_negative_integer_sz(
+                self.straddle as i128,
+                cbor_event::Sz::canonical((self.straddle + 1).abs() as u64),
+            )?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for SignBounds {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(8)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let all_neg = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if true {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-10),
+                                    max: Some(-3),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -10 || x > -3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-10),
+                                    max: Some(-3),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("all_neg"))?;
+            let upto_zero = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 0 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(0),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -10 || x > 0 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-10),
+                                    max: Some(0),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("upto_zero"))?;
+            let le_neg = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if true {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(-3),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x > -3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(-3),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("le_neg"))?;
+            let le_pos = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 10 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(10),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x > 10 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(10),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("le_pos"))?;
+            let ge_pos = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x < 3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(3),
+                                    max: None,
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < 3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(3),
+                                    max: None,
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("ge_pos"))?;
+            let ne_pos = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x == 5 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(6),
+                                    max: Some(4),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x == 5 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(6),
+                                    max: Some(4),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("ne_pos"))?;
+            let ne_neg = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw.unsigned_integer()? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x == -5 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-4),
+                                    max: Some(-6),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("ne_neg"))?;
+            let straddle = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: None,
+                                    max: Some(3),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -10 || x > 3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-10),
+                                    max: Some(3),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("straddle"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(SignBounds {
+                all_neg,
+                upto_zero,
+                le_neg,
+                le_pos,
+                ge_pos,
+                ne_pos,
+                ne_neg,
+                straddle,
+            })
+        })()
+        .map_err(|e| e.annotate("SignBounds"))
+    }
+}
+
 impl cbor_event::se::Serialize for SignedInts {
     fn serialize<'se, W: Write>(
         &self,

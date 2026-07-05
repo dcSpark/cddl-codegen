@@ -226,6 +226,21 @@ bounds = [
     b: { * uint => uint } .le 3
 ]
 
+; Signed-int fields whose value window must be partitioned across the two CBOR sign arms
+; (uint major type / nint major type). Each field pins a distinct region of the position × sign
+; grid so a naive per-arm bound filter (which conflated "vacuous in this arm" with "arm entirely
+; excluded") can't regress. All map to i64.
+sign_bounds = [
+    all_neg: -10 .. -3,     ; all-negative two-sided window
+    upto_zero: -10 .. 0,    ; upper endpoint exactly 0
+    le_neg: int .le -3,     ; one-sided negative upper
+    le_pos: int .le 10,     ; one-sided positive upper (nint arm vacuous)
+    ge_pos: int .ge 3,      ; one-sided positive lower (nint arm empty)
+    ne_pos: int .ne 5,      ; exclusion of a non-negative value
+    ne_neg: int .ne -5,     ; exclusion of a negative value
+    straddle: -10 .. 3      ; window spanning both signs
+]
+
 nint_ge_newtype = nint .ge -5 ; @newtype
 nint_le_newtype = nint .le -5 ; @newtype
 
