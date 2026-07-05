@@ -59,8 +59,9 @@ struct Cell {
 /// satisfied", which a MISPLACED directive comment satisfies vacuously (the DSL's comma-placement
 /// rules are finicky), so the pin would hold for the wrong reason. Only pin a cell after
 /// hand-verifying the placement variants against the docs' comma rules (the anon-group pin was
-/// probed with and without the trailing comma), ideally beside a control cell using the same
-/// placement in a position where the directive DOES work, isolating position as the variable.
+/// probed with and without the trailing comma), beside a control cell using the same placement in
+/// a position where the directive DOES work, isolating position as the variable — the anon-group
+/// pin's control is the `anon-group-choice-member` cell.
 ///
 /// Two live findings (neither fixed by this task — the scoped fix is rule-position `@name` rejection):
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" panic advertises `@name` as
@@ -194,6 +195,21 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 9b. PLACEMENT CONTROL for the anon-group-member pin (the KNOWN_SILENT_DROP authoring rule):
+    //     the same directive + comment placement (after the inline composite) in the CHOICE-MEMBER
+    //     position, where the naming site (`get_comment_after(type2)`, parsing.rs) IS reachable.
+    //     This proves the placement parses and the mechanism works, isolating member-position as
+    //     the pinned cell's variable — the pin cannot hold vacuously on a placement typo.
+    Cell {
+        directive: "@name",
+        position: "anon-group-choice-member",
+        spec: "x = [1, bytes] ; @name arr_variant\n  / uint\n",
+        flags: &[],
+        expect: Expect::Effect {
+            must: &["struct ArrVariant"],
+            must_not: &[],
+        },
+    },
     // 10. rule-position @name, single-type-choice ALIAS rule → graceful Reject (Part 2).
     Cell {
         directive: "@name",
@@ -208,6 +224,26 @@ const GRID: &[Cell] = &[
         directive: "@name",
         position: "rule-type-struct",
         spec: "foo = [a: uint] ; @name bar\nholder = [f: foo]\n",
+        flags: &[],
+        expect: Expect::Reject("does not rename a top-level"),
+    },
+    // 10c/10d. rule-position @name, T/null two-choice rule → graceful Reject. The rule-name
+    //          position carries a SHAPE axis: `T / null` collapses to an `Option<T>` alias
+    //          (`parse_type_choices`' optional-inner path) instead of an enum, so a `@name` on
+    //          either arm has no variant to name — it was silently dropped (probe-verified for
+    //          BOTH placements: `pub type Foo = Option<u64>;` emitted untouched) until the
+    //          rejection learned the collapse. Both placements pinned so neither decays.
+    Cell {
+        directive: "@name",
+        position: "rule-type-tnull",
+        spec: "foo = uint ; @name bar\n    / null\nholder = [f: foo]\n",
+        flags: &[],
+        expect: Expect::Reject("does not rename a top-level"),
+    },
+    Cell {
+        directive: "@name",
+        position: "rule-type-tnull-trailing",
+        spec: "foo = uint / null ; @name bar\nholder = [f: foo]\n",
         flags: &[],
         expect: Expect::Reject("does not rename a top-level"),
     },

@@ -133,6 +133,10 @@ pub fn parse_rule(
 ///
 /// Multi-choice type rules are deliberately OUT of scope: there every `@name` attaches to a
 /// type1/choice and legitimately names an enum variant (`parse_type_choices`), so we return `None`.
+/// ONE multi-choice shape is back IN scope — the rule-name position carries a SHAPE axis (the
+/// identifier-hazard lesson): a `T / null` two-choice rule collapses to an `Option<T>` alias
+/// (`parse_type_choices`' optional-inner path) instead of an enum, so a `@name` on either arm has
+/// no variant to name and was silently dropped; both comment placements reject here.
 /// The check keys on `.name` ONLY — every other rule-level directive (`@newtype`, `@no_alias`,
 /// `@used_as_key`, `@custom_json`, `@doc`, `@custom_serialize`/`@custom_deserialize`) attaches at
 /// this same comment position and WORKS, so it must be left untouched.
@@ -146,19 +150,30 @@ pub fn parse_rule(
 pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     let has_rule_position_name = match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => {
-            // Only single-type-choice rules: a multi-choice rule's `@name`s name variants.
-            if rule.value.type_choices.len() != 1 {
-                return None;
-            }
-            let tc = &rule.value.type_choices[0];
+            let choices = &rule.value.type_choices;
+            // Single-type-choice rules, plus the T/null two-choice Option-collapse (no enum is
+            // generated there, so no variant exists for a `@name` to name). Every other
+            // multi-choice rule's `@name`s legitimately name enum variants.
+            let in_scope: &[cddl::ast::TypeChoice] = match choices.len() {
+                1 => std::slice::from_ref(&choices[0]),
+                2 if type2_is_null(&choices[0].type1.type2)
+                    || type2_is_null(&choices[1].type1.type2) =>
+                {
+                    choices.as_slice()
+                }
+                _ => return None,
+            };
             // Mirror `parse_type`'s top-level metadata merge (inherited defaults to empty there):
             // the cddl parser can attach the rule's trailing comment to either the Type1 or the
             // enclosing TypeChoice, so read both.
-            let rule_metadata = merge_metadata(
-                &RuleMetadata::from(tc.type1.comments_after_type.as_ref()),
-                &RuleMetadata::from(tc.comments_after_type.as_ref()),
-            );
-            rule_metadata.name.is_some()
+            in_scope.iter().any(|tc| {
+                merge_metadata(
+                    &RuleMetadata::from(tc.type1.comments_after_type.as_ref()),
+                    &RuleMetadata::from(tc.comments_after_type.as_ref()),
+                )
+                .name
+                .is_some()
+            })
         }
         cddl::ast::Rule::Group { rule, .. } => match &rule.entry {
             cddl::ast::GroupEntry::InlineGroup {
