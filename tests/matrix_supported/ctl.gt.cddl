@@ -1,1 +1,1 @@
-x = uint .gt 0
+x = int .gt 5

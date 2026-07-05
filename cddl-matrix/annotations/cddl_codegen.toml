@@ -1034,7 +1034,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok
 [[support]]
 id = "ctl.and"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
 
 [[support]]
 id = "ctl.b32"
@@ -1112,7 +1112,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.eq"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -1126,16 +1126,16 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.ge"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); no committed decode vectors (see catalog); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "ctl.gt"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -1174,7 +1174,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "ctl.le"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -1183,7 +1183,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.lt"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -1192,7 +1192,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.ne"
 status = "supported"
-evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"

@@ -1,1 +1,1 @@
-x = uint .le 10
+x = int .le 10

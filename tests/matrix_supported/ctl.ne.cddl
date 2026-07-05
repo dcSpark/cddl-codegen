@@ -1,1 +1,1 @@
-x = uint .ne 5
+x = int .ne 5
