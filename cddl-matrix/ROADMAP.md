@@ -154,7 +154,7 @@ gotcha is documented in `tests/README.md` § "Running everything".
   `enforce = no` instead of a vacuous green, after first checking the oracles even enforce float
   windows), and control-op **boundary values** (`ctl.ne`'s one example `x = int .ne 5` misses the
   excluded-value-0/1 boundary where the sign-partition's NE encoding degenerates — the class the
-  `.ne 1` mis-check hid in; the Rust-side `sign_bounds` grid has the same unswept column). The
+  `.ne 1` mis-check hid in; the Rust-side `sign_bounds` grids sweep it, the matrix example doesn't). The
   lesson those two escapes encode: silent-acceptance bugs are visible ONLY to the enforcement axis,
   and that axis reaches exactly as far as row/example enumeration — so enumeration gaps here are
   enforcement blind spots, not just coverage accounting. Until rows exist, Q5 ("everything the
