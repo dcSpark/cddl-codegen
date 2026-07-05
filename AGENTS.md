@@ -59,7 +59,8 @@ changing the *runtime behaviour* of generated code usually means editing `static
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
   production module goes in **both** (`src/tests/` is bin-only; test-only library API is
-  `#[cfg(test)]`). Keep `snapshot_tests`/`robustness_tests`/`integration_tests` in test module
+  `#[cfg(test)]`; this mismatch is gated by `bin_and_lib_production_module_declarations_match`).
+  Keep `snapshot_tests`/`robustness_tests`/`integration_tests` in test module
   paths — CI and documented commands select tests by substring.
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.

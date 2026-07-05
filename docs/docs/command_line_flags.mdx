@@ -38,12 +38,35 @@ cddl-codegen --input examples --output export
 <br/><br/>
 
 
+:::info `--static-dir`
+Changes the directory used for cddl-codegen's static runtime and template files. The default is `static`.
+
+```bash
+cddl-codegen --input=example --output=export --static-dir custom-static
+```
+:::
+
+<br/><br/>
+
+
 :::info `--lib-name`
 Specify the rust crate name for the output library. The wasm crate will have `-wasm` appended.
 
   ```bash
   cddl-codegen --input=example --output=export --lib-name some-crate-name
   ```
+:::
+
+<br/><br/>
+
+
+:::info `--annotate-fields`
+Includes additional field-location context in generated deserialization errors. On by default; disabling it can slightly reduce generated code size.
+
+Possible values: true, false
+```bash
+cddl-codegen --input=example --output=export --annotate-fields false
+```
 :::
 
 <br/><br/>
@@ -69,6 +92,17 @@ Whether to output a wasm crate. On by default.
 Possible values: true, false
 ```bash
 cddl-codegen --input=example --output=export --wasm false
+```
+:::
+
+<br/><br/>
+
+:::info `--binary-wrappers`
+Generates named Rust wrapper types for byte string definitions instead of treating aliases to `bytes`/`bstr` as the primitive byte type. Off by default.
+
+Possible values: true, false
+```bash
+cddl-codegen --input=example --output=export --binary-wrappers true
 ```
 :::
 
