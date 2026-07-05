@@ -236,15 +236,18 @@ fn identifier_hazard_robustness_catalog() {
 
     let mut catalog = String::from(
         "# identifier-hazard sweep: generation outcome per (name-position × hazardous identifier) — a\n\
-         # SCORECARD, not a contract. A committed PANIC is a TRACKED-KNOWN gap (today: rule/group names\n\
-         # whose camel-cased form is a reserved Rust type name or a CDDL keyword hit the `assert!` guards\n\
-         # in `RustIdent::new`, intermediate.rs:1146/1152 — a deliberate reservation, but via panic\n\
-         # rather than a graceful `record_rejection`; candidate fix, not blessed-correct). A NEW panic —\n\
-         # a cell FLIPPING to PANIC, or a panic decaying to a silently-wrong `ok` — is a regression:\n\
-         # hazardous names must reject gracefully, never `panic!`/`assert!`. `ok` is generate-only — a\n\
-         # rule/group name that generates but does NOT compile (the r/w generic collision) still records\n\
-         # `ok`; the compile verdict is the `identifier_hazard_crates_compile` gate (full tier).\n\
-         # Source: src/tests/identifier_hazard_tests.rs.\n\n",
+         # SCORECARD, not a contract. A NEW panic — a cell FLIPPING to PANIC, or a panic decaying to a\n\
+         # silently-wrong `ok` — is a regression: hazardous names must reject gracefully, never\n\
+         # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved\n\
+         # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in\n\
+         # `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts\n\
+         # remain a backstop for synthesized idents. The one committed PANIC left — `group-name int` —\n\
+         # is a DISTINCT collision: a plain group named `int` clashes with the project's pre-registered\n\
+         # extern `int` struct and trips the plain-group representation assert, not a reserved-name\n\
+         # guard (`int` is special-cased out of the reserved check, so it is not pre-scanned). `ok` is\n\
+         # generate-only — a rule/group name that generates but does NOT compile (the historical r/w\n\
+         # generic collision, now fixed) still records `ok`; the compile verdict is the\n\
+         # `identifier_hazard_crates_compile` gate (full tier). Source: src/tests/identifier_hazard_tests.rs.\n\n",
     );
     with_thread_silenced_panics(|| {
         for pos in POSITIONS {

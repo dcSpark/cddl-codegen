@@ -191,6 +191,20 @@ impl<'a> IntermediateTypes<'a> {
         self.rejections.push(msg);
     }
 
+    /// Whether any parse-walk rejection has been recorded. Lets the reserved-name pre-scan in
+    /// `api::with_types` abort BEFORE IR construction, since `RustIdent::new`'s reserved-ident
+    /// `assert!`s (no `IntermediateTypes` handle, so they can't reject gracefully) would otherwise
+    /// panic on the very name we just recorded before `finalize` ever runs.
+    pub fn has_rejections(&self) -> bool {
+        !self.rejections.is_empty()
+    }
+
+    /// Drain the accumulated rejections into a single graceful `Err`. Reused by `finalize` and by
+    /// the early reserved-name abort so both surface the identical shape.
+    pub fn rejections_error(&self) -> Box<dyn std::error::Error> {
+        self.rejections.join("\n").into()
+    }
+
     #[allow(unused)]
     pub fn has_ident(&self, ident: &RustIdent) -> bool {
         let idents: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
@@ -670,8 +684,8 @@ impl<'a> IntermediateTypes<'a> {
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Surface any deferred rejections BEFORE any resolution runs, so nothing downstream
         // operates on the incomplete IR a skipped-field record leaves behind.
-        if !self.rejections.is_empty() {
-            return Err(self.rejections.join("\n").into());
+        if self.has_rejections() {
+            return Err(self.rejections_error());
         }
         // resolve generics
         // resolve then register in 2 phases to get around borrow checker
@@ -1116,6 +1130,39 @@ impl Primitive {
             Primitive::Bytes => vec![CBORType::Bytes],
         }
     }
+}
+
+/// A graceful-rejection message if `source_name` (a user-chosen rule / plain-group name, as spelled
+/// in the CDDL) cannot be used as a Rust type name, else `None`. This mirrors the two `assert!`
+/// guards in `RustIdent::new` exactly — a camel-cased form that collides with a reserved Rust
+/// std/prelude type (`option` → `Option`, `box` → `Box`, `fn` → `Fn`, `self`/`Self` → `Self`), or a
+/// CDDL keyword (`true` / `false` / prelude type names) — so the same names those asserts would
+/// panic on are instead rejected gracefully when caught at the parse-walk seam (`api::with_types`).
+/// `int` is excluded from the keyword branch identically to `RustIdent::new`: it names the project's
+/// own pre-registered extern struct, not a colliding user type.
+///
+/// The asserts stay as a backstop for synthesized/internal idents (which never route through here);
+/// this function is only for user-chosen names, where a panic on valid CDDL is the bug being fixed.
+pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
+    let camel = convert_to_camel_case(source_name);
+    if crate::rust_reserved::STD_TYPES.contains(&camel.as_str()) {
+        return Some(format!(
+            "rule `{source_name}`: its name camel-cases to `{camel}`, a reserved Rust std/prelude \
+             type the generated code depends on — emitting a type by that name would shadow it. A \
+             rule/group name becomes the emitted Rust type name directly, so (unlike a struct field, \
+             which a `; @name` comment renames) the CDDL identifier itself must be renamed to a \
+             non-reserved name."
+        ));
+    }
+    if source_name != "int" && is_identifier_reserved(source_name) {
+        return Some(format!(
+            "rule `{source_name}`: `{source_name}` is a reserved CDDL keyword and cannot be used as \
+             a rule/group name. A rule/group name becomes the emitted Rust type name directly, so \
+             (unlike a struct field, which a `; @name` comment renames) the CDDL identifier itself \
+             must be renamed to a non-reserved name."
+        ));
+    }
+    None
 }
 
 mod idents {

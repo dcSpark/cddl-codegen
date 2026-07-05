@@ -140,6 +140,28 @@ pub fn with_types<R>(
     let cddl = cddl::ast::CDDL::from_slice(input_files_content.as_bytes())?;
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
+
+    // Reserved-name pre-scan — runs BEFORE any `rule_ident` / `RustIdent::new` call (which start
+    // in the scope filter just below and recur through the whole IR build). A rule/plain-group
+    // whose camel-cased name collides with a reserved Rust type (`option` → `Option`, `box` →
+    // `Box`) or is a CDDL keyword (`true` / `false`) hits an `assert!` in `RustIdent::new` — a
+    // panic on otherwise-valid CDDL. `RustIdent::new` has no `IntermediateTypes` handle, so it
+    // can't record a graceful rejection itself; we catch those user-chosen names here at the seam
+    // where they enter and abort through the normal rejection channel. Because a reserved name can
+    // also be REFERENCED by another rule (a reference reaches `RustIdent::new` too), we surface the
+    // rejection immediately rather than after IR build — nothing may proceed to the assert.
+    for cddl_rule in cddl.rules.iter() {
+        if rule_is_scope_marker(cddl_rule).is_some() {
+            continue;
+        }
+        if let Some(msg) = crate::intermediate::reserved_ident_rejection(&cddl_rule.name()) {
+            types.record_rejection(msg);
+        }
+    }
+    if types.has_rejections() {
+        return Err(types.rejections_error());
+    }
+
     // mark scope and filter scope markers
     let mut scope = ROOT_SCOPE.clone();
     let cddl_rules = cddl
@@ -254,5 +276,62 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         result.unwrap();
         assert_eq!(found, vec![dir.join("lib.cddl")]);
+    }
+
+    /// A rule/plain-group whose name would collide with a reserved Rust type or a CDDL keyword is
+    /// rejected GRACEFULLY (a drained rejection → `Err`), never via the `assert!`-panic in
+    /// `RustIdent::new`. Pins the message for one `STD_TYPES` case (`option` → `Option`) and one
+    /// CDDL-keyword case (`true`), including the `@name`-anchored remedy. Regression guard for the
+    /// reserved-name graceful-rejection fix; the full (position × hazard) sweep lives in
+    /// `identifier_hazard_robustness_catalog`.
+    #[test]
+    fn reserved_rule_name_rejects_gracefully_not_panics() {
+        use crate::cli::Cli;
+        use clap::Parser;
+        fn gen_err(spec: &str, tag: &str) -> String {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_reserved_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "reserved_name_unused",
+                "--wasm",
+                "false",
+            ]);
+            let result = super::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            result
+                .expect_err("a reserved rule name must reject gracefully, not generate")
+                .to_string()
+        }
+
+        // STD_TYPES collision: `option` camel-cases to `Option`.
+        let opt = gen_err("option = [a: uint]\n", "option");
+        assert!(opt.contains("rule `option`"), "must cite the rule: {opt}");
+        assert!(
+            opt.contains("Option"),
+            "must name the reserved Rust type it collides with: {opt}"
+        );
+        assert!(
+            opt.contains("@name"),
+            "must point at the @name remedy: {opt}"
+        );
+
+        // CDDL keyword: `true`.
+        let tru = gen_err("true = [a: uint]\n", "true");
+        assert!(tru.contains("rule `true`"), "must cite the rule: {tru}");
+        assert!(
+            tru.contains("reserved CDDL keyword"),
+            "must explain the keyword rejection: {tru}"
+        );
+        assert!(
+            tru.contains("@name"),
+            "must point at the @name remedy: {tru}"
+        );
     }
 }
