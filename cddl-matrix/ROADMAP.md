@@ -172,8 +172,12 @@ from a degenerate example.**
     as members — the **contextual** reality (the role × feature axis), held structurally by per-cell support.
 - **Anonymous-group limitation (pervasive contextual fact, surfaced by per-cell support).** An INLINE
   anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value
-  position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named** (a rule or
-  `@name`). The one exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
+  position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named**. A named RULE
+  works in every position; the `@name` naming route the panic message advertises works only where the
+  comment can reach the naming site — verified for the choice-member position, while at member
+  positions (array-element, map-value) the directive never arrives and the panic stands (a pinned
+  `KNOWN_SILENT_DROP` finding — see the comment-DSL sweep entry in the bugs/gaps list below). The one
+  exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the per-(feature,
   role) verdict genuinely differs, which is the whole point. An inline parenthesized group carrying an
   occurrence marker (`[* (int, tstr)]`) is a distinct path: it is **rejected gracefully** (not a panic, and
