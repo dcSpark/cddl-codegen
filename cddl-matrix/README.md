@@ -16,8 +16,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 
 > **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: 92 features and 80 containment
-> cells across all axes (incl. the `CDDL_CODEGEN` vendor profile), with 206 cddl-codegen support
+> consumer-query contract). The matrix is **fully scaled and gate-green**: 98 features and 80 containment
+> cells across all axes (incl. the `CDDL_CODEGEN` vendor profile), with 212 cddl-codegen support
 > annotations, **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (all 37 IANA ops probed) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that

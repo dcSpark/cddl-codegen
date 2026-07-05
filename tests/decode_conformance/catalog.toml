@@ -4972,87 +4972,232 @@ expect = "accept"
 id = "rangeop.exclusive"
 axis = "feature"
 example = "t = 0...10"
-spec = "__probe_holder = [0, t]\nt = 0...10"
-mode = "holder"
-type_name = "ProbeHolder"
+spec = "t = 0...10"
+mode = "standalone"
+type_name = "T"
 
 [[row.vector]]
-hex = "820000"
+hex = "01"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820002"
+hex = "03"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820003"
+hex = "05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820004"
+hex = "06"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820007"
+hex = "09"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820008"
-source = "ruby-generate"
-expect = "accept"
+hex = "0a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10 is the EXCLUDED upper endpoint of `0...10` (half-open excludes 10) — violates the exclusive range"
 
 [[row.vector]]
-hex = "820009"
-source = "ruby-generate"
-expect = "accept"
+hex = "0b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 11 is above the `0...10` window — violates the exclusive range"
+
+[[row]]
+id = "rangeop.exclusive.float"
+axis = "feature"
+example = "t = 0.5...10.5"
+spec = "t = 0.5...10.5"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "fb4025000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10.5 is the EXCLUDED upper endpoint of `0.5...10.5` (half-open excludes 10.5) — violates the exclusive float range (reject certified by ruby; rust blanket-rejects all float-range instances, see draft/rust-cddl-float-range-gap.md)"
+
+[[row.vector]]
+hex = "fb4025333333333333"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10.6 is above the `0.5...10.5` float window — violates the exclusive range (reject certified by ruby; rust blanket-rejects all float-range instances)"
+
+[[row.vector]]
+hex = "fb7ff8000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "NaN is not in the `0.5...10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby; rust blanket-rejects all float-range instances)"
+
+[[row]]
+id = "rangeop.exclusive.int"
+axis = "feature"
+example = "t = -10...10"
+spec = "t = -10...10"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "0a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10 is the EXCLUDED upper endpoint of `-10...10` (half-open excludes 10) — violates the exclusive range"
+
+[[row.vector]]
+hex = "0b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 11 is above the `-10...10` window — violates the exclusive range"
+
+[[row]]
+id = "rangeop.exclusive.nint"
+axis = "feature"
+example = "t = -10...-3"
+spec = "t = -10...-3"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "21"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -2 is above the `-10...-3` window — violates the all-negative exclusive range"
+
+[[row.vector]]
+hex = "22"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -3 is the EXCLUDED upper endpoint of `-10...-3` (half-open excludes -3) — violates the all-negative exclusive range"
 
 [[row]]
 id = "rangeop.inclusive"
 axis = "feature"
 example = "t = 0..10"
-spec = "__probe_holder = [0, t]\nt = 0..10"
-mode = "holder"
-type_name = "ProbeHolder"
+spec = "t = 0..10"
+mode = "standalone"
+type_name = "T"
 
 [[row.vector]]
-hex = "820002"
+hex = "03"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820003"
+hex = "04"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820004"
+hex = "05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820006"
+hex = "08"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820008"
+hex = "09"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820009"
+hex = "0a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82000a"
-source = "ruby-generate"
-expect = "accept"
+hex = "0b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 11 is above the `0..10` window — violates the inclusive range"
+
+[[row]]
+id = "rangeop.inclusive.float"
+axis = "feature"
+example = "t = 0.5..10.5"
+spec = "t = 0.5..10.5"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "fb4025333333333333"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10.6 is above the `0.5..10.5` float window — violates the inclusive range (reject certified by ruby; rust blanket-rejects all float-range instances, see draft/rust-cddl-float-range-gap.md)"
+
+[[row.vector]]
+hex = "fb7ff8000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "NaN is not in the `0.5..10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby; rust blanket-rejects all float-range instances)"
+
+[[row]]
+id = "rangeop.inclusive.int"
+axis = "feature"
+example = "t = -10..10"
+spec = "t = -10..10"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "0b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 11 is above the `-10..10` window — violates the inclusive range (uint sign arm)"
+
+[[row.vector]]
+hex = "2a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -11 is below the `-10..10` window — violates the inclusive range (nint sign arm)"
+
+[[row]]
+id = "rangeop.inclusive.nint"
+axis = "feature"
+example = "t = -10..-3"
+spec = "t = -10..-3"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "21"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -2 is above the `-10..-3` window — violates the all-negative inclusive range"
+
+[[row.vector]]
+hex = "2a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -11 is below the `-10..-3` window — violates the all-negative inclusive range"
 
 [[row]]
 id = "type.choice"

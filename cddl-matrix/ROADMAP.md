@@ -5,15 +5,15 @@ hard-won findings — the two things a future agent can't re-derive from the cod
 the done work landed lives in git history (this doc was pruned of it; the project already did the same with
 the scale report + cold-critique).
 
-**Status: gate-green.** 92 features (81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile),
-80 containment cells, and 206 cddl-codegen annotations, all axes reconciled/deterministic, with
+**Status: gate-green.** 98 features (87 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile),
+80 containment cells, and 212 cddl-codegen annotations, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (all 37 IANA ops
 probed): "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
-see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 10
-`class="constraint"` enforcement reject vectors over 9 enforce-green rows — the enforcement axis is
+see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 26
+`class="constraint"` enforcement reject vectors over 17 enforce-green rows — the enforcement axis is
 FULLY green: every row
 with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
 `query_q4_directional.ts --check`).
@@ -147,19 +147,19 @@ gotcha is documented in `tests/README.md` § "Running everything".
   semantics live under `type2.*` rows so it renders "NOT MODELED"). Separately, some *variations inside*
   one ABNF alternative have no feature row at all: one-sided occurrence bounds (`n*`/`*m` — prose-only
   in `occur.bounded`'s desc; only `2*5` is probed anywhere), the `uint` radix forms `0x`/`0b` +
-  `hexfloat`, range **head-type × sign** (`rangeop.*` is verdicted from `t = 0..10` alone — uint-headed,
-  non-negative; int-headed and float-headed rows don't exist, which is how the float-range
-  silent-acceptance finding stayed invisible to the matrix and was only caught by manual probing —
-  new float rows MUST carry `class="constraint"` reject vectors so silent non-enforcement projects
-  `enforce = no` instead of a vacuous green, after first checking the oracles even enforce float
-  windows), and control-op **boundary values** (`ctl.ne`'s one example `x = int .ne 5` misses the
+  `hexfloat`, and control-op **boundary values** (`ctl.ne`'s one example `x = int .ne 5` misses the
   excluded-value-0/1 boundary where the sign-partition's NE encoding degenerates — the class the
   `.ne 1` mis-check hid in; the Rust-side `sign_bounds` grids sweep it, the matrix example doesn't). The
-  lesson those two escapes encode: silent-acceptance bugs are visible ONLY to the enforcement axis,
-  and that axis reaches exactly as far as row/example enumeration — so enumeration gaps here are
-  enforcement blind spots, not just coverage accounting. Until rows exist, Q5 ("everything the
-  matrix does not model") is authoritative only for `type2` — tighten `normalizeAlt` and add the
-  variation rows before claiming more.
+  range **head-type × sign** axis USED to sit here and is now enumerated: `rangeop.{inclusive,exclusive}`
+  each carry `.int` (sign-spanning), `.nint` (uint arm empty), and `.float` variation rows alongside the
+  uint-headed base, every one certified by a `class="constraint"` boundary-violation reject vector so
+  non-enforcement projects `enforce = no`, not a vacuous green — the row set that would have caught the
+  float-range silent-acceptance hole up front instead of leaving it to manual probing. The durable lesson
+  those escapes encode: silent-acceptance bugs are visible ONLY to the enforcement axis, and that axis
+  reaches exactly as far as row/example enumeration — so an enumeration gap here is an enforcement blind
+  spot, not just coverage accounting; enumerate the variation row (with its reject vector) before
+  trusting a green. Until the REMAINING variations above have rows, Q5 ("everything the matrix does not
+  model") is authoritative only for `type2` — tighten `normalizeAlt` and add the rest before claiming more.
 
 ## Findings & gotchas (durable — read before touching the support seam or probe examples)
 
@@ -247,6 +247,23 @@ from a degenerate example.**
   is load-bearing: `query_q4_directional.ts --check` pins the exact enforce-green set so a decay of
   the examples back to `uint`/vacuous forms fails the gate instead of silently shedding enforcement
   evidence.
+- A third, distinct upstream gap: the rust `cddl` CLI (0.10.x AND the sibling `local-fixes` build)
+  rejects EVERY instance validated against a range whose endpoints are **not uint** — valid or invalid —
+  because its range validator requires uint bounds (`invalid cddl range. upper and lower values must be
+  uint types` / `lower value must be a uint type. got -10`). This covers BOTH float ranges (`0.5..10.5`)
+  AND negative / sign-spanning int ranges (`-10..10`, `-10..-3`); a uint..uint range (`0..10`) validates
+  correctly. Repro: `printf 't = -10..10\n' > s.cddl`, `printf '05' | xxd -r -p > v.cbor` (the in-window
+  value 5), then `cddl --ci validate --cddl s.cddl --cbor v.cbor` fails — the same verdict it gives the
+  out-of-window 11. `compile-cddl` accepts the spec; only `validate` blanket-rejects. Blast radius: the
+  ACCEPT certification of `rangeop.{inclusive,exclusive}.{int,nint,float}` — a ruby-generated in-window
+  candidate dies at rust validation, so all six variation rows carry NO accept vector (honestly: the
+  mint's two-oracle accept gate can't pass, exactly the groupname-precedent shape); only the uint-headed
+  base rows keep accepts. Their REJECT certification is mechanically satisfiable but non-discriminating on
+  the rust side (rust rejects the boundary violation only because it rejects everything), so it leans on
+  ruby, which enforces the window correctly — recorded in each row's vector `reason`. cddl-codegen's own
+  decoder is the enforcement oracle that matters (the emitted per-sign-arm / NaN-safe range check,
+  executed by the replay gate). Un-pin / re-mint those rows' accept side when a fixed rust `cddl` release
+  ships; full repro in `draft/rust-cddl-float-range-gap.md`.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
@@ -453,16 +470,29 @@ from a degenerate example.**
   two entries deliver joins the position-axis under-enumeration class's delivered instances
   (group-choice-arm, map-key kind×spelling×arity, occurrence marker×rep, the comment-DSL
   directive × position sweep).
-- **Float ranges are the remaining silent-acceptance hole on the range axis.** Range endpoints
-  truncate to integers at parse (`10.5 as i128` → 10 in `parse_control_operator`), and float-typed
-  windows are silently unenforced in EVERY position: the F32/F64 deserialize arms never consult
-  `config.bounds`, and the `FloatValue` rule arm still registers a bare alias (`c = 3.0..10.5` →
-  `pub type C = f64;`) — deliberately excluded from the literal-range auto-wrap, because emitting
-  the current integer-literal comparisons against an `f64` would not compile. Real support needs a
-  float bounds representation (the window is `(Option<i128>, Option<i128>)`) plus float-aware
-  check emission, done as one change so the wrapper never ships a truncated window. Until then
-  float ranges accept out-of-range values without a diagnostic — candidate feature, same
-  acceptance rule as the other pinned rows: flipping this must be real enforcement.
+- **Float range/control windows are enforced end to end (non-preserve).** A float-headed or
+  decimal-promoted window (`0.5..10.5`, `float64 .lt 10.5`, `0.5...10.5`) carries its bounds as a
+  parallel per-side `(f64, exclusive)` FloatWindow — kept separate from the integer
+  `(Option<i128>, Option<i128>)` window because dense float space admits no ±1 collapse of
+  `.lt`/`.gt`/`...` the way the integer encoding relies on, and because promoting the shared window to
+  `f64` would have churned every integer-bounds site. Endpoints are NOT truncated at parse; top-level
+  literal float ranges wrap into a bounds-enforcing newtype (ctor + deserialize check, tag
+  written/required) exactly like the literal-int ranges, so a standalone float range never ships a bare
+  `pub type = f64` alias that silently accepts out-of-window data. Emitted checks are NaN-safe by
+  construction — accept-form `!(x >= min && x <= max)`, never reject-form `x < min || x > max` (NaN
+  slips through the latter: both comparisons are false) — at the deserialize arms, wrapper new,
+  field/setter/enum-variant ctors, and wasm. Kept boundaries (deliberate, not gaps to close blindly):
+  `.ne` over a float and a decimal bound on an integer-primitive head (`uint .le 10.5`) are GRACEFUL
+  REJECTIONS via `record_rejection` — the integer min>max exclusion hack has no principled float
+  encoding, and silently flooring a decimal onto an int head would mis-enforce; floats under
+  `--preserve-encodings` stay unimplemented (the pre-existing pinned emission-axis gap — floats as
+  members already `unimplemented!()` there, so float bounds under preserve are unreachable). Pinned by
+  the `tests/core` `float_bounds` + `top_level_float_ranges` execution fixtures, the `api.rs`
+  parse-level unit tests, and — matrix-side — the `rangeop.{inclusive,exclusive}.float` rows'
+  `class="constraint"` reject vectors (10.6 / the excluded 10.5 endpoint / NaN), which project
+  `enforce = yes`. The durable lesson: a silent-acceptance hole is only ever visible to the enforcement
+  axis, so the fix and its enumerating matrix rows land together — a float row with no reject vector
+  would re-hide the very bug the rows exist to catch.
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
   *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
   length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any

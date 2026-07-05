@@ -66,6 +66,42 @@ title = "Inclusive range (a..b)"
 desc = "Applied inside type1 as `type2 .. type2`; constrains to the closed interval including both endpoints."
 example = "t = 0..10"
 
+# --- rangeop head-type × sign variation rows (inclusive) ---
+# The base rangeop rows above are verdicted from a uint-headed, non-negative window (`0..10`) alone.
+# These specialize the SAME production/alt on the (head-type × sign) axis — the variation that stayed
+# invisible until enumerated: because the enforcement axis reaches only as far as row enumeration (§ 4),
+# a missing row is an enforcement blind spot, which is exactly how the float-range silent-acceptance
+# hole hid from the matrix and was caught only by manual probing.
+[[feature]]
+id = "rangeop.inclusive.int"
+production = "rangeop"
+alt = '".."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
+profile = "RFC8610"
+title = "Inclusive range, signed-int head spanning both CBOR sign arms (a..b)"
+desc = "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (§ 4) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`."
+example = "t = -10..10"
+
+[[feature]]
+id = "rangeop.inclusive.nint"
+production = "rangeop"
+alt = '".."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
+profile = "RFC8610"
+title = "Inclusive range, all-negative head (uint arm empty) (a..b)"
+desc = "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "t = -10..-3"
+
+[[feature]]
+id = "rangeop.inclusive.float"
+production = "rangeop"
+alt = '".."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
+profile = "RFC8610"
+title = "Inclusive range, float head (a..b)"
+desc = "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the § 4 lesson that the enforcement axis reaches only as far as row enumeration made concrete."
+example = "t = 0.5..10.5"
+
 # --- rangeop = "..." ---
 [[feature]]
 id = "rangeop.exclusive"
@@ -76,6 +112,40 @@ profile = "RFC8610"
 title = "Exclusive range (a...b)"
 desc = "Applied inside type1 as `type2 ... type2`; constrains to the half-open interval that excludes the upper endpoint."
 example = "t = 0...10"
+
+# --- rangeop head-type × sign variation rows (exclusive) ---
+# The exclusive-range twins of the inclusive variation rows above: same (head-type × sign) axis, but on
+# the half-open `...` interval whose excluded upper endpoint is its own enforcement surface. Enumerated
+# for the same § 4 reason — a variation with no row is an enforcement blind spot.
+[[feature]]
+id = "rangeop.exclusive.int"
+production = "rangeop"
+alt = '"..."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
+profile = "RFC8610"
+title = "Exclusive range, signed-int head spanning both CBOR sign arms (a...b)"
+desc = "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "t = -10...10"
+
+[[feature]]
+id = "rangeop.exclusive.nint"
+production = "rangeop"
+alt = '"..."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
+profile = "RFC8610"
+title = "Exclusive range, all-negative head (uint arm empty) (a...b)"
+desc = "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "t = -10...-3"
+
+[[feature]]
+id = "rangeop.exclusive.float"
+production = "rangeop"
+alt = '"..."'
+rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
+profile = "RFC8610"
+title = "Exclusive range, float head (a...b)"
+desc = "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the § 4 lesson that the enforcement axis reaches only as far as row enumeration."
+example = "t = 0.5...10.5"
 
 # --- type1 = type2 ctlop type2  (control-operator application) ---
 [[feature]]

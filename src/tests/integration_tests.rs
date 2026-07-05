@@ -4707,6 +4707,20 @@ fn decode_conformance_replay() {
             "`time` (~= number) carries the native-float arm that is unimplemented under \
              --preserve-encodings (generation.rs; see the preserve_encodings_supports_floats stub)",
         ),
+        (
+            "rangeop.inclusive.float",
+            "a float-range newtype (`0.5..10.5`) wraps an f64 member, which hits the same native-float \
+             `unimplemented!` under --preserve-encodings (generation.rs float arm; see the \
+             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
+             boundary-violation reject vectors",
+        ),
+        (
+            "rangeop.exclusive.float",
+            "a float-range newtype (`0.5...10.5`) wraps an f64 member, which hits the same native-float \
+             `unimplemented!` under --preserve-encodings (generation.rs float arm; see the \
+             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
+             boundary-violation reject vectors",
+        ),
         // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
         // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
         // `assert!(!cli.preserve_encodings)` in generation.rs's tagged-enum serialize path, guarding

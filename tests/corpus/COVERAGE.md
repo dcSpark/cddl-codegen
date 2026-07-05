@@ -153,12 +153,18 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.unsigned` | ✅ | unsigned | `prelude.cddl` |
 | `prelude.uri` | ✅ | uri | `prelude.cddl` |
 
-### `rangeop` (2)
+### `rangeop` (8)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `rangeop.exclusive` | ✅ | Exclusive range (a...b) | `exclusive_range.cddl` |
+| `rangeop.exclusive.float` | ➕ | Exclusive range, float head (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.exclusive.int` | ➕ | Exclusive range, signed-int head spanning both CBOR sign arms (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.exclusive.nint` | ➕ | Exclusive range, all-negative head (uint arm empty) (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `rangeop.inclusive` | ✅ | Inclusive range (a..b) | `sized_int.cddl` |
+| `rangeop.inclusive.float` | ➕ | Inclusive range, float head (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.inclusive.int` | ➕ | Inclusive range, signed-int head spanning both CBOR sign arms (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.inclusive.nint` | ➕ | Inclusive range, all-negative head (uint arm empty) (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
 
 ### `rule` (2)
 
@@ -300,7 +306,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **92** — ✅ 54 covered · ➕ 7 supported-untested · ⚠️ 6 partial · ➖ 25 not supported
+- Features: **98** — ✅ 54 covered · ➕ 13 supported-untested · ⚠️ 6 partial · ➖ 25 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 50
 
