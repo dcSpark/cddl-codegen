@@ -51,7 +51,10 @@ script = [
 
 Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
 emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
-emitted type name, rename the `foo` identifier.
+emitted type name, rename the `foo` identifier. On a plain group rule the trailing comment
+belongs to the last group entry, not the rule: `grp = (a: uint) ; @name other` renames the
+*field* `a` to `other` (exactly like `grp = (a: uint ; @name other)`) — it neither renames the
+group nor errors.
 
 ## @newtype
 

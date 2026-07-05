@@ -374,6 +374,15 @@ from a degenerate example.**
   in choice-member position; either make the member-position comment reachable or scope the panic
   message's advertised remedy. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
   variant is captured into the IR but never emitted — data-carrying variants render the `///` fine.
+  (3) A rule-position SHAPE bypasses the rejection (probe-confirmed, not yet a sweep cell): a
+  `T / null` two-choice rule collapses to an `Option<T>` alias (`parse_type_choices`' optional-inner
+  path) instead of an enum, so neither the variant-naming path nor the rejection's
+  single-type-choice guard sees the directive — `foo = uint ; @name x / null` silently emits
+  `pub type Foo = Option<u64>;` for either comment placement. Candidate: extend
+  `rule_position_name_rejection` to the T/null collapse (no enum is generated, so `@name` has no
+  legitimate variant-naming meaning there) and add the sweep cell as `Reject` — the rule-name
+  position carries a SHAPE axis, the same lesson the identifier-hazard sweep's struct/enum split
+  encodes.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are cells of the
   § 1 enumeration items, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
