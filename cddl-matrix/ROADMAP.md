@@ -34,10 +34,6 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Secondary query scripts (Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
-  (profile/version diff) are largely already satisfied by `verify.ts`'s reconciliation + the F6 snapshot —
-  they need only thin query scripts, built in the `query_q4_directional.ts` mold (a pure
-  `matrix.json` read with a `--check` consistency + vacuity gate wired into `check.ts`'s local tier).
 - **Enforcement reject vectors (Q4's `enforce` axis is unverified).** The committed decode-conformance
   catalog ships zero classified `expect="reject"` vectors — each prior one was bug-class, pruned as the
   bug behind it was fixed — so every supported enforcement-bearing row (`ctl.*` plus `memberkey.cut`)
@@ -184,6 +180,18 @@ and stays out of CI.
   cargo/oracles. `--write` regenerates the marker-delimited `## Limitations` section of
   `docs/docs/current_capacities.mdx`; `--check` runs the drift + consistency + vacuity gate (check.ts
   `local` tier).
+- `bun run query_q5_completeness.ts` — **answers `QUERIES.md` Q5**: the standing, projectable form of
+  `verify.ts`'s bidirectional reconciliation. Forward (source → feature) is HARD-authoritative for
+  `type2`'s 12 alternatives only; the other productions' alt-coverage is best-effort/soft (labelled with
+  the `normalizeAlt` caveat, § 4). Backward (feature → source), prelude completeness, and control-op
+  completeness are all hard. Reads `matrix.json` + `sources/cddl-1-1-update.abnf` + `sources/cddl.prelude`
+  — no cargo/oracles. `--check` hard-fails on any uncovered `type2` alternative / unresolved feature
+  source / prelude gap, plus a vacuity floor (check.ts `local` tier).
+- `bun run query_q6_diff.ts` — **answers `QUERIES.md` Q6**: no args prints the per-profile view (features
+  each profile introduces + cddl-codegen's support split); two args `old.json new.json` (e.g. a
+  `git show REF:cddl-matrix/matrix.json` snapshot) prints a structural diff — added/removed ids per axis
+  array + changed annotation statuses. Pure `matrix.json` read — no cargo/oracles. `--check` (no-args
+  mode) runs the profile-set consistency + vacuity gate (check.ts `local` tier).
 
 ## 3. F4 / F5 follow-ons (only when their consumer exists)
 
