@@ -20,7 +20,7 @@ sidebar_position: 3
 * Type aliases - `foo = bar`
 * Type choices - `foo = uint / tstr`
 * Serialization for all supported types.
-* Deserialization for almost all supported types (see limitations section).
+* Deserialization for almost all supported types (see the [Limitations](#limitations) section).
 * CDDL Generics - `foo<T> = [T]`, `bar = foo<uint>`
 * Length bounds - `foo = bytes .size (0..32)`
 * cbor in bytes - `foo_bytes = bytes .cbor foo`
@@ -57,3 +57,63 @@ Terminable recursive types are supported — a rule may reference itself through
 The generated deserializer is recursive-descent, so by default it has **no depth bound**: maliciously deep CBOR recurses until the thread's stack overflows and the process **aborts (SIGABRT)** — this is a process abort, not a returnable error, so it cannot be caught with `catch_unwind`. There is deliberately no default limit, because any fixed cap would reject spec-valid documents that happen to nest deeper.
 
 Consumers that deserialize **untrusted input** (e.g. on-chain data) should generate with [`--deserialize-depth-limit=N`](command_line_flags#--deserialize-depth-limit), which makes the generated deserializers return a graceful `DeserializeError` once nesting exceeds `N` instead of overflowing the stack. See the flag's documentation for the tradeoff (it also rejects legitimately deep documents past `N`).
+
+{/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
+
+## Limitations
+
+This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dcSpark/cddl-codegen/tree/master/cddl-matrix) by `cddl-matrix/query_q1_gaps.ts` (regenerate with `cd cddl-matrix && bun run query_q1_gaps.ts --write`). It lists the constructs **in cddl-codegen's target CDDL profile (RFC 8610 + the IANA control-op registry) that the generator does not yet support** — its actionable gaps. "Supported" means the generated crate's emitted round-trip tests pass, not merely that it generates and compiles. Constructs that post-date the target profile are listed separately at the end (they are not gaps).
+
+### Unsupported constructs
+
+| Construct | CDDL example | Behavior |
+|-----------|--------------|----------|
+| Generic group definition | `set<a> = (* a)` | panics generation |
+| any | `x = any` | generates but does not compile |
+| cbor-any | `x = cbor-any` | panics generation |
+| eb16 | `x = eb16` | panics generation |
+| eb64legacy | `x = eb64legacy` | panics generation |
+| eb64url | `x = eb64url` | panics generation |
+| false | `x = false` | panics generation |
+| float16 | `x = float16` | panics generation |
+| float16-32 | `x = float16-32` | panics generation |
+| float32-64 | `x = float32-64` | panics generation |
+| nil | `x = nil` | panics generation |
+| null | `x = null` | panics generation |
+| true | `x = true` | panics generation |
+| undefined | `x = undefined` | panics generation |
+| Any (#) | `foo = #` | panics generation |
+| Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | panics generation |
+| Choice from inline group (&) | `color = &(red: 0, green: 1, blue: 2)` | panics generation |
+| Major-type sigil (#N, #N.n) | `foo = #1.2` | panics generation |
+| Major-type 7 / simple sigil (#7, #7.n) | `foo = #7.20` | panics generation |
+| Unwrap (~) | `bar = [uint]; foo = ~bar` | panics generation |
+| Literal value as a type | `answer = 42` | panics generation |
+| Byte-string literal value | `magic = h'cafe'` | rejected gracefully at parse |
+| Numeric literal value | `version = 5` | panics generation |
+| Text literal value | `marker = "v1"` | panics generation |
+
+### Control operators
+
+Supported: `.cbor`, `.default`, `.eq`, `.ge`, `.gt`, `.le`, `.lt`, `.ne`, `.size`.
+
+Unsupported (in-profile):
+
+`.abnf`, `.abnfb`, `.and`, `.b32`, `.b45`, `.b64c`, `.b64c-sloppy`, `.b64u`, `.b64u-sloppy`, `.base10`, `.bits`, `.cat`, `.cborseq`, `.det`, `.feature`, `.h32`, `.hex`, `.hexlc`, `.hexuc`, `.join`, `.json`, `.oid`, `.plus`, `.printf`, `.regexp`, `.sdnv`, `.sdnvseq`, `.within`.
+
+### Contextual gaps (supported top-level, unsupported when nested)
+
+These constructs work as their own rule but are unsupported in the listed nesting roles — an inline anonymous composite must be given a name (a rule or a `; @name`).
+
+| Construct | Unsupported roles | Example |
+|-----------|-------------------|---------|
+| `grpent.inline_group` | occurrence-target | `a = [* (int, tstr)]` |
+| `type2.array` | array-element, cbor-payload, choice-member, map-key, map-value, occurrence-target | `a = [[int]]` |
+| `type2.map` | array-element, cbor-payload, choice-member, generic-arg, map-value, occurrence-target | `a = [{x: int, y: uint}]` |
+| `type2.tag` | tag-content | `t = #6.24(#6.25(uint))` |
+
+### Out of profile (not gaps)
+
+The following construct post-dates cddl-codegen's target profile, so it is not counted as a support gap: Tagged data item, type-valued tag number (#6.&lt;T&gt;) (`t = #6.<n>(int); n = uint`, RFC9682).
+
+{/* END GENERATED q1-limitations */}
