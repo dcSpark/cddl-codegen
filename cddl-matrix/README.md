@@ -24,11 +24,13 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > row under each non-default codegen profile (`preserve`, `json`) and records a per-profile verdict
 > (`emission.<name>.status`) — the axis is **filled**: a row with no `emission` keys is one whose
 > default verdict is not `supported`, hence unsupported under every profile (a derived fact, since
-> only default-`supported` rows are probed). **Both flagship projections are
-> fully wired and now *generate* their hand docs:** `golden_hex` (encoding axis) and the corpus feature-axis
-> projection — `project_corpus.ts` generates `tests/corpus/COVERAGE.md` (the original north-star target,
-> now subsumed; `corpus_detect.ts` + `annotations/corpus/`). Any "seed / only `type2` worked" or "renderer
-> is the remaining piece" framing below this line is historical.
+> only default-`supported` rows are probed). **Three projections *generate* their hand docs:**
+> `golden_hex` (encoding axis), the corpus feature-axis projection — `project_corpus.ts` generates
+> `tests/corpus/COVERAGE.md` (the original north-star target, now subsumed; `corpus_detect.ts` +
+> `annotations/corpus/`) — and `query_q1_gaps.ts`, which generates the `## Limitations` section of
+> `docs/docs/current_capacities.mdx`. **Every consumer query Q1–Q6 is answered by a standing script**
+> (`QUERIES.md` § "Definition of done"). Any "seed / only `type2` worked" or "renderer is the
+> remaining piece" framing below this line is historical.
 
 ## What is a feature?
 

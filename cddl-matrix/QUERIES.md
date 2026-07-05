@@ -112,3 +112,9 @@ annotations, with: an explicit target profile per feature (F1), bidirectional gr
 tags (F2/F4), a per-construct encoding legality relation (F5), a ≥5-way directional support signal (F3),
 and a pinned/diffable synthesised snapshot (F6). F8/F9/F10/F11 are explicitly out of v1 scope (ledger
 in `ROADMAP.md`).
+
+**This bar is met.** Each query has a standing script (the "Answered by" notes above): Q1
+`query_q1_gaps.ts`, Q2 `project_corpus.ts`, Q3 `project_golden_hex.ts`, Q4 `query_q4_directional.ts`,
+Q5 `query_q5_completeness.ts`, Q6 `query_q6_diff.ts` — all pure file reads with `--check` gates in
+`check.ts`. Known honest partiality lives with the query it affects (Q4's numeric-op enforcement gap,
+Q5's type2-only hard authority — see the notes above and `ROADMAP.md` § findings / § 4).

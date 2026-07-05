@@ -12,10 +12,12 @@ round-trip/reject tests to PASS (`cargo test`), falling back to the compile verd
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
 see § findings) and supported rows carry decode-foreign corroboration clauses (77 rows / 695 committed
-vectors accepted, 0 failures). Both flagship projections GENERATE their
-hand docs and drift-check: `golden_hex` (encoding axis, Q3) and the `corpus` projection (feature axis Q2 +
-per-cell **role × feature** coverage). The north-star — subsuming `tests/corpus/COVERAGE.md` — is **DONE**
-(two independent cold reviews: "clear win").
+accept vectors, 0 failures; plus 4 `class="constraint"` enforcement reject vectors — see Q4 below).
+Three projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
+`corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), and `query_q1_gaps.ts`
+(the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1). **Every consumer query
+Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"). The north-star —
+subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold reviews: "clear win").
 
 > **North star.** Do the hard per-construct coverage work **once** and *project* it into the **many** docs
 > that need it, instead of hand-maintaining (and re-sweating) each. Corpus was the hard flagship;
