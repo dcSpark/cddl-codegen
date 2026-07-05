@@ -88,22 +88,28 @@ Rules:
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
-## Which AI model to use:
+## Which AI model to use
 
-- Use Sonnet 5 only if Claude Code internals themselves are recommending its use (sometimes happens for tool calls, etc.)
-- use Opus 4.8 for
-    - implementing anything with a clear implementation plan
-    - doing any investigation/implementation that is mostly mechanical
-- Use Fable 5 for
-    - session orchestration
-    - implementation plan creation
-    - review of implementation/plan
-    - any problem deemed very hard
+Fable 5 is the session orchestrator. The following should be inline in the main session:
+- session orchestration
+- implementation plan creation
+- review of implementation/plan
+- any problem deemed very hard
+- tasks cheaper to inline (ex: run a single command)
+
+### Delegation to other agents
+
+- Never use Haiku
+- Do not choose Sonnet 5 manually (only when Claude Code itself selects it or, or is used by tool)
+- `codex` (via skill) for any investigation/implementation that is mostly mechanical
+- Opus 4.8 for implementing anything with a clear implementation plan
 
 For workflows:
-- Do NOT run a workflow with many parallel Fable agents unless explicit permission is given. Fable jobs are almost always better done inline
-- Permission to run a workflow with Fable is different for permission to run a multi-Fable workflow
-- Generally avoid running tests at the same time in parallel agent (can happen if not careful using parallel Opus 4.8 agents for implementation)
+- Always pass an explicit `model:` in normal `agent()` calls to avoid auto-inheriting Fable as the model.
+- Exception: for Codex inside a workflow, use `agentType: 'codex:codex-rescue'` instead of `model:`, because `agent()` only accepts Anthropic models directly.
+- Never fan out multiple Fable agents without explicit user permission. A single Fable workflow agent also needs separate permission. If Fable is really needed, prefer using it inline.
+- Generally avoid running tests in parallel agents unless explicitly intended, since this can happen accidentally when using multiple parallel high-capability agents for implementation.
+
 
 ## Markdown formatting
 
