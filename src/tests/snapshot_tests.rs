@@ -99,17 +99,65 @@ fn snapshot_input(
     });
 }
 
-/// Labels used by [`whole_program`]; a corpus file with one of these stems would clobber its
-/// snapshot dir, so [`feature_corpus`] guards against the collision.
-const WHOLE_PROGRAM_LABELS: &[&str] = &[
-    "core",
-    "preserve_encodings",
-    "canonical",
-    "json",
-    "json_float",
-    "multifile",
-    "extern_deps",
-    "raw_bytes",
+/// The existing integration inputs, each under the flag profile it is known-safe with (the same
+/// pairings the heavy integration tests use). Captures the full output to cover cross-feature
+/// interactions, the multifile scope/module path, and the edition/deps Cargo.toml logic.
+///
+/// A corpus file with one of these labels as its stem would clobber its snapshot dir, so
+/// [`feature_corpus`] guards against the collision.
+const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
+    ("core", "tests/core/input.cddl", ("default", &[])),
+    (
+        "preserve_encodings",
+        "tests/preserve-encodings/input.cddl",
+        ("preserve", &["--preserve-encodings=true"]),
+    ),
+    (
+        "canonical",
+        "tests/canonical/input.cddl",
+        (
+            "canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"],
+        ),
+    ),
+    (
+        "json",
+        "tests/json/input.cddl",
+        (
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ),
+    // float JSON emission — split from `json` (that fixture also runs under json_preserve,
+    // and preserve-encodings is unimplemented for floats; same reason floats can't be corpus
+    // entries, whose snapshots span all three profiles).
+    (
+        "json_float",
+        "tests/json-float/input.cddl",
+        (
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ),
+    // directory input — exercises the multi-file scope/module codegen path.
+    ("multifile", "tests/multifile/inputs", ("default", &[])),
+    // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)
+    // emit paths: they reference user-supplied types so their output can't compile standalone
+    // (behavioral coverage is their integration fixtures), but this suite never compiles —
+    // it's where their emitted source gets pinned. Same profile pairings the integration
+    // tests use.
+    (
+        "extern_deps",
+        "tests/extern-deps/inputs",
+        (
+            "preserve",
+            &[
+                "--preserve-encodings=true",
+                "--common-import-override=extern_dep_crate",
+            ],
+        ),
+    ),
+    ("raw_bytes", "tests/raw-bytes/input.cddl", ("default", &[])),
 ];
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every
@@ -131,7 +179,9 @@ fn feature_corpus() {
     for path in entries {
         let label = path.file_stem().unwrap().to_str().unwrap().to_owned();
         assert!(
-            !WHOLE_PROGRAM_LABELS.contains(&label.as_str()),
+            !WHOLE_PROGRAM_CASES
+                .iter()
+                .any(|(whole_program_label, _, _)| *whole_program_label == label),
             "corpus file {:?} collides with a whole_program snapshot dir; rename it",
             path
         );
@@ -179,61 +229,7 @@ fn generation_is_deterministic() {
 /// interactions, the multifile scope/module path, and the edition/deps Cargo.toml logic.
 #[test]
 fn whole_program() {
-    let cases: &[(&str, &str, Profile)] = &[
-        ("core", "tests/core/input.cddl", ("default", &[])),
-        (
-            "preserve_encodings",
-            "tests/preserve-encodings/input.cddl",
-            ("preserve", &["--preserve-encodings=true"]),
-        ),
-        (
-            "canonical",
-            "tests/canonical/input.cddl",
-            (
-                "canonical",
-                &["--preserve-encodings=true", "--canonical-form=true"],
-            ),
-        ),
-        (
-            "json",
-            "tests/json/input.cddl",
-            (
-                "json",
-                &["--json-serde-derives=true", "--json-schema-export=true"],
-            ),
-        ),
-        // float JSON emission — split from `json` (that fixture also runs under json_preserve,
-        // and preserve-encodings is unimplemented for floats; same reason floats can't be corpus
-        // entries, whose snapshots span all three profiles).
-        (
-            "json_float",
-            "tests/json-float/input.cddl",
-            (
-                "json",
-                &["--json-serde-derives=true", "--json-schema-export=true"],
-            ),
-        ),
-        // directory input — exercises the multi-file scope/module codegen path.
-        ("multifile", "tests/multifile/inputs", ("default", &[])),
-        // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)
-        // emit paths: they reference user-supplied types so their output can't compile standalone
-        // (behavioral coverage is their integration fixtures), but this suite never compiles —
-        // it's where their emitted source gets pinned. Same profile pairings the integration
-        // tests use.
-        (
-            "extern_deps",
-            "tests/extern-deps/inputs",
-            (
-                "preserve",
-                &[
-                    "--preserve-encodings=true",
-                    "--common-import-override=extern_dep_crate",
-                ],
-            ),
-        ),
-        ("raw_bytes", "tests/raw-bytes/input.cddl", ("default", &[])),
-    ];
-    for (label, input, profile) in cases {
+    for (label, input, profile) in WHOLE_PROGRAM_CASES {
         snapshot_input(
             &std::path::PathBuf::from(input),
             label,
