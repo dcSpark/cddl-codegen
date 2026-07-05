@@ -176,6 +176,14 @@ sign_bounds = [
     straddle: -10 .. 3
 ]
 
+; Literal-headed top-level range rules wrap into a bounds-enforcing struct (mirroring the
+; `int .op`-headed wrappers). The bounds/tag logic is mode-independent; pinned here too so the
+; preserve-encodings wrapper machinery (encoding capture beside the window check / the tag write)
+; is exercised on a literal-headed range, and a tagged rule keeps writing its tag under preserve.
+top_level_neg_range = -10 .. -3
+top_level_pos_range = 3 .. 10
+top_level_tagged_range = #6.5(3 .. 10)
+
 bounds_type_choice = bytes .size (0..64)
                    / text .size (0..64)
 

@@ -1153,6 +1153,60 @@ mod tests {
     }
 
     #[test]
+    fn top_level_ranges() {
+        // Literal-headed top-level range rules wrap into a bounds-enforcing struct (mirroring the
+        // `int .op`-headed top-level wrappers). Same behavior as the default-mode fixture; pinned
+        // here to exercise the preserve-encodings wrapper machinery on a literal-headed range and to
+        // confirm a tagged rule still writes its tag under preserve.
+
+        // top_level_neg_range = -10..-3, an i64 wrapper (its deserializer reads BOTH sign arms then
+        // checks the whole window).
+        let neg = |v: i128| TopLevelNegRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
+        assert!(neg(5).is_err()); // any uint is out of an all-negative window
+        assert!(neg(-11).is_err());
+        assert!(neg(-2).is_err());
+        assert!(neg(-3).is_ok());
+        assert!(neg(-10).is_ok());
+        deser_test(&TopLevelNegRange::new(-3).unwrap());
+        deser_test(&TopLevelNegRange::new(-10).unwrap());
+
+        // top_level_pos_range = 3..10, a u64 wrapper.
+        let pos = |v: i128| TopLevelPosRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
+        assert!(pos(2).is_err());
+        assert!(pos(11).is_err());
+        assert!(pos(3).is_ok());
+        assert!(pos(10).is_ok());
+        deser_test(&TopLevelPosRange::new(3).unwrap());
+        deser_test(&TopLevelPosRange::new(10).unwrap());
+
+        // top_level_tagged_range = #6.5(3..10): the wrapper writes tag 5 and requires it, plus the
+        // window. A fresh value carries no captured encoding, so the tag/int are canonical inline.
+        let tagged_ok = TopLevelTaggedRange::new(7).unwrap();
+        let tagged_bytes = tagged_ok.to_cbor_bytes();
+        assert_eq!(tagged_bytes[0], 0xc5); // major type 6 (tag) with argument 5
+        assert_eq!(
+            tagged_bytes,
+            [cbor_tag(5), cbor_int(7, cbor_event::Sz::Inline)].concat()
+        );
+        deser_test(&tagged_ok);
+        assert!(TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
+        assert!(
+            TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
+        );
+        // out-of-window tagged input is rejected
+        assert!(TopLevelTaggedRange::from_cbor_bytes(
+            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat()
+        )
+        .is_err());
+        // wrong tag is rejected
+        assert!(TopLevelTaggedRange::from_cbor_bytes(
+            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat()
+        )
+        .is_err());
+    }
+
+    #[test]
     fn used_as_key() {
         // this is just here to make sure this compiles (i.e. Hash/Eq traits are derived)
         let mut set_foo: std::collections::HashSet<Foo> = std::collections::HashSet::new();
