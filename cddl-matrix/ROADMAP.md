@@ -47,27 +47,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Directive × attachment-position cells for the `dsl.*` features (the last unswept instance of
-  the position-axis under-enumeration class — its three construct-axis siblings, group-choice-arm /
-  map-key kind×spelling×arity / occurrence marker×rep, are delivered and live in § findings).**
-  Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
-  `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
-  position, but the mechanism is per-position code (`group_entry_to_field_name` has a separate
-  metadata read per MemberKey arm), so a directive can silently no-op in an unenumerated position —
-  proven three times for `@name` alone: silently dropped on arrow-keyed entries (fixed when integer
-  arrow keys landed), on bareword-keyed entries (fixed with the Rust-keyword rejection, whose
-  `@name` remedy only works because of that fix — a remedy we would have printed while it was
-  broken), and STILL silently dropped on top-level rules today (`parse_rule` passes
-  `RuleMetadata::default()`, so a rule/group name is never renamed by `@name` — verified while
-  landing the reserved-name rejection, whose message spells out that renaming the identifier is the
-  only remedy). Enumerate directive × position (rule, bareword key, value key, arrow key,
-  group-choice arm, array member) cells where the docs claim the directive applies, asserting an
-  OBSERVABLE effect in the output (a renamed field, a doc comment) or a clean error —
-  silently-ignored is the failure mode being swept for; the rule-position `@name` drop should
-  become a clean error (or real support) when this lands. Distinct from the REJECTED doc-snippet prose harness
-  (`tests/TESTING_ROADMAP.md` § "Explicitly not worth it"): that decision was about docs drifting
-  from behavior; this is behavior enumeration — the snapshot corpus pins positions it samples, and
-  both `@name` drops were in positions it did not.
 
 ## 2. Running the verification suite
 
@@ -368,6 +347,29 @@ from a degenerate example.**
   a non-panic Err via the rustfmt gate; the fixture pins the error stays graceful) and the
   `bareword_keyword_field_name_rejects_gracefully` unit test (the parse-time rejection and the
   generating remedy).
+- **The comment-DSL directive × attachment-position grid is hard-asserted by
+  `src/tests/dsl_position_tests.rs`** — a Rust sweep module rather than matrix containment cells,
+  because the failure mode being swept for (a directive silently no-oping in an unenumerated
+  position) still generates, compiles, and round-trips, so the execution-gated per-cell probes
+  structurally cannot see it; the evidence class is a string-level assertion on the generated
+  source (the same argument that put the identifier-hazard sweep Rust-side). Each docs-claimed
+  (directive, position) cell asserts the observable effect (a renamed field, a `///` comment, a
+  missing serde impl with a positive control) or a graceful rejection; a `KNOWN_SILENT_DROP` pin
+  list (mirroring the hazard sweep's `EXPECTED_COMPILE_FAIL`) holds discovered drops explicitly and
+  flips loudly when a fix lands. The sweep closed the third `@name` silent drop: rule-position
+  `@name` on a single-type-choice TYPE rule now **rejects gracefully**
+  (`parsing::rule_position_name_rejection`, wired into the `api::with_types` pre-scan beside the
+  reserved-name rejection; multi-choice rules are untouched — there `@name` legitimately names
+  variants), with a message giving the rename-the-identifier remedy. A trailing `@name` on a plain
+  GROUP rule is NOT a rule-position drop: the `cddl` AST binds it to the last group entry's
+  trailing comment, so it renames that field — indistinguishable from the in-paren form, and pinned
+  as such by the `plain-group-trailing` cell. Two candidate fixes the sweep surfaced (pinned, not
+  fixed): (1) `@name` at a MEMBER-position anonymous inline group never reaches the naming site
+  (`get_comment_after(type2)` ascends only through Type1/TypeChoice), so the "Anonymous groups not
+  allowed" panic fires despite its message advertising `@name` as the remedy — the remedy DOES work
+  in choice-member position; either make the member-position comment reachable or scope the panic
+  message's advertised remedy. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
+  variant is captured into the IR but never emitted — data-carrying variants render the `///` fine.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are cells of the
   § 1 enumeration items, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
@@ -415,7 +417,9 @@ from a degenerate example.**
   tagged-inner `.default`/range cases already auto-wrap, or reject with a `@newtype` remedy. Both
   entries are one enumeration hole: the range features are verdicted from one example in one position
   and one sign — position (top-level alias / field) × bound-sign (negative / straddling / positive)
-  are unswept axes of the same § 1 under-enumeration class.
+  are unswept axes of the position-axis under-enumeration class (whose delivered instances —
+  group-choice-arm, map-key kind×spelling×arity, occurrence marker×rep, and the comment-DSL
+  directive × position sweep — live as entries in this section).
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
   *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
   length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any

@@ -680,6 +680,18 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) t
 > A non-pinned bundle that fails to compile is a NEW hazard finding to add to the pin list (with a
 > reason) and report — not to paper over by editing the generator.
 
+> Second sibling, same argument on a **DOCS-CONTRACT** axis: `src/tests/dsl_position_tests.rs`
+> hard-asserts the comment-DSL directive × attachment-position grid against
+> `docs/docs/comment_dsl.mdx`'s claims (plus error-message-advertised remedies). A directive that
+> silently no-ops in an unenumerated position still generates, compiles, and round-trips — invisible
+> to every execution-gated probe — so each cell asserts the OBSERVABLE effect as a string-level
+> check on the generated source (a renamed field, a `///` comment, a missing serde impl beside a
+> positive control) or a graceful rejection. Unlike the hazard catalog it is hard-asserted, not a
+> blessable snapshot (blessing a decay to silent-drop would defeat the purpose); discovered drops
+> are pinned in `KNOWN_SILENT_DROP` (mirroring `EXPECTED_COMPILE_FAIL`) — asserted to STILL be
+> dropped so a pin flips loudly when a fix lands, and a pin is a finding to report, not a license
+> to re-author the expectation.
+
 ## Coverage
 
 The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure
