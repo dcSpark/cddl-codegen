@@ -139,17 +139,21 @@ per-construct oracle — its independent evidence is corpus-level only (`golden_
 
 **The enforcement axis (`enforce-constraint`) is grounded by `class="constraint"` reject vectors** in
 `catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an
-over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value — each a valid
-instance of its base type), certified spec-invalid by BOTH oracles at mint and durably rejected by the
-generated decoder — so `ctl.size`, `ctl.cbor`, `memberkey.cut`, AND the six numeric range/eq ops
-(`ctl.{le,lt,gt,eq,ne,ge}`) project `enforce = yes (bounded-reject)`. The numeric ops' probe
-examples target `int` with literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) — that
-targeting is load-bearing: the rust corroborating oracle does not enforce these ops over a `uint`
-target (a recorded upstream gap, `draft/rust-cddl-uint-control-op-gap.md`), so `uint`-targeted or
-vacuously-bounded forms cannot carry an in-type boundary-violating vector through the both-reject
-gate, and `query_q4_directional.ts --check` pins the exact green set so a decay of the examples
-fails loudly rather than silently dropping enforcement evidence. `ctl.default` is `n/a` (it governs
-an absent field — no rejectable instance).
+over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value, an out-of-window or
+excluded-endpoint number, NaN against a float window — each a valid instance of its base type),
+certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 17
+rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`),
+and the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
+rows `.int`/`.nint`/`.float`). Two upstream rust-oracle gaps shape what "certified" means per family
+(`query_q4_directional.ts --check` pins the exact green set so a decay fails loudly rather than
+silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
+non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
+over a `uint` target (`draft/rust-cddl-uint-control-op-gap.md`), so `uint`-targeted or
+vacuously-bounded forms cannot pass the both-oracles-reject gate; and the non-uint-endpoint range
+rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the rust oracle
+blanket-rejects EVERY instance of a float or negative-int range, valid or not
+(`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
+vector. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.

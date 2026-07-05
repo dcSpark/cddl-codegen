@@ -267,7 +267,18 @@ and asserts they are accepted.
     target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)
     does not enforce these ops over a `uint` target (upstream gap,
     `draft/rust-cddl-uint-control-op-gap.md`), so a `uint`-targeted form can't pass the both-reject
-    gate; `query_q4_directional.ts --check` pins the exact green set against such a decay.
+    gate; `query_q4_directional.ts --check` pins the exact green set against such a decay. The
+    `rangeop` rows with non-uint endpoints (`.int`/`.nint`/`.float`) sit on a SECOND rust-oracle gap
+    (`draft/rust-cddl-float-range-gap.md`: `validate` blanket-rejects every instance of a float or
+    negative-int range), so their reject certification leans on ruby and their accept side carries
+    no vector; each vector's `reason` says so.
+    **Authoring rule — vector SHAPE is load-bearing:** a constraint vector for a `standalone` row is
+    a BARE in-type instance of the row's type (`0b`, `fb…`), decodable up to the constraint itself so
+    the emitted range/size check is the only possible rejection. A holder-wrapped scalar
+    (`8200…` = `[0, x]`) against a standalone row rejects as a TYPE mismatch before any bounds check
+    runs — vacuous evidence the replay gate cannot distinguish (it asserts `Err`, not the reason).
+    The `8200` holder prefix belongs only to `mode = "holder"` rows; a row's accept and reject
+    vectors must share their outer CBOR shape.
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and

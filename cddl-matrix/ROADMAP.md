@@ -11,7 +11,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 probed): "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
+(every default-supported row carries a `preserve`/`json` verdict; 5 divergences, all `preserve`-side —
 see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 26
 `class="constraint"` enforcement reject vectors over 17 enforce-green rows — the enforcement axis is
 FULLY green: every row
@@ -264,6 +264,17 @@ from a degenerate example.**
   decoder is the enforcement oracle that matters (the emitted per-sign-arm / NaN-safe range check,
   executed by the replay gate). Un-pin / re-mint those rows' accept side when a fixed rust `cddl` release
   ships; full repro in `draft/rust-cddl-float-range-gap.md`.
+- **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row must
+  be a bare in-type instance of the row's type** — decodable all the way up to the constraint itself, so
+  the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped scalar
+  (`[0, 11]` = `82000b`) against a standalone row still passes every current gate — the decoder rejects
+  it as a TYPE mismatch before any bounds check runs (the replay gate asserts `Err`, not the rejection
+  reason, and the Q4 pin fixes the row *set*, not vector quality) — which is vacuous enforcement
+  evidence indistinguishable from the real thing. This exact decay shipped once (the first rangeop mint
+  landed `8200`-wrapped hand rejects beside bare accepts in the same rows) and was caught only by
+  review. Authoring rule until the replay gate asserts rejection *reasons*
+  (`tests/TESTING_ROADMAP.md` item): the `8200` holder prefix belongs ONLY to `mode = "holder"` rows;
+  a sanity read is that a row's accept and reject vectors must share their outer CBOR shape.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
@@ -437,8 +448,10 @@ from a degenerate example.**
   metadata has no home on the enum). Tags over structs/arrays/maps preserve fine. Surfaced by the
   decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded)
   and now recorded on the emission axis (`contain.tag-content.type.choice` →
-  `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` — the only three
-  emission divergences the fill run found, all `preserve`-side.
+  `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
+  float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
+  hitting the same native-float-under-preserve `unimplemented!` — the § float-window findings entry) —
+  five emission divergences total, all `preserve`-side.
 - **Signed-int field windows are partitioned per CBOR sign arm with three-state semantics.** An
   int-typed field's deserializer branches per CBOR major type (uint arm / nint arm), and the value
   window projects onto each arm as vacuous (no check), constraining (narrowed check), or arm-empty
