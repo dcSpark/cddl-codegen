@@ -92,7 +92,8 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      `pub type` alias — a `.default`-carrying inner `#6.n(uint .default 5)` and a range that
      collapses exactly onto a rust primitive `#6.n(uint .le 255)` — now auto-wrap like the
      primitive/`.cbor` arms; pinned by `tests/corpus/tagged_default_inner.cddl` and
-     `tests/corpus/tagged_ranged_inner.cddl`.)
+     `tests/corpus/tagged_ranged_inner.cddl`. Literal-headed range inners — `#6.5(3..10)` — wrap
+     too, pinned by `top_level_ranges` in `tests/core`.)
    - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
      fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
      `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

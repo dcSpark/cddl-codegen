@@ -411,26 +411,47 @@ from a degenerate example.**
   and now recorded on the emission axis (`contain.tag-content.type.choice` →
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` — the only three
   emission divergences the fill run found, all `preserve`-side.
-- **All-negative range as a record field panics the generator.** `rec2 = [q: -10..-3]` → `internal
-  error: entered unreachable code` at `bounds_check_if_block`'s `(None,None)` arm. Mechanism (probed):
-  an int-typed field's deserializer branches per CBOR sign (uint arm / nint arm) and each arm gets its
-  own partitioned bounds check — the straddling `[q: -10..3]` generates correctly with TWO RangeChecks,
-  and all-positive `[q: 3..10]` with one — but an all-negative range leaves the uint arm's partition
-  with an empty window, which reaches `bounds_check_if_block` as the unrepresentable `(None,None)`
-  instead of an always-reject. The fix seam is the sign-branch bounds partition in generation, not
-  parsing (the straddle case proves the range plumbing upstream is fine).
-- **A top-level two-sided range alias silently drops its bounds — ANY sign, not just negative.**
-  `c = -10..-3` emits `pub type C = i64;` and equally `e = 3..10` emits `pub type E = u64;` — a bare
-  alias with no range check anywhere, silently accepting out-of-range values (worse than the field
-  panic: spec-invalid data round-trips as valid). Bounds ARE enforced on the `@newtype` wrapper path
-  (the nint magnitude/bound fixes) and on the field path (previous entry aside), so the gap is
-  specifically the plain top-level alias emission; candidate fix: auto-wrap bounded aliases like the
-  tagged-inner `.default`/range cases already auto-wrap, or reject with a `@newtype` remedy. Both
-  entries are one enumeration hole: the range features are verdicted from one example in one position
-  and one sign — position (top-level alias / field) × bound-sign (negative / straddling / positive)
-  are unswept axes of the position-axis under-enumeration class (whose delivered instances —
-  group-choice-arm, map-key kind×spelling×arity, occurrence marker×rep, and the comment-DSL
-  directive × position sweep — live as entries in this section).
+- **Signed-int field windows are partitioned per CBOR sign arm with three-state semantics.** An
+  int-typed field's deserializer branches per CBOR major type (uint arm / nint arm), and the value
+  window projects onto each arm as vacuous (no check), constraining (narrowed check), or arm-empty
+  — the arm's entire sign domain is out of range, emitting an unconditional reject that reports the
+  ORIGINAL window (`generation.rs` `classify_sign_arm`; the uint arm reads a `u64`, so it can never
+  compare against a negative literal — that's why empty can't just emit the real comparison). A
+  two-filter partition that conflates vacuous with empty panics generation
+  (`bounds_check_if_block`'s `(None,None)` arm) on all-negative windows (`[q: -10..-3]`),
+  zero-upper windows (`-10..0`), negative exclusions (`int .ne -5`), and — under
+  `--preserve-encodings`, where BOTH arms partition — plain `.le 10` / `.ge 3` / `.ne 5`; it also
+  silently mis-checks small exclusions (`.ne 1` partitions its `(2,0)` encoding into `x < 2`,
+  wrongly rejecting 0). The `.ne` exclusion encoding (min > max = exclude the single value `min-1`)
+  must therefore be routed WHOLE to the arm the excluded value lives in, never split per side. The
+  i64 non-preserve nint arm keeps its `negative_integer_sz` full-window check (i64::MIN support,
+  cbor_event #9). Pinned by the `sign_bounds` execution fixtures (tests/core +
+  tests/preserve-encodings; the position × sign grid incl. both endpoints, the vacuous-arm accept,
+  and both exclusion directions) and the map-rep generation regression
+  (`sign_partition_map_rep_generates_and_checks`).
+- **Top-level range rules wrap whenever the window doesn't collapse exactly onto a Rust primitive
+  — literal-headed the same as typename-headed.** `c = -10..-3`, `e = 3..10`, and `#6.5(3..10)`
+  generate a bounds-enforcing newtype wrapper (ctor + deserialize check the full window; the
+  tagged form writes/requires its tag on the wire) via `parsing.rs` `register_literal_range`,
+  which mirrors the `Typename` Range arm's three-way split. A bare `pub type` alias has no
+  ctor/deserialize to hang a check on, so an alias emission silently accepts spec-invalid data
+  standalone — and drops a tag from the standalone wire, the same conformance-bug class the
+  typename-headed tag rules already wrap against. Exact collapses (`u32 = 0..4294967295`,
+  `i8 = -128..127`) still alias, byte-identically. Pinned by the `top_level_ranges` execution
+  fixtures (tests/core + tests/preserve-encodings). The range position × bound-sign sweep these
+  two entries deliver joins the position-axis under-enumeration class's delivered instances
+  (group-choice-arm, map-key kind×spelling×arity, occurrence marker×rep, the comment-DSL
+  directive × position sweep).
+- **Float ranges are the remaining silent-acceptance hole on the range axis.** Range endpoints
+  truncate to integers at parse (`10.5 as i128` → 10 in `parse_control_operator`), and float-typed
+  windows are silently unenforced in EVERY position: the F32/F64 deserialize arms never consult
+  `config.bounds`, and the `FloatValue` rule arm still registers a bare alias (`c = 3.0..10.5` →
+  `pub type C = f64;`) — deliberately excluded from the literal-range auto-wrap, because emitting
+  the current integer-literal comparisons against an `f64` would not compile. Real support needs a
+  float bounds representation (the window is `(Option<i128>, Option<i128>)`) plus float-aware
+  check emission, done as one change so the wrapper never ships a truncated window. Until then
+  float ranges accept out-of-range values without a diagnostic — candidate feature, same
+  acceptance rule as the other pinned rows: flipping this must be real enforcement.
 - **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
   *Validated:* the 11-byte input `[0x7b, 00,00,00,00, 80,00,e8,00, 2e,f6]` — a text string whose 8-byte
   length header claims `0x80_00e800` = 2,147,543,040 bytes — drives a single **~2 GB allocation before any
