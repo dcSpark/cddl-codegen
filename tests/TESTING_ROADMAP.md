@@ -72,9 +72,12 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    keyed on the wrong CBOR type (didn't even self-round-trip), a fixed-value-entry arm that
    panicked generation, and a non-fixed-key arm that silently dropped the key. All three would
    have surfaced mechanically from recombining member shapes inside one construct. Identifier
-   space is a fuzz dimension too, not just grammar shapes: a rule named `w` generates
-   `pub enum W`, which collides with the `serialize<W: Write>` generic and doesn't compile
-   (ledgered in `cddl-matrix/ROADMAP.md` § findings). Recombination is only as complete as the
+   space is a fuzz dimension too, not just grammar shapes — the proven instance is now an
+   enumerated sweep, not a fuzz finding: `src/tests/identifier_hazard_tests.rs` verdicts hazardous
+   names × positions × emitted type shape (it caught the shape-dependent `r`/`w` generic collision,
+   since fixed by collision-proof generic names, and pins the still-open reserved-name generation
+   panics — `cddl-matrix/ROADMAP.md` § 1 follow-ons). A grammar fuzzer should draw identifiers from
+   that hazard table rather than rediscover it. Recombination is only as complete as the
    role set it draws from — the enumerative prerequisite (a group-choice-arm containment role;
    the `//` arm is currently not a containment role at all) is ledgered concretely in
    `cddl-matrix/ROADMAP.md` § 1 and should land before or with the fuzzer.
