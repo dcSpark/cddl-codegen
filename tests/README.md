@@ -33,6 +33,14 @@ every in-tier gate first).
 install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). The fuzz
 gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
 
+> **Fold before committing after a `full` run.** The `verify` gate rewrites
+> `cddl-matrix/annotations/cddl_codegen.toml`, and it runs AFTER `build_matrix_check` already
+> passed earlier in the same run — so a green full-tier summary does not prove the committed
+> `matrix.json` matches the refreshed annotations (evidence strings change whenever decode vectors
+> were minted since the last run). Run `bun run build_matrix.ts` from `cddl-matrix/` and re-run
+> `bun run check.ts fast` before committing; this exact miss has produced a red-on-HEAD CI drift
+> gate twice.
+
 The runner's **first gate is three self-completeness meta-checks**: every `#[ignore]` test must be
 registered as a manual gate or a known-failing stub, every `cddl-matrix/*.ts` (minus `lib.ts`) must
 be wired to a tier, and `build.yml` must invoke `bun run check.ts fast` with no other run step (so
