@@ -4751,11 +4751,11 @@ fn decode_conformance_replay() {
         .get("row")
         .and_then(|v| v.as_array())
         .expect("catalog.toml has [[row]] entries");
-    // A truncated parse (bad slice, wrong path) must not pass vacuously: the committed corpus has 93
-    // rows (78 active + 15 pinned/vectorless), so a read that sees far fewer means something broke.
+    // A truncated parse (bad slice, wrong path) must not pass vacuously: the committed corpus has 119
+    // rows (104 active + 15 pinned/vectorless), so a read that sees far fewer means something broke.
     assert!(
-        all_rows.len() >= 90,
-        "catalog parsed only {} rows (expected >= 90) — truncated/incorrect parse",
+        all_rows.len() >= 110,
+        "catalog parsed only {} rows (expected >= 110) — truncated/incorrect parse",
         all_rows.len()
     );
 
@@ -4973,17 +4973,17 @@ fn decode_conformance_replay() {
 
     let _ = std::fs::remove_dir_all(&root);
 
-    // Vacuity floors from the real minted corpus (78 active rows, 699 vectors at HEAD; floors set
+    // Vacuity floors from the real minted corpus (104 active rows, 915 vectors at HEAD; floors set
     // just under so ordinary corpus churn doesn't false-fail, while a collapsed parse or a
     // silently-degraded generation loop that replays almost nothing still fails the gate).
     assert!(
-        rows_replayed >= 70,
-        "only {rows_replayed} catalog rows were replayed (expected >= 70) — the corpus or the \
+        rows_replayed >= 95,
+        "only {rows_replayed} catalog rows were replayed (expected >= 95) — the corpus or the \
          generation loop shrank"
     );
     assert!(
-        vectors_replayed >= 600,
-        "only {vectors_replayed} vectors were replayed (expected >= 600) — the corpus or the \
+        vectors_replayed >= 850,
+        "only {vectors_replayed} vectors were replayed (expected >= 850) — the corpus or the \
          generation loop shrank"
     );
     assert!(

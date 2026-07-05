@@ -108,7 +108,19 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-5. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
+5. **Assert the rejection REASON for `class="constraint"` replay vectors (cheap, closes a proven
+   escape).** The replay gate asserts only that a reject vector `Err`s — it cannot tell a bounds
+   rejection from a CBOR type mismatch, so a malformed constraint vector (e.g. the holder-wrapped
+   `8200…` scalars that landed on the first rangeop mint and were caught only by review — see
+   `tests/README.md` § reject-vector classes, "vector SHAPE is load-bearing") passes as vacuous
+   enforcement evidence. The remedy is mechanical: for `class="constraint"` vectors, assert the
+   decoder's error Display names the violated check (`RangeCheck`/`RangeCheckFloat`/`.size`-style
+   text) rather than a type/length mismatch — the replay harness already captures per-vector errors,
+   so this is a match on strings the generator itself emits, oracle-free and deterministic. Until it
+   lands, the authoring rule in `tests/README.md` (bare in-type scalars for standalone rows;
+   accept/reject vectors share their outer CBOR shape) is the only guard.
+
+6. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
    depth.**
    - **Encoding variants (medium — cheap and self-contained).** Every committed accept vector is
      definite-length, minimal-width CBOR by mint construction (ruby `generate` → `diag2cbor.rb`),
