@@ -278,7 +278,10 @@ and asserts they are accepted.
     (`8200…` = `[0, x]`) against a standalone row rejects as a TYPE mismatch before any bounds check
     runs — vacuous evidence the replay gate cannot distinguish (it asserts `Err`, not the reason).
     The `8200` holder prefix belongs only to `mode = "holder"` rows; a row's accept and reject
-    vectors must share their outer CBOR shape.
+    vectors must share their outer CBOR shape. `project_decode_conformance.ts` § 6 enforces this
+    mechanically (leading major-type class vs the row's accepts, majors 0/1 merged; the holder
+    preamble banned on accept-less standalone rows); the rejection-REASON assert in the replay gate
+    (`tests/TESTING_ROADMAP.md` item 5) remains the deeper behavioral layer.
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
