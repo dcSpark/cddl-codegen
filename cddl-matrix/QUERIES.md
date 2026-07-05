@@ -61,12 +61,29 @@ matrix does **not** model."
   lint** (every production alt → ≥1 feature, every feature → ≥1 source entry). → **needs F2.** (Tags
   are covered by the F4 decision — modeled parametrically + via prelude-named tags — so the CBOR tag
   registry is *referenced*, not pinned/enumerated as a source.)
+- **Answered by `query_q5_completeness.ts`**, a pure read of `matrix.json` + `sources/cddl-1-1-update.abnf`
+  + `sources/cddl.prelude` (the standing, projectable form of `verify.ts`'s reconciliation). Forward
+  (source → feature) is **hard-authoritative for `type2`'s 12 alternatives only** — an uncovered `type2`
+  alternative is a real modelling gap that `--check` fails on; the other productions' alt-coverage is
+  best-effort/soft (labelled with ROADMAP § 4's `normalizeAlt` exact-string caveat, so its noise is never
+  mistaken for a gap). Backward (feature → source), prelude completeness, and control-op completeness are
+  all hard. `--check` hard-fails on any uncovered `type2` alternative / unresolved feature source / prelude
+  gap, with a vacuity floor (12 `type2` alternatives, 37 control ops, > 20 prelude names — check.ts local
+  tier).
 
 ### Q6 — Profile / version diff
 "What changed — in the feature set or in tool X's support — when moving from CDDL profile P to P+1, or
 from tool version V to V+1?"
 - **Requires:** the profile axis (F1) **+ a pinned, diffable snapshot of the synthesised matrix** so a
   change is a reviewable diff. → **needs F1 + F6.**
+- **Answered by `query_q6_diff.ts`**, a pure `matrix.json` read with two modes: no args prints the
+  per-profile view (the P → P+1 half — features each profile introduces, in spec order, + cddl-codegen's
+  support split within it); two args `old.json new.json` prints the snapshot diff (the V → V+1 half — a
+  reviewable structural diff of a pinned snapshot pair: added/removed ids per axis array + changed
+  annotation statuses, e.g. from `git show REF:cddl-matrix/matrix.json`). `--check` (no-args mode) runs
+  the profile-set consistency invariant (every feature's profile ∈ the known set) + a vacuity floor
+  (≥ 2 profiles, RFC9682 introduces ≥ 1 feature, CDDL_CODEGEN exactly 10 vendor features — check.ts local
+  tier).
 
 ### Q7 (stretch) — Hazardous nesting interactions
 "For construct C, list known-hazardous compositions (C inside D inside role R with operator E) and tool

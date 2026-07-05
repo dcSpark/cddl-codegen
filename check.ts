@@ -261,6 +261,10 @@ const REGISTRY: Gate[] = [
     script: "query_q4_directional.ts", desc: "Q4 directional-support query + consistency gate (matrix.json + catalog.toml, no cargo)" },
   { id: "query_q1_gaps", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q1_gaps.ts", "--check"], cwd: MATRIX,
     script: "query_q1_gaps.ts", desc: "Q1 support-gap query + generated-Limitations drift gate (matrix.json → current_capacities.mdx, no cargo)" },
+  { id: "query_q5_completeness", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q5_completeness.ts", "--check"], cwd: MATRIX,
+    script: "query_q5_completeness.ts", desc: "Q5 matrix-self-completeness query + reconciliation gate (matrix.json + sources/*.abnf/.prelude, no cargo)" },
+  { id: "query_q6_diff", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q6_diff.ts", "--check"], cwd: MATRIX,
+    script: "query_q6_diff.ts", desc: "Q6 profile/version-diff query + profile-set consistency gate (matrix.json, no cargo)" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
