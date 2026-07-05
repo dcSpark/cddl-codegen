@@ -1034,7 +1034,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok
 [[support]]
 id = "ctl.and"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b32"

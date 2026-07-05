@@ -1677,9 +1677,11 @@ fn thin_root_seed_once() {
 /// The wiring-survival regression (the CML cip25 clobber, mechanized): a hand-wired thin root that
 /// wires a user-supplied module (`pub mod utils; pub use utils::Helper;` — the extern-type shape)
 /// must survive regeneration untouched, and the user module must be left in place while the generated
-/// subtree is regenerated beside it. This is the failure the whole feature exists to prevent. The
-/// compile and behavioral proof of the same split is delegated to the `extern_deps` fixture (which
-/// builds and runs a real crate through the harness); this gate pins byte-level survival cheaply.
+/// subtree is regenerated beside it. This is the failure the whole feature exists to prevent. Beyond
+/// byte survival, the hand-wired crate must actually COMPILE after the regenerated-over run: the
+/// design doc's contract is that hand wiring referencing generated types through the crate-root glob
+/// (`utils.rs`'s fn takes and returns a generated `Foo`) keeps resolving. Guarded on `cargo` so the
+/// byte-level assertions still run on a toolchain-less box.
 #[test]
 fn thin_root_wiring_survives() {
     use clap::Parser;
@@ -1701,13 +1703,19 @@ fn thin_root_wiring_survives() {
     let lib_rs = out.join("rust/src/lib.rs");
     let utils_rs = out.join("rust/src/utils.rs");
 
-    // First run seeds the thin root; the user then hand-wires an extern-type module into it.
+    // First run seeds the thin root; the user then hand-wires an extern-type module into it. The
+    // module reaches generated types through the crate-root glob (`crate::Foo`) — the exact shape an
+    // extern-type consumer (CML's cip25) hand-maintains.
     crate::api::generate_to_disk(&cli).unwrap();
     let hand_wired =
         "// hand-wired root\nmod generated;\npub use generated::*;\npub mod utils;\npub use utils::Helper;\n"
             .to_owned();
     std::fs::write(&lib_rs, &hand_wired).unwrap();
-    std::fs::write(&utils_rs, "pub struct Helper;\n").unwrap();
+    std::fs::write(
+        &utils_rs,
+        "use crate::Foo;\npub struct Helper;\npub fn round_trip(f: Foo) -> Foo {\n    f\n}\n",
+    )
+    .unwrap();
 
     // Regenerate over the same directory: the hand wiring must survive.
     crate::api::generate_to_disk(&cli).unwrap();
@@ -1718,7 +1726,7 @@ fn thin_root_wiring_survives() {
     );
     assert_eq!(
         std::fs::read_to_string(&utils_rs).unwrap(),
-        "pub struct Helper;\n",
+        "use crate::Foo;\npub struct Helper;\npub fn round_trip(f: Foo) -> Foo {\n    f\n}\n",
         "the user-supplied module must be left untouched"
     );
     assert!(
@@ -1732,6 +1740,159 @@ fn thin_root_wiring_survives() {
         hand_wired,
         std::fs::read_to_string(&lib_rs).unwrap(),
         "thin root must remain a byte-identical fixed point across runs"
+    );
+
+    // The regenerated-over crate must compile: the hand-wired root + `utils.rs` referencing a
+    // generated type through the glob resolve against the freshly clobbered `src/generated/**`.
+    if tool_exists("cargo") {
+        let target_dir = scratch.join("target");
+        let build = tool_cmd("cargo")
+            .arg("build")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "hand-wired crate must compile after the regenerated-over export\n{}\n{}",
+            String::from_utf8_lossy(&build.stdout),
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The documented migration trap for pre-split consumers must fail LOUD, not silent. A consumer whose
+/// `lib.rs` predates the thin-root split still carries `pub mod serialization;` (and inline generated
+/// type defs) pointing at siblings the split relocated under `src/generated/**`. Seed-once leaves that
+/// stale root untouched (the tool doesn't read it to decide what to emit — regeneration still
+/// succeeds), so the breakage surfaces at COMPILE time as a diagnosable error, exactly as the design
+/// doc requires. We pin the stable `E0583` module-resolution failure (the relocated `serialization`
+/// module is now unresolved from the root) so a future silent-clobber regression can't pass this gate.
+#[test]
+fn migration_legacy_root_fails_loudly() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_migration_loud_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let lib_rs = out.join("rust/src/lib.rs");
+
+    crate::api::generate_to_disk(&cli).unwrap();
+
+    // Overwrite the seeded root with a faithful pre-split monolith: crate attrs, a `pub mod
+    // serialization;` decl (whose file the split moved under `generated/`), and an inline copy of the
+    // generated `Foo` — the shape a legacy consumer carries. Crucially, no `mod generated;`.
+    std::fs::write(
+        &lib_rs,
+        "// legacy pre-split monolithic root\n#![allow(clippy::too_many_arguments)]\npub mod serialization;\n\n#[derive(Clone, Debug)]\npub struct Foo {\n    pub x: u64,\n}\n",
+    )
+    .unwrap();
+
+    // Re-export must SUCCEED — the tool never reads the root to decide what to emit; it seed-once
+    // skips it and regenerates the subtree beside it.
+    crate::api::generate_to_disk(&cli).expect("regeneration over a legacy root must still succeed");
+
+    if tool_exists("cargo") {
+        let target_dir = scratch.join("target");
+        let build = tool_cmd("cargo")
+            .arg("build")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            !build.status.success(),
+            "a legacy pre-split root must NOT silently compile after regeneration"
+        );
+        let stderr = String::from_utf8_lossy(&build.stderr);
+        assert!(
+            stderr.contains("E0583"),
+            "the legacy-root breakage must be the diagnosable module-resolution failure (E0583: the \
+             relocated `serialization` module is unresolved from the root), got:\n{stderr}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The legacy-shape stderr warning (diagnostics only — output bytes are unchanged): when a crate-root
+/// `lib.rs` already exists and does NOT declare `mod generated`, `export()` prints a one-time-migration
+/// warning naming the remedy; a thin root (which does declare it) draws no warning. Captured via a real
+/// CLI run (`cargo run`) because the warning is an `eprintln!` on the tool's process stderr.
+#[test]
+fn legacy_root_warning_fires_only_for_legacy_shape() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_legacy_warn_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let lib_rs = out.join("rust/src/lib.rs");
+
+    let run = || {
+        tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .output()
+            .unwrap()
+    };
+
+    // First run seeds a thin root; a second run over it must NOT warn (the root declares `mod
+    // generated`).
+    let first = run();
+    assert!(first.status.success());
+    let thin = run();
+    assert!(thin.status.success());
+    let thin_stderr = String::from_utf8_lossy(&thin.stderr);
+    assert!(
+        !thin_stderr.contains("predates the thin-root layout"),
+        "a thin root (with `mod generated`) must NOT draw the legacy-shape warning, got:\n{thin_stderr}"
+    );
+
+    // Now overwrite with a legacy-shaped root (no `mod generated`) and re-run: the warning must fire
+    // and name the remedy.
+    std::fs::write(
+        &lib_rs,
+        "// legacy pre-split monolithic root\npub mod serialization;\npub struct Foo;\n",
+    )
+    .unwrap();
+    let legacy = run();
+    assert!(
+        legacy.status.success(),
+        "regeneration over a legacy root still succeeds (warning is diagnostic only)"
+    );
+    let legacy_stderr = String::from_utf8_lossy(&legacy.stderr);
+    assert!(
+        legacy_stderr.contains("predates the thin-root layout")
+            && legacy_stderr.contains("mod generated;"),
+        "a legacy-shaped root must draw the one-time-migration warning naming the remedy, got:\n{legacy_stderr}"
+    );
+    // Diagnostics only: the legacy root is left byte-for-byte untouched (seed-once still skips it).
+    assert_eq!(
+        std::fs::read_to_string(&lib_rs).unwrap(),
+        "// legacy pre-split monolithic root\npub mod serialization;\npub struct Foo;\n",
+        "the legacy root must be left untouched — the warning changes no output bytes"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);
