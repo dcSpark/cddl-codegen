@@ -54,14 +54,21 @@ const findings = ov.finding ?? [];
 
 interface Feature { id: string; production: string; profile: string; title: string; desc: string }
 interface Ctl { id: string; name: string; profile: string }
+interface Support {
+  id: string;
+  status: string;
+  evidence?: string;
+  emission?: Record<string, { status: string; evidence?: string }>;
+}
 const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
   features: Feature[];
   control_operators: Ctl[];
-  annotations: { cddl_codegen: { id: string; status: string; evidence?: string }[] };
+  annotations: { cddl_codegen: Support[] };
 };
 const universe = new Set([...matrix.features.map(f => f.id), ...matrix.control_operators.map(c => c.id)]);
 const supportById = new Map(matrix.annotations.cddl_codegen.map(s => [s.id, s.status]));
 const evidenceById = new Map(matrix.annotations.cddl_codegen.map(s => [s.id, s.evidence ?? ""]));
+const emissionById = new Map(matrix.annotations.cddl_codegen.map(s => [s.id, s.emission ?? {}]));
 
 // The render iterates exactly these profiles; a feature with any OTHER profile would silently vanish
 // from every table and tally while the summary still prints the full feature count (the doc would
@@ -232,6 +239,11 @@ const noteById = new Map(notes.map(n => [n.id, n]));
 const seamById = new Map(seamC.map(s => [s.id, s.status]));     // seam C is report-only: annotate the row so the doc doesn't render an unqualified ✅
 const MARK = { covered: "✅", untested: "➕", unsupported: "➖", partial: "⚠️" } as const;
 const shortProbe = (id: string) => evidenceById.get(id)?.replace(/^probe: /, "").split(";")[0] ?? "";
+const profileCaveat = (id: string) => {
+  const preserve = emissionById.get(id)?.preserve;
+  if (preserve?.status !== "unsupported") return "";
+  return `; --preserve-encodings unsupported (${(preserve.evidence ?? "").replace(/^probe \(emission=preserve\): /, "")})`;
+};
 const anchor = (n: Note) => n.code_anchor ? `  [\`${n.code_anchor}\`]` : "";
 const roleTail = (r: string) => r.replace(/^role\./, "");
 
@@ -252,7 +264,7 @@ function featureVerdict(id: string, track: boolean): { mark: string; ev: string 
   if (st === "supported") {
     // surface the compile-gate exemption clause (integration-tested) instead of a bare "exit 0"
     const ext = /standalone-compile N\/A \(([^)]+)\)/.exec(evidenceById.get(id) ?? "");
-    return { mark: MARK.untested, ev: ext ? `supported; ${ext[1]}` : `supported, no corpus fixture (${shortProbe(id)})` };
+    return { mark: MARK.untested, ev: (ext ? `supported; ${ext[1]}` : `supported, no corpus fixture (${shortProbe(id)})`) + profileCaveat(id) };
   }
   if (st === "out_of_profile") return { mark: MARK.unsupported, ev: `out of profile — ${shortProbe(id)}` };
   if (track) unexplained.push(id);   // control ops aren't tracked: 28/37 unsupported is expected, not an overlay gap
