@@ -977,6 +977,106 @@ impl Second {
 }
 
 #[derive(Clone, Debug)]
+pub struct SignBounds {
+    pub all_neg: i64,
+    pub upto_zero: i64,
+    pub le_neg: i64,
+    pub le_pos: i64,
+    pub ge_pos: i64,
+    pub ne_pos: i64,
+    pub ne_neg: i64,
+    pub straddle: i64,
+}
+
+impl SignBounds {
+    pub fn new(
+        all_neg: i64,
+        upto_zero: i64,
+        le_neg: i64,
+        le_pos: i64,
+        ge_pos: i64,
+        ne_pos: i64,
+        ne_neg: i64,
+        straddle: i64,
+    ) -> Result<Self, DeserializeError> {
+        if all_neg < -10 || all_neg > -3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: all_neg as isize,
+                min: Some(-10),
+                max: Some(-3),
+            }
+            .into());
+        }
+        if upto_zero < -10 || upto_zero > 0 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: upto_zero as isize,
+                min: Some(-10),
+                max: Some(0),
+            }
+            .into());
+        }
+        if le_neg > -3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: le_neg as isize,
+                min: None,
+                max: Some(-3),
+            }
+            .into());
+        }
+        if le_pos > 10 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: le_pos as isize,
+                min: None,
+                max: Some(10),
+            }
+            .into());
+        }
+        if ge_pos < 3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ge_pos as isize,
+                min: Some(3),
+                max: None,
+            }
+            .into());
+        }
+        if ne_pos == 5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ne_pos as isize,
+                min: Some(6),
+                max: Some(4),
+            }
+            .into());
+        }
+        if ne_neg == -5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ne_neg as isize,
+                min: Some(-4),
+                max: Some(-6),
+            }
+            .into());
+        }
+        if straddle < -10 || straddle > 3 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: straddle as isize,
+                min: Some(-10),
+                max: Some(3),
+            }
+            .into());
+        }
+        Ok(Self {
+            all_neg,
+            upto_zero,
+            le_neg,
+            le_pos,
+            ge_pos,
+            ne_pos,
+            ne_neg,
+            straddle,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct SignedInts {
     pub u_8: u8,
     pub u_16: u16,

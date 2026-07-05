@@ -162,6 +162,20 @@ bounds = [
     b: { * uint => uint } .le 3
 ]
 
+; Signed-int fields whose value window must be partitioned across the two CBOR sign arms. Under
+; --preserve-encodings BOTH arms go through the classification (the nint arm isn't the i64-special
+; case), so `.le 10` / `.ge 3` / `.ne 5` — which panicked generation before — are pinned here.
+sign_bounds = [
+    all_neg: -10 .. -3,
+    upto_zero: -10 .. 0,
+    le_neg: int .le -3,
+    le_pos: int .le 10,
+    ge_pos: int .ge 3,
+    ne_pos: int .ne 5,
+    ne_neg: int .ne -5,
+    straddle: -10 .. 3
+]
+
 bounds_type_choice = bytes .size (0..64)
                    / text .size (0..64)
 

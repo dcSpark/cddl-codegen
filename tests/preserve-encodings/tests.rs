@@ -1082,6 +1082,77 @@ mod tests {
     }
 
     #[test]
+    fn sign_bounds() {
+        // Same per-sign-arm partition as the default-mode fixture, but under --preserve-encodings
+        // BOTH arms go through the classification (no i64-special nint case), so this pins the
+        // preserve-only panics: le_pos / ge_pos / ne_pos used to `unreachable!()` at generation.
+        // Fields: all_neg -10..-3, upto_zero -10..0, le_neg int .le -3, le_pos int .le 10,
+        // ge_pos int .ge 3, ne_pos int .ne 5, ne_neg int .ne -5, straddle -10..3.
+        let base: [i128; 8] = [-5, -5, -5, 10, 3, 4, -4, 0];
+        let make = |idx: usize, v: i128| {
+            let mut vals = base;
+            vals[idx] = v;
+            let mut cbor = arr_def(8);
+            for x in vals.iter() {
+                cbor.extend(cbor_int(*x, cbor_event::Sz::Eight));
+            }
+            SignBounds::from_cbor_bytes(&cbor)
+        };
+        let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0).unwrap();
+        deser_test(&baseline);
+        assert!(make(0, -5).is_ok());
+
+        // all_neg (-10..-3): rejects ANY uint and both out-of-window sides; accepts endpoints.
+        assert!(make(0, 5).is_err());
+        assert!(make(0, -2).is_err());
+        assert!(make(0, -11).is_err());
+        assert!(make(0, -3).is_ok());
+        assert!(make(0, -10).is_ok());
+
+        // upto_zero (-10..0): upper endpoint 0 constraining.
+        assert!(make(1, 0).is_ok());
+        assert!(make(1, -10).is_ok());
+        assert!(make(1, 1).is_err());
+        assert!(make(1, -11).is_err());
+
+        // le_neg (int .le -3): rejects any uint.
+        assert!(make(2, 5).is_err());
+        assert!(make(2, -2).is_err());
+        assert!(make(2, -3).is_ok());
+        assert!(make(2, -10).is_ok());
+
+        // le_pos (int .le 10): nint arm VACUOUS — must accept a large negative (panicked before).
+        assert!(make(3, -999999).is_ok());
+        assert!(make(3, 10).is_ok());
+        assert!(make(3, 11).is_err());
+
+        // ge_pos (int .ge 3): nint arm EMPTY — rejects every negative (panicked before).
+        assert!(make(4, 3).is_ok());
+        assert!(make(4, 100).is_ok());
+        assert!(make(4, 2).is_err());
+        assert!(make(4, -1).is_err());
+
+        // ne_pos (int .ne 5): excluded value non-negative → only the uint arm checks it (panicked before).
+        assert!(make(5, -5).is_ok());
+        assert!(make(5, 4).is_ok());
+        assert!(make(5, 6).is_ok());
+        assert!(make(5, 5).is_err());
+
+        // ne_neg (int .ne -5): excluded value negative → only the nint arm checks it.
+        assert!(make(6, 5).is_ok());
+        assert!(make(6, -4).is_ok());
+        assert!(make(6, -6).is_ok());
+        assert!(make(6, -5).is_err());
+
+        // straddle (-10..3): survivor — must stay byte-identical to pre-fix and behave correctly.
+        assert!(make(7, -10).is_ok());
+        assert!(make(7, 3).is_ok());
+        assert!(make(7, 0).is_ok());
+        assert!(make(7, -11).is_err());
+        assert!(make(7, 4).is_err());
+    }
+
+    #[test]
     fn used_as_key() {
         // this is just here to make sure this compiles (i.e. Hash/Eq traits are derived)
         let mut set_foo: std::collections::HashSet<Foo> = std::collections::HashSet::new();

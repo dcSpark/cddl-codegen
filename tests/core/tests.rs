@@ -745,6 +745,80 @@ mod tests {
     }
 
     #[test]
+    fn sign_bounds() {
+        // `SignBounds` exercises the per-CBOR-sign-arm partition of a signed-int (i64) value window.
+        // Fields (in order): all_neg -10..-3, upto_zero -10..0, le_neg int .le -3, le_pos int .le 10,
+        // ge_pos int .ge 3, ne_pos int .ne 5, ne_neg int .ne -5, straddle -10..3.
+        // Baseline: every field in range (ne_* avoid their excluded value).
+        let base: [i128; 8] = [-5, -5, -5, 10, 3, 4, -4, 0];
+        // Build the wire array from an override of the in-range baseline. Sz::Eight fits every value
+        // and default-mode decoding is minimality-agnostic, so one width serves all vectors.
+        let make = |idx: usize, v: i128| {
+            let mut vals = base;
+            vals[idx] = v;
+            let mut cbor = arr_def(8);
+            for x in vals.iter() {
+                cbor.extend(cbor_int(*x, cbor_event::Sz::Eight));
+            }
+            SignBounds::from_cbor_bytes(&cbor)
+        };
+        // Baseline round-trips through both the constructor and the deserializer.
+        let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0).unwrap();
+        deser_test(&baseline);
+        assert!(make(0, -5).is_ok());
+
+        // all_neg (-10..-3): rejects ANY uint, rejects either side; accepts both endpoints.
+        assert!(make(0, 5).is_err()); // uint arm entirely excluded
+        assert!(make(0, -2).is_err()); // above upper
+        assert!(make(0, -11).is_err()); // below lower
+        assert!(make(0, -3).is_ok());
+        assert!(make(0, -10).is_ok());
+
+        // upto_zero (-10..0): the upper endpoint 0 is constraining (kills the naive drop-the-0 fix).
+        assert!(make(1, 0).is_ok());
+        assert!(make(1, -10).is_ok());
+        assert!(make(1, 1).is_err());
+        assert!(make(1, -11).is_err());
+
+        // le_neg (int .le -3): rejects any uint; nint arm keeps the upper.
+        assert!(make(2, 5).is_err());
+        assert!(make(2, -2).is_err());
+        assert!(make(2, -3).is_ok());
+        assert!(make(2, -10).is_ok());
+
+        // le_pos (int .le 10): the nint arm is VACUOUS and must NOT reject a large negative.
+        assert!(make(3, -999999).is_ok());
+        assert!(make(3, 10).is_ok());
+        assert!(make(3, 11).is_err());
+
+        // ge_pos (int .ge 3): the nint arm is EMPTY (every negative rejected).
+        assert!(make(4, 3).is_ok());
+        assert!(make(4, 100).is_ok());
+        assert!(make(4, 2).is_err());
+        assert!(make(4, -1).is_err());
+
+        // ne_pos (int .ne 5): the excluded value is non-negative, so only the uint arm checks it.
+        assert!(make(5, -5).is_ok());
+        assert!(make(5, 4).is_ok());
+        assert!(make(5, 6).is_ok());
+        assert!(make(5, 5).is_err());
+
+        // ne_neg (int .ne -5): the excluded value is negative, so only the nint arm checks it
+        // (the uint arm must NOT try to compare a u64 against -5).
+        assert!(make(6, 5).is_ok());
+        assert!(make(6, -4).is_ok());
+        assert!(make(6, -6).is_ok());
+        assert!(make(6, -5).is_err());
+
+        // straddle (-10..3): unchanged survivor — accepts across the sign boundary, rejects outside.
+        assert!(make(7, -10).is_ok());
+        assert!(make(7, 3).is_ok());
+        assert!(make(7, 0).is_ok());
+        assert!(make(7, -11).is_err());
+        assert!(make(7, 4).is_err());
+    }
+
+    #[test]
     fn used_as_key() {
         // this is just here to make sure this compiles (i.e. Ord traits are derived)
         let mut set_outer: std::collections::BTreeSet<Outer> = std::collections::BTreeSet::new();

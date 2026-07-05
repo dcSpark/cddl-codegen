@@ -2706,6 +2706,90 @@ impl AsRef<cddl_lib::Second> for Second {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct SignBounds(cddl_lib::SignBounds);
+
+#[wasm_bindgen]
+impl SignBounds {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SignBounds, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn all_neg(&self) -> i64 {
+        self.0.all_neg
+    }
+
+    pub fn upto_zero(&self) -> i64 {
+        self.0.upto_zero
+    }
+
+    pub fn le_neg(&self) -> i64 {
+        self.0.le_neg
+    }
+
+    pub fn le_pos(&self) -> i64 {
+        self.0.le_pos
+    }
+
+    pub fn ge_pos(&self) -> i64 {
+        self.0.ge_pos
+    }
+
+    pub fn ne_pos(&self) -> i64 {
+        self.0.ne_pos
+    }
+
+    pub fn ne_neg(&self) -> i64 {
+        self.0.ne_neg
+    }
+
+    pub fn straddle(&self) -> i64 {
+        self.0.straddle
+    }
+
+    pub fn new(
+        all_neg: i64,
+        upto_zero: i64,
+        le_neg: i64,
+        le_pos: i64,
+        ge_pos: i64,
+        ne_pos: i64,
+        ne_neg: i64,
+        straddle: i64,
+    ) -> Result<SignBounds, JsError> {
+        cddl_lib::SignBounds::new(
+            all_neg, upto_zero, le_neg, le_pos, ge_pos, ne_pos, ne_neg, straddle,
+        )
+        .map(Into::into)
+        .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::SignBounds> for SignBounds {
+    fn from(native: cddl_lib::SignBounds) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SignBounds> for cddl_lib::SignBounds {
+    fn from(wasm: SignBounds) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SignBounds> for SignBounds {
+    fn as_ref(&self) -> &cddl_lib::SignBounds {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct SignedInts(cddl_lib::SignedInts);
 
 #[wasm_bindgen]

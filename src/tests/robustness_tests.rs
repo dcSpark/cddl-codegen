@@ -785,3 +785,53 @@ fn input_robustness_catalog() {
     settings.set_prepend_module_to_snapshot(false);
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
+
+/// A map-representation field with an all-negative signed-int value window (`{ 0: -10..-3 }`) used
+/// to `unreachable!()` during generation: the per-CBOR-sign-arm bound partition emitted a
+/// `(None, None)` projection for the (empty) uint arm and treated it as a bounds check. This has no
+/// execution surface once it panics, so it's pinned generation-side — the fixture generates under
+/// both profiles AND the emitted deserializer carries the intended checks: an unconditional reject
+/// on the uint arm (no non-negative value is in range) reporting the ORIGINAL window, plus the real
+/// window check on the nint arm. String-level because a re-introduced panic or a silently-dropped
+/// check can't be seen by any round-trip test that never reaches the excluded arm.
+#[test]
+fn sign_partition_map_rep_generates_and_checks() {
+    fn gen_src(preserve: bool) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_sign_map_rep_{}_{}.cddl",
+            preserve,
+            std::process::id()
+        ));
+        std::fs::write(&path, "m = { 0: -10 .. -3 }\n").unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "sign_map_rep_unused",
+            "--preserve-encodings",
+            if preserve { "true" } else { "false" },
+        ]);
+        let files = crate::api::generated_strings(&cli)
+            .expect("map-rep all-negative value window must generate, not panic");
+        std::fs::remove_file(&path).ok();
+        files.into_values().collect::<Vec<_>>().join("\n")
+    }
+
+    for preserve in [false, true] {
+        let src = gen_src(preserve);
+        // uint arm: every non-negative value is out of range -> unconditional reject carrying the
+        // ORIGINAL window (`min: Some(-10), max: Some(-3)`), not the empty projection.
+        assert!(
+            src.contains("if true")
+                && src.contains("min: Some(-10)")
+                && src.contains("max: Some(-3)"),
+            "preserve={preserve}: expected an unconditional uint-arm reject reporting the original window"
+        );
+        // nint arm: the real two-sided window check on the decoded signed value.
+        assert!(
+            src.contains("x < -10 || x > -3"),
+            "preserve={preserve}: expected the nint-arm window check"
+        );
+    }
+}
