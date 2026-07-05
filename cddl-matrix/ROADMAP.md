@@ -47,6 +47,17 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Status-header projection — drift-check the countable prose.** The gate-green status paragraphs in
+  this file and `README.md` carry hand-maintained counts (features per profile, annotations, emission
+  divergences, constraint vectors × enforce-green rows) that silently drift on every delivery: "3
+  divergences, all preserve-side" survived TWO doc-updating commits after the real count became 5, and
+  only a manual audit caught it — no gate reads this prose. Every one of those numbers is already
+  derivable from `matrix.json` + `tests/decode_conformance/catalog.toml`, so this is the north star's
+  own class of problem: project the counts into marker-delimited spans with a `--check` drift gate
+  (the exact `query_q1_gaps.ts` → `current_capacities.mdx` § Limitations pattern, local tier).
+  Countable prose OUTSIDE the markers stays hand-owned — the gate catches exactly the numbers it
+  generates, no more; the alternative (a human re-greps five counts per delivery) is the
+  hand-maintenance the matrix exists to retire.
 
 ## 2. Running the verification suite
 
@@ -272,9 +283,11 @@ from a degenerate example.**
   reason, and the Q4 pin fixes the row *set*, not vector quality) — which is vacuous enforcement
   evidence indistinguishable from the real thing. This exact decay shipped once (the first rangeop mint
   landed `8200`-wrapped hand rejects beside bare accepts in the same rows) and was caught only by
-  review. Authoring rule until the replay gate asserts rejection *reasons*
-  (`tests/TESTING_ROADMAP.md` item): the `8200` holder prefix belongs ONLY to `mode = "holder"` rows;
-  a sanity read is that a row's accept and reject vectors must share their outer CBOR shape.
+  review. The systematic catches are `tests/TESTING_ROADMAP.md` item 5 (a fast-tier shape lint in
+  `project_decode_conformance.ts` — which alone would have failed the drift gate at commit time —
+  plus the full-tier replay rejection-reason assert); until those land the authoring rule stands:
+  the `8200` holder prefix belongs ONLY to `mode = "holder"` rows, and a row's accept and reject
+  vectors must share their outer CBOR shape.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
