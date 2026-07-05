@@ -12,6 +12,7 @@ pub mod qux;
 // https://github.com/dcSpark/cddl-codegen
 
 pub mod serialization;
+pub use crate::ExternalFoo;
 
 use crate::generated::error::*;
 use a::c::foo::Foo;

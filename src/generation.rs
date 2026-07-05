@@ -867,6 +867,50 @@ impl GenerationScope {
             }
         }
 
+        // Extern-type re-export glue. Generated code refers to each in-crate extern type by its bare
+        // ident within the scope that declared it (and cross-scope as `crate::generated::<scope>::Name`;
+        // the serializer sees it via `use super::*;`). Under the thin-root split the user cannot inject
+        // that definition into `generated/**` (clobbered every run), so the contract is to DEFINE the
+        // extern in a hand-written module and RE-EXPORT it at the crate root (`pub use utils::Name;` in
+        // the thin `lib.rs`). Re-export it from crate root INTO the declaring scope's generated module so
+        // every such bare/`use super::*` reference resolves; the explicit `pub use crate::Name;` binds to
+        // the user's definition and beats the `pub use generated::*;` glob cycle. Emitted unconditionally
+        // — under `--common-import-override` the extern is still crate-local. Skipped:
+        //   - the built-in `Int` extern (the tool generates its definition when referenced),
+        //   - generic-extern instances that already emit a `pub type` alias in this module (the base
+        //     generic extern carries the glue instead — re-exporting the aliased name would collide),
+        //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes; those resolve through their dep
+        //     crate already — `ModuleScope::export()` is the discriminator).
+        let rust_aliased: BTreeSet<&RustIdent> = types
+            .type_aliases()
+            .iter()
+            .filter_map(|(alias_ident, info)| match alias_ident {
+                AliasIdent::Rust(ident) if info.gen_rust_alias => Some(ident),
+                _ => None,
+            })
+            .collect();
+        let mut externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> = BTreeMap::new();
+        for (rust_ident, rust_struct) in types.rust_structs() {
+            if matches!(rust_struct.variant(), RustStructType::Extern)
+                && rust_ident.as_ref() != "Int"
+                && !rust_aliased.contains(rust_ident)
+            {
+                let scope = types.scope(rust_ident);
+                if scope.export() {
+                    externs_by_scope
+                        .entry(scope.clone())
+                        .or_default()
+                        .insert(rust_ident.clone());
+                }
+            }
+        }
+        for (scope, idents) in &externs_by_scope {
+            let content = self.rust_scopes.entry(scope.clone()).or_default();
+            for ident in idents {
+                content.raw(format!("pub use crate::{ident};"));
+            }
+        }
+
         // general common imports (struct files)
         for content in self.rust_scopes.values_mut() {
             // needed if there's any params that can fail
