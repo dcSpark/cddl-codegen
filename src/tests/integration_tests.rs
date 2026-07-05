@@ -694,26 +694,65 @@ fn run_test(
         arg.split_once("--lib-name=")
             .map(|(_, lib_name)| lib_name.replace('-', "_"))
     });
-    // copy external wasm defs if they exist
-    for external_wasm_file_path in external_wasm_file_paths {
-        println!("trying to open: {external_wasm_file_path:?}");
-        // Append into the generated root scope (`generated/mod.rs`, the faithful equivalent of the
-        // old monolithic wasm `lib.rs`): externs carry `#[wasm_bindgen]` and reference the generated
-        // wrapper types, both resolved there (see the wasm half of `append_raw_bytes_defs`).
+    // copy external wasm defs if they exist. Two kinds land in DIFFERENT scopes under the thin-root
+    // split, mirroring the rust-side routing (see the `is_extern_type_def` split above):
+    //   - extern-TYPE WRAPPER defs (`external_wasm_defs*`): the `#[wasm_bindgen]` wrapper of a type
+    //     declared `_CDDL_CODEGEN_EXTERN_TYPE_`. The generator now re-exports each in-crate extern
+    //     wrapper with `pub use crate::Name;` INTO `generated/**`, so a definition there would collide.
+    //     A real consumer defines the wrapper in a hand-written wasm module and re-exports it at the
+    //     wasm crate root; the glue resolves the bare `generated/**` references back to it. Model that by
+    //     appending these into the user-owned thin wasm `lib.rs`. That crate root doesn't see the
+    //     `wasm_bindgen`/`JsError` names generated/mod.rs privately `use`s, so add them alongside.
+    //   - non-extern wasm helpers (e.g. `external_wasm_raw_bytes_def`): `#[wasm_bindgen]` wrappers for a
+    //     `_CDDL_CODEGEN_RAW_BYTES_TYPE_` (NOT an extern, so no re-export glue), referenced by the
+    //     generated code via same-module resolution — they stay in `generated/mod.rs` (unchanged).
+    let is_extern_wasm_type_def = |path: &std::path::Path| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("external_wasm_defs"))
+    };
+    let append_wasm = |file: &mut std::fs::File, external_wasm_file_path: &std::path::PathBuf| {
+        let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
+        file.write_all("\n\n".as_bytes()).unwrap();
+        if let Some(custom_lib_name) = &custom_lib_name {
+            let replaced_extern_rs = extern_rs.replace("cddl_lib", custom_lib_name);
+            file.write_all(replaced_extern_rs.as_bytes()).unwrap();
+        } else {
+            file.write_all(extern_rs.as_bytes()).unwrap();
+        }
+    };
+    if wasm_expected
+        && external_wasm_file_paths
+            .iter()
+            .any(|p| is_extern_wasm_type_def(p))
+    {
+        let mut wasm_root_lib = std::fs::OpenOptions::new()
+            .append(true)
+            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
+            .unwrap();
+        wasm_root_lib
+            .write_all(b"\nuse wasm_bindgen::prelude::{wasm_bindgen, JsError};\n")
+            .unwrap();
+        for external_wasm_file_path in external_wasm_file_paths
+            .iter()
+            .filter(|p| is_extern_wasm_type_def(p))
+        {
+            println!("trying to open (wasm root): {external_wasm_file_path:?}");
+            append_wasm(&mut wasm_root_lib, external_wasm_file_path);
+        }
+    }
+    for external_wasm_file_path in external_wasm_file_paths
+        .iter()
+        .filter(|p| !is_extern_wasm_type_def(p))
+    {
+        println!("trying to open (generated): {external_wasm_file_path:?}");
+        // non-extern wasm helpers reference the generated wrapper types via same-module resolution,
+        // both resolved in `generated/mod.rs` (see the wasm half of `append_raw_bytes_defs`).
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
             .open(test_path.join(format!("{export_path}/wasm/src/generated/mod.rs")))
             .unwrap();
-        let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();
-        wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
-        if let Some(custom_lib_name) = &custom_lib_name {
-            let replaced_extern_rs = extern_rs.replace("cddl_lib", custom_lib_name);
-            wasm_lib_rs
-                .write_all(replaced_extern_rs.as_bytes())
-                .unwrap();
-        } else {
-            wasm_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
-        }
+        append_wasm(&mut wasm_lib_rs, external_wasm_file_path);
     }
     if wasm_expected && wasm_test_path.exists() {
         // The hook is only real if the file's contents actually land in the crate: append into the
@@ -1817,6 +1856,15 @@ fn thin_root_wiring_survives() {
 /// run on a toolchain-less box. Covers the default and `--preserve-encodings` profiles (preserve reshapes
 /// the deserializer's imports/signatures, but the extern's own impls are unchanged — the extern carries
 /// no encoding metadata — so the same `utils.rs` serves both).
+///
+/// A third profile covers the WASM crate, which has the identical latent shape: generated wasm code
+/// names the extern's hand-written `#[wasm_bindgen]` WRAPPER bare inside `wasm/src/generated/**`, but
+/// the wrapper is user-authored (a real consumer, e.g. CML cip25, defines it in a hand-written wasm
+/// module). Under the split those references can't see it — same E0433. The tool emits the same
+/// `pub use crate::MyExt;` glue into the wasm generated module; the contract is to define the wrapper in
+/// a hand-written wasm-crate module and RE-EXPORT it at the wasm crate root. The wasm crate builds as a
+/// host crate (it depends on the rust crate as a path dep, so the rust side is wired too), which the
+/// harness already `cargo build`s.
 #[test]
 fn thin_root_in_crate_extern_type_compiles() {
     use clap::Parser;
@@ -1923,8 +1971,156 @@ fn thin_root_in_crate_extern_type_compiles() {
         let _ = std::fs::remove_dir_all(&scratch);
     }
 
+    // The WASM crate carries the identical latent shape — generated wasm code names the extern's
+    // hand-written `#[wasm_bindgen]` WRAPPER bare inside `wasm/src/generated/**`, invisible there under
+    // the split. Hand-wire the wasm wrapper (define + re-export at the wasm crate root) exactly as the
+    // docs prescribe, plus the rust-side wiring (the wasm crate depends on the rust crate), and assert
+    // both thin roots survive regeneration byte-for-byte AND the wasm crate compiles as a host crate.
+    fn run_wasm() {
+        let scratch = std::env::temp_dir().join(format!(
+            "cddl_codegen_thin_extern_wasm_{:016x}",
+            checkout_hash()
+        ));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).unwrap();
+        let input = scratch.join("input.cddl");
+        std::fs::write(
+            &input,
+            "my_ext = _CDDL_CODEGEN_EXTERN_TYPE_\nwrapper = [id: uint, ext: my_ext]\n",
+        )
+        .unwrap();
+        let out = scratch.join("crate");
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=true",
+        ]);
+        let rust_lib_rs = out.join("rust/src/lib.rs");
+        let wasm_lib_rs = out.join("wasm/src/lib.rs");
+
+        // First export seeds both thin roots; capture them to assert seed-once leaves them byte-identical.
+        crate::api::generate_to_disk(&cli).unwrap();
+        let rust_seeded = std::fs::read_to_string(&rust_lib_rs).unwrap();
+        let wasm_seeded = std::fs::read_to_string(&wasm_lib_rs).unwrap();
+
+        // Rust side (the wasm crate's path dep): the same WI-6 wiring — define + re-export the native
+        // extern at the crate root so the bare `generated/**` references resolve.
+        let rust_hand_wired = format!("{rust_seeded}\npub mod utils;\npub use utils::MyExt;\n");
+        std::fs::write(&rust_lib_rs, &rust_hand_wired).unwrap();
+        std::fs::write(
+            out.join("rust/src/utils.rs"),
+            "use crate::error::DeserializeError;\n\
+             use crate::serialization::Deserialize;\n\
+             \n\
+             #[derive(Clone, Debug)]\n\
+             pub struct MyExt(pub u64);\n\
+             \n\
+             impl cbor_event::se::Serialize for MyExt {\n\
+             \x20   fn serialize<'se, W: std::io::Write>(\n\
+             \x20       &self,\n\
+             \x20       serializer: &'se mut cbor_event::se::Serializer<W>,\n\
+             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+             \x20       serializer.write_unsigned_integer(self.0)\n\
+             \x20   }\n\
+             }\n\
+             \n\
+             impl Deserialize for MyExt {\n\
+             \x20   fn deserialize<R: std::io::BufRead + std::io::Seek>(\n\
+             \x20       raw: &mut cbor_event::de::Deserializer<R>,\n\
+             \x20   ) -> Result<Self, DeserializeError> {\n\
+             \x20       Ok(Self(raw.unsigned_integer()?))\n\
+             \x20   }\n\
+             }\n",
+        )
+        .unwrap();
+
+        // WASM side: define the `#[wasm_bindgen]` wrapper around the rust type (reached as `cddl_lib::MyExt`,
+        // the rust crate's path-dep name) and re-export it at the wasm crate root. The generated wasm code
+        // converts between wrapper and native via `From`, so supply both directions (+ `AsRef`, matching the
+        // real consumer's wrapper shape).
+        let wasm_hand_wired = format!("{wasm_seeded}\npub mod utils;\npub use utils::MyExt;\n");
+        std::fs::write(&wasm_lib_rs, &wasm_hand_wired).unwrap();
+        std::fs::write(
+            out.join("wasm/src/utils.rs"),
+            "use wasm_bindgen::prelude::wasm_bindgen;\n\
+             \n\
+             #[wasm_bindgen]\n\
+             #[derive(Clone, Debug)]\n\
+             pub struct MyExt(cddl_lib::MyExt);\n\
+             \n\
+             impl From<cddl_lib::MyExt> for MyExt {\n\
+             \x20   fn from(native: cddl_lib::MyExt) -> Self {\n\
+             \x20       Self(native)\n\
+             \x20   }\n\
+             }\n\
+             \n\
+             impl From<MyExt> for cddl_lib::MyExt {\n\
+             \x20   fn from(wasm: MyExt) -> Self {\n\
+             \x20       wasm.0\n\
+             \x20   }\n\
+             }\n\
+             \n\
+             impl AsRef<cddl_lib::MyExt> for MyExt {\n\
+             \x20   fn as_ref(&self) -> &cddl_lib::MyExt {\n\
+             \x20       &self.0\n\
+             \x20   }\n\
+             }\n",
+        )
+        .unwrap();
+
+        // Regenerate over the same directory: seed-once must leave BOTH hand-wired thin roots byte-identical.
+        crate::api::generate_to_disk(&cli).unwrap();
+        assert_eq!(
+            rust_hand_wired,
+            std::fs::read_to_string(&rust_lib_rs).unwrap(),
+            "[wasm] the hand-wired rust thin root must survive regeneration byte-for-byte"
+        );
+        assert_eq!(
+            wasm_hand_wired,
+            std::fs::read_to_string(&wasm_lib_rs).unwrap(),
+            "[wasm] the hand-wired wasm thin root must survive regeneration byte-for-byte"
+        );
+
+        // The generator must emit the re-export glue into BOTH generated roots so the bare `MyExt`
+        // references resolve to the user's definitions.
+        let rust_generated_mod =
+            std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+        assert!(
+            rust_generated_mod.contains("pub use crate::MyExt;"),
+            "[wasm] rust generated/mod.rs must re-export the in-crate extern:\n{rust_generated_mod}"
+        );
+        let wasm_generated_mod =
+            std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+        assert!(
+            wasm_generated_mod.contains("pub use crate::MyExt;"),
+            "[wasm] wasm generated/mod.rs must re-export the in-crate extern wrapper:\n{wasm_generated_mod}"
+        );
+
+        if tool_exists("cargo") {
+            let target_dir = scratch.join("target");
+            let build = tool_cmd("cargo")
+                .arg("build")
+                .current_dir(out.join("wasm"))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                build.status.success(),
+                "[wasm] hand-wired in-crate extern WASM crate must compile\n{}\n{}",
+                String::from_utf8_lossy(&build.stdout),
+                String::from_utf8_lossy(&build.stderr)
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
     run("default", &[]);
     run("preserve", &["--preserve-encodings=true"]);
+    run_wasm();
 }
 
 /// The documented migration trap for pre-split consumers must fail LOUD, not silent. A consumer whose
@@ -2702,24 +2898,41 @@ fn emit_wasm_tests_execute() {
         .unwrap();
     std::mem::drop(rust_lib);
 
-    // The wasm crate: append the extern wasm defs it references + the hand-written tests_wasm.rs
-    // (which runs beside the emitted module as the plausibility cross-check). Append into the
-    // generated root scope (`generated/mod.rs`, the equivalent of the old monolithic wasm root),
-    // where `#[wasm_bindgen]` and the generated wrapper types resolve (see `run_test`).
+    // The wasm crate, like the rust crate, splits by scope under the thin-root layout (see `run_test`):
+    // the extern-TYPE WRAPPER defs (`external_wasm_defs`) collide with the generator's
+    // `pub use crate::Name;` re-export glue if placed in `generated/**`, so they go into the user-owned
+    // thin wasm `lib.rs` (which needs `wasm_bindgen`/`JsError` added — generated/mod.rs only `use`s them
+    // privately). The hand-written `tests_wasm.rs` runs beside the emitted module as the plausibility
+    // cross-check and resolves the wrapper types (re-exported into `generated/**` by the glue), so it
+    // stays in `generated/mod.rs`.
+    let mut wasm_root_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(export_path.join("wasm/src/lib.rs"))
+        .unwrap();
+    wasm_root_lib
+        .write_all(b"\nuse wasm_bindgen::prelude::{wasm_bindgen, JsError};\n\n")
+        .unwrap();
+    wasm_root_lib
+        .write_all(
+            std::fs::read_to_string(test_path.parent().unwrap().join("external_wasm_defs"))
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+    std::mem::drop(wasm_root_lib);
     let wasm_lib_path = export_path.join("wasm/src/generated/mod.rs");
     let mut wasm_lib = std::fs::OpenOptions::new()
         .append(true)
         .open(&wasm_lib_path)
         .unwrap();
-    for f in [
-        test_path.parent().unwrap().join("external_wasm_defs"),
-        test_path.join("tests_wasm.rs"),
-    ] {
-        wasm_lib.write_all(b"\n\n").unwrap();
-        wasm_lib
-            .write_all(std::fs::read_to_string(&f).unwrap().as_bytes())
-            .unwrap();
-    }
+    wasm_lib.write_all(b"\n\n").unwrap();
+    wasm_lib
+        .write_all(
+            std::fs::read_to_string(test_path.join("tests_wasm.rs"))
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     std::mem::drop(wasm_lib);
 
     // cargo test the WASM crate only

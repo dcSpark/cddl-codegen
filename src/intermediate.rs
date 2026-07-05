@@ -226,6 +226,21 @@ impl<'a> IntermediateTypes<'a> {
         &self.rust_structs
     }
 
+    /// The base idents (`generic_ident`) of every registered generic instance, e.g. `Foo` for the
+    /// instance `Foo<Bar>`. For a generic EXTERN base this is the only place the bare base name lives:
+    /// a generic extern (`Foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) is registered as a plain `Extern`
+    /// rust struct, but the wasm crate never names it — wasm-bindgen can't express generics, so the
+    /// instance collapses to the argument's wasm wrapper via a `pub type FooBar = BarWrapper;` alias.
+    /// The wasm extern re-export glue uses this to skip such bases (no wasm-crate-root definition
+    /// exists to re-export), whereas the rust side keeps the base (`pub type FooBar = Foo<Bar>;`
+    /// references it).
+    pub fn generic_instance_bases(&self) -> BTreeSet<RustIdent> {
+        self.generic_instances
+            .values()
+            .map(|inst| inst.generic_ident.clone())
+            .collect()
+    }
+
     /// For each scope, which other scopes are referenced, and which structs are referenced
     pub fn scope_references(
         &self,
