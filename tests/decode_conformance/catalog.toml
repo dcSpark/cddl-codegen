@@ -10,9 +10,16 @@
 #       holder = the rule is a transparent alias / named table / c-enum with no standalone decoder,
 #       so vectors are instances of `__probe_holder = [0, <rule>]` and decode routes through the
 #       GENERATED field-decode code (cbor_event's blanket impl would otherwise make it vacuous).
-# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject row additionally
-#       carries class (bug | limitation) + reason; a reject WITHOUT them is the mint's triage-pending
-#       state — the drift gate stays RED until a human classifies it.
+# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject vector carries a
+#       class + reason. Two kinds, opposite spec-validity:
+#         bug | limitation = spec-VALID CBOR the decoder WRONGLY rejects (a known gap); re-validated
+#           spec-VALID at each mint and PRUNED when the gap closes. A class-less reject is the mint's
+#           triage-pending state — the drift gate stays RED until a human classifies it.
+#         constraint = spec-INVALID CBOR (source="hand") that VIOLATES a constraint the row enforces
+#           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the
+#           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)
+#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's
+#           `enforce = yes (bounded-reject)` evidence.
 # pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.
 
 [[row]]
@@ -758,7 +765,16 @@ expect = "accept"
 id = "ctl.cbor"
 axis = "control_op"
 example = "x = bytes .cbor uint"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "__probe_holder = [0, x]\nx = bytes .cbor uint"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820041f6"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the .cbor payload h'f6' is CBOR null (major type 7), not a valid uint — violates `bytes .cbor uint`"
 
 [[row]]
 id = "ctl.default"
@@ -1043,6 +1059,13 @@ mode = "standalone"
 type_name = "X"
 
 [[row.vector]]
+hex = "43010203"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 3-byte string is under the `.size 4` length — violates `bytes .size 4`"
+
+[[row.vector]]
 hex = "444cee4fa7"
 source = "ruby-generate"
 expect = "accept"
@@ -1091,6 +1114,13 @@ expect = "accept"
 hex = "44e3e2fbe7"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "450102030405"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 5-byte string is over the `.size 4` length — violates `bytes .size 4`"
 
 [[row]]
 id = "dsl.custom_deserialize"
@@ -1949,6 +1979,13 @@ expect = "accept"
 hex = "a1616139020b"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a161616178"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value for key \"a\" must be int; text \"x\" is spec-invalid — violates `{ \"a\" ^ => int }`"
 
 [[row]]
 id = "memberkey.type1"

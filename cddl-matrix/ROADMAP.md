@@ -27,24 +27,15 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 > **F3 done** (support is execution-gated — round-trip + reject tests run per probe; per-direction
 > reference vectors exist for the decode direction via the decode-conformance harness, encode via the
 > conformance oracles; the 5-way Q4 answer is projected by `query_q4_directional.ts` — see `README.md`
-> § "Directional support evidence"; the still-open enforcement-vector gap is a § 1 item); **F8–F11
+> § "Directional support evidence"; the enforcement axis now carries `class="constraint"` reject
+> vectors so supported enforcement rows project `enforce = yes (bounded-reject)`, except the numeric
+> range/eq ops which stay `unverified` behind a rust-oracle gap — see § findings); **F8–F11
 > out of scope** (bottom). Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Enforcement reject vectors (Q4's `enforce` axis is unverified).** The committed decode-conformance
-  catalog ships zero classified `expect="reject"` vectors — each prior one was bug-class, pruned as the
-  bug behind it was fixed — so every supported enforcement-bearing row (`ctl.*` plus `memberkey.cut`)
-  projects `enforce = unverified (no reject vector)`. The missing evidence class is DURABLE
-  constraint-violation vectors: spec-derived CBOR that *violates* a constraint the row claims to
-  enforce (an over-`.size` string, a below-`.ge` value, a cut-violating map) and must be rejected by
-  the generated decoder — not tied to any bug, so never pruned. Mint them for the supported `ctl.*`
-  ops (+ cut) and give them their own catalog class if the existing `{bug, limitation}` reject-pin
-  classes don't fit. `query_q4_directional.ts --check`'s vacuity floor already tightens automatically:
-  the moment a classified reject vector lands, it requires a real `enforce = yes (bounded-reject)`
-  projection.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -266,6 +257,27 @@ from a degenerate example.**
   caveat) — which it does for the whole corpus by construction. `project_corpus.ts` verifies a role-keyed
   `[[cover]]` against the AST role floor AND the per-cell support verdict (check H), so it can't claim ✅ on
   an unsupported cell.
+
+**Oracle-coverage gap (NOT a cddl-codegen bug — surfaced by the enforcement reject vectors):**
+- The rust `cddl` CLI oracle (0.10.x, both the `~/.cargo/bin/cddl` build and the sibling repo) does
+  **not enforce the numeric range/equality control operators** (`.le` / `.lt` / `.gt` / `.eq` / `.ne`)
+  during `validate` — it accepts a boundary violation like `0x0b` (11) against `x = uint .le 10`
+  (verified: `cddl --ci validate` exits 0). cddl-codegen's generated decoder DOES enforce them (it emits
+  a `RangeCheck` on deserialize and rejects the violation), and the ruby reference oracle rejects them
+  too. But the decode-conformance catalog certifies a `class="constraint"` vector as spec-INVALID only
+  when BOTH oracles reject it (the inverse of the accept gate), so these rows cannot carry an in-type
+  boundary-violating constraint vector and honestly project `enforce = unverified (no reject vector)`
+  rather than being engineered green with a type-violation vector (which would test the base type, not
+  the constraint). `ctl.ge` sits with them: its committed example `x = uint .ge 0` has a bound that is
+  vacuous over its base type — NO in-type violation exists, so the only candidate vector (a negative)
+  is a type violation, not enforcement evidence. The three rows whose violating vector IS
+  base-type-valid — `ctl.size` (a valid bstr of the wrong length), `ctl.cbor` (a valid bstr whose
+  payload is CBOR null, not a uint), `memberkey.cut` (a well-formed map whose cut value is text, not
+  int — scoped to the row's single-member example) — are rejected by both oracles and DO carry
+  constraint vectors (`enforce = yes (bounded-reject)`). Closing the gap needs a rust oracle that enforces numeric
+  control ops (upstream `cddl` fix or a replacement corroborator); until then the enforcement axis is
+  intentionally partial and `query_q4_directional.ts --check` pins the exact green set so neither side
+  drifts.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed

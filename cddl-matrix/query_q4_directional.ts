@@ -10,9 +10,11 @@
  *      + its machine-generated evidence string) and `features`/`containment`/`control_operators` (the
  *      construct universe + per-id `example`, used to bucket each row by axis).
  *   2. `tests/decode_conformance/catalog.toml` — the decode corpus: spec-derived CBOR our own encoder
- *      never produced. `expect="accept"` vectors are the encoder-INDEPENDENT decode evidence; classified
- *      `expect="reject"` vectors (`class` ∈ {bug, limitation} + `reason`) are the bounded-reject
- *      enforcement evidence.
+ *      never produced. `expect="accept"` vectors are the encoder-INDEPENDENT decode evidence. Reject
+ *      vectors split by class: `class="constraint"` = spec-INVALID CBOR that violates a constraint the
+ *      row enforces and the decoder DURABLY rejects — THE bounded-reject enforcement evidence; `class` ∈
+ *      {bug, limitation} = spec-VALID CBOR the decoder WRONGLY rejects (a wrong-rejection pin, pruned
+ *      when the gap closes) — NOT enforcement evidence, so it never projects enforce=yes.
  *
  * The 5-way derivation (per annotation row):
  *   - **accept**  — from status + evidence: an `exit 0`/`standalone-compile N/A` supported/uncertain row
@@ -25,10 +27,10 @@
  *   - **decode**  — two tiers, catalog is the strong source: `expect="accept"` vectors ⇒
  *     `yes (foreign: N)` (the encoder-INDEPENDENT signal, the whole point of Q4); else a round-tripping
  *     row is `yes (via round-trip)` (weak — conflated with encode); else mirrors round-trip.
- *   - **enforce-constraint** — classified `expect="reject"` vectors ⇒ `yes (bounded-reject: N)`; else a
- *     supported enforcement-bearing row (`ctl.*`, plus `memberkey.cut` — Q4's prose names `.size`/cut
- *     enforcement) is `unverified (no reject vector)` — an honest gap, NOT `yes`; else `n/a` (the
- *     construct carries no constraint).
+ *   - **enforce-constraint** — `class="constraint"` reject vectors ⇒ `yes (bounded-reject: N)`; else a
+ *     supported enforcement-bearing row (`ctl.*` except `ctl.default`, plus `memberkey.cut` — Q4's prose
+ *     names `.size`/cut enforcement) is `unverified (no reject vector)` — an honest gap, NOT `yes`; else
+ *     `n/a` (the construct carries no rejectable constraint — e.g. `ctl.default` governs an absent field).
  *
  * THE ENCODE/DECODE ASYMMETRY (the honest label — read before trusting a column):
  *   - **decode** has INDEPENDENT per-construct evidence: the `catalog.toml` foreign vectors are CBOR our
@@ -40,15 +42,24 @@
  *     round-trip supports. A `decode: yes (foreign)` row with `encode: yes` means "decodes foreign bytes
  *     AND round-trips its own", not "we independently verified encode against a foreign fixture".
  *
- * A NOTE ON `enforce = yes` TODAY: the committed catalog currently ships ZERO classified reject vectors —
- * they were pruned as the underlying generator bugs were fixed (the reject fixture turns into a graceful
- * rejection or a `pinned_reason` once the bug is closed; see ROADMAP.md § 1's enforcement-vectors
- * item and commit e6b4343). So no
- * construct projects `enforce = yes (bounded-reject)` right now; the enforcement axis is reached only by
- * the supported `ctl.*` ops, which read `unverified (no reject vector)` — an honest gap, surfaced, not
- * engineered green. The `--check` vacuity floor therefore asserts the enforcement axis is REACHED (which
- * proves the derivation ran over the ctl.* rows) and tightens to require a real `enforce = yes` the moment
- * a classified reject vector reappears in the catalog.
+ * A NOTE ON `enforce = yes` AND THE NUMERIC-OP GAP: enforcement evidence is a `class="constraint"` reject
+ * vector — spec-INVALID CBOR (certified by BOTH oracles at mint time) whose ONLY invalidity is the
+ * constraint itself (the instance is valid for the base type), durably rejected by the generated decoder.
+ * Three rows carry one today and project `enforce = yes (bounded-reject)`: `ctl.size` (over- AND
+ * under-size strings — valid bstrs, only `.size 4` rejects them), `ctl.cbor` (`h'f6'` is a valid bstr
+ * whose payload is CBOR null, not a uint — only `.cbor uint` rejects it), and `memberkey.cut` (a
+ * cut-violating map value; scoped to the row's single-member example, where the value-type check IS the
+ * constraint surface). The numeric range/equality ops (`.le/.lt/.gt/.eq/.ne/.ge`) do NOT — deliberately:
+ * cddl-codegen's decoder DOES enforce them (it emits a RangeCheck), but the rust corroborating oracle
+ * (`cddl` 0.10.x) does NOT enforce numeric control ops in validation — it accepts a boundary violation
+ * like `11` for `uint .le 10` — so an in-type boundary-violating vector cannot pass the two-oracle
+ * spec-invalid gate the catalog requires (ruby rejects it, rust does not). Rather than engineer green
+ * with a type-violation vector (a negative for `uint .ge 0` — which tests the uint base type, not the
+ * bound; that example's bound is vacuous over its base type, so NO in-type violation even exists),
+ * those rows honestly read `unverified (no reject vector)`; the oracle-coverage gap is recorded in
+ * ROADMAP.md § findings. The `--check` vacuity floor asserts the EXACT green set so neither an
+ * accidental widening (a numeric row engineered green via a type violation) nor a narrowing slips
+ * through.
  *
  * Run from cddl-matrix/:
  *   bun run query_q4_directional.ts            -> the full Q4 table (grouped by axis) + the asymmetry footnote
@@ -85,20 +96,25 @@ interface CatVector { expect?: unknown; class?: unknown; reason?: unknown }
 interface CatRow { id?: unknown; vector?: CatVector[] }
 const catalog = Bun.TOML.parse(readFileSync(`${HERE}/../${CATALOG_REL}`, "utf8")) as { row?: CatRow[] };
 const acceptVecById = new Map<string, number>();
-const rejectVecById = new Map<string, number>(); // classified reject vectors only (class ∈ {bug, limitation})
+// constraintVecById: ONLY class="constraint" reject vectors — spec-INVALID CBOR that violates a
+// constraint the row enforces and the decoder DURABLY rejects. This is the enforcement evidence.
+// bug/limitation reject vectors are the OPPOSITE (spec-VALID CBOR the decoder wrongly rejects — a
+// wrong-rejection pin, pruned when fixed); they are NOT enforcement evidence and must not project
+// enforce=yes (the conflation this query previously carried).
+const constraintVecById = new Map<string, number>();
 for (const r of catalog.row ?? []) {
   const id = typeof r.id === "string" ? r.id : undefined;
   if (id === undefined) continue;
   let accepts = 0;
-  let rejects = 0;
+  let constraints = 0;
   for (const v of r.vector ?? []) {
     if (v.expect === "accept") accepts++;
-    else if (v.expect === "reject" && (v.class === "bug" || v.class === "limitation")) rejects++;
+    else if (v.expect === "reject" && v.class === "constraint") constraints++;
   }
   if (accepts) acceptVecById.set(id, accepts);
-  if (rejects) rejectVecById.set(id, rejects);
+  if (constraints) constraintVecById.set(id, constraints);
 }
-const anyRejectVectors = rejectVecById.size > 0;
+const anyConstraintVectors = constraintVecById.size > 0;
 
 // --- the 5-way derivation -------------------------------------------------------------------------
 interface Directional {
@@ -156,12 +172,16 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 
 // The enforcement-bearing rows: the ctl.* axis plus the cut feature — Q4's prose names exactly
 // "`.size`/cut enforcement" as where generators cut corners, so cut must not read n/a (no constraint).
+// EXCEPTION: `ctl.default` governs an ABSENT field (`? b: uint .default 0` supplies a value when the
+// member is missing) — there is no rejectable instance, so it carries no enforcement constraint and
+// derives n/a rather than an honest-gap `unverified`.
 function carriesConstraint(id: string): boolean {
+  if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut";
 }
 
 function deriveEnforce(id: string, status: string): string {
-  const n = rejectVecById.get(id);
+  const n = constraintVecById.get(id);
   if (n) return `yes (bounded-reject: ${n})`;
   if (carriesConstraint(id) && status === "supported") return "unverified (no reject vector)";
   return "n/a";
@@ -201,9 +221,9 @@ function invariantProblems(rs: Directional[]): string[] {
     // encode = yes ⇔ round-trip = yes (assert the derivation didn't drift).
     if ((r.encode === "yes") !== r.roundTrip.startsWith("yes"))
       problems.push(`\`${r.id}\`: encode=${JSON.stringify(r.encode)} but round-trip=${JSON.stringify(r.roundTrip)} — encode must mirror round-trip exactly`);
-    // enforce = yes ⇒ the id has ≥1 classified reject vector.
-    if (r.enforce.startsWith("yes") && !(rejectVecById.get(r.id)! > 0))
-      problems.push(`\`${r.id}\`: enforce=${JSON.stringify(r.enforce)} but the catalog has no classified expect="reject" vector for it`);
+    // enforce = yes ⇒ the id has ≥1 class="constraint" reject vector (the only enforcement evidence).
+    if (r.enforce.startsWith("yes") && !(constraintVecById.get(r.id)! > 0))
+      problems.push(`\`${r.id}\`: enforce=${JSON.stringify(r.enforce)} but the catalog has no class="constraint" reject vector for it`);
     // decode foreign:N (the independent signal) ⇒ the id is a `supported` matrix row (else stale catalog).
     if (r.decode.startsWith("yes (foreign") && statusById.get(r.id) !== "supported")
       problems.push(`\`${r.id}\`: decode reads foreign vectors but the matrix row is \`${statusById.get(r.id)}\`, not \`supported\` — the catalog is stale (re-mint or drop)`);
@@ -259,13 +279,27 @@ function vacuityProblems(rs: Directional[]): string[] {
   if (foreignDecode < 1)
     problems.push(`no row has decode=foreign — the catalog accept-vector read looks broken/empty (Q4's independent decode signal is gone)`);
   // The enforcement axis is REACHED — the derivation ran over the ctl.* rows (matrix ctl read is non-empty).
-  // The literal `enforce=yes` floor is unsatisfiable while the catalog ships zero classified reject
-  // vectors (they are pruned as the bugs behind them are fixed — see the header note); so the floor is
-  // "axis reached", and tightens to require a real bounded-reject the moment one reappears.
   if (enforceAxisReached < 1)
     problems.push(`no row reaches the enforcement axis (every enforce is n/a) — the ctl.* enforcement-axis read looks broken/empty`);
-  if (anyRejectVectors && enforceYes < 1)
-    problems.push(`the catalog ships classified reject vectors but no row projects enforce=yes — the enforce derivation drifted`);
+  // With class="constraint" vectors present, ≥1 row MUST project enforce=yes, and the green set must be
+  // EXACTLY the rows whose vector's ONLY invalidity is the constraint itself (base-type-valid instance,
+  // both oracles certify spec-invalid, decoder durably rejects). Today that is the three rows below.
+  // The numeric range/eq ops (`.le/.lt/.gt/.eq/.ne/.ge`) are DELIBERATELY absent: the rust corroborating
+  // oracle (cddl 0.10.x) does not enforce them (it accepts in-type boundary violations), so a
+  // boundary-violating vector cannot pass the two-oracle spec-invalid gate even though ruby AND our
+  // decoder reject it — a recorded oracle-coverage gap (ROADMAP § findings) — and a type-violation
+  // vector (a negative for `uint .ge 0`) would test the base type, not the constraint, so it is not
+  // enforcement evidence. Assert the exact set so an accidental widening (a type-violation vector
+  // engineered onto a numeric row) or narrowing fails the gate.
+  const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.size", "memberkey.cut"];
+  if (anyConstraintVectors) {
+    if (enforceYes < 1)
+      problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);
+    const greenSet = rs.filter(r => r.enforce.startsWith("yes")).map(r => r.id).sort();
+    const want = [...EXPECTED_ENFORCE_YES].sort();
+    if (JSON.stringify(greenSet) !== JSON.stringify(want))
+      problems.push(`enforce=yes green set drifted:\n    got : ${JSON.stringify(greenSet)}\n    want: ${JSON.stringify(want)}\n    (numeric range/eq ops stay unverified — the rust oracle does not enforce them; see the header note)`);
+  }
   return problems;
 }
 

@@ -134,6 +134,18 @@ per-construct oracle — its independent evidence is corpus-level only (`golden_
 `ir_conformance_corpus`) — so the query reports encode strictly as the round-trip half
 (`encode = yes iff round-trip = yes`) and never claims a stronger per-construct encode fact.
 
+**The enforcement axis (`enforce-constraint`) is grounded by `class="constraint"` reject vectors** in
+`catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an
+over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value — each a valid
+instance of its base type), certified spec-invalid by BOTH oracles at mint and durably rejected by the
+generated decoder — so `ctl.size`, `ctl.cbor` and `memberkey.cut` project
+`enforce = yes (bounded-reject)`. The numeric range/eq ops (`.le/.lt/.gt/.eq/.ne/.ge`) stay
+`unverified`: cddl-codegen's decoder enforces them (it emits a `RangeCheck`), but the rust
+corroborating oracle does not, so their in-type boundary-violating vectors cannot pass the both-reject
+gate — an honest oracle-coverage gap (ROADMAP § findings), not engineered green with a type-violation
+vector (which would test the base type, not the constraint). `ctl.default` is `n/a` (it governs an
+absent field — no rejectable instance).
+
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
 
