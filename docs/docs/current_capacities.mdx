@@ -56,7 +56,7 @@ Terminable recursive types are supported — a rule may reference itself through
 
 The generated deserializer is recursive-descent, so by default it has **no depth bound**: maliciously deep CBOR recurses until the thread's stack overflows and the process **aborts (SIGABRT)** — this is a process abort, not a returnable error, so it cannot be caught with `catch_unwind`. There is deliberately no default limit, because any fixed cap would reject spec-valid documents that happen to nest deeper.
 
-Consumers that deserialize **untrusted input** (e.g. on-chain data) should generate with [`--deserialize-depth-limit=N`](command_line_flags#--deserialize-depth-limit), which makes the generated deserializers return a graceful `DeserializeError` once nesting exceeds `N` instead of overflowing the stack. See the flag's documentation for the tradeoff (it also rejects legitimately deep documents past `N`).
+Consumers that deserialize **untrusted input** (e.g. on-chain data) should generate with [`--deserialize-depth-limit=N`](command_line_flags), which makes the generated deserializers return a graceful `DeserializeError` once nesting exceeds `N` instead of overflowing the stack. See the flag's documentation for the tradeoff (it also rejects legitimately deep documents past `N`).
 
 {/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
 
