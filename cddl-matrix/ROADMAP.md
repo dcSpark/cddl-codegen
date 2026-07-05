@@ -280,12 +280,18 @@ from a degenerate example.**
   an unsupported cell.
 
 **Oracle-coverage gap (upstream, NOT a cddl-codegen bug — the matrix no longer sits on it):**
-- The rust `cddl` CLI oracle (0.10.x) does **not enforce the numeric range/equality control operators
-  over a `uint` target** (`.le` / `.lt` / `.gt` / `.eq` / `.ne` / `.ge`) during `validate` — it accepts
-  a boundary violation like `0x0b` (11) against `x = uint .le 10`. The gap is
-  **target-type-specific**: the identical controls over `int` ARE enforced (full repro matrix + the
-  ready-to-file upstream report: `draft/rust-cddl-uint-control-op-gap.md`; prune that note when the
-  upstream fix ships). The six ops' probe examples (`control_examples.toml`) target `int` with
+- The rust `cddl` CLI oracle (0.10.x) does **not enforce control operators over a `uint` target**
+  during `validate` — it accepts a boundary violation like `0x0b` (11) against `x = uint .le 10`.
+  Scope: the numeric range/equality ops (`.le` / `.lt` / `.gt` / `.eq` / `.ne` / `.ge`) and ALSO
+  `.size` / `.bits` over uint targets (found while fixing upstream — wider than the original repro
+  matrix in `draft/rust-cddl-uint-control-op-gap.md`; our `ctl.size` constraint vector targets a
+  bstr, so it is unaffected). The gap is **target-type-specific**: the identical controls over `int`
+  ARE enforced. An upstream PR is submitted; until it merges, the sibling checkout's `local-fixes`
+  branch (`~/Documents/git/cddl`, commit `cdba2b4`) carries the fix — rebuild and point `RUST_CDDL`
+  at it to give future `verify.ts` runs an enforcing oracle (the matrix's evidence does not depend
+  on it: the probes are `int`-targeted). Prune this entry and the draft note when the fix ships in
+  a release. A `uint .size N` probe variant stays unswept (the one-example-per-op enumeration gap,
+  § 4 variation rows). The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
   catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
   vector per row — over `int` both oracles reject each violation, cddl-codegen's generated decoder
