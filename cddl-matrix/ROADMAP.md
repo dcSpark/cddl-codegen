@@ -89,14 +89,9 @@ commands below stay the reference for running one gate in isolation.
 are **wired into CI** via check.ts's fast tier (`build_matrix.ts --check`,
 `project_robustness.ts --check`, `project_wasm_matrix.ts --check`, `project_golden_hex.ts --check`,
 and `project_corpus.ts`); the heavy `verify.ts` oracle probe runs manually (check.ts `full` tier)
-and stays out of CI.
-
-> **Fold before committing after any verify run.** A `verify.ts` run (standalone OR the `verify`
-> gate inside `check.ts full`) rewrites `annotations/cddl_codegen.toml` — and in a full-tier run
-> that happens AFTER `build_matrix_check` already passed, so the green summary does not prove the
-> committed `matrix.json` matches the refreshed annotations (evidence strings change whenever
-> decode vectors were minted since the last run). Run `bun run build_matrix.ts` and re-run the
-> fast drift gates before committing; this exact miss has produced a red-on-HEAD CI gate twice.
+and stays out of CI. After ANY run that executes `verify.ts` (standalone or via `check.ts full`),
+fold the rewritten annotations with `bun run build_matrix.ts` before committing — the full-tier
+gotcha is documented in `tests/README.md` § "Running everything".
 
 - `bun run build_matrix.ts --check` — snapshot/drift gate: `matrix.json` matches the authored overlay. **(CI)**
 - `bun run project_wasm_matrix.ts --check` — drift gate for the wasm-ABI matrix fixtures
