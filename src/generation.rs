@@ -735,13 +735,18 @@ impl GenerationScope {
                         rust_struct.config(),
                         cli,
                     ),
-                    RustStructType::Wrapper { wrapped, min_max } => match rust_struct.tag() {
+                    RustStructType::Wrapper {
+                        wrapped,
+                        min_max,
+                        float_min_max,
+                    } => match rust_struct.tag() {
                         Some(tag) => generate_wrapper_struct(
                             self,
                             types,
                             rust_ident,
                             &wrapped.clone().tag(tag),
                             *min_max,
+                            *float_min_max,
                             rust_struct.config(),
                             cli,
                         ),
@@ -751,6 +756,7 @@ impl GenerationScope {
                             rust_ident,
                             wrapped,
                             *min_max,
+                            *float_min_max,
                             rust_struct.config(),
                             cli,
                         ),
@@ -2828,30 +2834,51 @@ impl GenerationScope {
                             ));
                         }
                         Primitive::F32 => {
-                            deser_code.content.line(&final_result_expr_complete(
-                                &mut deser_code.throws,
-                                config.final_exprs,
-                                "f32::deserialize(raw)",
-                            ));
                             if cli.preserve_encodings {
                                 unimplemented!("preserve_encodings is not implemented for float")
                             }
-                            if type_cfg.bounds.is_some() {
-                                unimplemented!("bounds not supported for floats")
-                            }
+                            // NaN-safe window enforced inline via `and_then` (the value is compared
+                            // as f64 so the authored decimal literal is exact). Integer `bounds`
+                            // never attach to a float (parsing routes those to float_bounds/reject);
+                            // assert it so a routing regression fails loudly instead of silently
+                            // skipping enforcement.
+                            assert!(
+                                type_cfg.bounds.is_none(),
+                                "integer bounds on an f32 — parsing must route float constraints to float_bounds"
+                            );
+                            let result_expr = match &type_cfg.float_bounds {
+                                Some(window) => format!(
+                                    "f32::deserialize(raw).and_then(|x| {} else {{ Ok(x) }})",
+                                    bounds_check_if_block_float(window, true, "x", false, None)
+                                ),
+                                None => "f32::deserialize(raw)".to_owned(),
+                            };
+                            deser_code.content.line(&final_result_expr_complete(
+                                &mut deser_code.throws,
+                                config.final_exprs,
+                                &result_expr,
+                            ));
                         }
                         Primitive::F64 => {
-                            deser_code.content.line(&final_result_expr_complete(
-                                &mut deser_code.throws,
-                                config.final_exprs,
-                                "f64::deserialize(raw)",
-                            ));
                             if cli.preserve_encodings {
                                 unimplemented!("preserve_encodings is not implemented for float")
                             }
-                            if type_cfg.bounds.is_some() {
-                                unimplemented!("bounds not supported for floats")
-                            }
+                            assert!(
+                                type_cfg.bounds.is_none(),
+                                "integer bounds on an f64 — parsing must route float constraints to float_bounds"
+                            );
+                            let result_expr = match &type_cfg.float_bounds {
+                                Some(window) => format!(
+                                    "f64::deserialize(raw).and_then(|x| {} else {{ Ok(x) }})",
+                                    bounds_check_if_block_float(window, false, "x", false, None)
+                                ),
+                                None => "f64::deserialize(raw)".to_owned(),
+                            };
+                            deser_code.content.line(&final_result_expr_complete(
+                                &mut deser_code.throws,
+                                config.final_exprs,
+                                &result_expr,
+                            ));
                         }
                     };
                 }
@@ -4037,6 +4064,130 @@ fn range_check_err(e: &str, min: Option<i128>, max: Option<i128>, return_err: bo
         opt(min),
         opt(max),
     )
+}
+
+/// Renders a f64 literal that round-trips exactly (Rust's `{:?}` guarantees this for f64), with the
+/// `f64` suffix so it types as f64 even when compared against an f32-derived value.
+fn float_literal(v: f64) -> String {
+    format!("{v:?}f64")
+}
+
+/// The ACCEPT-form condition for a float window over `val` (a NaN-safe conjunction of the present
+/// sides). Never reject-form (`x < min || x > max`) — under that shape a NaN slips through because
+/// both comparisons are false. The caller negates this (`if !(<cond>) {{ Err }}`), so NaN — for
+/// which every comparison is false, making the conjunction false — is always rejected.
+fn float_accept_cond(
+    window: &crate::intermediate::FloatWindow,
+    val: &str,
+    cast_f64: bool,
+) -> String {
+    let v = if cast_f64 {
+        format!("({val} as f64)")
+    } else {
+        val.to_owned()
+    };
+    let mut parts = Vec::new();
+    if let Some((min, exclusive)) = window.0 {
+        parts.push(format!(
+            "{v} {} {}",
+            if exclusive { ">" } else { ">=" },
+            float_literal(min)
+        ));
+    }
+    if let Some((max, exclusive)) = window.1 {
+        parts.push(format!(
+            "{v} {} {}",
+            if exclusive { "<" } else { "<=" },
+            float_literal(max)
+        ));
+    }
+    // a real window always has at least one side; guard the impossible empty case
+    if parts.is_empty() {
+        unreachable!("float_accept_cond called with an empty window");
+    }
+    parts.join(" && ")
+}
+
+/// The `Err(..)` expression for a failed float window check. `location` `Some(name)` produces a
+/// `DeserializeError::new(name, ..)` (wrapper deserialize/new, which annotate the type), `None`
+/// produces a bare `DeserializeFailure::RangeCheckFloat{..}.into()` (primitive deserialize and_then).
+fn range_check_err_float(
+    found_f64: &str,
+    window: &crate::intermediate::FloatWindow,
+    return_err: bool,
+    location: Option<&str>,
+) -> String {
+    let opt = |side: Option<(f64, bool)>| match side {
+        Some((v, _)) => format!("Some({})", float_literal(v)),
+        None => "None".to_owned(),
+    };
+    // stored inclusivity is the negation of the parsed exclusivity flag
+    let incl = |side: Option<(f64, bool)>| match side {
+        Some((_, exclusive)) => (!exclusive).to_string(),
+        None => "false".to_owned(),
+    };
+    let failure = format!(
+        "DeserializeFailure::RangeCheckFloat{{ found: {} as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
+        found_f64,
+        opt(window.0),
+        opt(window.1),
+        incl(window.0),
+        incl(window.1),
+    );
+    let err = match location {
+        Some(loc) => format!("DeserializeError::new(\"{loc}\", {failure})"),
+        None => format!("{failure}.into()"),
+    };
+    let possible_return = if return_err { "return " } else { "" };
+    format!("{{ {possible_return}Err({err}) }}")
+}
+
+/// The NaN-safe `if !(<accept>) {{ Err(..) }}` float bounds check. `cast_f64` casts an f32 value to
+/// f64 first so the authored decimal literal is compared exactly.
+fn bounds_check_if_block_float(
+    window: &crate::intermediate::FloatWindow,
+    cast_f64: bool,
+    e: &str,
+    return_err: bool,
+    location: Option<&str>,
+) -> String {
+    // `range_check_err_float` already appends `as f64` to the found value, so pass the raw expr
+    // (avoids a redundant `(x as f64) as f64` for an f32 value).
+    format!(
+        "if !({}) {}",
+        float_accept_cond(window, e, cast_f64),
+        range_check_err_float(e, window, return_err, location)
+    )
+}
+
+/// The value bounds check line for a field/setter/variant-ctor site, dispatching to the integer or
+/// float path (or `None` if the type carries no value window / no check expression exists — e.g. a
+/// bounded named Rust wrapper checks at its own construction). Reproduces the integer path
+/// byte-for-byte (same `nint_bounds_to_u64` swap) so existing snapshots are unchanged.
+fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<String> {
+    if let Some(window) = &ty.config.float_bounds {
+        let cast_f64 = matches!(
+            ty.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(Primitive::F32)
+        );
+        return Some(bounds_check_if_block_float(
+            window, cast_f64, e, return_err, None,
+        ));
+    }
+    let bounds = ty.config.bounds.as_ref()?;
+    let check_expr = bounds_check_expr_rust_type(ty, e)?;
+    if matches!(
+        ty.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) {
+        Some(bounds_check_if_block(
+            &nint_bounds_to_u64(bounds),
+            &check_expr,
+            return_err,
+        ))
+    } else {
+        Some(bounds_check_if_block(bounds, &check_expr, return_err))
+    }
 }
 
 fn bounds_check_if_block(
@@ -5806,7 +5957,7 @@ fn codegen_struct(
     let new_can_fail = record
         .fields
         .iter()
-        .any(|f| !f.optional && f.rust_type.config.bounds.is_some());
+        .any(|f| !f.optional && f.rust_type.has_value_bounds());
     // wasm wrapper
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
@@ -5830,22 +5981,12 @@ fn codegen_struct(
                         .arg(&field.name, field.rust_type.for_wasm_param(types))
                         .vis("pub");
                     // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
-                    if let Some(bounds) = field.rust_type.config.bounds.as_ref() {
+                    if field.rust_type.has_value_bounds() {
                         setter.ret("Result<(), JsError>");
-                        if let Some(check_expr) =
-                            bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                        if let Some(line) =
+                            value_bounds_check_line(&field.rust_type, &field.name, true)
                         {
-                            if let ConceptualRustType::Primitive(Primitive::N64) =
-                                field.rust_type.resolve_alias_shallow()
-                            {
-                                setter.line(bounds_check_if_block(
-                                    &nint_bounds_to_u64(bounds),
-                                    &check_expr,
-                                    true,
-                                ));
-                            } else {
-                                setter.line(bounds_check_if_block(bounds, &check_expr, true));
-                            }
+                            setter.line(&line);
                         }
                     }
                     if field.rust_type.config.default.is_some() {
@@ -6082,21 +6223,8 @@ fn codegen_struct(
                 }
                 new_arg_count += 1;
                 native_new_block.line(format!("{},", field.name));
-                if let Some(bounds) = field.rust_type.config.bounds.as_ref()
-                    && let Some(check_expr) =
-                        bounds_check_expr_rust_type(&field.rust_type, &field.name)
-                {
-                    if let ConceptualRustType::Primitive(Primitive::N64) =
-                        field.rust_type.resolve_alias_shallow()
-                    {
-                        native_new.line(bounds_check_if_block(
-                            &nint_bounds_to_u64(bounds),
-                            &check_expr,
-                            true,
-                        ));
-                    } else {
-                        native_new.line(bounds_check_if_block(bounds, &check_expr, true));
-                    }
+                if let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true) {
+                    native_new.line(&line);
                 }
                 // field
                 codegen::Field::new(
@@ -7015,9 +7143,7 @@ fn codegen_group_choices(
                         .iter()
                         .filter(|f| (!f.optional || inlined) && !f.rust_type.is_fixed_value())
                         .collect();
-                    let can_fail = ctor_fields
-                        .iter()
-                        .any(|f| f.rust_type.config.bounds.is_some());
+                    let can_fail = ctor_fields.iter().any(|f| f.rust_type.has_value_bounds());
                     match ctor_fields.len() {
                         0 => {
                             new_func
@@ -7093,7 +7219,7 @@ fn codegen_group_choices(
                             )
                         );
                         new_func.arg(&field_name, variant.rust_type().for_wasm_param(types));
-                        if variant.rust_type().config.bounds.is_some() {
+                        if variant.rust_type().has_value_bounds() {
                             new_func
                                 .ret(format!("Result<{name}, JsError>"))
                                 .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
@@ -7988,7 +8114,7 @@ fn generate_enum(
                             .collect();
                         let can_fail = ctor_fields
                             .iter()
-                            .any(|field| field.rust_type.config.bounds.is_some());
+                            .any(|field| field.rust_type.has_value_bounds());
                         // bounds checking should be handled by the called constructor here
                         let mut ctor = format!("{}::new(", ty.conceptual_type.for_variant());
                         for field in ctor_fields {
@@ -8014,23 +8140,10 @@ fn generate_enum(
                             let field_name = variant.name_as_var();
                             new_func
                                 .arg(&field_name, variant.rust_type().for_rust_move(types, cli));
-                            if let Some(bounds) = &ty.config.bounds
-                                && let Some(check_expr) =
-                                    bounds_check_expr_rust_type(ty, &field_name)
-                            {
-                                if let ConceptualRustType::Primitive(Primitive::N64) =
-                                    ty.resolve_alias_shallow()
-                                {
-                                    new_func.line(bounds_check_if_block(
-                                        &nint_bounds_to_u64(bounds),
-                                        &check_expr,
-                                        true,
-                                    ));
-                                } else {
-                                    new_func.line(bounds_check_if_block(bounds, &check_expr, true));
-                                }
+                            if let Some(line) = value_bounds_check_line(ty, &field_name, true) {
+                                new_func.line(&line);
                             }
-                            (vec![field_name], ty.config.bounds.is_some())
+                            (vec![field_name], ty.has_value_bounds())
                         }
                     }
                 }
@@ -8050,25 +8163,13 @@ fn generate_enum(
                     .collect();
                 let can_fail = record.fields.iter().any(|field| {
                     let can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
+                    // a bounded named Rust wrapper checks at its own ctor (no inline check line, but
+                    // still fallible via `?`); a primitive int/float field emits its check here.
                     if can_fail
-                        && let Some(check_expr) =
-                            bounds_check_expr_rust_type(&field.rust_type, &field.name)
+                        && let Some(line) =
+                            value_bounds_check_line(&field.rust_type, &field.name, true)
                     {
-                        if let ConceptualRustType::Primitive(Primitive::N64) =
-                            field.rust_type.resolve_alias_shallow()
-                        {
-                            new_func.line(bounds_check_if_block(
-                                &nint_bounds_to_u64(&field.rust_type.config.bounds.unwrap()),
-                                &check_expr,
-                                true,
-                            ));
-                        } else {
-                            new_func.line(bounds_check_if_block(
-                                &field.rust_type.config.bounds.unwrap(),
-                                &check_expr,
-                                true,
-                            ));
-                        }
+                        new_func.line(&line);
                     }
                     can_fail
                 });
@@ -8572,16 +8673,18 @@ fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Op
 }
 
 // This is used mostly for when thing are tagged have specific ranges.
+#[allow(clippy::too_many_arguments)]
 fn generate_wrapper_struct(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     type_name: &RustIdent,
     field_type: &RustType,
     min_max: Option<(Option<i128>, Option<i128>)>,
+    float_min_max: Option<crate::intermediate::FloatWindow>,
     struct_config: &RustStructConfig,
     cli: &Cli,
 ) {
-    if min_max.is_some() {
+    if min_max.is_some() || float_min_max.is_some() {
         assert!(types.can_new_fail(type_name));
     }
     if cli.wasm {
@@ -8865,7 +8968,7 @@ fn generate_wrapper_struct(
     } else {
         min_max
     };
-    let from_impl = if let Some((min, max)) = min_max {
+    let from_impl = if min_max.is_some() || float_min_max.is_some() {
         let (before, after) = if var_names_str.is_empty() {
             ("".to_owned(), "")
         } else {
@@ -8881,83 +8984,115 @@ fn generate_wrapper_struct(
             )
             .add_to(&mut deser_func);
 
-        let against = if field_type
-            .encodings
-            .contains(&CBOREncodingOperation::CBORBytes)
-        {
-            "inner.len()"
+        let check = if let Some(window) = float_min_max {
+            // NaN-safe float window: accept-form negation, value compared as f64 so the authored
+            // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
+            let cast_f64 = matches!(
+                &field_type.conceptual_type,
+                ConceptualRustType::Primitive(Primitive::F32)
+            );
+            let mut check = Block::new(format!(
+                "if !({})",
+                float_accept_cond(&window, "inner", cast_f64)
+            ));
+            let opt = |side: Option<(f64, bool)>| match side {
+                Some((v, _)) => format!("Some({})", float_literal(v)),
+                None => "None".to_owned(),
+            };
+            let incl = |side: Option<(f64, bool)>| match side {
+                Some((_, exclusive)) => (!exclusive).to_string(),
+                None => "false".to_owned(),
+            };
+            check.line(format!(
+                "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheckFloat{{ found: inner as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}));",
+                type_name,
+                opt(window.0),
+                opt(window.1),
+                incl(window.0),
+                incl(window.1)
+            ));
+            check
         } else {
-            match &field_type.conceptual_type {
-                ConceptualRustType::Primitive(p) => match p {
-                    Primitive::Bytes | Primitive::Str => "inner.len()",
-                    Primitive::Bool
-                    | Primitive::F32
-                    | Primitive::F64
-                    | Primitive::U8
-                    | Primitive::U16
-                    | Primitive::U32
-                    | Primitive::U64
-                    | Primitive::I8
-                    | Primitive::I16
-                    | Primitive::I32
-                    | Primitive::I64
-                    | Primitive::N64 => "inner",
-                },
-                _ => unimplemented!(),
-            }
-        };
-        let mut check = match (min, max) {
-            (Some(min), Some(max)) => {
-                if min == max {
-                    Block::new(format!("if {against} != {min}"))
-                } else if min > max {
-                    // `.ne N` is encoded as Range(N+1, N-1): an exclusion, not a window
-                    Block::new(format!("if {against} == {}", min - 1))
-                } else {
-                    let non_negative = field_type.encodings.is_empty()
-                        && match &field_type.conceptual_type {
-                            ConceptualRustType::Primitive(p) => match p {
-                                Primitive::Bytes | Primitive::Str => true,
-                                Primitive::Bool
-                                | Primitive::U8
-                                | Primitive::U16
-                                | Primitive::U32
-                                | Primitive::U64 => true,
-                                Primitive::I8
-                                | Primitive::I16
-                                | Primitive::I32
-                                | Primitive::I64
-                                | Primitive::N64
-                                | Primitive::F32
-                                | Primitive::F64 => false,
-                            },
-                            _ => unimplemented!(),
-                        };
-                    if min == 0 && non_negative {
-                        Block::new(format!("if {against} > {max}"))
+            let (min, max) = min_max.unwrap();
+            let against = if field_type
+                .encodings
+                .contains(&CBOREncodingOperation::CBORBytes)
+            {
+                "inner.len()"
+            } else {
+                match &field_type.conceptual_type {
+                    ConceptualRustType::Primitive(p) => match p {
+                        Primitive::Bytes | Primitive::Str => "inner.len()",
+                        Primitive::Bool
+                        | Primitive::F32
+                        | Primitive::F64
+                        | Primitive::U8
+                        | Primitive::U16
+                        | Primitive::U32
+                        | Primitive::U64
+                        | Primitive::I8
+                        | Primitive::I16
+                        | Primitive::I32
+                        | Primitive::I64
+                        | Primitive::N64 => "inner",
+                    },
+                    _ => unimplemented!(),
+                }
+            };
+            let mut check = match (min, max) {
+                (Some(min), Some(max)) => {
+                    if min == max {
+                        Block::new(format!("if {against} != {min}"))
+                    } else if min > max {
+                        // `.ne N` is encoded as Range(N+1, N-1): an exclusion, not a window
+                        Block::new(format!("if {against} == {}", min - 1))
                     } else {
-                        Block::new(format!("if {against} < {min} || {against} > {max}"))
+                        let non_negative = field_type.encodings.is_empty()
+                            && match &field_type.conceptual_type {
+                                ConceptualRustType::Primitive(p) => match p {
+                                    Primitive::Bytes | Primitive::Str => true,
+                                    Primitive::Bool
+                                    | Primitive::U8
+                                    | Primitive::U16
+                                    | Primitive::U32
+                                    | Primitive::U64 => true,
+                                    Primitive::I8
+                                    | Primitive::I16
+                                    | Primitive::I32
+                                    | Primitive::I64
+                                    | Primitive::N64
+                                    | Primitive::F32
+                                    | Primitive::F64 => false,
+                                },
+                                _ => unimplemented!(),
+                            };
+                        if min == 0 && non_negative {
+                            Block::new(format!("if {against} > {max}"))
+                        } else {
+                            Block::new(format!("if {against} < {min} || {against} > {max}"))
+                        }
                     }
                 }
-            }
-            (Some(min), None) => Block::new(format!("if {against} < {min}")),
-            (None, Some(max)) => Block::new(format!("if {against} > {max}")),
-            (None, None) => panic!(
-                "How did we end up with a range requirement of (None, None)? Entire thing should've been None then"
-            ),
+                (Some(min), None) => Block::new(format!("if {against} < {min}")),
+                (None, Some(max)) => Block::new(format!("if {against} > {max}")),
+                (None, None) => panic!(
+                    "How did we end up with a range requirement of (None, None)? Entire thing should've been None then"
+                ),
+            };
+            check.line(format!(
+                "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",
+                type_name,
+                against,
+                match min {
+                    Some(min) => format!("Some({min})"),
+                    None => String::from("None")
+                },
+                match max {
+                    Some(max) => format!("Some({max})"),
+                    None => String::from("None")
+                }));
+            check
         };
-        check.line(format!(
-            "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",
-            type_name,
-            against,
-            match min {
-                Some(min) => format!("Some({min})"),
-                None => String::from("None")
-            },
-            match max {
-                Some(max) => format!("Some({max})"),
-                None => String::from("None")
-            }));
         deser_func.push_block(check.clone());
         new_func
             .ret("Result<Self, DeserializeError>")

@@ -38,6 +38,7 @@ expression: ir
                                         ),
                                     ),
                                 ),
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },

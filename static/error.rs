@@ -45,6 +45,17 @@ pub enum DeserializeFailure {
         min: Option<isize>,
         max: Option<isize>,
     },
+    /// A float value fell outside its CDDL window (`float64 .le 10.5`, `0.5..10.5`). Separate from
+    /// `RangeCheck` because float bounds are f64-typed and carry per-side exclusivity (dense float
+    /// space has no ±1 collapse). NaN always lands here — the emitted check is accept-form
+    /// (`!(x >= min && x <= max)`), and every comparison against NaN is false.
+    RangeCheckFloat{
+        found: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+        min_inclusive: bool,
+        max_inclusive: bool,
+    },
     TagMismatch{
         found: u64,
         expected: u64,
@@ -123,6 +134,17 @@ impl DeserializeError {
                 (Some(min), None) => write!(f, "{} not at least {}", found, min),
                 (None, Some(max)) => write!(f, "{} not at most {}", found, max),
                 (None, None) => write!(f, "invalid range (no min nor max specified)"),
+            },
+            DeserializeFailure::RangeCheckFloat{ found, min, max, min_inclusive, max_inclusive } => {
+                let lo = match min {
+                    Some(min) => format!("{}{}", if *min_inclusive { ">=" } else { ">" }, min),
+                    None => "-inf".to_owned(),
+                };
+                let hi = match max {
+                    Some(max) => format!("{}{}", if *max_inclusive { "<=" } else { "<" }, max),
+                    None => "+inf".to_owned(),
+                };
+                write!(f, "{} not in float range ({}, {})", found, lo, hi)
             },
             DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),

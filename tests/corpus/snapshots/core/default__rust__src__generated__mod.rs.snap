@@ -460,6 +460,154 @@ impl First {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FloatBounds {
+    pub incl: f64,
+    pub excl: f64,
+    pub lt: f64,
+    pub ge: f64,
+    pub eq: f64,
+    pub f32le: f32,
+}
+
+impl FloatBounds {
+    pub fn new(
+        incl: f64,
+        excl: f64,
+        lt: f64,
+        ge: f64,
+        eq: f64,
+        f32le: f32,
+    ) -> Result<Self, DeserializeError> {
+        if !(incl >= 0.5f64 && incl <= 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: incl as f64,
+                min: Some(0.5f64),
+                max: Some(10.5f64),
+                min_inclusive: true,
+                max_inclusive: true,
+            }
+            .into());
+        }
+        if !(excl >= 0.5f64 && excl < 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: excl as f64,
+                min: Some(0.5f64),
+                max: Some(10.5f64),
+                min_inclusive: true,
+                max_inclusive: false,
+            }
+            .into());
+        }
+        if !(lt < 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: lt as f64,
+                min: None,
+                max: Some(10.5f64),
+                min_inclusive: false,
+                max_inclusive: false,
+            }
+            .into());
+        }
+        if !(ge >= 0.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: ge as f64,
+                min: Some(0.5f64),
+                max: None,
+                min_inclusive: true,
+                max_inclusive: false,
+            }
+            .into());
+        }
+        if !(eq >= 3.5f64 && eq <= 3.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: eq as f64,
+                min: Some(3.5f64),
+                max: Some(3.5f64),
+                min_inclusive: true,
+                max_inclusive: true,
+            }
+            .into());
+        }
+        if !((f32le as f64) <= 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: f32le as f64,
+                min: None,
+                max: Some(10.5f64),
+                min_inclusive: false,
+                max_inclusive: true,
+            }
+            .into());
+        }
+        Ok(Self {
+            incl,
+            excl,
+            lt,
+            ge,
+            eq,
+            f32le,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct FloatRange(f64);
+
+impl FloatRange {
+    pub fn new(inner: f64) -> Result<Self, DeserializeError> {
+        if !(inner >= 0.5f64 && inner <= 10.5f64) {
+            return Err(DeserializeError::new(
+                "FloatRange",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: true,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<f64> for FloatRange {
+    type Error = DeserializeError;
+
+    fn try_from(inner: f64) -> Result<Self, Self::Error> {
+        FloatRange::new(inner)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct FloatRangeExcl(f64);
+
+impl FloatRangeExcl {
+    pub fn new(inner: f64) -> Result<Self, DeserializeError> {
+        if !(inner >= 0.5f64 && inner < 10.5f64) {
+            return Err(DeserializeError::new(
+                "FloatRangeExcl",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: false,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<f64> for FloatRangeExcl {
+    type Error = DeserializeError;
+
+    fn try_from(inner: f64) -> Result<Self, Self::Error> {
+        FloatRangeExcl::new(inner)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Foo {
     pub index_0: u64,
@@ -1211,6 +1359,35 @@ impl TableMapWrapper {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct TaggedFloatRange(f64);
+
+impl TaggedFloatRange {
+    pub fn new(inner: f64) -> Result<Self, DeserializeError> {
+        if !(inner >= 0.5f64 && inner <= 10.5f64) {
+            return Err(DeserializeError::new(
+                "TaggedFloatRange",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: true,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<f64> for TaggedFloatRange {
+    type Error = DeserializeError;
+
+    fn try_from(inner: f64) -> Result<Self, Self::Error> {
+        TaggedFloatRange::new(inner)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TaggedFooBytes(Foo);
 
@@ -1483,6 +1660,24 @@ impl From<BTreeMap<u64, u64>> for WrapperTable {
 
 impl From<WrapperTable> for BTreeMap<u64, u64> {
     fn from(wrapper: WrapperTable) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<FloatRange> for f64 {
+    fn from(wrapper: FloatRange) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<FloatRangeExcl> for f64 {
+    fn from(wrapper: FloatRangeExcl) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<TaggedFloatRange> for f64 {
+    fn from(wrapper: TaggedFloatRange) -> Self {
         wrapper.0
     }
 }

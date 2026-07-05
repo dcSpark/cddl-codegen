@@ -340,4 +340,94 @@ mod tests {
             "must point at the @name remedy: {tru}"
         );
     }
+
+    /// Helpers for the float-window parse tests: run the pipeline to either the IR debug dump or the
+    /// generated-source concatenation (mirrors the reserved-name test's temp-file scaffolding).
+    #[cfg(test)]
+    fn float_test_cli(spec: &str, tag: &str) -> (crate::cli::Cli, std::path::PathBuf) {
+        use crate::cli::Cli;
+        use clap::Parser;
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_float_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "float_window_unused",
+            "--wasm",
+            "false",
+        ]);
+        (cli, path)
+    }
+
+    /// A top-level literal float range (`c = 0.5..10.5`) must WRAP into a bounds-enforcing newtype
+    /// (registered as a `Wrapper`, not dropped into a transparent `pub type` alias) and carry the
+    /// window WITHOUT truncation — `10.5`/`0.5` survive exactly. `float64 .le 10` (int literal on a
+    /// float head) promotes to a float window (`10.0`), never the integer path.
+    #[test]
+    fn float_window_parses_wraps_without_truncation() {
+        let (cli, path) = float_test_cli("c = 0.5..10.5\n", "range");
+        let ir = super::ir_structs_debug(&cli).unwrap();
+        std::fs::remove_file(&path).ok();
+        // registered as a Wrapper (aliases never appear in rust_structs) carrying a float window
+        assert!(
+            ir.contains('C'),
+            "the wrapper rule C must be registered: {ir}"
+        );
+        assert!(
+            ir.contains("float_min_max: Some"),
+            "the window must ride the wrapper's float slot: {ir}"
+        );
+        assert!(
+            ir.contains("10.5") && ir.contains("0.5"),
+            "the float endpoints must survive without truncation: {ir}"
+        );
+
+        let (cli, path) = float_test_cli("d = float64 .le 10\n", "le_int");
+        let ir = super::ir_structs_debug(&cli).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert!(
+            ir.contains("float_min_max: Some"),
+            "an int literal on a float head must produce a FLOAT window: {ir}"
+        );
+        assert!(
+            ir.contains("10.0"),
+            "the int bound must promote to f64 (10.0), not the integer path: {ir}"
+        );
+    }
+
+    /// `.ne` over a float and a decimal float bound on an integer-typed head are GRACEFUL rejections
+    /// (drained `Err`, never a panic), with actionable messages naming the offending shape + remedy.
+    #[test]
+    fn float_unsupported_constraints_reject_gracefully() {
+        fn gen_err(spec: &str, tag: &str) -> String {
+            let (cli, path) = float_test_cli(spec, tag);
+            let result = super::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            result
+                .expect_err("unsupported float constraint must reject gracefully, not generate")
+                .to_string()
+        }
+
+        let ne = gen_err("bad = float64 .ne 5.0\n", "ne");
+        assert!(ne.contains(".ne"), "must name the `.ne` op: {ne}");
+        assert!(
+            ne.contains("float"),
+            "must explain the float-exclusion limitation: {ne}"
+        );
+
+        let dec = gen_err("bad = uint .le 10.5\n", "uint_dec");
+        assert!(
+            dec.contains("decimal"),
+            "must call out the decimal float bound: {dec}"
+        );
+        assert!(
+            dec.contains("integer"),
+            "must explain the integer-head mismatch: {dec}"
+        );
+    }
 }

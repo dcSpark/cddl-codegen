@@ -50,6 +50,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -59,6 +60,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -88,6 +90,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -122,6 +125,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -156,6 +160,7 @@ expression: ir
                                         config: RustTypeSerializeConfig {
                                             default: None,
                                             bounds: None,
+                                            float_bounds: None,
                                             basic_override: false,
                                         },
                                     },
@@ -165,6 +170,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -208,6 +214,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -227,6 +234,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -236,6 +244,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -264,6 +273,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -283,6 +293,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -294,6 +305,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -303,6 +315,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -339,6 +352,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -350,6 +364,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -359,6 +374,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -388,6 +404,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -399,6 +416,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -427,6 +445,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -446,6 +465,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                float_bounds: None,
                                 basic_override: false,
                             },
                         },
@@ -455,6 +475,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },

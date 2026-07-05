@@ -26,6 +26,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    float_bounds: None,
                     basic_override: false,
                 },
             },
@@ -39,6 +40,7 @@ expression: ir
                     ),
                 ),
             ),
+            float_min_max: None,
         },
     },
     RustIdent(
