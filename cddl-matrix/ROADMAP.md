@@ -47,18 +47,24 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Directive × attachment-position cells for the `dsl.*` features (fourth proven instance of the
-  same under-enumeration).** Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
+- **Directive × attachment-position cells for the `dsl.*` features (the last unswept instance of
+  the position-axis under-enumeration class — its three construct-axis siblings, group-choice-arm /
+  map-key kind×spelling×arity / occurrence marker×rep, are delivered and live in § findings).**
+  Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
   `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
   position, but the mechanism is per-position code (`group_entry_to_field_name` has a separate
   metadata read per MemberKey arm), so a directive can silently no-op in an unenumerated position —
-  proven twice for `@name` alone: silently dropped on arrow-keyed entries (fixed when integer arrow
-  keys landed) and again on bareword-keyed entries (fixed with the Rust-keyword rejection, whose
+  proven three times for `@name` alone: silently dropped on arrow-keyed entries (fixed when integer
+  arrow keys landed), on bareword-keyed entries (fixed with the Rust-keyword rejection, whose
   `@name` remedy only works because of that fix — a remedy we would have printed while it was
-  broken). Enumerate directive × position (rule, bareword key, value key, arrow key, group-choice
-  arm, array member) cells where the docs claim the directive applies, asserting an OBSERVABLE
-  effect in the output (a renamed field, a doc comment) or a clean error — silently-ignored is the
-  failure mode being swept for. Distinct from the REJECTED doc-snippet prose harness
+  broken), and STILL silently dropped on top-level rules today (`parse_rule` passes
+  `RuleMetadata::default()`, so a rule/group name is never renamed by `@name` — verified while
+  landing the reserved-name rejection, whose message spells out that renaming the identifier is the
+  only remedy). Enumerate directive × position (rule, bareword key, value key, arrow key,
+  group-choice arm, array member) cells where the docs claim the directive applies, asserting an
+  OBSERVABLE effect in the output (a renamed field, a doc comment) or a clean error —
+  silently-ignored is the failure mode being swept for; the rule-position `@name` drop should
+  become a clean error (or real support) when this lands. Distinct from the REJECTED doc-snippet prose harness
   (`tests/TESTING_ROADMAP.md` § "Explicitly not worth it"): that decision was about docs drifting
   from behavior; this is behavior enumeration — the snapshot corpus pins positions it samples, and
   both `@name` drops were in positions it did not.
