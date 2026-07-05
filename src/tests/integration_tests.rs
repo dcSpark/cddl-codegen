@@ -4,6 +4,60 @@
 
 use std::io::Write;
 
+/// Name-level docs-contract gate for `docs/docs/command_line_flags.mdx`, sibling in spirit to
+/// `src/tests/dsl_position_tests.rs`'s `comment_dsl.mdx` contract: every clap long flag must have
+/// a matching `:::info `--flag`` block, and every documented block must still name a real clap
+/// flag. This lints flag NAMES only; prose content stays hand-owned and is not checked.
+#[test]
+fn command_line_flags_mdx_documents_all_clap_long_flags() {
+    use clap::CommandFactory;
+    use std::collections::BTreeSet;
+
+    let command = crate::cli::Cli::command();
+    let clap_flags = command
+        .get_arguments()
+        .filter_map(|arg| arg.get_long())
+        .filter(|name| !matches!(*name, "help" | "version"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+
+    let docs_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/docs/docs/command_line_flags.mdx"
+    );
+    let docs = std::fs::read_to_string(docs_path)
+        .unwrap_or_else(|e| panic!("cannot read {docs_path}: {e}"));
+    let doc_flags = docs
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix(":::info `--")
+                .and_then(|rest| rest.split_once('`'))
+                .map(|(name, _)| name.to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+
+    let undocumented = clap_flags
+        .difference(&doc_flags)
+        .map(|flag| format!("--{flag}"))
+        .collect::<Vec<_>>();
+    assert!(
+        undocumented.is_empty(),
+        "new flag is undocumented - add a :::info block to docs/docs/command_line_flags.mdx for: {}",
+        undocumented.join(", ")
+    );
+
+    let stale = doc_flags
+        .difference(&clap_flags)
+        .map(|flag| format!("--{flag}"))
+        .collect::<Vec<_>>();
+    assert!(
+        stale.is_empty(),
+        "stale doc block - the flag was renamed/removed from clap: {}",
+        stale.join(", ")
+    );
+}
+
 /// If you have multiple tests that use the same directory, please use different export_suffix
 /// for each one or else the tests will be flaky as they are run concurrently.
 ///
@@ -16,6 +70,18 @@ fn checkout_hash() -> u64 {
     std::env::current_dir().unwrap().hash(&mut h);
     h.finish()
 }
+
+/// Corpus fixtures whose generated crate references user-supplied code (for example,
+/// `@custom_serialize` / `@custom_deserialize` functions like `my_ser`/`my_deser`), so they cannot
+/// be compiled or round-tripped standalone under any emission profile. They remain covered by
+/// source snapshots.
+const COMPILE_SKIP: &[&str] = &["dsl_custom"];
+
+/// Wasm-matrix cells that deliberately never compile standalone in this harness: `extern` references
+/// a user-supplied type (undefined standalone -> E0425), while the extern emit path is
+/// integration-tested separately in `tests/extern-deps`. Because the cell never compiles here, it
+/// never round-trips here either.
+const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
 /// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second
@@ -469,7 +535,7 @@ fn reference_codec_differential_self_check() {
 
 /// Append the in-repo user-supplied `RawBytesEncoding` defs (`PubKey`) into a freshly generated crate
 /// rooted at `out` (rust + wasm), so a `rawbytes__*` wasm-matrix cell — whose `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
-/// resolves to that user type — compiles/tests standalone instead of being a permanent SKIP like `extern`.
+/// resolves to that user type — compiles/tests standalone instead of being skipped permanently like `extern`.
 /// Mirrors `run_test`'s external-file append (including the `use serialization::*;` the rust def needs for
 /// `RawBytesEncoding`/`Deserialize*`); the matrix never passes `--lib-name`, so the wasm def's `cddl_lib`
 /// path needs no substitution here.
@@ -928,11 +994,6 @@ fn feature_corpus_compiles() {
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
-    // Fixtures whose generated crate references user-supplied code (e.g. @custom_serialize /
-    // @custom_deserialize functions like `my_ser`/`my_deser`) and so can't `cargo check` standalone —
-    // same reason extern / raw-bytes live outside the corpus. Still source-snapshotted by feature_corpus.
-    const COMPILE_SKIP: &[&str] = &["dsl_custom"];
-
     let mut failures = vec![];
     let mut emitted_test_modules = 0usize;
     for input in &entries {
@@ -1114,26 +1175,20 @@ fn getting_started_example() {
 /// of boundary bugs (wrong accessor type, bad `.into()`/`.clone()`/by-ref slips, dangling map typedefs)
 /// was invisible. Here an un-covered boundary bug shows up as a specific red cell instead of by luck.
 ///
-/// `SKIP` holds the deliberately-red cells (pre-existing gaps tracked in `cddl-matrix/ROADMAP.md`, plus
-/// `extern`, which references a user-supplied type and can't compile standalone). `rawbytes__*` cells also
-/// reference a user-supplied type, but its defs are in-repo — `append_raw_bytes_defs` splices them in per
-/// cell (same 2 commands, no extra cargo invocation), so those cells compile for real instead of SKIP-ing.
-/// A fix lands by taking
-/// its cell off `SKIP` — and the guard below fails if a `SKIP` cell starts compiling, so the list can't
-/// silently rot. A cell that's red but NOT in `SKIP` fails the test: it's a new wasm-ABI bug to fix or
-/// (deliberately, with a ledger entry) skip-list. `cargo check`s only the wasm crate (single default
-/// profile) — lighter than `feature_corpus_compiles`. The round-trip upgrade of this gate exists as
-/// `wasm_matrix_roundtrips` (manual, full tier); this compile floor stays always-on beside it.
+/// `WASM_MATRIX_SKIP` holds the deliberately-red cells (pre-existing gaps tracked in
+/// `cddl-matrix/ROADMAP.md`, plus `extern`, which references a user-supplied type and can't compile
+/// standalone). `rawbytes__*` cells also reference a user-supplied type, but its defs are in-repo —
+/// `append_raw_bytes_defs` splices them in per cell (same 2 commands, no extra cargo invocation), so
+/// those cells compile for real instead of being skipped. A fix lands by taking its cell off
+/// `WASM_MATRIX_SKIP` — and the guard below fails if a `WASM_MATRIX_SKIP` cell starts compiling, so
+/// the list can't silently rot. A cell that's red but NOT in `WASM_MATRIX_SKIP` fails the test: it's a
+/// new wasm-ABI bug to fix or (deliberately, with a ledger entry) skip-list. `cargo check`s only the
+/// wasm crate (single default profile) — lighter than `feature_corpus_compiles`. The round-trip
+/// upgrade of this gate exists as `wasm_matrix_roundtrips` (manual, full tier); this compile floor
+/// stays always-on beside it.
 #[test]
 fn wasm_matrix_compiles() {
     use std::str::FromStr;
-
-    // Deliberately-red cells (`<shape>__<role>`), each tracked in cddl-matrix/ROADMAP.md.
-    const SKIP: &[&str] = &[
-        // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
-        // is integration-tested in tests/extern-deps. Permanent skip (never compiles here).
-        "extern__array-element",
-    ];
 
     let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
@@ -1153,11 +1208,11 @@ fn wasm_matrix_compiles() {
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
-    let mut failures = vec![]; // red cells NOT on SKIP — real bugs
-    let mut resurfaced = vec![]; // SKIP cells that now compile — remove them from SKIP
+    let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real bugs
+    let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now compile — remove them
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
-        let skipped = SKIP.contains(&stem);
+        let skipped = WASM_MATRIX_SKIP.contains(&stem);
         let out = root.join(stem);
         let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
@@ -1194,7 +1249,7 @@ fn wasm_matrix_compiles() {
         }
         // `rawbytes__*` cells resolve `_CDDL_CODEGEN_RAW_BYTES_TYPE_` to a user-supplied type (`PubKey`),
         // undefined in a bare crate. Unlike `extern` (whose defs live only in tests/extern-deps), the raw-bytes
-        // defs are in-repo, so append them and the cell compiles for real instead of being a SKIP.
+        // defs are in-repo, so append them and the cell compiles for real instead of being skipped.
         if stem.starts_with("rawbytes__") {
             append_raw_bytes_defs(&out);
         }
@@ -1207,7 +1262,7 @@ fn wasm_matrix_compiles() {
         match (skipped, check.status.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo check failed (new wasm-ABI red cell — fix the emitter or, deliberately, \
-                 add to SKIP + cddl-matrix/ROADMAP.md)\n{}",
+                 add to WASM_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
                 String::from_utf8_lossy(&check.stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
@@ -1217,7 +1272,8 @@ fn wasm_matrix_compiles() {
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
-        "these SKIP-listed wasm-matrix cells now compile — remove them from SKIP (a fix landed):\n{}",
+        "these WASM_MATRIX_SKIP-listed wasm-matrix cells now compile — remove them from \
+         WASM_MATRIX_SKIP (a fix landed):\n{}",
         resurfaced.join("\n")
     );
     assert!(
@@ -1239,32 +1295,28 @@ fn wasm_matrix_compiles() {
 /// per cell is materially heavier than the compile gate's per-cell `cargo check`). Run it with
 /// `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`.
 ///
-/// `SKIP` holds the deliberately-red cells with a per-entry reason. Same four-state verdict matrix as
-/// `wasm_matrix_compiles`: a red non-SKIP cell fails (real finding, or deliberately SKIP-list it with a
-/// ledger reason); a SKIP cell that now passes fails the resurfaced guard (a fix landed — take it off
-/// SKIP). `wasm_matrix_compiles` stays byte-for-byte untouched: the compile verdict remains the
-/// always-on CI floor, this is the manual round-trip verdict on top. Its own scratch dir name lets it
-/// run beside the compile gate. Note: a cell whose shape mints no wasm test surface (nothing the
-/// emitter can faithfully build — e.g. a pure c-enum, or a wrapper/collection ctor arg with no wasm
-/// build) simply emits no module and `cargo test` passes with zero emitted tests; that is a
-/// legitimate green here (the emitter skips loudly), NOT a false pass — the compile gate already
-/// pins that the cell's wasm ABI compiles.
+/// `WASM_MATRIX_SKIP` holds the deliberately-red cells with a per-entry reason. Same four-state
+/// verdict matrix as `wasm_matrix_compiles`: a red non-skip cell fails (real finding, or deliberately
+/// skip-list it with a ledger reason); a `WASM_MATRIX_SKIP` cell that now passes fails the resurfaced
+/// guard (a fix landed — take it off `WASM_MATRIX_SKIP`). `wasm_matrix_compiles` stays byte-for-byte
+/// untouched: the compile verdict remains the always-on CI floor, this is the manual round-trip
+/// verdict on top. Its own scratch dir name lets it run beside the compile gate. Note: a cell whose
+/// shape mints no wasm test surface (nothing the emitter can faithfully build — e.g. a pure c-enum,
+/// or a wrapper/collection ctor arg with no wasm build) simply emits no module and `cargo test`
+/// passes with zero emitted tests; that is a legitimate green here (the emitter skips loudly), NOT a
+/// false pass — the compile gate already pins that the cell's wasm ABI compiles.
 #[test]
 #[ignore]
 fn wasm_matrix_roundtrips() {
     use std::str::FromStr;
 
-    // Deliberately-red cells (`<shape>__<role>`), each with its reason. The wrapper-collection
-    // struct-field cells (`coll__struct-field` `nums = [* uint]`, `collmap__struct-field`,
+    // The wrapper-collection struct-field cells (`coll__struct-field` `nums = [* uint]`,
+    // `collmap__struct-field`,
     // `passthrumap__struct-field`) round-trip green: the emitter builds their `&Nums`/`&Mp` ctor arg
     // through the wrapper's `new`/`add`/`insert` API, taking the wrapper NAME from the UNRESOLVED
     // conceptual type (`emit_tests_wasm::wasm_collection_build`) so it doesn't shallow-resolve the
-    // alias into a bare `vec![..]` against the `&Nums` param — so they are NOT SKIP-listed.
-    const SKIP: &[&str] = &[
-        // extern references a user-supplied type (undefined standalone -> E0425); the extern emit path
-        // is integration-tested in tests/extern-deps. Permanent skip (never compiles, so never tests).
-        "extern__array-element",
-    ];
+    // alias into a bare `vec![..]` against the `&Nums` param — so they are NOT
+    // `WASM_MATRIX_SKIP`-listed.
 
     let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
@@ -1286,11 +1338,11 @@ fn wasm_matrix_roundtrips() {
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
-    let mut failures = vec![]; // red cells NOT on SKIP — real findings
-    let mut resurfaced = vec![]; // SKIP cells that now pass — remove them from SKIP
+    let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real findings
+    let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now pass — remove them
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
-        let skipped = SKIP.contains(&stem);
+        let skipped = WASM_MATRIX_SKIP.contains(&stem);
         let out = root.join(stem);
         let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
@@ -1335,7 +1387,7 @@ fn wasm_matrix_roundtrips() {
         match (skipped, test.status.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo test failed (wasm round-trip red cell — fix the emitter/generator or, \
-                 deliberately, add to SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
+                 deliberately, add to WASM_MATRIX_SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
                 String::from_utf8_lossy(&test.stdout),
                 String::from_utf8_lossy(&test.stderr)
             )),
@@ -1346,7 +1398,8 @@ fn wasm_matrix_roundtrips() {
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
-        "these SKIP-listed wasm-matrix cells now round-trip — remove them from SKIP (a fix landed):\n{}",
+        "these WASM_MATRIX_SKIP-listed wasm-matrix cells now round-trip — remove them from \
+         WASM_MATRIX_SKIP (a fix landed):\n{}",
         resurfaced.join("\n")
     );
     assert!(
@@ -4220,10 +4273,10 @@ fn hostile_deep_rejects_without_aborting() {
 /// (`cddl-matrix/annotations/cddl_codegen.toml`: `emission.<profile>.status = "unsupported"` on a
 /// default-`supported` row) rather than pinned in a second hand-maintained list, so a new matrix
 /// row can't leave a stale duplicate here. Four-state verdict per (profile, fixture), mirroring
-/// the wasm-matrix SKIP pattern: a NON-expected failure fails the gate (a real regression, or a
-/// genuine gap to record on the emission axis via a verify.ts probe); an EXPECTED failure that now
-/// generates fine fails the gate as "resurfaced" (the gap closed — re-probe so the emission
-/// verdict flips to supported), so the verdicts can't rot.
+/// the `WASM_MATRIX_SKIP` pattern: a NON-expected failure fails the gate (a real
+/// regression, or a genuine gap to record on the emission axis via a verify.ts probe); an EXPECTED
+/// failure that now generates fine fails the gate as "resurfaced" (the gap closed — re-probe so the
+/// emission verdict flips to supported), so the verdicts can't rot.
 #[test]
 #[ignore]
 fn all_supported_constructs_generate_all_profiles() {
@@ -4363,10 +4416,6 @@ fn all_supported_constructs_generate_all_profiles() {
 #[ignore]
 fn feature_corpus_roundtrips_nondefault_profiles() {
     use std::str::FromStr;
-
-    // Same as `feature_corpus_compiles`: references user-supplied @custom_serialize functions, so
-    // its crate can't build standalone under any profile.
-    const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 
     // (profile, fixture stem, reason) — cells whose emitted round-trip surface is a known
     // structural gap under that profile. Empirically discovered; a resurfaced guard fails the gate
@@ -4999,4 +5048,56 @@ fn foreign_scratch_ident(id: &str) -> String {
     id.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+/// Retires the silent half of the AGENTS.md bin/lib module duplication gotcha: production modules
+/// must be declared from both crate roots, while `tests` remains bin-only by design.
+#[test]
+fn bin_and_lib_production_module_declarations_match() {
+    use std::collections::BTreeSet;
+
+    fn declared_modules(source: &str) -> BTreeSet<String> {
+        source
+            .lines()
+            .filter_map(|line| {
+                let rest = line
+                    .strip_prefix("pub mod ")
+                    .or_else(|| line.strip_prefix("pub(crate) mod "))
+                    .or_else(|| line.strip_prefix("mod "))?;
+                let (name, _) = rest.split_once(';')?;
+                Some(name.to_owned())
+            })
+            .filter(|name| name != "tests")
+            .collect()
+    }
+
+    let main_path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs");
+    let lib_path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs");
+    let main = std::fs::read_to_string(main_path)
+        .unwrap_or_else(|e| panic!("cannot read {main_path}: {e}"));
+    let lib =
+        std::fs::read_to_string(lib_path).unwrap_or_else(|e| panic!("cannot read {lib_path}: {e}"));
+
+    let main_modules = declared_modules(&main);
+    let lib_modules = declared_modules(&lib);
+    assert!(
+        !main_modules.is_empty() && !lib_modules.is_empty(),
+        "parsed zero module declarations from a crate root — the line-based parse drifted from \
+         the source format and this gate went vacuous; fix declared_modules"
+    );
+
+    if let Some(module) = main_modules.difference(&lib_modules).next() {
+        panic!(
+            "module `{module}` declared in src/main.rs but missing from src/lib.rs — production \
+             modules must be declared in BOTH (see AGENTS.md § bin/lib module duplication); lib \
+             omissions are silent, the library ships without the module"
+        );
+    }
+    if let Some(module) = lib_modules.difference(&main_modules).next() {
+        panic!(
+            "module `{module}` declared in src/lib.rs but missing from src/main.rs — production \
+             modules must be declared in BOTH (see AGENTS.md § bin/lib module duplication); bin \
+             omissions fail loudly, but the crate roots still need to stay aligned"
+        );
+    }
 }

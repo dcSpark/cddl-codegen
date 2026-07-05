@@ -627,7 +627,7 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   user-supplied type (`PubKey`), so before `cargo check` the gate splices the in-repo defs
   (`tests/external_{rust,wasm}_raw_bytes_def`) into the generated rust + wasm crates via
   `append_raw_bytes_defs` — mirroring `run_test`'s external-file append. That's why `rawbytes` compiles for
-  real instead of being SKIP-listed like `extern` (whose defs live only in `tests/extern-deps`); it costs no
+  real instead of being skipped like `extern` (whose defs live only in `tests/extern-deps`); it costs no
   extra cargo invocation (same per-cell generate + check). It follows `feature_corpus_compiles`' shared-target-dir *pattern*
   but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
   tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
@@ -636,23 +636,24 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   (`#[ignore]`d, manual): same cell enumeration, but each cell is generated `--emit-tests=true` and
   `cargo test`ed so the emitted `cddl_generated_wasm_tests` module (see § "wasm-crate test module" above)
   RUNS its cross-crate byte differential + accessor read-back. It has its own scratch dir
-  (`cddl_codegen_wasm_matrix_rt`) and `SKIP` list so it runs beside this always-on compile floor, which
-  stays untouched. Run it with `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`; a cell
+  (`cddl_codegen_wasm_matrix_rt`) and uses the module-level `WASM_MATRIX_SKIP` list so it runs beside
+  this always-on compile floor. Run it with
+  `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`; a cell
   whose shape mints no wasm surface (loud emitter skip) passes with zero emitted tests, which is a
   legitimate green (the compile gate already pins its ABI compiles).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
-gate's `SKIP` list, each with a comment + a ledger entry in
+gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
 [`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
 To close one:
 
-1. Remove its `<shape>__<role>` entry from `SKIP`.
+1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.
 2. Fix the emitter; `cargo test wasm_matrix_compiles` until green.
-3. A `SKIP` cell that starts compiling *fails* the gate (the "resurfaced" guard) — so you can't forget
+3. A `WASM_MATRIX_SKIP` cell that starts compiling *fails* the gate (the "resurfaced" guard) — so you can't forget
    step 1 and the list can't rot.
 
-A *new* red cell (red but not in `SKIP`) also fails the gate: fix it, or skip-list it **deliberately**
-with a ROADMAP entry — never silently.
+A *new* red cell (red but not in `WASM_MATRIX_SKIP`) also fails the gate: fix it, or skip-list it
+**deliberately** with a ROADMAP entry — never silently.
 
 **Adding / changing cells.** Edit `SHAPES`/`ROLES` in the projection, `bun run project_wasm_matrix.ts`,
 review the new fixtures, run the gate. Prune cells whose emission duplicates an existing one — the
