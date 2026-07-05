@@ -819,6 +819,64 @@ mod tests {
     }
 
     #[test]
+    fn top_level_ranges() {
+        // Literal-headed top-level range rules wrap into a bounds-enforcing struct (mirroring the
+        // `int .op`-headed top-level wrappers), so their standalone from_cbor_bytes rejects
+        // out-of-window values and a tagged rule writes/requires its tag. Pre-fix these emitted a
+        // bare `pub type` alias with no ctor/deserialize, silently dropping the bounds (and the tag).
+
+        // top_level_neg_range = -10..-3, an i64 wrapper. Its deserializer reads BOTH CBOR sign arms
+        // and checks the whole window over i64, so this is also a WP1 full-window regression.
+        let neg = |v: i128| TopLevelNegRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
+        assert!(neg(5).is_err()); // any uint is out of an all-negative window
+        assert!(neg(-11).is_err()); // below lower
+        assert!(neg(-2).is_err()); // above upper
+        assert!(neg(-3).is_ok());
+        assert!(neg(-10).is_ok());
+        deser_test(&TopLevelNegRange::new(-3).unwrap());
+        deser_test(&TopLevelNegRange::new(-10).unwrap());
+        assert!(TopLevelNegRange::new(5).is_err());
+        assert!(TopLevelNegRange::new(-11).is_err());
+
+        // top_level_pos_range = 3..10, a u64 wrapper.
+        let pos = |v: i128| TopLevelPosRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
+        assert!(pos(2).is_err());
+        assert!(pos(11).is_err());
+        assert!(pos(3).is_ok());
+        assert!(pos(10).is_ok());
+        deser_test(&TopLevelPosRange::new(3).unwrap());
+        deser_test(&TopLevelPosRange::new(10).unwrap());
+
+        // top_level_tagged_range = #6.5(3..10): the wrapper must write tag 5 on the wire and require
+        // it on the way in, plus enforce the window. A bare alias would drop the tag entirely.
+        let tagged_ok = TopLevelTaggedRange::new(7).unwrap();
+        let tagged_bytes = tagged_ok.to_cbor_bytes();
+        // Byte-check the tag head: 0xc5 = major type 6 (tag) with argument 5.
+        assert_eq!(tagged_bytes[0], 0xc5);
+        assert_eq!(
+            tagged_bytes,
+            [cbor_tag(5), cbor_int(7, cbor_event::Sz::Inline)].concat()
+        );
+        deser_test(&tagged_ok);
+        assert!(TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
+        assert!(
+            TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
+        );
+        // out-of-window tagged input is rejected
+        assert!(TopLevelTaggedRange::from_cbor_bytes(
+            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat()
+        )
+        .is_err());
+        // wrong tag is rejected
+        assert!(TopLevelTaggedRange::from_cbor_bytes(
+            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat()
+        )
+        .is_err());
+        assert!(TopLevelTaggedRange::new(11).is_err());
+    }
+
+    #[test]
     fn used_as_key() {
         // this is just here to make sure this compiles (i.e. Ord traits are derived)
         let mut set_outer: std::collections::BTreeSet<Outer> = std::collections::BTreeSet::new();

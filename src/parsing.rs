@@ -548,6 +548,62 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
     }
 }
 
+/// Registers a top-level literal-headed range rule (`c = -10..-3`, `e = #6.5(3..10)`) using the same
+/// three-way split as the `Type2::Typename` Range arm, so literal-headed ranges wrap identically to
+/// their `int .op`-headed equivalents. `ranged_type` is the collapsed primitive (with any residual
+/// `config.bounds`); `min_max` is the original window carried into the wrapper's full-window check.
+#[allow(clippy::too_many_arguments)]
+fn register_literal_range(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    mut ranged_type: RustType,
+    min_max: (Option<i128>, Option<i128>),
+    outer_tag: Option<usize>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    if ranged_type.config.bounds.is_some() || rule_metadata.newtype.is_some() {
+        // without bounds since passed in other param
+        ranged_type.config.bounds = None;
+        // has non-rust-primitive matching bounds
+        types.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_wrapper(
+                type_name.clone(),
+                outer_tag,
+                Some(&rule_metadata),
+                ranged_type,
+                Some(min_max),
+            ),
+            cli,
+        );
+    } else if outer_tag.is_some() {
+        // The range collapses exactly onto a rust primitive (no residual bound to check), but a
+        // top-level `#6.n(0..255)` tag rule must still wrap so its standalone `to/from_cbor_bytes`
+        // writes/checks the tag — a transparent `pub type` alias would drop it from the wire. The tag
+        // rides on `ranged_type` (`.tag_if(outer_tag)`) and there's no `min_max` since the primitive
+        // already covers the whole domain.
+        types.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_wrapper(
+                type_name.clone(),
+                None,
+                Some(&rule_metadata),
+                ranged_type.tag_if(outer_tag),
+                None,
+            ),
+            cli,
+        );
+    } else {
+        // matches to known rust type e.g. u32, i16, etc so just make an alias
+        types.register_type_alias(
+            type_name.clone(),
+            AliasInfo::new_from_metadata(ranged_type.tag_if(outer_tag), rule_metadata),
+        );
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
@@ -885,16 +941,35 @@ fn parse_type(
                 .as_ref()
                 .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
             // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
-            let base_type = match control {
+            match control {
                 Some(ControlOperator::Range(min_max)) => {
-                    range_to_primitive(min_max.0, min_max.1, Primitive::I64)
+                    // Mirror the Typename Range arm's three-way split (see above): a literal-headed
+                    // top-level range rule must WRAP when a residual bound (or @newtype) survives the
+                    // primitive collapse, or when it carries a tag, so its standalone to/from_cbor_bytes
+                    // enforces the window / writes the tag. A transparent `pub type` alias has no
+                    // ctor/deserialize to check the bounds (spec-invalid data accepted standalone) and
+                    // drops the tag from the wire (a CBOR conformance bug).
+                    register_literal_range(
+                        types,
+                        parent_visitor,
+                        type_name,
+                        range_to_primitive(min_max.0, min_max.1, Primitive::I64),
+                        min_max,
+                        outer_tag,
+                        rule_metadata,
+                        cli,
+                    );
                 }
-                _ => fallback_type.into(),
-            };
-            types.register_type_alias(
-                type_name.clone(),
-                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
-            );
+                _ => {
+                    types.register_type_alias(
+                        type_name.clone(),
+                        AliasInfo::new_from_metadata(
+                            RustType::from(fallback_type).tag_if(outer_tag),
+                            rule_metadata,
+                        ),
+                    );
+                }
+            }
         }
         Type2::UintValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
@@ -904,16 +979,30 @@ fn parse_type(
                 .as_ref()
                 .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
             // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
-            let base_type = match control {
+            match control {
                 Some(ControlOperator::Range(min_max)) => {
-                    range_to_primitive(min_max.0, min_max.1, Primitive::U64)
+                    // Same three-way split as the IntValue range arm above (mirrors Typename Range).
+                    register_literal_range(
+                        types,
+                        parent_visitor,
+                        type_name,
+                        range_to_primitive(min_max.0, min_max.1, Primitive::U64),
+                        min_max,
+                        outer_tag,
+                        rule_metadata,
+                        cli,
+                    );
                 }
-                _ => fallback_type.into(),
-            };
-            types.register_type_alias(
-                type_name.clone(),
-                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
-            );
+                _ => {
+                    types.register_type_alias(
+                        type_name.clone(),
+                        AliasInfo::new_from_metadata(
+                            RustType::from(fallback_type).tag_if(outer_tag),
+                            rule_metadata,
+                        ),
+                    );
+                }
+            }
         }
         Type2::TextValue { value, .. } => {
             types.register_type_alias(

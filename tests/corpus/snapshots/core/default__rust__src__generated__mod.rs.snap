@@ -1257,6 +1257,60 @@ impl Three {
 
 pub type TopLevelArray = Vec<u64>;
 
+#[derive(Clone, Debug, Copy)]
+pub struct TopLevelNegRange(i64);
+
+impl TopLevelNegRange {
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -10 || inner > -3 {
+            return Err(DeserializeError::new(
+                "TopLevelNegRange",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(-3),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i64> for TopLevelNegRange {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        TopLevelNegRange::new(inner)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct TopLevelPosRange(u64);
+
+impl TopLevelPosRange {
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner < 3 || inner > 10 {
+            return Err(DeserializeError::new(
+                "TopLevelPosRange",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(3),
+                    max: Some(10),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for TopLevelPosRange {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        TopLevelPosRange::new(inner)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TopLevelSingleElem {
     pub index_0: u64,
@@ -1265,6 +1319,33 @@ pub struct TopLevelSingleElem {
 impl TopLevelSingleElem {
     pub fn new(index_0: u64) -> Self {
         Self { index_0 }
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct TopLevelTaggedRange(u64);
+
+impl TopLevelTaggedRange {
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner < 3 || inner > 10 {
+            return Err(DeserializeError::new(
+                "TopLevelTaggedRange",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(3),
+                    max: Some(10),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for TopLevelTaggedRange {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        TopLevelTaggedRange::new(inner)
     }
 }
 
@@ -1384,6 +1465,12 @@ impl From<WrapperTable> for BTreeMap<u64, u64> {
     }
 }
 
+impl From<TopLevelNegRange> for i64 {
+    fn from(wrapper: TopLevelNegRange) -> Self {
+        wrapper.0
+    }
+}
+
 impl From<NintGeNewtype> for u64 {
     fn from(wrapper: NintGeNewtype) -> Self {
         wrapper.0
@@ -1392,6 +1479,18 @@ impl From<NintGeNewtype> for u64 {
 
 impl From<NintLeNewtype> for u64 {
     fn from(wrapper: NintLeNewtype) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<TopLevelPosRange> for u64 {
+    fn from(wrapper: TopLevelPosRange) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<TopLevelTaggedRange> for u64 {
+    fn from(wrapper: TopLevelTaggedRange) -> Self {
         wrapper.0
     }
 }
