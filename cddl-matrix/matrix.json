@@ -929,31 +929,121 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.exclusive",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
+            "status": "unsupported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.exclusive.float",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.exclusive.int",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.exclusive.nint",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.inclusive",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
+            "status": "unsupported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.inclusive.float",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.inclusive.int",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "rangeop.inclusive.nint",
         "status": "supported"
       },
       {
@@ -4697,6 +4787,36 @@
       "title": "Inclusive range (a..b)"
     },
     {
+      "alt": "\"..\"",
+      "desc": "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (§ 4) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`.",
+      "example": "t = -10..10",
+      "id": "rangeop.inclusive.int",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"..\"",
+      "title": "Inclusive range, signed-int head spanning both CBOR sign arms (a..b)"
+    },
+    {
+      "alt": "\"..\"",
+      "desc": "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "t = -10..-3",
+      "id": "rangeop.inclusive.nint",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"..\"",
+      "title": "Inclusive range, all-negative head (uint arm empty) (a..b)"
+    },
+    {
+      "alt": "\"..\"",
+      "desc": "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the § 4 lesson that the enforcement axis reaches only as far as row enumeration made concrete.",
+      "example": "t = 0.5..10.5",
+      "id": "rangeop.inclusive.float",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"..\"",
+      "title": "Inclusive range, float head (a..b)"
+    },
+    {
       "alt": "\"...\"",
       "desc": "Applied inside type1 as `type2 ... type2`; constrains to the half-open interval that excludes the upper endpoint.",
       "example": "t = 0...10",
@@ -4705,6 +4825,36 @@
       "profile": "RFC8610",
       "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"...\"",
       "title": "Exclusive range (a...b)"
+    },
+    {
+      "alt": "\"...\"",
+      "desc": "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "t = -10...10",
+      "id": "rangeop.exclusive.int",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"...\"",
+      "title": "Exclusive range, signed-int head spanning both CBOR sign arms (a...b)"
+    },
+    {
+      "alt": "\"...\"",
+      "desc": "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "t = -10...-3",
+      "id": "rangeop.exclusive.nint",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"...\"",
+      "title": "Exclusive range, all-negative head (uint arm empty) (a...b)"
+    },
+    {
+      "alt": "\"...\"",
+      "desc": "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the § 4 lesson that the enforcement axis reaches only as far as row enumeration.",
+      "example": "t = 0.5...10.5",
+      "id": "rangeop.exclusive.float",
+      "production": "rangeop",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.2.2.1; ABNF rangeop / \"...\"",
+      "title": "Exclusive range, float head (a...b)"
     },
     {
       "alt": "type2 ctlop type2",

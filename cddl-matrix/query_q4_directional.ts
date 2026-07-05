@@ -285,17 +285,26 @@ function vacuityProblems(rs: Directional[]): string[] {
     problems.push(`no row reaches the enforcement axis (every enforce is n/a) — the ctl.* enforcement-axis read looks broken/empty`);
   // With class="constraint" vectors present, ≥1 row MUST project enforce=yes, and the green set must be
   // EXACTLY the rows whose vector's ONLY invalidity is the constraint itself (base-type-valid instance,
-  // both oracles certify spec-invalid, decoder durably rejects). The numeric range/eq ops
-  // (`.le/.lt/.gt/.eq/.ne/.ge`) qualify because their probe examples target `int` with literal,
-  // non-vacuous bounds — over `int` BOTH oracles enforce them, so each row carries an in-type
-  // boundary-violating vector. The `int` targeting is load-bearing: the rust oracle (cddl 0.10.x)
-  // does not enforce these ops over a `uint` target (a recorded upstream gap,
-  // draft/rust-cddl-uint-control-op-gap.md), so a decay of the probe examples back to `uint` forms
-  // (or to a vacuous bound like `.ge 0`, whose only violating vector is a type violation testing the
-  // base type, not the constraint) drops rows from the green set and fails this gate. Assert the
-  // exact set so an accidental widening (a type-violation vector engineered onto a numeric row) or
-  // narrowing fails the gate.
-  const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne", "ctl.size", "memberkey.cut"];
+  // both oracles certify spec-invalid, decoder durably rejects). Two families qualify:
+  //   (a) The control ops. `ctl.size` / `ctl.cbor` / `memberkey.cut`, plus the numeric range/eq ops
+  //       (`.le/.lt/.gt/.eq/.ne/.ge`) whose probe examples target `int` with literal, non-vacuous
+  //       bounds — over `int` BOTH oracles enforce them, so each row carries an in-type boundary
+  //       violation. That `int` targeting is load-bearing: the rust oracle (cddl 0.10.x) does not
+  //       enforce these ops over a `uint` target (draft/rust-cddl-uint-control-op-gap.md).
+  //   (b) The range rows. `rangeop.{inclusive,exclusive}` (uint-headed base, `0..10`/`0...10`) and their
+  //       head-type × sign variation rows `.int` / `.nint` / `.float`. Each carries a boundary-violation
+  //       reject vector (out-of-window / excluded endpoint / NaN). For the uint-headed base rows BOTH
+  //       oracles reject the violation. For the `.int` / `.nint` / `.float` rows the rust oracle
+  //       blanket-rejects EVERY instance of a non-uint-endpoint range (draft/rust-cddl-float-range-gap.md
+  //       — its validator requires uint endpoints, so negative-int AND float ranges over-reject), so
+  //       their reject certification leans on RUBY (which enforces the window) and their ACCEPT side
+  //       carries no vector; the enforcement oracle that matters is cddl-codegen's own generated decoder
+  //       (the emitted range check, executed by the replay gate). Assert the exact set so a widening
+  //       (a type-violation vector engineered onto a numeric row) or a narrowing (a range row losing its
+  //       reject vector, re-hiding a silent-acceptance hole) fails this gate.
+  const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne", "ctl.size", "memberkey.cut",
+    "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
+    "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint"];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);
