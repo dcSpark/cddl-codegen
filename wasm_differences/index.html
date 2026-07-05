@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Wasm Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/wasm_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Wasm Differences | cddl-codegen"><meta data-rh="true" name="description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><meta data-rh="true" property="og:description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/wasm_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.6c3d15e9.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.ea82f70f.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.de2a18f3.js" defer="defer"></script>
 </head>
 <body>
@@ -24,6 +24,50 @@ This array wrapper implements <code>len() -&gt; self</code>, <code>get(usize) -&
 <p>Both type/group choices generate rust-style enums. On the wasm side we can&#x27;t do that so we directly wrap the rust type, and then provide a <code>FooKind</code> c-style enum for each rust enum <code>Foo</code> just for checking which variant it is.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="nullable--nested-options">Nullable / nested Options<a href="#nullable--nested-options" class="hash-link" aria-label="Direct link to Nullable / nested Options" title="Direct link to Nullable / nested Options" translate="no">​</a></h2>
 <p><code>wasm_bindgen</code> cannot expose a doubly-nested <code>Option&lt;Option&lt;T&gt;&gt;</code> (<code>Option&lt;T&gt;</code> does not implement <code>OptionIntoWasmAbi</code>), the same way it can&#x27;t expose a nested <code>Vec</code>. This happens when a nullable value (<code>T / null</code> → <code>Option&lt;T&gt;</code>) sits in a position that adds its own presence-<code>Option</code>: a <strong>map value</strong> (<code>get</code>/<code>insert</code> return <code>Option&lt;value&gt;</code>) or an <strong>optional struct field</strong> (its getter returns <code>Option&lt;field&gt;</code>). In those spots the accessor flattens to a single <code>Option&lt;T&gt;</code>, so a read returns <code>None</code> for <strong>both</strong> an absent entry and a present-but-<code>null</code> one (the same convention the c-style enum <code>as_*()</code> getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.</p>
+<p>To recover the three states on the <strong>read</strong> side without changing any existing getter signature, additive presence accessors are emitted right beside the flattening getter. Use these read protocols:</p>
+<ul>
+<li class=""><strong>Optional-nullable struct field</strong> — the getter <code>field0()</code> is joined by <code>has_field0() -&gt; bool</code> (outer presence):<!-- -->
+<ul>
+<li class=""><code>has_field0() == false</code> → the field is <strong>absent</strong>.</li>
+<li class=""><code>has_field0() == true &amp;&amp; field0() == None</code> → the field is <strong>present but null</strong>.</li>
+<li class=""><code>has_field0() == true &amp;&amp; field0() == Some(v)</code> → the field holds <strong>value</strong> <code>v</code>.</li>
+</ul>
+</li>
+<li class=""><strong>Nullable map value</strong> — <code>get(key)</code> is joined by <code>has(key) -&gt; bool</code> (key presence, a direct key lookup rather than scanning <code>keys()</code>):<!-- -->
+<ul>
+<li class=""><code>has(key) == false</code> → the key is <strong>absent</strong>.</li>
+<li class=""><code>has(key) == true &amp;&amp; get(key) == None</code> → the key is present with a <strong>null</strong> value.</li>
+<li class=""><code>has(key) == true &amp;&amp; get(key) == Some(v)</code> → the key holds <strong>value</strong> <code>v</code>.</li>
+</ul>
+</li>
+<li class=""><strong>Single-nested nullable enum variant</strong> (<code>… / (T / null)</code>) — no extra accessor is needed, because <code>kind()</code> already resolves the variant unambiguously. <code>as_variant()</code> flattens, but <code>kind()</code> tells you it <em>is</em> the variant, so a <code>None</code> from the getter can only mean inner-null:<!-- -->
+<ul>
+<li class=""><code>kind() != &lt;variant&gt;</code> → a <strong>different</strong> variant.</li>
+<li class=""><code>kind() == &lt;variant&gt; &amp;&amp; as_variant() == None</code> → this variant, <strong>inner null</strong>.</li>
+<li class=""><code>kind() == &lt;variant&gt; &amp;&amp; as_variant() == Some(v)</code> → this variant, holding <strong>value</strong> <code>v</code>.</li>
+</ul>
+</li>
+</ul>
+<p>A <strong>doubly</strong>-nested nullable enum variant (a payload resolving to <code>Option&lt;Option&lt;T&gt;&gt;</code>, e.g. <code>text / ((uint / null) / null)</code>) is not a case you can hit: the generated wasm enum constructor cannot accept such a payload, so no supported CDDL produces one.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="write-side-semantics">Write-side semantics<a href="#write-side-semantics" class="hash-link" aria-label="Direct link to Write-side semantics" title="Direct link to Write-side semantics" translate="no">​</a></h3>
+<p>The flattening is a <strong>read</strong>-side effect only; the <strong>write</strong> side is fully three-state expressive. A nullable setter/insert takes the <em>inner</em> <code>Option&lt;T&gt;</code> as its argument and stores it wrapped in the outer presence-<code>Option</code>, so all three states are constructible directly from JavaScript:</p>
+<ul>
+<li class=""><strong>Optional-nullable struct field</strong> (<code>set_field0(value)</code> stores <code>self.0.field0 = Some(value)</code>):<!-- -->
+<ul>
+<li class=""><strong>absent</strong> — never call the setter (the constructor leaves the field <code>None</code>).</li>
+<li class=""><strong>present-null</strong> — <code>set_field0(null)</code> stores <code>Some(None)</code>.</li>
+<li class=""><strong>present-value</strong> — <code>set_field0(v)</code> stores <code>Some(Some(v))</code>.</li>
+</ul>
+</li>
+<li class=""><strong>Nullable map value</strong> (<code>insert(key, value)</code> stores <code>value</code> directly as the entry):<!-- -->
+<ul>
+<li class=""><strong>absent key</strong> — never insert the key.</li>
+<li class=""><strong>present-null</strong> — <code>insert(key, null)</code> stores a <code>null</code> entry.</li>
+<li class=""><strong>present-value</strong> — <code>insert(key, v)</code> stores <code>v</code>.</li>
+</ul>
+</li>
+</ul>
+<p>(The only thing a setter can&#x27;t do is <em>remove</em> a slot back to absent once set — but that state is the constructor default and needs no setter.) So unlike the read side, no fidelity is lost on write, and there is no need to detour through the rust crate to build a present-null value.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="json-and-large-integers">JSON and large integers<a href="#json-and-large-integers" class="hash-link" aria-label="Direct link to JSON and large integers" title="Direct link to JSON and large integers" translate="no">​</a></h2>
 <p>With <code>--json-serde-derives</code> a wasm type exposes two ways to produce JSON: <code>to_json()</code> returns a string (via <code>serde_json</code>) and <code>to_json_value()</code> returns a live JS value (via <code>serde-wasm-bindgen</code>). They agree for every value inside JavaScript&#x27;s safe-integer range (<code>|n| ≤ 2^53 − 1</code>).</p>
 <p>Above that, a <code>uint</code> (Rust <code>u64</code>) can hold values JavaScript&#x27;s <code>number</code> cannot represent exactly, and the two paths intentionally differ:</p>
@@ -32,6 +76,6 @@ This array wrapper implements <code>len() -&gt; self</code>, <code>get(usize) -&
 <li class=""><strong><code>to_json_value()</code> fails loud</strong> — it throws (<code>... can&#x27;t be represented as a JavaScript number</code>) instead of silently returning a rounded <code>number</code>. <code>serde-wasm-bindgen</code>&#x27;s <code>json_compatible</code> mode does not emit <code>BigInt</code> (a <code>BigInt</code> would not survive <code>JSON.stringify</code> and would change the JS type of <em>every</em> integer field), so refusing is the safe behaviour.</li>
 <li class=""><strong><code>JSON.parse(to_json())</code> is lossy</strong> for these values — that is a property of JavaScript&#x27;s native <code>JSON.parse</code>, not of the generated code.</li>
 </ul>
-<p>If you need full precision above <code>2^53</code> on the JS side, take <code>to_json()</code> and parse it with a BigInt-aware JSON parser rather than <code>JSON.parse</code> / <code>to_json_value()</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/output_format"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Output format</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Comment DSL</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#heterogeneous-arrays" class="table-of-contents__link toc-highlight">Heterogeneous Arrays</a></li><li><a href="#tables" class="table-of-contents__link toc-highlight">Tables</a></li><li><a href="#enums" class="table-of-contents__link toc-highlight">Enums</a></li><li><a href="#nullable--nested-options" class="table-of-contents__link toc-highlight">Nullable / nested Options</a></li><li><a href="#json-and-large-integers" class="table-of-contents__link toc-highlight">JSON and large integers</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+<p>If you need full precision above <code>2^53</code> on the JS side, take <code>to_json()</code> and parse it with a BigInt-aware JSON parser rather than <code>JSON.parse</code> / <code>to_json_value()</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/output_format"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Output format</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Comment DSL</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#heterogeneous-arrays" class="table-of-contents__link toc-highlight">Heterogeneous Arrays</a></li><li><a href="#tables" class="table-of-contents__link toc-highlight">Tables</a></li><li><a href="#enums" class="table-of-contents__link toc-highlight">Enums</a></li><li><a href="#nullable--nested-options" class="table-of-contents__link toc-highlight">Nullable / nested Options</a><ul><li><a href="#write-side-semantics" class="table-of-contents__link toc-highlight">Write-side semantics</a></li></ul></li><li><a href="#json-and-large-integers" class="table-of-contents__link toc-highlight">JSON and large integers</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
 </body>
 </html>
