@@ -569,22 +569,62 @@ fn run_test(
     assert!(cargo_run_result.status.success());
     // Copy tests into generated code. The generated root scope (with the cross-module `use` imports
     // the appended tests' `use super::*;` relies on) now lives in `generated/mod.rs`, not the thin
-    // seed-once `lib.rs`; append there so the per-fixture tests see exactly the imports they did when
-    // the old monolithic `lib.rs` WAS the root scope. `generated/mod.rs` is regenerated every run, so
-    // appends don't accumulate across reruns of the same throwaway export dir.
-    let mut lib_rs = std::fs::OpenOptions::new()
+    // seed-once `lib.rs`; append the tests there so they see exactly the imports they did when the old
+    // monolithic `lib.rs` WAS the root scope. `generated/mod.rs` is regenerated every run, so appends
+    // don't accumulate across reruns of the same throwaway export dir.
+    let mut generated_mod = std::fs::OpenOptions::new()
         .append(true)
         .open(test_path.join(format!("{export_path}/rust/src/generated/mod.rs")))
         .unwrap();
-    // some external files/tests pasted in might need this
-    lib_rs
+    // some pasted-in tests need this
+    generated_mod
         .write_all("\nuse serialization::*;\n".as_bytes())
         .unwrap();
-    // copy external files in too (if needed) too
-    for external_rust_file_path in external_rust_file_paths {
+    // `external_rust_file_paths` carries two kinds of hand-written code that belong in DIFFERENT scopes
+    // under the thin-root split:
+    //   - extern-TYPE definitions (`external_rust_defs*`): the Rust definition of a type declared
+    //     `_CDDL_CODEGEN_EXTERN_TYPE_`. This CANNOT live in `generated/**` (clobbered every run, and the
+    //     generator now re-exports each in-crate extern with `pub use crate::Name;` into that subtree, so
+    //     a definition there would collide). A real consumer defines the extern in a hand-written module
+    //     and re-exports it at the crate root; the glue resolves the bare `generated/**` references back
+    //     to it. Model that by appending these into the user-owned thin `lib.rs`.
+    //   - generated-scope helpers (`custom_serialization*`, conformance harnesses): free functions the
+    //     generated `serialization.rs` calls via `use super::*;`, so they must land in the `generated`
+    //     module scope — append them into `generated/mod.rs` exactly as before.
+    // Both need `use serialization::*;` (reachable at the crate root through the seeded
+    // `pub use generated::*;` glob), written into whichever file receives defs.
+    let is_extern_type_def = |path: &std::path::Path| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("external_rust_defs"))
+    };
+    if external_rust_file_paths
+        .iter()
+        .any(|p| is_extern_type_def(p))
+    {
+        let mut root_lib_rs = std::fs::OpenOptions::new()
+            .append(true)
+            .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
+            .unwrap();
+        root_lib_rs
+            .write_all("\nuse serialization::*;\n".as_bytes())
+            .unwrap();
+        for external_rust_file_path in external_rust_file_paths
+            .iter()
+            .filter(|p| is_extern_type_def(p))
+        {
+            let extern_rs = std::fs::read_to_string(external_rust_file_path).unwrap();
+            root_lib_rs.write_all("\n\n".as_bytes()).unwrap();
+            root_lib_rs.write_all(extern_rs.as_bytes()).unwrap();
+        }
+    }
+    for external_rust_file_path in external_rust_file_paths
+        .iter()
+        .filter(|p| !is_extern_type_def(p))
+    {
         let extern_rs = std::fs::read_to_string(external_rust_file_path).unwrap();
-        lib_rs.write_all("\n\n".as_bytes()).unwrap();
-        lib_rs.write_all(extern_rs.as_bytes()).unwrap();
+        generated_mod.write_all("\n\n".as_bytes()).unwrap();
+        generated_mod.write_all(extern_rs.as_bytes()).unwrap();
     }
     let deser_test_rs = std::fs::read_to_string(
         std::path::PathBuf::from_str("tests")
@@ -592,12 +632,12 @@ fn run_test(
             .join("deser_test"),
     )
     .unwrap();
-    lib_rs.write_all("\n\n".as_bytes()).unwrap();
-    lib_rs.write_all(deser_test_rs.as_bytes()).unwrap();
+    generated_mod.write_all("\n\n".as_bytes()).unwrap();
+    generated_mod.write_all(deser_test_rs.as_bytes()).unwrap();
     let test_rs = std::fs::read_to_string(test_path.join("tests.rs")).unwrap();
-    lib_rs.write_all("\n\n".as_bytes()).unwrap();
-    lib_rs.write_all(test_rs.as_bytes()).unwrap();
-    std::mem::drop(lib_rs);
+    generated_mod.write_all("\n\n".as_bytes()).unwrap();
+    generated_mod.write_all(test_rs.as_bytes()).unwrap();
+    std::mem::drop(generated_mod);
     // add extra deps used within tests
     if !test_deps.is_empty() {
         let mut cargo_toml = std::fs::OpenOptions::new()
@@ -1763,6 +1803,130 @@ fn thin_root_wiring_survives() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// In-crate extern types must resolve under the thin-root split (the CML cip25 scenario the feature
+/// exists for). Given `my_ext = _CDDL_CODEGEN_EXTERN_TYPE_` used by a generated `wrapper`, generated
+/// code refers to the extern by its bare ident inside `generated/mod.rs` (and via `use super::*;`
+/// inside `generated/serialization.rs`). Pre-split those names resolved because the user's
+/// `pub use utils::MyExt;` sat in the SAME root scope (the monolithic `lib.rs`); post-split the user
+/// can only edit the thin `lib.rs`, and a parent-module name is NOT visible inside `mod generated`, so
+/// the crate failed to build with E0433 "cannot find type `MyExt`". The tool now emits
+/// `pub use crate::MyExt;` into the declaring scope's generated module, and the documented contract is:
+/// define the extern in a hand-written module and RE-EXPORT it at the crate root — the identical action
+/// pre-split consumers already took. This gate hand-wires exactly that shape and asserts the crate both
+/// keeps the seeded `lib.rs` byte-identical AND compiles. `cargo`-guarded so the wiring assertions still
+/// run on a toolchain-less box. Covers the default and `--preserve-encodings` profiles (preserve reshapes
+/// the deserializer's imports/signatures, but the extern's own impls are unchanged — the extern carries
+/// no encoding metadata — so the same `utils.rs` serves both).
+#[test]
+fn thin_root_in_crate_extern_type_compiles() {
+    use clap::Parser;
+
+    fn run(profile: &str, extra_flags: &[&str]) {
+        let scratch = std::env::temp_dir().join(format!(
+            "cddl_codegen_thin_extern_{profile}_{:016x}",
+            checkout_hash()
+        ));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).unwrap();
+        let input = scratch.join("input.cddl");
+        std::fs::write(
+            &input,
+            "my_ext = _CDDL_CODEGEN_EXTERN_TYPE_\nwrapper = [id: uint, ext: my_ext]\n",
+        )
+        .unwrap();
+        let out = scratch.join("crate");
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=false",
+        ];
+        args.extend_from_slice(extra_flags);
+        let cli = crate::cli::Cli::parse_from(args);
+        let lib_rs = out.join("rust/src/lib.rs");
+        let utils_rs = out.join("rust/src/utils.rs");
+
+        // First export seeds the thin root; capture it to assert seed-once leaves it byte-identical.
+        crate::api::generate_to_disk(&cli).unwrap();
+        let seeded = std::fs::read_to_string(&lib_rs).unwrap();
+
+        // Hand-wire the extern exactly as the docs prescribe: a user module that DEFINES the extern, and
+        // a crate-root re-export. This is the only edit a post-split consumer can make (the thin root is
+        // user-owned; `generated/**` is clobbered every run).
+        let hand_wired = format!("{seeded}\npub mod utils;\npub use utils::MyExt;\n");
+        std::fs::write(&lib_rs, &hand_wired).unwrap();
+        // The extern's Rust definition. Default profile: `Serialize` is `cbor_event::se::Serialize`,
+        // `Deserialize` is `crate::serialization::Deserialize`, error type `crate::error::DeserializeError`
+        // — all reachable from a crate-root module through the seeded `pub use generated::*;` glob.
+        std::fs::write(
+            &utils_rs,
+            "use crate::error::DeserializeError;\n\
+             use crate::serialization::Deserialize;\n\
+             \n\
+             #[derive(Clone, Debug)]\n\
+             pub struct MyExt(pub u64);\n\
+             \n\
+             impl cbor_event::se::Serialize for MyExt {\n\
+             \x20   fn serialize<'se, W: std::io::Write>(\n\
+             \x20       &self,\n\
+             \x20       serializer: &'se mut cbor_event::se::Serializer<W>,\n\
+             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+             \x20       serializer.write_unsigned_integer(self.0)\n\
+             \x20   }\n\
+             }\n\
+             \n\
+             impl Deserialize for MyExt {\n\
+             \x20   fn deserialize<R: std::io::BufRead + std::io::Seek>(\n\
+             \x20       raw: &mut cbor_event::de::Deserializer<R>,\n\
+             \x20   ) -> Result<Self, DeserializeError> {\n\
+             \x20       Ok(Self(raw.unsigned_integer()?))\n\
+             \x20   }\n\
+             }\n",
+        )
+        .unwrap();
+
+        // Regenerate over the same directory: seed-once must leave the hand-wired root byte-identical
+        // (the generated subtree is re-clobbered beside it, carrying the fresh `pub use crate::MyExt;`).
+        crate::api::generate_to_disk(&cli).unwrap();
+        assert_eq!(
+            hand_wired,
+            std::fs::read_to_string(&lib_rs).unwrap(),
+            "[{profile}] the hand-wired thin root must survive regeneration byte-for-byte"
+        );
+
+        // The generator must emit the re-export glue into the declaring (root) scope's module so the
+        // bare `MyExt` references in `generated/mod.rs` and (via `use super::*;`) the serializer resolve.
+        let generated_mod = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+        assert!(
+            generated_mod.contains("pub use crate::MyExt;"),
+            "[{profile}] generated/mod.rs must re-export the in-crate extern from the crate root:\n{generated_mod}"
+        );
+
+        if tool_exists("cargo") {
+            let target_dir = scratch.join("target");
+            let build = tool_cmd("cargo")
+                .arg("build")
+                .current_dir(out.join("rust"))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                build.status.success(),
+                "[{profile}] hand-wired in-crate extern crate must compile\n{}\n{}",
+                String::from_utf8_lossy(&build.stdout),
+                String::from_utf8_lossy(&build.stderr)
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    run("default", &[]);
+    run("preserve", &["--preserve-encodings=true"]);
+}
+
 /// The documented migration trap for pre-split consumers must fail LOUD, not silent. A consumer whose
 /// `lib.rs` predates the thin-root split still carries `pub mod serialization;` (and inline generated
 /// type defs) pointing at siblings the split relocated under `src/generated/**`. Seed-once leaves that
@@ -2504,24 +2668,38 @@ fn emit_wasm_tests_execute() {
     // The wasm crate builds the rust crate as a (non-test) dependency, so the rust lib only needs to
     // COMPILE — append just the production externs it references (extern types + custom serializers),
     // NOT the rust test suite (deser_test/tests.rs), whose core-specific `--emit-tests` incompat is
-    // out of scope here (see the doc comment).
-    // Append the production externs into the generated root scope (`generated/mod.rs`), where the
-    // cross-module imports and `use serialization::*;` they need resolve (see `run_test`).
+    // out of scope here (see the doc comment). The two go in DIFFERENT scopes under the thin-root split
+    // (see `run_test` for the rationale): the extern-TYPE def collides with the generator's
+    // `pub use crate::Name;` re-export glue if placed in `generated/**`, so it goes into the user-owned
+    // thin `lib.rs`; the custom-serialization helpers are called by `serialization.rs` via
+    // `use super::*;`, so they stay in `generated/mod.rs`. Both need `use serialization::*;`.
+    let mut root_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(export_path.join("rust/src/lib.rs"))
+        .unwrap();
+    root_lib.write_all(b"\nuse serialization::*;\n").unwrap();
+    root_lib.write_all(b"\n\n").unwrap();
+    root_lib
+        .write_all(
+            std::fs::read_to_string(test_path.parent().unwrap().join("external_rust_defs"))
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+    std::mem::drop(root_lib);
     let mut rust_lib = std::fs::OpenOptions::new()
         .append(true)
         .open(export_path.join("rust/src/generated/mod.rs"))
         .unwrap();
     rust_lib.write_all(b"\nuse serialization::*;\n").unwrap();
-    for f in ["external_rust_defs", "custom_serialization"] {
-        rust_lib.write_all(b"\n\n").unwrap();
-        rust_lib
-            .write_all(
-                std::fs::read_to_string(test_path.parent().unwrap().join(f))
-                    .unwrap()
-                    .as_bytes(),
-            )
-            .unwrap();
-    }
+    rust_lib.write_all(b"\n\n").unwrap();
+    rust_lib
+        .write_all(
+            std::fs::read_to_string(test_path.parent().unwrap().join("custom_serialization"))
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     std::mem::drop(rust_lib);
 
     // The wasm crate: append the extern wasm defs it references + the hand-written tests_wasm.rs

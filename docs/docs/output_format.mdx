@@ -48,23 +48,61 @@ halves so your hand edits to the crate root survive regeneration:
   the `pub use generated::*;` glob, so the root needs no per-type maintenance.
 
 This is what makes **extern types** and other hand wiring durable. An extern type
-(`Foo = _CDDL_CODEGEN_EXTERN_TYPE_`) requires you to supply its Rust definition; wire it in from the
-thin root and it survives every regeneration:
+(`MyExt = _CDDL_CODEGEN_EXTERN_TYPE_`) requires you to supply its Rust definition. Generated code
+refers to it by name inside `src/generated/**` (e.g. a field `ext: MyExt`, and `MyExt::deserialize`
+in `generated/serialization.rs`), but those names can't see a type you define in the crate root — a
+parent-module name is not visible inside `mod generated`. So the tool emits re-export glue into the
+declaring scope's generated module:
+
+```rust
+// src/generated/mod.rs (tool-owned) — resolves every in-crate `MyExt` reference back to your definition
+pub use crate::MyExt;
+```
+
+Your job is to make `crate::MyExt` resolve: **define the extern in a hand-written module and
+re-export it at the crate root**, from the user-owned thin root (this is the same wiring pre-split
+consumers already used — it just moved to the thin `lib.rs`):
 
 ```rust
 mod generated;
 pub use generated::*;
 
 pub mod utils;            // your hand-written module
-pub use utils::Helper;    // re-export it at the crate root
+pub use utils::MyExt;     // re-export it at the crate root so `crate::MyExt` resolves
 ```
 
 ```rust
-// src/utils.rs — references generated types through the crate-root glob
-use crate::Foo;
-pub struct Helper;
-pub fn round_trip(f: Foo) -> Foo { f }
+// src/utils.rs — supply the definition + the (de)serialization impls the generated code calls.
+// Everything the impls need is reachable at the crate root through the seeded `pub use generated::*;`.
+use crate::error::DeserializeError;
+use crate::serialization::Deserialize;
+
+#[derive(Clone, Debug)]
+pub struct MyExt(pub u64);
+
+impl cbor_event::se::Serialize for MyExt {
+    fn serialize<'se, W: std::io::Write>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer<W>,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl Deserialize for MyExt {
+    fn deserialize<R: std::io::BufRead + std::io::Seek>(
+        raw: &mut cbor_event::de::Deserializer<R>,
+    ) -> Result<Self, DeserializeError> {
+        Ok(Self(raw.unsigned_integer()?))
+    }
+}
 ```
+
+An extern declared inside a scope `a` gets its glue in `src/generated/a/mod.rs` instead (still
+`pub use crate::MyExt;` — the re-export always resolves through your crate-root re-export). If you
+forget to re-export the type at the crate root, the glue fails **loudly** with a clear
+unresolved-import error naming the type, rather than a confusing "cannot find type" deep in the
+generated code.
 
 Because the root is user-owned, the tool never re-clobbers this wiring — the failure mode where a
 regeneration dropped a hand-added `pub mod utils;` and broke every reference to the extern type is

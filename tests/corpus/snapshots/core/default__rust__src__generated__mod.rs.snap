@@ -9,6 +9,8 @@ pub mod error;
 // https://github.com/dcSpark/cddl-codegen
 
 pub mod serialization;
+pub use crate::ExternGeneric;
+pub use crate::ExternalFoo;
 
 use crate::generated::error::*;
 use std::collections::BTreeMap;
