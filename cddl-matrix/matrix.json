@@ -1582,7 +1582,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.eq",
         "status": "supported"
       },
@@ -1602,7 +1602,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.ge",
         "status": "supported"
       },
@@ -1617,7 +1617,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.gt",
         "status": "supported"
       },
@@ -1662,7 +1662,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.le",
         "status": "supported"
       },
@@ -1677,7 +1677,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.lt",
         "status": "supported"
       },
@@ -1692,7 +1692,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.ne",
         "status": "supported"
       },
