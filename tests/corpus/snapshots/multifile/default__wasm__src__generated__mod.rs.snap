@@ -13,6 +13,8 @@ pub mod qux;
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+pub use crate::ExternalFoo;
+
 use a::c::foo::Foo;
 use a::Baz;
 use b::bar::{Bar, BarTypedef};

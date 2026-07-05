@@ -49,7 +49,7 @@ impl AsRef<cddl_lib::ExternalFoo> for ExternalFoo {
     }
 }
 
-type ExternGenericExternalFoo = ExternalFoo;
+pub type ExternGenericExternalFoo = ExternalFoo;
 
 impl From<cddl_lib::ExternGeneric<cddl_lib::ExternalFoo>> for ExternalFoo {
     fn from(native: cddl_lib::ExternGeneric<cddl_lib::ExternalFoo>) -> Self {

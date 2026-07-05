@@ -10,6 +10,9 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+pub use crate::ExternGenericExternalFoo;
+pub use crate::ExternalFoo;
+
 pub use cddl_lib::CEnum;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};

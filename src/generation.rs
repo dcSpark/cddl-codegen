@@ -1159,6 +1159,56 @@ impl GenerationScope {
                     content.push_import(path, m, None);
                 }
             }
+            // Extern-type re-export glue (wasm crate). The wasm generated code names each in-crate
+            // extern by its bare WRAPPER ident within the declaring scope (`req: ExternalFoo`, and via
+            // `use super::*;` in nested modules), exactly as the rust crate names the native type — same
+            // E0433 shape under the thin-root split, since a crate-root name isn't visible inside
+            // `mod generated`. The contract mirrors rust: DEFINE the wasm wrapper in a hand-written
+            // wasm-crate module and RE-EXPORT it at the wasm crate root (`pub use utils::Name;`); the tool
+            // re-exports it from crate root INTO the declaring scope's generated module so every such
+            // reference resolves against the user's wrapper. Skipped:
+            //   - the built-in `Int` extern (the tool generates its own wasm wrapper when referenced, so
+            //     `pub use crate::Int;` would collide),
+            //   - generic-extern instances that already emit a wasm `pub type` alias here (`gen_wasm_alias`
+            //     — the wrapper the alias points at carries the glue instead),
+            //   - generic-extern BASES (`Foo` of `Foo<Bar>`): a plain `Extern` rust struct, but wasm never
+            //     names it (wasm-bindgen has no generics; the instance collapses to the argument wrapper),
+            //     so there is no wasm-crate-root definition to re-export — emitting glue would be an
+            //     unresolved import. The rust side keeps the base because its `pub type` alias names it.
+            //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes) resolve through their dep crate via
+            //     `common_import_wasm()` already — `ModuleScope::export()` is the discriminator.
+            let wasm_aliased: BTreeSet<&RustIdent> = types
+                .type_aliases()
+                .iter()
+                .filter_map(|(alias_ident, info)| match alias_ident {
+                    AliasIdent::Rust(ident) if info.gen_wasm_alias => Some(ident),
+                    _ => None,
+                })
+                .collect();
+            let generic_bases = types.generic_instance_bases();
+            let mut wasm_externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> =
+                BTreeMap::new();
+            for (rust_ident, rust_struct) in types.rust_structs() {
+                if matches!(rust_struct.variant(), RustStructType::Extern)
+                    && rust_ident.as_ref() != "Int"
+                    && !wasm_aliased.contains(rust_ident)
+                    && !generic_bases.contains(rust_ident)
+                {
+                    let scope = types.scope(rust_ident);
+                    if scope.export() {
+                        wasm_externs_by_scope
+                            .entry(scope.clone())
+                            .or_default()
+                            .insert(rust_ident.clone());
+                    }
+                }
+            }
+            for (scope, idents) in &wasm_externs_by_scope {
+                let content = self.wasm_scopes.entry(scope.clone()).or_default();
+                for ident in idents {
+                    content.raw(format!("pub use crate::{ident};"));
+                }
+            }
             // declare submodules
             // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
             // for these modules when they only exist to support modules nested deeper
