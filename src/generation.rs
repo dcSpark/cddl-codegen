@@ -489,6 +489,12 @@ pub struct GenerationScope {
     json_lines: BlocksOrLines,
     already_generated: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
+    /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
+    /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
+    /// compilation) these fall back to the first non-colliding candidate. Computed once in
+    /// `generate()` from the ident set; see `pick_generic_name`.
+    serialize_generic: String,
+    deserialize_generic: String,
 }
 
 impl Default for GenerationScope {
@@ -510,12 +516,24 @@ impl GenerationScope {
             json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
+            serialize_generic: "W".to_string(),
+            deserialize_generic: "R".to_string(),
         }
     }
 
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        // Pick collision-proof generic-parameter names for the emitted serialize/deserialize fns
+        // BEFORE emitting anything: a rule named `w`/`r` camel-cases to a type `W`/`R` that would
+        // shadow the hardcoded `fn serialize<'se, W: Write>` / `fn deserialize<R: BufRead + Seek>`
+        // parameters, so we thread the chosen names through `make_{serialization,deserialization}_
+        // function`. Depends only on the (deterministic) ident set, so output stays byte-identical:
+        // with no collision these resolve to the defaults `"W"` / `"R"` and nothing churns.
+        let defined_idents = types.defined_rust_idents();
+        self.serialize_generic = pick_generic_name(&defined_idents, "W", "Ser");
+        self.deserialize_generic = pick_generic_name(&defined_idents, "R", "De");
+
         // Type aliases
         for (alias_ident, alias_info) in types.type_aliases() {
             // only generate user-defined ones
@@ -4392,9 +4410,19 @@ fn create_serialize_impl(
     tag: Option<usize>,
     definite_len: &str,
     use_this_encoding: Option<&str>,
+    writer: &str,
     cli: &Cli,
 ) -> (codegen::Function, codegen::Impl) {
-    match create_serialize_impls(ident, rep, tag, definite_len, use_this_encoding, false, cli) {
+    match create_serialize_impls(
+        ident,
+        rep,
+        tag,
+        definite_len,
+        use_this_encoding,
+        false,
+        writer,
+        cli,
+    ) {
         (ser_func, ser_impl, None) => (ser_func, ser_impl),
         (_ser_func, _ser_impl, Some(_embedded_impl)) => unreachable!(),
     }
@@ -4410,6 +4438,7 @@ fn create_serialize_impl(
 // In the second case (no embedded), only the array/map tag + length are written and the user will
 // want to write the rest of serialize() after that.
 // * `use_this_encoding` - If present, references a variable (must be bool and in this scope) to toggle definite vs indefinite (e.g. for PRESERVE_ENCODING)
+#[allow(clippy::too_many_arguments)]
 fn create_serialize_impls(
     ident: &RustIdent,
     rep: Option<Representation>,
@@ -4417,6 +4446,7 @@ fn create_serialize_impls(
     definite_len: &str,
     use_this_encoding: Option<&str>,
     generate_serialize_embedded: bool,
+    writer: &str,
     cli: &Cli,
 ) -> (codegen::Function, codegen::Impl, Option<codegen::Impl>) {
     if generate_serialize_embedded {
@@ -4426,7 +4456,7 @@ fn create_serialize_impls(
     }
     let name = &ident.to_string();
     let ser_impl = make_serialization_impl(name, cli);
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_func = make_serialization_function("serialize", writer, cli);
     if let Some(tag) = tag {
         let expr = format!("{tag}u64");
         write_using_sz(
@@ -6040,12 +6070,17 @@ fn codegen_struct(
                 })
                 .as_deref(),
             types.is_plain_group(name),
+            &gen_scope.serialize_generic,
             cli,
         );
         let mut ser_func = match ser_embedded_impl {
             Some(_) => {
                 ser_impl.push_fn(ser_func);
-                make_serialization_function("serialize_as_embedded_group", cli)
+                make_serialization_function(
+                    "serialize_as_embedded_group",
+                    &gen_scope.serialize_generic,
+                    cli,
+                )
             }
             None => ser_func,
         };
@@ -6745,11 +6780,15 @@ fn codegen_struct(
         }
 
         if let Some(deser_embedded_impl) = &mut deser_embedded_impl {
-            let mut deser_f = make_deserialization_function("deserialize", cli);
+            let mut deser_f =
+                make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
             deser_f.push_all(deser_scaffolding);
             deser_impl.push_fn(deser_f);
-            let mut deser_embed_f =
-                make_deserialization_function("deserialize_as_embedded_group", cli);
+            let mut deser_embed_f = make_deserialization_function(
+                "deserialize_as_embedded_group",
+                &gen_scope.deserialize_generic,
+                cli,
+            );
             let read_len_arg = if deser_code.read_len_used {
                 "read_len"
             } else {
@@ -6769,7 +6808,8 @@ fn codegen_struct(
             deser_embed_f.push_all(deser_code.content);
             deser_embedded_impl.push_fn(deser_embed_f);
         } else {
-            let mut deser_f = make_deserialization_function("deserialize", cli);
+            let mut deser_f =
+                make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
             deser_f.push_all(deser_scaffolding);
             deser_f.push_all(deser_code.content);
             deser_impl.push_fn(deser_f);
@@ -7705,14 +7745,15 @@ fn generate_enum(
         cli,
     );
     let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
     if let Some(tag) = tag {
         // TODO: how to even store these? (maybe it could be a new field in every enum variant)
         assert!(!cli.preserve_encodings);
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
-    let mut deser_func = make_deserialization_function("deserialize", cli);
+    let mut deser_func =
+        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
     let mut error_annotator = make_err_annotate_block(name.as_ref(), "", "");
     let deser_body: &mut dyn CodeBlock = if cli.annotate_fields {
         &mut error_annotator
@@ -8341,12 +8382,34 @@ fn generate_enum(
         .push_impl(deser_impl);
 }
 
-fn make_serialization_function(name: &str, cli: &Cli) -> codegen::Function {
+/// First name in a deterministic candidate sequence that does NOT collide with a defined type
+/// ident: `base` (`"W"`/`"R"`), then `base+suffix` (`"WSer"`/`"RDe"`), then `base+suffix+index`
+/// (`"WSer0"`, `"WSer1"`, …). The bare `base` wins whenever nothing is named it, so a spec with no
+/// `w`/`r` collision keeps the historical `"W"`/`"R"` names and the snapshot corpus does not churn.
+fn pick_generic_name(
+    taken: &std::collections::BTreeSet<String>,
+    base: &str,
+    suffix: &str,
+) -> String {
+    if !taken.contains(base) {
+        return base.to_string();
+    }
+    let combined = format!("{base}{suffix}");
+    if !taken.contains(&combined) {
+        return combined;
+    }
+    (0..)
+        .map(|i| format!("{base}{suffix}{i}"))
+        .find(|candidate| !taken.contains(candidate))
+        .expect("infinite candidate sequence always yields a free name")
+}
+
+fn make_serialization_function(name: &str, writer: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("'se, W: Write")
-        .ret("cbor_event::Result<&'se mut Serializer<W>>")
+    f.generic(format!("'se, {writer}: Write"))
+        .ret(format!("cbor_event::Result<&'se mut Serializer<{writer}>>"))
         .arg_ref_self()
-        .arg("serializer", "&'se mut Serializer<W>");
+        .arg("serializer", format!("&'se mut Serializer<{writer}>"));
     if cli.preserve_encodings && cli.canonical_form {
         f.arg("force_canonical", "bool");
     }
@@ -8363,11 +8426,11 @@ fn make_serialization_impl(name: &str, cli: &Cli) -> codegen::Impl {
     ser_impl
 }
 
-fn make_deserialization_function(name: &str, cli: &Cli) -> codegen::Function {
+fn make_deserialization_function(name: &str, reader: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic("R: BufRead + Seek")
+    f.generic(format!("{reader}: BufRead + Seek"))
         .ret("Result<Self, DeserializeError>")
-        .arg("raw", "&mut Deserializer<R>");
+        .arg("raw", format!("&mut Deserializer<{reader}>"));
     // Opt-in recursion depth guard: the first statement of every composite `deserialize` acquires
     // an RAII guard whose Drop restores the thread-local depth on any return path (including `?`).
     // Bound in the outer function scope so it stays alive across the annotator closure the body may
@@ -8652,7 +8715,7 @@ fn generate_wrapper_struct(
         }
         s_impl.push_fn(get);
     }
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
     let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
     gen_scope.generate_serialize(
         types,
@@ -8664,7 +8727,8 @@ fn generate_wrapper_struct(
         cli,
     );
     ser_impl.push_fn(ser_func);
-    let mut deser_func = make_deserialization_function("deserialize", cli);
+    let mut deser_func =
+        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
     if let ConceptualRustType::Rust(id) = &field_type.conceptual_type
@@ -9170,7 +9234,7 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
 
     // serialization
     let mut ser_impl = make_serialization_impl("Int", cli);
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
     let mut ser_block = Block::new("match self");
     if cli.preserve_encodings {
         ser_block
@@ -9187,7 +9251,8 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     // deserialization
     let mut deser_impl = codegen::Impl::new("Int");
     deser_impl.impl_trait("Deserialize");
-    let mut deser_func = make_deserialization_function("deserialize", cli);
+    let mut deser_func =
+        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
     let mut annotate = make_err_annotate_block("Int", "", "");
     let mut deser_match = Block::new("match raw.cbor_type()?");
     if cli.preserve_encodings {

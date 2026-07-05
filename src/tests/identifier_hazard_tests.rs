@@ -4,8 +4,9 @@
 //! construct shapes: the axis IS the name, so `verify.ts`'s construct probes can never surface them.
 //! Two prior instances motivated the sweep — a bareword map key that is a Rust keyword (`{ if: uint }`,
 //! now rejected gracefully at parse time, pinned in `robustness_tests`) and single-letter rule names
-//! colliding with the emitted reader/writer generics (`r`/`w` vs `R`/`W`, still open compile
-//! failures — SHAPE-DEPENDENT, see `EXPECTED_COMPILE_FAIL`). This module sweeps a hazard list ×
+//! colliding with the emitted reader/writer generics (`r`/`w` vs `R`/`W`, now fixed by
+//! collision-proof generic names — see `generic_names_are_collision_proofed_against_rw_idents` and
+//! the empty `EXPECTED_COMPILE_FAIL`). This module sweeps a hazard list ×
 //! name-position table so the whole keyword list (and the std/prelude type names) get verdicted
 //! alongside the cases we already knew about, instead of each being rediscovered by hand.
 //!
@@ -26,8 +27,9 @@
 //!   2. `identifier_hazard_crates_compile` (`#[ignore]`, full tier) — for the `ok` cells, the
 //!      generated crate must pass a standalone `cargo check`. `ok` hazards of one position are bundled
 //!      into ONE crate (rule names are distinct by construction) to avoid ~hundreds of cargo checks,
-//!      minus a pinned `EXPECTED_COMPILE_FAIL` list asserted to fail INDIVIDUALLY so the pin flips
-//!      loudly when the generic-collision fix lands.
+//!      minus a pinned `EXPECTED_COMPILE_FAIL` list (currently empty — the generic-collision fix
+//!      landed) asserted to fail INDIVIDUALLY so the pin flips loudly if a NEW does-not-compile
+//!      hazard is added.
 
 use crate::cli::Cli;
 use crate::parsing::RUST_KEYWORDS;
@@ -35,7 +37,8 @@ use crate::tests::robustness_tests::with_thread_silenced_panics;
 use clap::Parser;
 
 /// Hazards beyond `RUST_KEYWORDS` (reused from `parsing.rs`, never re-typed):
-/// - `r` / `w` collide with the emitted reader/writer generics `R` / `W` (the open compile failure).
+/// - `r` / `w` camel-case to `R` / `W`, which formerly collided with the emitted reader/writer
+///   generics `R` / `W` (now collision-proofed — the generics rename off any defined ident).
 /// - std/prelude type names: camel-cased they shadow `Option` / `String` / `Vec` / … in the generated
 ///   module, so a rule/group named `option` emits `pub …Option…` that shadows the prelude the emitted
 ///   code itself uses.
@@ -156,6 +159,70 @@ fn generate(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, 
     result
 }
 
+/// Concatenate every generated file's source for `spec` (or panic with the generation error) — a
+/// coarse string surface for the fast-tier collision-proofing assertions below.
+fn generated_source(spec: &str, tag: &str) -> String {
+    generate(spec, tag)
+        .unwrap_or_else(|e| panic!("generation failed for {tag}: {e}"))
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// FAST-TIER guard for Item C (collision-proof generic names), the compile-layer complement to
+/// `identifier_hazard_crates_compile`'s now-green `r`/`w` bundles. When a rule camel-cases to a type
+/// named `R`/`W`, the emitted `serialize`/`deserialize` fn generics MUST be renamed off the default
+/// `R`/`W` (else the user type is shadowed → E0574/E0599). This is a string check so it runs in the
+/// default `cargo test` tier; the standalone `cargo check` proof rides the `#[ignore]` compile gate.
+/// The inverse — a non-colliding spec keeps `R`/`W`, so the snapshot corpus never churns — is
+/// asserted too, since a naive "always rename" fix would pass the collision cases but break every
+/// committed snapshot.
+#[test]
+fn generic_names_are_collision_proofed_against_rw_idents() {
+    // `r` (→ type `R`) forces the reader generic off `R`; `w` (→ `W`) forces the writer off `W`.
+    // Cover both emitted shapes (struct + type-choice enum) and the plain-group struct registration
+    // — the exact cells pinned in `EXPECTED_COMPILE_FAIL`.
+    for (spec, tag) in [
+        ("r = [a: uint]\n", "unit_r_struct"),
+        ("r = uint / tstr\n", "unit_r_enum"),
+        ("r = (a: uint, b: uint)\nholder = [r]\n", "unit_r_group"),
+    ] {
+        let src = generated_source(spec, tag);
+        assert!(
+            !src.contains("<R: BufRead"),
+            "{tag}: reader generic still named `R`, shadows the user type `R` (E0574/E0599):\n{src}"
+        );
+        assert!(
+            src.contains("RDe"),
+            "{tag}: expected the reader generic renamed to `RDe`, not found:\n{src}"
+        );
+    }
+    let w_src = generated_source("w = uint / tstr\n", "unit_w_enum");
+    assert!(
+        !w_src.contains("<'se, W: Write"),
+        "w enum: writer generic still named `W`, shadows the user type `W` (E0599):\n{w_src}"
+    );
+    assert!(
+        w_src.contains("WSer"),
+        "w enum: expected the writer generic renamed to `WSer`, not found:\n{w_src}"
+    );
+
+    // No collision → the historical `R`/`W` names survive and no fallback token leaks (the
+    // no-churn invariant). A spec whose only idents are `Foo`/`Holder` cannot collide.
+    let clean = generated_source(
+        "foo = uint / tstr\nholder = [a: uint]\n",
+        "unit_no_collision",
+    );
+    assert!(
+        clean.contains("<R: BufRead") && clean.contains("<'se, W: Write"),
+        "non-colliding spec must keep the default `R`/`W` generics:\n{clean}"
+    );
+    assert!(
+        !clean.contains("RDe") && !clean.contains("WSer"),
+        "non-colliding spec must NOT emit any fallback generic name:\n{clean}"
+    );
+}
+
 /// LAYER 1 — the generation-outcome catalog (default `cargo test`). A snapshot of `ok` /
 /// `error (graceful)` / `PANIC` per (position × hazard) cell. A NEW `PANIC` is a regression: the
 /// generator must reject a hazardous name with a clean error, never `panic!`/`assert!`. The
@@ -225,47 +292,19 @@ fn checkout_hash() -> u64 {
     h.finish()
 }
 
-/// Cells that GENERATE but whose crate does NOT `cargo check` today — asserted to fail INDIVIDUALLY so
-/// the pin is honest and flips loudly when a fix lands. Each entry is `(position, hazard)` with a
-/// reason. This is the sweep's whole payoff: the collision failures we already knew about, plus any the
-/// sweep turned up — NOT a license to fix the generator here.
+/// Cells that GENERATE but whose crate does NOT `cargo check` — asserted to fail INDIVIDUALLY so the
+/// pin is honest and flips loudly when a fix lands. Each entry is `(position, hazard, reason)`. This
+/// is the sweep's whole payoff: a red cell the bundle would otherwise launder, held explicit — NOT a
+/// license to fix the generator here.
 ///
-/// The `r`/`w` vs `R`/`W` generic collision is SHAPE-DEPENDENT (the sweep's shape axis exists exactly
-/// because a struct-only pass laundered `w` as clean — found in review):
-/// - `r` fails on BOTH shapes: struct-shaped, the deserialize body's `R::from(..)`-style type position
-///   hits E0574 ("expected struct, found type parameter `R`"); enum-shaped, the `R::U64`/`R::Text`
-///   variant paths hit E0599 (no associated item on the type parameter).
-/// - `w` fails on the ENUM shape only (E0599: `W::U64`/`W::Text` inside `fn serialize<'se, W: Write>`
-///   resolve to the type param, the ROADMAP finding's original "pub enum W" citation). Struct-shaped
-///   `w` genuinely compiles — a struct's serialize body never names its own type — so it rides in the
-///   rule-name bundle as a documented shape boundary, NOT a narrowing of the finding.
-///
-/// The group-name occupant registers as a struct, so it mirrors the struct-shape verdicts (`r` fails,
-/// `w` compiles). The candidate fix (collision-proof generic names, ROADMAP § 1 / Item C) turns all
-/// four pins green and trips the `resurfaced` guard below.
-const EXPECTED_COMPILE_FAIL: &[(&str, &str, &str)] = &[
-    (
-        "rule-name",
-        "r",
-        "camel-cased `R` collides with the deserializer reader generic `R` (E0574)",
-    ),
-    (
-        "rule-name-enum",
-        "r",
-        "enum variant paths `R::U64`/`R::Text` resolve to the reader type parameter `R` (E0599)",
-    ),
-    (
-        "rule-name-enum",
-        "w",
-        "enum variant paths `W::U64`/`W::Text` resolve to the writer type parameter `W` inside \
-         `fn serialize<'se, W: Write>` (E0599)",
-    ),
-    (
-        "group-name",
-        "r",
-        "plain group `r` registers as struct `R`, colliding with the reader generic `R` (E0574)",
-    ),
-];
+/// EMPTY: the `r`/`w` reader/writer-generic collisions that formerly lived here are FIXED by
+/// collision-proof generic names (ROADMAP § 1 / Item C — `generic_names_are_collision_proofed_against_
+/// rw_idents` pins the string-level guard, and the emitted `serialize`/`deserialize` fn generics now
+/// rename off any user type named `R`/`W`, so all four cells `cargo check` clean and ride the position
+/// bundles below). The pinning machinery stays wired: a NEW hazard that generates but does not compile
+/// gets an entry here, asserted red individually, and the `resurfaced` guard flips loudly the day it's
+/// fixed.
+const EXPECTED_COMPILE_FAIL: &[(&str, &str, &str)] = &[];
 
 /// Generate a crate for `spec` into `out` and `cargo check` its rust crate against `target_dir`.
 /// Returns `Ok(())` if generation AND check both succeed, else `Err(reason)`.
