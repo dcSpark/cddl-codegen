@@ -288,10 +288,9 @@ the `group.choice` row's accept vectors (a reverted key-dropping decoder mis-dec
 against an unreviewed re-bless by `integration_tests::corpus_group_choice_map_key_written_and_verified`.
 The array-side sibling — `[* (int, tstr)]` silently narrowing the inline-group occurrence to
 exactly-once, rejecting the spec-valid `[]` — is now **fixed** too: an occurrence marker on an inline
-group is rejected gracefully at generation time (pinned by
-`tests/robustness/inline_group_occurrence.cddl` + `map_inline_group_zero_occurrence.cddl`), so the
-matrix verdicts its cell `unsupported` and it projects no decode-conformance obligation (no catalog
-row) rather than a `class="bug"` reject.
+group is rejected gracefully at generation time. The projected robustness fixtures
+(`tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`) pin the unsupported cells,
+so they project no decode-conformance obligation (no catalog row) rather than a `class="bug"` reject.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 
@@ -641,7 +640,10 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) t
 > generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics),
 > and **reject** (`unsupported_construct_reject_catalog` — the rows the matrix marks off-limits that mint
 > no other test: parse-rejected control ops, generates-but-doesn't-compile shapes like `prelude.any`, and
-> out-of-profile constructs). The reject catalog's payoff is catching a parser/codegen change that
+> out-of-profile constructs). Containment cells (`contain.*`) are included in this projection; spec-disallowed
+> cells without annotation rows are naturally absent, while supported/reject/panic cells get generated
+> fixtures and subsume the older hand pins for map-key spelling/arity, group-choice-arm, and
+> occurrence-target coverage. The reject catalog's payoff is catching a parser/codegen change that
 > *silently* makes a rejected construct parse — the exact regression a past cddl-fork bump caused for 14
 > control ops — as a snapshot diff in the default `cargo test` run instead of only on a manual verify.ts
 > sweep; `project_robustness.ts --check` independently pins each reject row's expected label to its matrix

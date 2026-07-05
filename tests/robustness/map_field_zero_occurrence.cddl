@@ -1,9 +1,0 @@
-; a zero-permitting occurrence (`*` / `0*n` / `*n`) on a KEYED struct-map field: RFC 8610 says the
-; entry may be ABSENT, but the generator would silently narrow it to a mandatory field — generated
-; decoders would reject valid CBOR that omits it (a round-trip test can't see this; only data from
-; another conformant producer does). Rejected gracefully instead: `?` is the supported optional
-; spelling, and `+` / `1*2` stay mandatory (under unique map keys a lower bound >= 1 collapses to
-; exactly-one, so mandatory is correct for those). Flipping this row to `ok` requires REAL
-; Option-style support for zero-permitting markers, not a decay back to silent narrowing.
-plain = { * t: uint }
-multi = { a: uint, 0*1 b: uint }

@@ -74,13 +74,12 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    have surfaced mechanically from recombining member shapes inside one construct. Identifier
    space is a fuzz dimension too, not just grammar shapes — the proven instance is now an
    enumerated sweep, not a fuzz finding: `src/tests/identifier_hazard_tests.rs` verdicts hazardous
-   names × positions × emitted type shape (it caught the shape-dependent `r`/`w` generic collision,
-   since fixed by collision-proof generic names, and pins the still-open reserved-name generation
-   panics — `cddl-matrix/ROADMAP.md` § 1 follow-ons). A grammar fuzzer should draw identifiers from
-   that hazard table rather than rediscover it. Recombination is only as complete as the
-   role set it draws from — the enumerative prerequisite (a group-choice-arm containment role;
-   the `//` arm is currently not a containment role at all) is ledgered concretely in
-   `cddl-matrix/ROADMAP.md` § 1 and should land before or with the fuzzer.
+   names × positions × emitted type shape (it caught the shape-dependent `r`/`w` generic collision
+   and the reserved-name panics, both since fixed). A grammar fuzzer should draw identifiers from
+   that hazard table rather than rediscover it. Recombination is only as complete as the role set it
+   draws from; the containment matrix now includes the group-choice-arm `//` role, map-key
+   spelling/arity cells, and occurrence-target marker-kind cells, so those examples are available as
+   structured fuzzer ingredients.
 
 4. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
@@ -128,8 +127,8 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      a hand-picked fixture list. json/wasm decode surfaces are likewise unminted. The breadth
      layer's first sweep caught two decoder bugs (the map-rep group-choice key-drop miscompile —
      since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing —
-     since fixed as a graceful rejection, pinned by `tests/robustness/inline_group_occurrence.cddl`
-     with its row re-minted as a `pinned_reason`), so depth is not the current bottleneck.
+     since fixed as a graceful rejection, pinned by projected `tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`
+     fixtures and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
 ## Explicitly not worth it (decided, not overlooked)
 

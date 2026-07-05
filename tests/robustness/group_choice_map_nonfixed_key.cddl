@@ -1,7 +1,0 @@
-; a map-representation group-choice arm whose single entry has a NON-FIXED key (`k => v`). The
-; collapse stores only the value in the enum variant, so a non-fixed key has nowhere to live:
-; collapsing would silently drop the key type from the wire format (the generator did exactly that
-; before the keyed-arm fix — the same malformed-CBOR family as the key-drop miscompile). Rejected
-; gracefully instead; flipping this row to `ok` requires REAL table-arm support (deciding how a
-; `k => v` arm dispatches against sibling arms), not a decay back to silent key-dropping.
-t = { uint => tstr // b: tstr }

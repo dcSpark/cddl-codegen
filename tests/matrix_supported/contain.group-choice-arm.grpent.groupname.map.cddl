@@ -1,0 +1,2 @@
+g = { grp // b: tstr }
+grp = (a: uint)

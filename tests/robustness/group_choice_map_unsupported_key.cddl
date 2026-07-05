@@ -1,8 +1,0 @@
-; map-representation group-choice arms with fixed keys OUTSIDE the supported uint/text kinds.
-; Key writing/verification (and `{name}_key_encoding` under --preserve-encodings) is only
-; implemented for uint and text keys — parity with the record map path, which now also rejects
-; other fixed key kinds gracefully at parsing (its sibling fixture is
-; tests/robustness/record_map_unsupported_key.cddl). Both paths flip to `ok` only when real
-; nint/float key support lands — do the record path first.
-neg = { -1: uint // b: tstr }
-flt = { 1.5: uint // b: tstr }

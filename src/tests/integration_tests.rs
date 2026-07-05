@@ -4231,10 +4231,14 @@ fn all_supported_constructs_generate_all_profiles() {
     // (profile, fixture stem, reason) — constructs that FAIL to generate under a non-default
     // profile. The default profile has no entries: `all_supported_constructs_generate` already
     // proves every fixture generates there. A cell fails "as expected" if generation errors OR
-    // panics under EITHER wasm mode for that (profile, fixture). Only preserve has entries today,
-    // and both are the SAME float `unimplemented!` class (generation.rs "preserve_encodings is not
-    // implemented for float"): `number = int / float` and `time` (a float epoch). Tracked by the
-    // `preserve_encodings_supports_floats` stub; when that lands, these clear and become resurfaced.
+    // panics under EITHER wasm mode for that (profile, fixture). Only preserve has entries today —
+    // exactly the matrix's three recorded emission divergences (all `emission.preserve =
+    // unsupported` in the annotations): two are the SAME float `unimplemented!` class
+    // (generation.rs "preserve_encodings is not implemented for float") tracked by the
+    // `preserve_encodings_supports_floats` stub; the third is the tag-over-type-choice-enum
+    // preserve assert (generation.rs `assert!(!cli.preserve_encodings)` on the tagged-enum
+    // serialize path — per-variant encoding metadata has no home on the enum). When a gap closes,
+    // its entry clears and becomes resurfaced.
     const EXPECTED_FAIL: &[(&str, &str, &str)] = &[
         (
             "preserve",
@@ -4249,6 +4253,14 @@ fn all_supported_constructs_generate_all_profiles() {
             "time is a float epoch; float aborts generation under --preserve-encodings \
              (generation.rs 'preserve_encodings is not implemented for float'). See the \
              preserve_encodings_supports_floats stub.",
+        ),
+        (
+            "preserve",
+            "contain.tag-content.type.choice",
+            "a CBOR tag over a type-choice enum is unimplemented under --preserve-encodings \
+             (generation.rs tagged-enum serialize path asserts !cli.preserve_encodings; \
+             'TODO: how to even store these?'). Recorded as emission.preserve = unsupported; \
+             also skip-listed in the decode replay's PRESERVE_SKIP.",
         ),
     ];
 
