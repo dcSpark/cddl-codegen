@@ -8,8 +8,8 @@
  *   2. Staleness    — every catalog row id is still `supported` in matrix.json, and the catalog
  *      `example` string-equals the matrix row's `example` (a drifted example means the vectors were
  *      validated against a spec the matrix no longer describes — re-mint).
- *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation} AND a nonempty
- *      `reason` (a class-less pin is the mint's triage-pending state — RED); every hex is well-formed
+ *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation, constraint} AND a
+ *      nonempty `reason` (a class-less pin is the mint's triage-pending state — RED); every hex is well-formed
  *      (nonempty, even length, lowercase); `spec`/`mode`/`type_name` are present together on an active
  *      row and consistent (mode ∈ {standalone, holder}; holder ⇒ spec starts with the holder prefix and
  *      type_name === "ProbeHolder"; standalone ⇒ spec === example); a pinned row carries none of them.
@@ -17,6 +17,15 @@
  *      absent-instance TDD anchors that catch an over-strict-decoder reintroduction. These are positive
  *      controls: they must PASS today.
  *   5. Vacuity floor — >= 80 supported matrix rows, so a broken matrix read can't pass an empty check.
+ *   6. Constraint-vector shape — a `class="constraint"` vector must be decodable up to the constraint
+ *      itself, so the emitted range/size check is the ONLY thing that can reject it (a wrong-shape
+ *      vector rejects as a TYPE mismatch first — vacuous enforcement evidence the replay gate cannot
+ *      distinguish, the escape that shipped holder-wrapped `8200…` scalars on the first rangeop mint).
+ *      Mechanically: its leading CBOR major type must match the row's accept vectors' (majors 0/1
+ *      merged — int-family instances legitimately span both signs); on a standalone row with no
+ *      accepts (the non-uint-endpoint range rows — their accepts can't certify, see
+ *      draft/rust-cddl-float-range-gap.md) it must not carry the mint's `8200` holder preamble. If a
+ *      standalone row's instances genuinely begin `[0, …]`, add an accept vector sharing the shape.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
@@ -153,6 +162,34 @@ for (const r of rows) {
         problems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
       if (typeof v.reason !== "string" || v.reason.length === 0)
         problems.push(`${where}: reject vector needs a nonempty \`reason\` (the ledgered bug / doc citation, or the violated constraint for class="constraint")`);
+    }
+  });
+
+  // Constraint-vector shape §6: enforcement evidence must be rejectable ONLY by the constraint.
+  // Leading-major-type class of a vector (majors 0/1 merged: int-family instances span both signs).
+  const shapeClass = (hex: string): string => {
+    const major = parseInt(hex.slice(0, 2), 16) >> 5;
+    return major <= 1 ? "int" : String(major);
+  };
+  const acceptClasses = new Set(
+    vectors
+      .filter(v => v.expect === "accept" && typeof v.hex === "string" && (v.hex as string).length >= 2)
+      .map(v => shapeClass(v.hex as string)),
+  );
+  vectors.forEach((v, i) => {
+    if (v.expect !== "reject" || v.class !== "constraint") return;
+    const hex = typeof v.hex === "string" ? v.hex : undefined;
+    if (hex === undefined || hex.length < 2) return; // hex problems already reported above
+    const where = `\`${id}\` vector[${i}]`;
+    if (acceptClasses.size > 0) {
+      if (!acceptClasses.has(shapeClass(hex)))
+        problems.push(
+          `${where}: constraint vector \`${hex}\` has leading CBOR major-type class "${shapeClass(hex)}" but the row's accept vectors are {${[...acceptClasses].sort().join(", ")}} — a wrong-shape vector rejects as a TYPE mismatch before the constraint check runs (vacuous enforcement evidence)`,
+        );
+    } else if (mode === "standalone" && hex.startsWith("8200")) {
+      problems.push(
+        `${where}: constraint vector \`${hex}\` carries the mint's \`8200\` holder preamble on a standalone row with no accept vectors — holder-wrapped scalars reject as a TYPE mismatch, not the constraint (if the row's type genuinely begins [0, …], add an accept vector sharing the shape)`,
+      );
     }
   });
 }

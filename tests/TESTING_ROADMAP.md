@@ -108,26 +108,20 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
 
-5. **Catch vacuous `class="constraint"` vectors systematically (cheap, closes a proven escape).**
-   The replay gate asserts only that a reject vector `Err`s — it cannot tell a bounds rejection from
-   a CBOR type mismatch, so a malformed constraint vector (e.g. the holder-wrapped `8200…` scalars
-   that landed on the first rangeop mint and were caught only by review — see `tests/README.md`
-   § reject-vector classes, "vector SHAPE is load-bearing") passes as vacuous enforcement evidence.
-   Two layers, cheapest first:
-   - **(a) Shape lint in `project_decode_conformance.ts` (fast tier — this one runs in CI).** A
-     pure-TOML structural check, no cargo/oracles: on a `mode = "standalone"` row, a reject vector
-     whose outer CBOR shape (initial-byte major type) differs from the row's accept vectors — or any
-     holder-shaped `8200…` reject on a non-holder row — fails the drift gate. This alone would have
-     caught the rangeop escape at commit time, before any evidence projected.
-   - **(b) Rejection-REASON assert in the replay gate (full tier — behavioral proof).** For
-     `class="constraint"` vectors, assert the decoder's error Display names the violated check
-     (`RangeCheck`/`RangeCheckFloat`/`.size`-style text) rather than a type/length mismatch — the
-     replay harness already captures per-vector errors, so this is a match on strings the generator
-     itself emits, oracle-free and deterministic. Layer (a) validates the vector's shape; (b) proves
-     the emitted check is what actually fired — (a) can't see a decoder that rejects for a subtly
-     wrong reason, (b) runs too rarely to be the only guard.
-   Until either lands, the authoring rule in `tests/README.md` (bare in-type scalars for standalone
-   rows; accept/reject vectors share their outer CBOR shape) is the only guard.
+5. **Assert the rejection REASON for `class="constraint"` replay vectors (behavioral layer over the
+   standing shape lint).** The replay gate asserts only that a reject vector `Err`s — it cannot tell
+   a bounds rejection from a CBOR type mismatch, so a malformed constraint vector passes as vacuous
+   enforcement evidence (the holder-wrapped `8200…` scalars on the first rangeop mint were caught
+   only by review). The STRUCTURAL layer is built: `project_decode_conformance.ts` § 6 (local-tier
+   drift gate; promoting to `fast`/CI is a maintainer call) fails any constraint vector whose
+   leading CBOR major-type class differs from its row's accepts, or a holder-preamble scalar on a
+   standalone row — that alone catches the shipped escape class at drift-gate time. What remains is
+   the behavioral proof the lint can't give: a decoder that rejects for a subtly WRONG reason (a
+   stray length check, an unrelated error path) still satisfies both `Err` and the shape lint. For
+   `class="constraint"` vectors, assert the decoder's error Display names the violated check
+   (`RangeCheck`/`RangeCheckFloat`/`.size`-style text) rather than a type/length mismatch — the
+   replay harness already captures per-vector errors, so this is a match on strings the generator
+   itself emits, oracle-free and deterministic.
 
 6. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
    depth.**

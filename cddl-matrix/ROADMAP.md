@@ -283,11 +283,13 @@ from a degenerate example.**
   reason, and the Q4 pin fixes the row *set*, not vector quality) — which is vacuous enforcement
   evidence indistinguishable from the real thing. This exact decay shipped once (the first rangeop mint
   landed `8200`-wrapped hand rejects beside bare accepts in the same rows) and was caught only by
-  review. The systematic catches are `tests/TESTING_ROADMAP.md` item 5 (a fast-tier shape lint in
-  `project_decode_conformance.ts` — which alone would have failed the drift gate at commit time —
-  plus the full-tier replay rejection-reason assert); until those land the authoring rule stands:
-  the `8200` holder prefix belongs ONLY to `mode = "holder"` rows, and a row's accept and reject
-  vectors must share their outer CBOR shape.
+  review. The structural catch is BUILT: `project_decode_conformance.ts` § 6 (local-tier drift gate)
+  fails a constraint vector whose leading CBOR major-type class differs from its row's accepts
+  (majors 0/1 merged — int-family instances span both signs), and bans the `8200` holder preamble on
+  an accept-less standalone row. The behavioral layer — the replay gate asserting the rejection
+  REASON names the violated check — stays `tests/TESTING_ROADMAP.md` item 5; the authoring rule
+  remains: holder shapes belong ONLY to `mode = "holder"` rows, and a row's accept and reject
+  vectors share their outer CBOR shape.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
