@@ -1771,7 +1771,7 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
 /// Rust strict and reserved keywords (plus the 2024 additions `gen`/`try`). A struct field named by
 /// any of these is invalid Rust; `parse_record_from_group_choice` rejects such fields with the
 /// `@name` remedy rather than emitting source that only the rustfmt gate would catch.
-const RUST_KEYWORDS: &[&str] = &[
+pub(crate) const RUST_KEYWORDS: &[&str] = &[
     "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn",
     "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
     "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe",
