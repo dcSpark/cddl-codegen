@@ -123,6 +123,66 @@ pub fn parse_rule(
     }
 }
 
+/// A graceful-rejection message if `cddl_rule` carries a rule-position `@name` directive, else
+/// `None`. `@name` renames a struct field, a type-choice variant, or a group-choice arm — never a
+/// top-level rule or group, whose CDDL identifier IS the emitted Rust type name directly. On a
+/// single-type-choice TYPE rule the directive is silently dropped (`parse_type` assembles the merged
+/// rule-position metadata but never consults `.name` to rename the rule), a user-invisible surprise,
+/// so we reject at the parse-walk seam (`api::with_types`) through the normal `record_rejection`
+/// channel, mirroring `intermediate::reserved_ident_rejection`.
+///
+/// Multi-choice type rules are deliberately OUT of scope: there every `@name` attaches to a
+/// type1/choice and legitimately names an enum variant (`parse_type_choices`), so we return `None`.
+/// The check keys on `.name` ONLY — every other rule-level directive (`@newtype`, `@no_alias`,
+/// `@used_as_key`, `@custom_json`, `@doc`, `@custom_serialize`/`@custom_deserialize`) attaches at
+/// this same comment position and WORKS, so it must be left untouched.
+///
+/// For a plain GROUP rule the true rule-position slot is `comments_after_group`; we guard it for
+/// symmetry with the reserved-name precedent. Note that a *trailing* `@name` (`grp = (a: uint) ;
+/// @name x`) does NOT land there — cddl binds it to the last group entry's trailing comment, so it
+/// is consumed by the field-naming site (`group_entry_to_field_name`) as a field rename, which the
+/// rejection must not disturb. So in practice this branch only fires for the (currently unreachable)
+/// case where `@name` reaches `comments_after_group` directly.
+pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+    let has_rule_position_name = match cddl_rule {
+        cddl::ast::Rule::Type { rule, .. } => {
+            // Only single-type-choice rules: a multi-choice rule's `@name`s name variants.
+            if rule.value.type_choices.len() != 1 {
+                return None;
+            }
+            let tc = &rule.value.type_choices[0];
+            // Mirror `parse_type`'s top-level metadata merge (inherited defaults to empty there):
+            // the cddl parser can attach the rule's trailing comment to either the Type1 or the
+            // enclosing TypeChoice, so read both.
+            let rule_metadata = merge_metadata(
+                &RuleMetadata::from(tc.type1.comments_after_type.as_ref()),
+                &RuleMetadata::from(tc.comments_after_type.as_ref()),
+            );
+            rule_metadata.name.is_some()
+        }
+        cddl::ast::Rule::Group { rule, .. } => match &rule.entry {
+            cddl::ast::GroupEntry::InlineGroup {
+                comments_after_group,
+                ..
+            } => RuleMetadata::from(comments_after_group.as_ref())
+                .name
+                .is_some(),
+            _ => false,
+        },
+    };
+    if has_rule_position_name {
+        let name = cddl_rule.name();
+        Some(format!(
+            "rule `{name}`: `; @name` does not rename a top-level rule or group — the rule \
+             identifier `{name}` is itself the emitted Rust type name. `@name` only renames a \
+             struct field, a type-choice variant, or a group-choice arm; to change the emitted \
+             type name, rename the `{name}` identifier."
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
     match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => RustIdent::new(CDDLIdent::new(rule.name.to_string())),

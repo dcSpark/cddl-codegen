@@ -157,6 +157,12 @@ pub fn with_types<R>(
         if let Some(msg) = crate::intermediate::reserved_ident_rejection(&cddl_rule.name()) {
             types.record_rejection(msg);
         }
+        // Rule-position `@name` is a directive drop (silent on type rules, mis-applied on plain
+        // groups): `@name` renames fields/variants/arms, never the rule identifier itself. Reject
+        // it here, alongside the reserved-name pre-scan, rather than emit a surprising type name.
+        if let Some(msg) = parsing::rule_position_name_rejection(cddl_rule) {
+            types.record_rejection(msg);
+        }
     }
     if types.has_rejections() {
         return Err(types.rejections_error());
