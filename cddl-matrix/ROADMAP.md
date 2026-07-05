@@ -146,9 +146,20 @@ gotcha is documented in `tests/README.md` § "Running everything".
   `genericarg`/`genericparm` as false-uncovered although feature rows exist, and `head-number`'s
   semantics live under `type2.*` rows so it renders "NOT MODELED"). Separately, some *variations inside*
   one ABNF alternative have no feature row at all: one-sided occurrence bounds (`n*`/`*m` — prose-only
-  in `occur.bounded`'s desc; only `2*5` is probed anywhere) and the `uint` radix forms `0x`/`0b` +
-  `hexfloat`. Until rows exist, Q5 ("everything the matrix does not model") is authoritative only for
-  `type2` — tighten `normalizeAlt` and add the variation rows before claiming more.
+  in `occur.bounded`'s desc; only `2*5` is probed anywhere), the `uint` radix forms `0x`/`0b` +
+  `hexfloat`, range **head-type × sign** (`rangeop.*` is verdicted from `t = 0..10` alone — uint-headed,
+  non-negative; int-headed and float-headed rows don't exist, which is how the float-range
+  silent-acceptance finding stayed invisible to the matrix and was only caught by manual probing —
+  new float rows MUST carry `class="constraint"` reject vectors so silent non-enforcement projects
+  `enforce = no` instead of a vacuous green, after first checking the oracles even enforce float
+  windows), and control-op **boundary values** (`ctl.ne`'s one example `x = int .ne 5` misses the
+  excluded-value-0/1 boundary where the sign-partition's NE encoding degenerates — the class the
+  `.ne 1` mis-check hid in; the Rust-side `sign_bounds` grid has the same unswept column). The
+  lesson those two escapes encode: silent-acceptance bugs are visible ONLY to the enforcement axis,
+  and that axis reaches exactly as far as row/example enumeration — so enumeration gaps here are
+  enforcement blind spots, not just coverage accounting. Until rows exist, Q5 ("everything the
+  matrix does not model") is authoritative only for `type2` — tighten `normalizeAlt` and add the
+  variation rows before claiming more.
 
 ## Findings & gotchas (durable — read before touching the support seam or probe examples)
 
