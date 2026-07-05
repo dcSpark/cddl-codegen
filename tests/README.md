@@ -690,7 +690,11 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) t
 > blessable snapshot (blessing a decay to silent-drop would defeat the purpose); discovered drops
 > are pinned in `KNOWN_SILENT_DROP` (mirroring `EXPECTED_COMPILE_FAIL`) — asserted to STILL be
 > dropped so a pin flips loudly when a fix lands, and a pin is a finding to report, not a license
-> to re-author the expectation.
+> to re-author the expectation. Pins carry a vacuity hazard Effect cells don't: a pin asserts
+> "expectation NOT satisfied", which a MISPLACED directive comment satisfies vacuously (the DSL's
+> comma-placement rules are finicky), so a pin is authored only after hand-verifying the placement
+> against the docs' comma rules — ideally beside a control cell using the same placement in a
+> position where the directive works, isolating *position* as the variable.
 
 ## Coverage
 

@@ -55,6 +55,13 @@ struct Cell {
 /// asserted to STILL fail its docs-claimed expectation (drop present), so the pin flips loudly when a
 /// fix lands. `(directive, position, reason)`, mirroring the hazard sweep's `EXPECTED_COMPILE_FAIL`.
 ///
+/// AUTHORING RULE — pins have a vacuity hazard Effect cells don't: a pin asserts "expectation NOT
+/// satisfied", which a MISPLACED directive comment satisfies vacuously (the DSL's comma-placement
+/// rules are finicky), so the pin would hold for the wrong reason. Only pin a cell after
+/// hand-verifying the placement variants against the docs' comma rules (the anon-group pin was
+/// probed with and without the trailing comma), ideally beside a control cell using the same
+/// placement in a position where the directive DOES work, isolating position as the variable.
+///
 /// Two live findings (neither fixed by this task — the scoped fix is rule-position `@name` rejection):
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" panic advertises `@name` as
 ///     the remedy, but at a MEMBER-position anonymous inline group the comment lands on the enclosing
