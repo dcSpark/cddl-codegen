@@ -3,4 +3,6 @@
 ; is no well-formed wire shape for a keyless arm — pre-fix the generator emitted `map(1)` + the
 ; bare value (a truncated CBOR item). Rejected gracefully; a plain-group arm (`{ grp // ... }`)
 ; keeps working because the referenced group writes its own keys.
+; Matrix cell contain.group-choice-arm.grpent.member.map is spec-disallowed (ruby rejects the
+; keyless map arm), so no projected fixture subsumes this hand pin.
 g = { bytes // b: tstr }

@@ -332,8 +332,8 @@ fn keyless_map_entry_rejects_gracefully() {
 /// rejects valid CBOR, invisible to round-trip tests (only cross-producer data exposes it). This
 /// pins the graceful rejection AND the boundary: `+` (lower bound >= 1) must keep generating a
 /// mandatory field, because under unique map keys "one or more" collapses to exactly-one — that is
-/// honored semantics, not narrowing. The catalog fixture (`map_field_zero_occurrence`) pins the
-/// outcome category; this pins the message and the `+` boundary.
+/// honored semantics, not narrowing. The projected matrix reject fixtures pin the outcome category;
+/// this pins the message and the `+` boundary.
 #[test]
 fn zero_permitting_occurrence_on_keyed_map_field_rejects_gracefully() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {

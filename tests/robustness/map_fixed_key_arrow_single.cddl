@@ -1,8 +1,0 @@
-; a single-entry fixed-value ARROW key — `m = { 1 => uint }`. Per RFC 8610 a literal-key `k => v` is
-; the SAME wire entry as the colon spelling `k: v`, so it routes to the record path (a 1-field
-; struct) instead of table-detecting a `ConceptualRustType::Fixed` domain — the byte-exact
-; equivalence with `{ 1: uint }` is pinned by the `fixed_key_arrow_single_entry_routes_to_record_path`
-; unit test. This row pins that the arrow spelling KEEPS generating: a decay back to table-detecting
-; fixed domains would re-expose the `for_rust_member` panic ("should not expose Fixed type in member",
-; intermediate.rs ~1876) and flip this row from `ok` to PANIC.
-m = { 1 => uint }

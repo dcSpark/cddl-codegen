@@ -1,9 +1,0 @@
-; a zero-permitting occurrence on an inline (parenthesized) MAP group — `{ * (k: int) }` — bypassed
-; the f18d764 keyed-field fix: the inline-group wrapper hid the occurrence, so the marker was
-; silently dropped and the field narrowed to mandatory (a decoder that rejects valid CBOR omitting
-; the entry, invisible to round-trip tests). Rejected gracefully instead. Boundaries preserved:
-; `{ + (k: int) }` / `n*m` with a lower bound >= 1 stay mandatory (under unique map keys they
-; collapse to exactly-one), and the parenthesized table `{ * (int => tstr) }` still generates a
-; `BTreeMap`. Flipping this row to `ok` requires REAL Option-style support for zero-permitting
-; markers, not a decay back to silent narrowing.
-a = { * (k: int) }

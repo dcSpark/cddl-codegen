@@ -5,14 +5,16 @@ hard-won findings — the two things a future agent can't re-derive from the cod
 the done work landed lives in git history (this doc was pruned of it; the project already did the same with
 the scale report + cold-critique).
 
-**Status: gate-green.** 92 features (81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), all axes
-reconciled/deterministic, with execution-gated support **per-feature, per-cell (role × feature), and
-per-control-op** (all 37 IANA ops probed): "supported" requires the generated crate's `--emit-tests`
+**Status: gate-green.** 92 features (81 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile),
+80 containment cells, and 206 cddl-codegen annotations, all axes reconciled/deterministic, with
+execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (all 37 IANA ops
+probed): "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
 see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 10
-`class="constraint"` enforcement reject vectors — the enforcement axis is FULLY green: every row
+`class="constraint"` enforcement reject vectors over 9 enforce-green rows — the enforcement axis is
+FULLY green: every row
 with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
 `query_q4_directional.ts --check`).
 Three projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -45,47 +47,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Group-choice-arm containment role (both reps).** The `//` arm is a container role the containment
-  axis does not enumerate at all (`role.choice-member` covers only `/` type choices), and it is the
-  proven hole behind the map-rep group-choice bug family: every arm-shape defect (multi-field-arm
-  dispatch, fixed-value-entry generation panic, non-fixed-key silent key drop, nint/float-key
-  rejection) was a cell of this missing role, found by hand probing instead of by sweep. Add
-  `role.group-choice-arm` cells with rep as part of the cell (map-rep arms carry member keys,
-  array-rep arms don't — the support surfaces differ), so `verify.ts` verdicts every feature-in-arm
-  combination execution-gated, the decode-conformance obligation projection auto-mints foreign
-  vectors for the supported cells, and `project_robustness.ts` projects the reject/panic cells —
-  subsuming the interim hand pins
-  `tests/robustness/group_choice_map_{nonfixed_key,keyless_entry,unsupported_key}.cddl` (prune them
-  when the projected fixtures land). While in there: `map-key.toml` enumerates only composite key
-  shapes (2 cells) — three more axes of the SAME cell are proven holes, each found by hand probing
-  instead of by sweep: key KIND (nint/float/bool — no cell verdicts a nint/float record-map key, so
-  its now-graceful rejection, pinned by hand in `tests/robustness/record_map_unsupported_key.cddl`
-  and its group-choice sibling, is unverdicted by sweep), key SPELLING (`k: v` vs `k => v` — not
-  cosmetic: the spellings take different internal routes), and entry ARITY (single vs multi-entry).
-  The spelling × arity corner is the proven instance: single-entry `{ 1 => uint }` now routes to the
-  record path (byte-identical to the colon spelling `{ 1: uint }`, pinned by
-  `tests/robustness/map_fixed_key_arrow_single.cddl` and the
-  `fixed_key_arrow_single_entry_routes_to_record_path` unit test), where each key KIND gets its
-  verdict — but no sweep cell covers the spelling/arity axes, so a swept cell would pin this FIXED
-  routing (and the graceful nint/float/bool rejections) rather than rediscover it by hand. Enumerate
-  kind × spelling × arity so the sweep verdicts each cell instead of hand probes finding them one at
-  a time. This role work is also the enumerative first stage of `tests/TESTING_ROADMAP.md` item 3's
-  containment-example recombination: fuzz recombination is only as complete as the role set it
-  recombines.
-- **Occurrence-kind × rep cells, and named-group occupants (two more proven instances of the same
-  under-enumeration).** The inline-group occurrence fix exposed both. (a) `occurrence-target.toml`
-  samples one marker (`*`) in one rep (array) per occupant, so the full narrowing blast radius
-  (`+` / `?` / `n*m`, and the map-rep form `{ * (k: int) }` that bypassed the keyed-field fix) was
-  found by hand probing, not by sweep — the marker KIND and the rep are axes of the cell, like the
-  group-choice-arm rep above. (b) No containment role anywhere has a NAMED-group-reference occupant
-  (`pair = (int, tstr)`, `a = [* pair]`): the anonymous-group limitation's own remedy ("name it") is
-  systematically unverdicted per role, which is how the sole-use plain-group registration bug (an
-  `is_enum` panic under wasm and a non-compiling crate without it) survived every gate until an
-  ad-hoc probe hit it. Add marker-kind × rep cells to the occurrence-target role and a
-  `grpent.named_group`-style occupant to each containment role, so `verify.ts` verdicts them
-  execution-gated and the projections subsume today's interim hand pins
-  (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
-  named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
 - **Directive × attachment-position cells for the `dsl.*` features (fourth proven instance of the
   same under-enumeration).** Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
   `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
@@ -260,7 +221,12 @@ from a degenerate example.**
   branch (`~/Documents/git/cddl`, commit `cdba2b4`) carries the fix — rebuild and point `RUST_CDDL`
   at it to give future `verify.ts` runs an enforcing oracle (the matrix's evidence does not depend
   on it: the probes are `int`-targeted). Prune this entry and the draft note when the fix ships in
-  a release. A `uint .size N` probe variant stays unswept (the one-example-per-op enumeration gap,
+  a release. A second, distinct oracle disagreement surfaced by the decode-vector mint: for
+  `a = [1*1 (int, tstr)]` (`contain.occurrence-target.grpent.inline_group.exactly_once_array`) ruby
+  accepts the generated instances while the pinned rust oracle rejects them, so the row is honestly
+  pinned vectorless in `tests/decode_conformance/catalog.toml` — un-pin and re-mint if a rust `cddl`
+  release starts validating exactly-once inline-group occurrences. A `uint .size N` probe variant
+  stays unswept (the one-example-per-op enumeration gap,
   § 4 variation rows). The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
   catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
@@ -279,32 +245,41 @@ from a degenerate example.**
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected gracefully**
-  (pinned by `tests/robustness/map_field_zero_occurrence.cddl`) rather than silently narrowed to a mandatory
-  field — the narrowing generated decoders that reject valid CBOR omitting the entry, invisible to
-  round-trip tests. `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field: under unique map
-  keys they collapse to exactly-one, so mandatory is the honored semantics. Real support for `*` (an
-  `Option<T>` field, like `?`) is a candidate feature; surfaced while testing the single-field struct-map fix.
+  (pinned by `contain.occurrence-target.memberkey.bareword.zero_map` and
+  `contain.occurrence-target.memberkey.bareword.zero_bounded_map` in `tests/matrix_reject/`) rather than
+  silently narrowed to a mandatory field — the narrowing generated decoders that reject valid CBOR
+  omitting the entry, invisible to round-trip tests. `+` / `n*m` with a lower bound ≥ 1 still generate a
+  mandatory field: under unique map keys they collapse to exactly-one, so mandatory is the honored
+  semantics. Real support for `*` (an `Option<T>` field, like `?`) is a candidate feature; surfaced while
+  testing the single-field struct-map fix.
 - An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
-  gracefully** (pinned by `tests/robustness/inline_group_occurrence.cddl` and
-  `map_inline_group_zero_occurrence.cddl`) rather than silently narrowed to an exactly-once record.
-  The narrowing generated decoders that reject valid CBOR carrying any other repetition count (the
-  spec-valid empty array `[]`, 2+ repetitions), invisible to round-trip tests. Boundaries: on the
-  ARRAY side any non-exactly-once marker rejects (`*` / `+` / `?` / `2*5` all admit a count the
-  flattened record can't represent), while `[1*1 (…)]` still generates — exactly-once IS the
-  semantics, so flattening the group away is sound. On the MAP side the f18d764 collapse boundary is
-  kept: a zero-permitting marker (`{ * (k: int) }`, which the inline-group wrapper hid from the
-  keyed-field fix) rejects, but `+` / `n*m` with a lower bound ≥ 1 still generate a mandatory field
-  (under unique map keys they collapse to exactly-one). The parenthesized table `{ * (int => tstr) }`
-  still generates a `BTreeMap` — the flatten preserves it and table detection fires on the inner
-  `k => v`. The rejection message recommends naming the group, and that named form now actually works
-  end to end: a plain group used solely as a `*` array element / table key/value is registered as a
-  concrete Array-rep struct, fixing an `is_enum` panic under `--wasm=true` (the default) and a
-  dangling struct reference (non-compiling crate) under `--wasm=false` that both hit
-  `pair = (int, tstr)`, `a = [* pair]`. Real `Vec<Synthesized>` / `Option`-style support for
-  zero-permitting markers is a candidate feature; flipping the row to `ok` must not decay back to
-  silent narrowing. The matrix cell `contain.occurrence-target.grpent.inline_group` is verdicted
-  `unsupported` (graceful exit 1), so it projects no decode-conformance obligation — its former
-  catalog row is removed (unsupported rows carry no row; the drift gate enforces this).
+  gracefully** (pinned by `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
+  in `tests/matrix_reject/`) rather than silently narrowed to an exactly-once record. The narrowing
+  generated decoders that reject valid CBOR carrying any other repetition count (the spec-valid empty
+  array `[]`, 2+ repetitions), invisible to round-trip tests. Boundaries: on the ARRAY side any
+  non-exactly-once marker rejects (`*` / `+` / `?` / `2*5` all admit a count the flattened record can't
+  represent), while `[1*1 (…)]` still generates — exactly-once IS the semantics, so flattening the group
+  away is sound. On the MAP side the f18d764 collapse boundary is kept: a zero-permitting marker
+  (`{ * (k: int) }`, which the inline-group wrapper hid from the keyed-field fix) rejects, but `+` /
+  `n*m` with a lower bound ≥ 1 still generate a mandatory field (under unique map keys they collapse to
+  exactly-one). The parenthesized table `{ * (int => tstr) }` still generates a `BTreeMap` — the flatten
+  preserves it and table detection fires on the inner `k => v`. The rejection message recommends naming
+  the group, and that named form now works end to end for `pair = (int, tstr)`, `a = [* pair]`. Real
+  `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a candidate feature;
+  flipping the row to `ok` must not decay back to silent narrowing. Unsupported rows carry no
+  decode-conformance row; `project_decode_conformance.ts` enforces that boundary.
+- Map-representation group-choice arm with a fixed-value entry panics:
+  `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
+  `generation.rs:2467` (`assert_eq!(";" vs "")`). This is a new valid-CDDL surface for fixed values in a
+  map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
+- Array-representation group-choice arm with an inline group panics:
+  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
+  `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
+  limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
+- Array-representation group-choice arm with an anonymous map panics:
+  `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
+  `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
+  has its own panic site, tracked as a known PANIC row in `tests/matrix_panic/`.
 - **Emitted `serialize`/`deserialize` fn generics are collision-proofed against the defined-ident
   set.** A rule named `r`/`w` camel-cases to a type `R`/`W` that would shadow the hardcoded
   `fn deserialize<R: BufRead + Seek>` / `fn serialize<'se, W: Write>` parameters, producing
@@ -339,7 +314,8 @@ from a degenerate example.**
   Pinned by `reserved_rule_name_rejects_gracefully_not_panics` and the `PANIC → error (graceful)`
   cells of `identifier_hazard_robustness_catalog`.
 - Nint/float fixed map keys on a struct-map record are **rejected gracefully** (pinned by
-  `tests/robustness/record_map_unsupported_key.cddl`) rather than panicking generation — only uint
+  `contain.map-key.memberkey.value.{nint,float}_colon_*` in `tests/matrix_reject/`) rather than
+  panicking generation — only uint
   and text fixed keys are implemented (the map-key write path and, under `--preserve-encodings`,
   `key_encoding_field`), so `neg = { -1: uint }` used to abort with `unsupported map key type for
   Neg.key__1: Nint(-1)`. The key is now classified at parsing BEFORE field naming, which also
@@ -349,9 +325,10 @@ from a degenerate example.**
   run. Classifying first also makes the `--preserve-encodings` panic site (`key_encoding_field`'s
   `unimplemented!`) unreachable for rejected specs. Boundaries kept: uint/text keys (`{ 1: uint }`,
   `{ "a": uint }`) and the printed remedy — a table `{ * nint => v }` in its own rule — keep
-  generating. The group-choice-arm rejection was already graceful (`group_choice_map_unsupported_key`)
-  and now matches the record path. Real nint/float key support stays the candidate feature; flipping
-  either row to `ok` requires real support, not a decay back to a panic.
+  generating. The group-choice-arm rejection is pinned by
+  `contain.group-choice-arm.memberkey.value.{nint,float}_map` and matches the record path. Real nint/float
+  key support stays the candidate feature; flipping either row to `ok` requires real support, not a decay
+  back to a panic.
 - A single-entry fixed-value ARROW key `{ k => v }` **routes to the record path**, byte-identical to
   the colon spelling `{ k: v }` (RFC 8610: a literal-key `k => v` is the same wire entry as `k: v`).
   Table detection now requires a NON-fixed key type — resolved through aliases, so an aliased literal
@@ -361,7 +338,7 @@ from a degenerate example.**
   text generate (byte-converging with the colon spelling), while nint/float/bool and aliased-literal
   domains reject gracefully. The `{ "a" => uint }` and multi-field mixed forms additionally needed a
   `Type2::TextValue` field-naming case (converging on the same field name as `{ "a": uint }`). Pinned
-  by `tests/robustness/map_fixed_key_arrow_single.cddl` (`ok` row) and the
+  by `contain.map-key.memberkey.type1.{uint,text}_arrow_*` in `tests/matrix_supported/` and the
   `fixed_key_arrow_single_entry_routes_to_record_path` unit test (byte-exact convergence + the graceful
   rejections). A decay back to table-detecting fixed domains would re-expose the panic.
 - A bareword map/array key that is a Rust keyword (`kw = { if: uint }`, `{ true: uint }`, `[if: uint]`,

@@ -1,0 +1,1 @@
+neg = { -1 => uint, 1: uint }

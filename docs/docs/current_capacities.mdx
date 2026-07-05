@@ -107,9 +107,13 @@ These constructs work as their own rule but are unsupported in the listed nestin
 
 | Construct | Unsupported roles | Example |
 |-----------|-------------------|---------|
-| `grpent.inline_group` | occurrence-target | `a = [* (int, tstr)]` |
+| `grpent.groupname` | occurrence-target | `m = { * grp }; grp = (k: int)` |
+| `grpent.inline_group` | group-choice-arm, occurrence-target, occurrence-target, occurrence-target, occurrence-target, occurrence-target | `t = [ (uint, tstr) // bytes ]` |
+| `memberkey.bareword` | occurrence-target, occurrence-target | `multi = { a: uint, 0*1 b: uint }` |
+| `memberkey.type1` | group-choice-arm, map-key, map-key, map-key, map-key, map-key, map-key | `t = { uint => tstr // b: tstr }` |
+| `memberkey.value` | group-choice-arm, group-choice-arm, map-key, map-key, map-key, map-key | `flt = { 1.5: uint // b: tstr }` |
 | `type2.array` | array-element, cbor-payload, choice-member, map-key, map-value, occurrence-target | `a = [[int]]` |
-| `type2.map` | array-element, cbor-payload, choice-member, generic-arg, map-value, occurrence-target | `a = [{x: int, y: uint}]` |
+| `type2.map` | array-element, cbor-payload, choice-member, generic-arg, group-choice-arm, map-value, occurrence-target | `a = [{x: int, y: uint}]` |
 | `type2.tag` | tag-content | `t = #6.24(#6.25(uint))` |
 
 ### Out of profile (not gaps)
