@@ -11,8 +11,10 @@ per-control-op** (all 37 IANA ops probed): "supported" requires the generated cr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; 3 divergences, all `preserve`-side —
-see § findings) and supported rows carry decode-foreign corroboration clauses (77 rows / 695 committed
-accept vectors, 0 failures; plus 4 `class="constraint"` enforcement reject vectors — see Q4 below).
+see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 10
+`class="constraint"` enforcement reject vectors — the enforcement axis is FULLY green: every row
+with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
+`query_q4_directional.ts --check`).
 Three projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), and `query_q1_gaps.ts`
 (the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1). **Every consumer query
@@ -29,23 +31,16 @@ subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold revie
 > **F3 done** (support is execution-gated — round-trip + reject tests run per probe; per-direction
 > reference vectors exist for the decode direction via the decode-conformance harness, encode via the
 > conformance oracles; the 5-way Q4 answer is projected by `query_q4_directional.ts` — see `README.md`
-> § "Directional support evidence"; the enforcement axis now carries `class="constraint"` reject
-> vectors so supported enforcement rows project `enforce = yes (bounded-reject)`, except the numeric
-> range/eq ops which stay `unverified` behind a rust-oracle gap — see § findings); **F8–F11
+> § "Directional support evidence"; the enforcement axis carries `class="constraint"` reject
+> vectors so EVERY supported enforcement row projects `enforce = yes (bounded-reject)` — the numeric
+> range/eq ops via `int`-targeted probe examples that sidestep the rust oracle's uint-target gap,
+> which remains an upstream report — see § findings); **F8–F11
 > out of scope** (bottom). Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Turn the numeric-op enforcement rows green (`ctl.{le,lt,gt,eq,ne,ge}`).** The rust oracle's
-  uint-target gap (§ findings; repro + upstream report text in `draft/rust-cddl-uint-control-op-gap.md`)
-  blocks constraint vectors on the committed `uint`-based probe examples. Either wait out the upstream
-  fix, or switch the six examples in `control_examples.toml` to `int`-targeted forms with literal
-  bounds (both oracles verified rejecting today; give `.ge` a non-vacuous bound like `int .ge 5`), then
-  re-run `verify.ts` to re-mint the rows' evidence and hand-add the constraint vectors. On landing,
-  widen `query_q4_directional.ts`'s pinned `EXPECTED_ENFORCE_YES` set — the flip must come from real
-  vectors, not from loosening the base-type-valid standard.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -91,20 +86,36 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   execution-gated and the projections subsume today's interim hand pins
   (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
   named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
-- **Identifier-hazard sweep (a NAME-shaped enumeration no construct axis can catch).** These are
-  collisions between user-chosen names and the emitted Rust, not construct shapes: a bareword map key
-  that is a Rust keyword (`{ if: uint }`, `{ true: uint }`) is now rejected at parse time with the
-  `@name` remedy (pinned by hand in `tests/robustness/map_bareword_keyword_key.cddl` and the
-  `bareword_keyword_field_name_rejects_gracefully` unit test), but a single-letter rule name colliding
-  with an emitted generic (`r`/`w` vs the reader/writer type params, § findings) is still an open
-  compile failure. Construct enumeration can never surface these because the axis is the NAME: sweep
-  hazardous identifiers (the Rust keyword list, the emitted generic names, prelude/std type names like
-  `Option`/`Int`) × name positions (rule name, bareword key, group name, `@name` directive) and assert
-  each generated crate passes the standalone compile gate. Build it as a projection in the
-  `project_robustness.ts` mold — hazard list × position templates emitting specs whose outcomes
-  land in the robustness catalog — so a swept keyword-in-bareword cell pins the FIXED graceful
-  rejection instead of the fix being a hand pin, and the rest of the keyword list we have never
-  probed gets verdicted alongside the still-open generic-collision case.
+- **Identifier-hazard sweep follow-ons (the sweep is built; two generator gaps it surfaced remain).**
+  The NAME-shaped enumeration a construct axis can't catch — collisions between user-chosen names and
+  the emitted Rust — is now a Rust test module (`src/tests/identifier_hazard_tests.rs`), NOT a
+  `project_robustness.ts`-mold TS projection: the hazard × position table is static data with no
+  matrix verdict upstream to drift from, so a TS layer would only copy a constant into fixtures. It
+  sweeps the `RUST_KEYWORDS` list + the emitted generic names (`r`/`w`) + prelude/std type names
+  (`Option`/`Vec`/`Int`/…) × six name positions (rule name in BOTH emitted type shapes — record
+  struct AND type-choice enum — bareword map key, bareword array key, plain group name, `@name`
+  directive value; the rule-name position carries the shape axis because the collision surface is
+  shape-dependent, and a struct-only sweep would launder enum-shaped `w` as clean), snapshotting each
+  cell's generation outcome (`identifier_hazard_robustness_catalog`, default tier) and compile-gating
+  the `ok` cells (`identifier_hazard_crates_compile`, `#[ignore]` full tier). Two gaps it pins for a
+  generator fix:
+  - **The `r`/`w` reader/writer-generic collisions (SHAPE-DEPENDENT).** A rule named `r` camel-cases
+    to `R` and fails on BOTH shapes — struct: E0574 in the deserialize body
+    (`fn deserialize<R: BufRead + Seek>`); enum: E0599, the `R::U64`/`R::Text` variant paths resolve
+    to the reader type parameter — and a plain group named `r` (registered as struct `R`) fails the
+    same way. A rule named `w` fails on the ENUM shape only: E0599, `W::U64`/`W::Text` inside
+    `fn serialize<'se, W: Write>` resolve to the writer type param (the "pub enum W" case); the
+    struct shape compiles because a struct's serialize body never names its own type. Fix with
+    collision-proof generic names (compute the camel-cased rule-ident set at generation start and
+    pick the first non-colliding name from a fixed sequence, threading it through the ~20 `W`/`R`
+    format sites in `generation.rs`); on landing, flip the `EXPECTED_COMPILE_FAIL` pins.
+  - **Reserved-name generation should reject, not panic.** A rule/group whose camel-cased name is a
+    reserved Rust type (`option`→`Option`, `box`→`Box`, `fn`→`Fn`) or a CDDL keyword (`true`/`false`)
+    aborts generation with an `assert!` in `RustIdent::new` (intermediate.rs:1146/1152) — a deliberate
+    reservation, but via panic on valid CDDL rather than a graceful `record_rejection` with a `@name`
+    remedy (the same shape the bareword-keyword-key rejection already uses). Route both asserts through
+    `record_rejection`; the sweep's snapshot flips those cells from `PANIC` to `error (graceful)` on
+    landing.
 - **Directive × attachment-position cells for the `dsl.*` features (fourth proven instance of the
   same under-enumeration).** Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
   `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
@@ -268,31 +279,23 @@ from a degenerate example.**
   `[[cover]]` against the AST role floor AND the per-cell support verdict (check H), so it can't claim ✅ on
   an unsupported cell.
 
-**Oracle-coverage gap (NOT a cddl-codegen bug — surfaced by the enforcement reject vectors):**
-- The rust `cddl` CLI oracle (0.10.5) does **not enforce the numeric range/equality control operators
+**Oracle-coverage gap (upstream, NOT a cddl-codegen bug — the matrix no longer sits on it):**
+- The rust `cddl` CLI oracle (0.10.x) does **not enforce the numeric range/equality control operators
   over a `uint` target** (`.le` / `.lt` / `.gt` / `.eq` / `.ne` / `.ge`) during `validate` — it accepts
-  a boundary violation like `0x0b` (11) against `x = uint .le 10` (`cddl --ci validate` exits 0). The
-  gap is **target-type-specific**: the identical controls over `int` ARE enforced (full repro matrix +
-  the ready-to-file upstream report: `draft/rust-cddl-uint-control-op-gap.md`). cddl-codegen's generated
-  decoder DOES enforce them (it emits a `RangeCheck` on deserialize and rejects the violation), and the
-  ruby reference oracle rejects them too. But the decode-conformance catalog certifies a
-  `class="constraint"` vector as spec-INVALID only when BOTH oracles reject it (the inverse of the
-  accept gate), and the committed probe examples for these ops are all `uint`-based
-  (`control_examples.toml`), so these rows cannot carry an in-type boundary-violating constraint vector
-  and honestly project `enforce = unverified (no reject vector)` rather than being engineered green
-  with a type-violation vector (which would test the base type, not the constraint). `ctl.ge` sits with
-  them: its committed example `x = uint .ge 0` has a bound that is vacuous over its base type — NO
-  in-type violation exists, so the only candidate vector (a negative) is a type violation, not
-  enforcement evidence. The three rows whose violating vector IS base-type-valid — `ctl.size` (a valid
-  bstr of the wrong length), `ctl.cbor` (a valid bstr whose payload is CBOR null, not a uint),
-  `memberkey.cut` (a well-formed map whose cut value is text, not int — scoped to the row's
-  single-member example) — are rejected by both oracles and DO carry constraint vectors
-  (`enforce = yes (bounded-reject)`). Two paths close it (either suffices, detailed in the draft note):
-  the upstream `cddl` fix, or switching the six ops' probe examples to `int`-targeted forms with
-  literal bounds (verified today: both oracles then reject the violations) — the latter costs a
-  `verify.ts` re-probe to re-mint each row's evidence, so it is a § 1-sized item for a session with the
-  oracle toolchain warm. Until then the enforcement axis is intentionally partial and
-  `query_q4_directional.ts --check` pins the exact green set so neither side drifts.
+  a boundary violation like `0x0b` (11) against `x = uint .le 10`. The gap is
+  **target-type-specific**: the identical controls over `int` ARE enforced (full repro matrix + the
+  ready-to-file upstream report: `draft/rust-cddl-uint-control-op-gap.md`; prune that note when the
+  upstream fix ships). The six ops' probe examples (`control_examples.toml`) target `int` with
+  literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
+  catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
+  vector per row — over `int` both oracles reject each violation, cddl-codegen's generated decoder
+  rejects it too (the emitted `RangeCheck`, executed by the replay gate), and all six rows project
+  `enforce = yes (bounded-reject)` alongside `ctl.size` / `ctl.cbor` / `memberkey.cut`. The `int`
+  targeting (and the non-vacuous `.ge 5` bound — `.ge 0` over a base type admitting no in-type
+  violation would leave only a type-violation vector, which tests the base type, not the constraint)
+  is load-bearing: `query_q4_directional.ts --check` pins the exact enforce-green set so a decay of
+  the examples back to `uint`/vacuous forms fails the gate instead of silently shedding enforcement
+  evidence.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
@@ -326,10 +329,18 @@ from a degenerate example.**
   silent narrowing. The matrix cell `contain.occurrence-target.grpent.inline_group` is verdicted
   `unsupported` (graceful exit 1), so it projects no decode-conformance obligation — its former
   catalog row is removed (unsupported rows carry no row; the drift gate enforces this).
-- Single-letter rule names colliding with an emitted generic parameter generate non-compiling code:
-  `r` hits the deserializer's reader generic `R` (`E0574`), `w` the serializer's writer generic `W`
-  (`E0599` — `pub enum W` resolves to the type param inside `fn serialize<'se, W: Write>`). The class
-  is "camel-cased rule name == an emitted generic"; candidate fix is collision-proof generic names.
+- Single-letter rule names colliding with an emitted generic parameter generate non-compiling code —
+  and the collision is **SHAPE-DEPENDENT**: `r` fails on both emitted shapes (record struct: `E0574`
+  in the deserialize body; type-choice enum: `E0599`, `R::U64`/`R::Text` variant paths resolving to
+  the reader type parameter), while `w` fails on the enum shape only (`E0599`, `W::U64`/`W::Text`
+  inside `fn serialize<'se, W: Write>` — the `pub enum W` case) because a struct's serialize body
+  never names its own type. The class is "camel-cased rule name == an emitted generic"; candidate fix
+  is collision-proof generic names. **Swept and pinned** by `src/tests/identifier_hazard_tests.rs`
+  (`identifier_hazard_crates_compile`'s `EXPECTED_COMPILE_FAIL`: `r` in the struct rule-name, enum
+  rule-name, and plain-group-name positions; `w` in the enum rule-name position), so the pins flip
+  loudly when the fix lands. The shape axis exists in the sweep because a struct-only pass laundered
+  enum-shaped `w` as clean — the same under-enumeration failure mode the sweep hunts, caught in
+  review.
 - Nint/float fixed map keys on a struct-map record are **rejected gracefully** (pinned by
   `tests/robustness/record_map_unsupported_key.cddl`) rather than panicking generation — only uint
   and text fixed keys are implemented (the map-key write path and, under `--preserve-encodings`,

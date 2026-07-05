@@ -250,15 +250,16 @@ and asserts they are accepted.
     pins above). Re-validated **spec-VALID** (both oracles accept) at each mint; PRUNED when the gap
     closes.
   - `class = "constraint"` — spec-INVALID CBOR (`source = "hand"`) that VIOLATES a constraint the row
-    enforces (an over/under-`.size` string, a below-`.ge` negative, a non-uint `.cbor` payload, a
-    cut-violating map value) and that the generated decoder must **durably reject**. Re-validated
-    **spec-INVALID** (both oracles reject — the inverse gate) at each mint; NEVER pruned; `reason`
-    names the violated constraint. This is Q4's `enforce = yes (bounded-reject)` evidence
-    (`query_q4_directional.ts` counts `class="constraint"` only). NOTE: the rust corroborating oracle
-    (`cddl` 0.10.x) does not enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne`), so their
-    boundary-violating vectors cannot pass the both-reject gate even though our decoder rejects them —
-    those rows stay `enforce = unverified` (ROADMAP § findings), not engineered green with a
-    type-violation vector.
+    enforces (an over/under-`.size` string, a numeric-op boundary violation like `11` against
+    `int .le 10`, a non-uint `.cbor` payload, a cut-violating map value) and that the generated
+    decoder must **durably reject**. Re-validated **spec-INVALID** (both oracles reject — the
+    inverse gate) at each mint; NEVER pruned; `reason` names the violated constraint. This is Q4's
+    `enforce = yes (bounded-reject)` evidence (`query_q4_directional.ts` counts `class="constraint"`
+    only). NOTE: the numeric range/eq rows carry these vectors only because their probe examples
+    target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)
+    does not enforce these ops over a `uint` target (upstream gap,
+    `draft/rust-cddl-uint-control-op-gap.md`), so a `uint`-targeted form can't pass the both-reject
+    gate; `query_q4_directional.ts --check` pins the exact green set against such a decay.
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
@@ -645,6 +646,28 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) t
 > control ops — as a snapshot diff in the default `cargo test` run instead of only on a manual verify.ts
 > sweep; `project_robustness.ts --check` independently pins each reject row's expected label to its matrix
 > evidence class, so a re-bless can't quietly launder such a flip.
+
+> Sibling system: `src/tests/identifier_hazard_tests.rs` is the same catalog+gate shape on a
+> **NAME-shaped** axis a construct enumeration can never catch — collisions between a user-chosen CDDL
+> *name* and the Rust the generator *emits* (the axis IS the name). It sweeps a static hazard table
+> (`RUST_KEYWORDS` reused from `parsing.rs`, the emitted generics `r`/`w`, and prelude/std type names
+> like `Option`/`Vec`/`Int`) × six name positions (rule name in BOTH emitted type shapes — record
+> struct and type-choice enum, since the generic collision is shape-dependent and a struct-only sweep
+> would launder enum-shaped `w` as clean — bareword map key, bareword array key, plain group name,
+> `@name` directive value). It is a Rust module rather than a `project_robustness.ts`
+> projection **on purpose**: the hazard × position table has no matrix verdict upstream to drift from,
+> so a TS layer would only copy a constant into fixtures. Two layers: `identifier_hazard_robustness_catalog`
+> (default `cargo test` — the `robustness` substring in its name keeps the `cargo insta test --
+> snapshot_tests robustness` orphan gate selecting it) snapshots each cell's *generation* outcome
+> (`ok` / `error (graceful)` / `PANIC`, a scorecard — a committed `PANIC` is a tracked-known gap, a NEW
+> one is a regression); `identifier_hazard_crates_compile` (`#[ignore]`, check.ts full tier) *compiles*
+> the `ok` cells — bundling each position's non-pinned hazards into one crate to avoid ~hundreds of
+> `cargo check`s, minus a pinned `EXPECTED_COMPILE_FAIL` set (today: `r` in the struct rule-name, enum
+> rule-name, and group-name positions; `w` in the enum rule-name position only — struct-shaped `w`
+> genuinely compiles) asserted to fail INDIVIDUALLY so the pins flip loudly when the generic-collision
+> fix lands.
+> A non-pinned bundle that fails to compile is a NEW hazard finding to add to the pin list (with a
+> reason) and report — not to paper over by editing the generator.
 
 ## Coverage
 
