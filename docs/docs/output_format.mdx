@@ -6,8 +6,8 @@ sidebar_position: 4
 
 - Inside of the output directly the tool always produces a `rust/` directory (including Cargo.toml, etc). 
 - Unless we pass in `--wasm=false` the tool also generates a corresponding `wasm/` directory.
-- The default format for `rust/` is to have a `lib.rs` containing the structs and `serialization.rs` containing their (de)serialization implementations/corresponding types.
-- The `wasm/` directory is full of wasm_bindgen-annotated wrappers all in `lib.rs` for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh).
+- Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus the runtime modules `error.rs`/`ordered_hash_map.rs`). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
+- The `wasm/` directory is full of wasm_bindgen-annotated wrappers (under `wasm/src/generated/`) for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh).
 
 **`from_cbor_bytes` rejects trailing bytes.** The generated/`static` `Deserialize::from_cbor_bytes` (and the wasm `from_cbor_bytes`) decode one complete value and then require the cursor to have consumed the **entire** input; leftover bytes after a complete value return an error (`cbor_event::Error::TrailingData`) rather than being silently ignored, so a truncated/corrupt or accidentally-concatenated buffer is caught. (Nested/embedded decoding — e.g. `bytes .cbor T` — is unaffected; only the top-level entry point enforces this.)
 
@@ -19,6 +19,75 @@ sidebar_position: 4
 So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
+
+## Generated crate roots (thin root, seed-once)
+
+Every generated crate — `rust/`, and (when enabled) `wasm/` and `wasm/json-gen/` — splits into two
+halves so your hand edits to the crate root survive regeneration:
+
+- **Tool-owned: `src/generated/**` (clobbered every run).** All generated code lives here —
+  `generated/mod.rs` (the type definitions + module decls + generator crate attrs like
+  `#![allow(clippy::too_many_arguments)]` as inner attrs), `generated/serialization.rs`, per-scope
+  submodules, and the copied runtime modules (`error.rs`, `ordered_hash_map.rs`). This subtree is
+  overwritten wholesale on every export — never hand-edit it.
+- **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
+  tool seeds a thin root:
+
+  ```rust
+  // Seeded by cddl-codegen on first export; never overwritten after that.
+  // All regenerated code lives in the `generated` module. Add your own
+  // modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+  mod generated;
+  pub use generated::*;
+  ```
+
+  If `src/lib.rs` already exists, the tool leaves it **byte-for-byte untouched** — an existence check
+  only, never a read of its contents to decide what to emit (the same bounded exception the
+  [`Cargo.toml` changeset](#generated-cargotoml-merge-not-clobber) carves out of the tool's otherwise
+  strict no-prior-output-dependence). New and renamed generated types surface automatically through
+  the `pub use generated::*;` glob, so the root needs no per-type maintenance.
+
+This is what makes **extern types** and other hand wiring durable. An extern type
+(`Foo = _CDDL_CODEGEN_EXTERN_TYPE_`) requires you to supply its Rust definition; wire it in from the
+thin root and it survives every regeneration:
+
+```rust
+mod generated;
+pub use generated::*;
+
+pub mod utils;            // your hand-written module
+pub use utils::Helper;    // re-export it at the crate root
+```
+
+```rust
+// src/utils.rs — references generated types through the crate-root glob
+use crate::Foo;
+pub struct Helper;
+pub fn round_trip(f: Foo) -> Foo { f }
+```
+
+Because the root is user-owned, the tool never re-clobbers this wiring — the failure mode where a
+regeneration dropped a hand-added `pub mod utils;` and broke every reference to the extern type is
+gone by construction.
+
+### Migrating from pre-split layouts
+
+Crates generated **before** the thin-root split have a monolithic `src/lib.rs` that carries the
+generated type definitions and module decls (`pub mod serialization;`, …) inline. Because the tool now
+seed-once **preserves** any existing `src/lib.rs`, it will not migrate that root for you (auto-migrating
+would mean reading and rewriting your file — the prior-output dependence the tool forbids). Instead the
+stale root breaks **loudly at compile time**: the generated types reappear under `src/generated/**` and
+the old `pub mod serialization;` decls now point at files the split relocated (an `E0583` unresolved-
+module error), and any inline type copies collide with the regenerated ones.
+
+The tool prints a one-time stderr warning when it sees a root without `mod generated;`. The one-time fix
+(per crate root — `rust/`, `wasm/`, `wasm/json-gen/`):
+
+1. Delete the generated items from `src/lib.rs` — the type definitions and the `pub mod serialization;`
+   / `pub mod cbor_encodings;` / runtime-module decls the tool now owns under `generated/`.
+2. Keep your hand wiring — your own `pub mod`/`pub use`/crate attrs, extern-type modules, etc.
+3. Add the two thin-root lines: `mod generated;` and `pub use generated::*;`.
+4. Regenerate. From here on the root is yours and survives every run.
 
 ## Generated `Cargo.toml` (merge, not clobber)
 

@@ -1241,6 +1241,26 @@ impl GenerationScope {
                 "rust/src/lib.rs" | "wasm/src/lib.rs" | "wasm/json-gen/src/lib.rs"
             ) && path.exists()
             {
+                // A root that predates the thin-root split still carries generated type definitions
+                // interleaved with hand wiring; under seed-once the tool leaves it untouched, so the
+                // now-under-`generated/**` types it duplicates produce loud compile errors. Detect
+                // that shape (no `mod generated;`) and name the one-time migration on stderr — a
+                // diagnostic only, so the written bytes (and the no-prior-output invariant) are
+                // unchanged. Reading the file here is the same bounded existence-adjacent peek the
+                // seed-once check already makes; it never feeds back into what is generated.
+                if let Ok(existing) = std::fs::read_to_string(&path)
+                    && !existing.contains("mod generated")
+                {
+                    eprintln!(
+                        "warning: {rel_path} predates the thin-root layout (no `mod generated;`). \
+                         Generated code now lives under `src/generated/**` and this root is \
+                         seed-once (never overwritten), so any generated items still in it will \
+                         collide with the regenerated subtree. One-time migration: delete the \
+                         generated items from {rel_path}, keep your hand wiring, and add \
+                         `mod generated;` and `pub use generated::*;`. See the \"Migrating from \
+                         pre-split layouts\" section of docs/output_format."
+                    );
+                }
                 continue;
             }
             if let Some(parent) = path.parent() {

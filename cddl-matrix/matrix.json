@@ -1482,7 +1482,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },

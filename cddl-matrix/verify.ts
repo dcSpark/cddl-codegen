@@ -503,7 +503,7 @@ interface CodegenProbe { gen: number; compile: number; test: number; minted: boo
 function probeCodegenRust(extraFlags: string[] = []): CodegenProbe {
   const gen = runCodegen(extraFlags);
   if (gen !== 0) return { gen, compile: -2, test: -2, minted: false };
-  const libPath = join(ccOut, "rust", "src", "lib.rs");
+  const libPath = join(ccOut, "rust", "src", "generated", "mod.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
   const test = runTest();
   const compile = test === 0 ? 0 : runCompile();
@@ -524,7 +524,7 @@ function wasmProbe(): { minted_wasm?: boolean; wasm_roundtrips?: number } {
   if (!WASM_PROBE) return {};
   const gen = runCodegenWasm();
   if (gen !== 0) return { minted_wasm: false, wasm_roundtrips: gen };
-  const wasmLib = join(ccOutWasm, "wasm", "src", "lib.rs");
+  const wasmLib = join(ccOutWasm, "wasm", "src", "generated", "mod.rs");
   const minted_wasm = existsSync(wasmLib) && readFileSync(wasmLib, "utf8").includes("mod cddl_generated_wasm_tests");
   return { minted_wasm, wasm_roundtrips: runWasmTest() };
 }
@@ -602,7 +602,7 @@ function embedFallback(id: string, example: string, cg: CodegenProbe, extraFlags
   writeFileSync(probeFile, `${example}\n${HOLDER_RULE} = [0, ${rule.name}]\n`);
   const gen = runCodegen(extraFlags);
   if (gen !== 0) { log(`synthetic holder failed to generate (cargo run exit ${gen}); kept compile verdict`); return undefined; }
-  const libPath = join(ccOut, "rust", "src", "lib.rs");
+  const libPath = join(ccOut, "rust", "src", "generated", "mod.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
   if (!minted) { log("synthetic holder minted no test surface; kept compile verdict"); return undefined; }
   const test = runTest();
@@ -803,25 +803,27 @@ function foreignGenCrate(outDir: string, spec: string): number {
   rmSync(outDir, { recursive: true, force: true });
   return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${outDir}`, "--wasm=false"], CODEGEN_DIR);
 }
-// Standalone decode surface = a nominal `impl Deserialize for <typeName>` (in lib.rs or serialization.rs).
+// Standalone decode surface = a nominal `impl Deserialize for <typeName>` (in the generated root
+// `generated/mod.rs` or `generated/serialization.rs` — the crate root lib.rs is a thin seeded stub).
 // Its absence (transparent aliases: Vec/BTreeMap/u64 targets) means decode must be exercised via a holder.
 function crateHasDeserialize(outDir: string, typeName: string): boolean {
   const re = new RegExp(`impl Deserialize for ${typeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-  for (const f of ["lib.rs", "serialization.rs"]) {
-    const p = join(outDir, "rust", "src", f);
+  for (const f of ["mod.rs", "serialization.rs"]) {
+    const p = join(outDir, "rust", "src", "generated", f);
     if (existsSync(p) && re.test(readFileSync(p, "utf8"))) return true;
   }
   return false;
 }
 
-// A #[cfg(test)] replay module appended to a generated lib.rs: one test per vector, decoding a byte-array
-// literal through `<decodeType>::from_cbor_bytes` exactly as the emitted tests call it (`use
-// super::serialization::*` brings the trait method into scope). accept => assert Ok; reject => assert Err.
+// A #[cfg(test)] replay module appended to the generated root scope (`generated/mod.rs` — where its
+// `use super::*;` / `use super::serialization::*;` resolve; the crate root lib.rs is a thin seeded
+// stub): one test per vector, decoding a byte-array literal through `<decodeType>::from_cbor_bytes`
+// exactly as the emitted tests call it. accept => assert Ok; reject => assert Err.
 // Runs `cargo test` (shared warm target) and parses per-test pass/fail. Returns null on a COMPILE failure
 // (no test result lines) so callers can tell "decoder rejected a vector" (a verdict) from "crate didn't
 // build" (a harness/detection problem).
 function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map<string, boolean> | null {
-  const libPath = join(outDir, "rust", "src", "lib.rs");
+  const libPath = join(outDir, "rust", "src", "generated", "mod.rs");
   const fns = vecs.map(v => {
     const bytes = (v.hex.match(/../g) ?? []).map(b => `0x${b}`).join(", ");
     const body = v.expectOk
@@ -840,7 +842,9 @@ function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map
   if (r.exitedDueToTimeout) { console.error(`HARNESS FAILURE: replay cargo test timed out twice (${outDir}).`); process.exit(2); }
   const out = (r.stdout?.toString() ?? "") + (r.stderr?.toString() ?? "");
   const res = new Map<string, boolean>();
-  for (const m of out.matchAll(/test __foreign_decode_replay::(\w+) \.\.\. (ok|FAILED)/g)) res.set(m[1], m[2] === "ok");
+  // the module is appended into `generated/mod.rs`, so its libtest path carries a parent module
+  // prefix (`generated::__foreign_decode_replay::…`) — match the marker anywhere after `test `
+  for (const m of out.matchAll(/test [\w:]*__foreign_decode_replay::(\w+) \.\.\. (ok|FAILED)/g)) res.set(m[1], m[2] === "ok");
   if (res.size !== vecs.length) return null;  // compile error / missing tests -> not a verdict
   return res;
 }
@@ -1091,7 +1095,7 @@ function runMintDecodeForeign(): never {
 writeFileSync(probeFile, "warm = [uint, tstr]\n");
 cleanOut();
 const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-const warmLib = warmGen === 0 ? readFileSync(join(ccOut, "rust", "src", "lib.rs"), "utf8") : "";
+const warmLib = warmGen === 0 ? readFileSync(join(ccOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
 const warmTest = warmGen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
 if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tests")) {
   console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, cargo test exit ${warmTest}, minted=${warmLib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
@@ -1109,7 +1113,7 @@ if (MINT_DECODE) runMintDecodeForeign();
 if (WASM_PROBE) {
   writeFileSync(probeFile, "warm = [uint, tstr]\n");
   const wgen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-  const wlib = wgen === 0 ? readFileSync(join(ccOutWasm, "wasm", "src", "lib.rs"), "utf8") : "";
+  const wlib = wgen === 0 ? readFileSync(join(ccOutWasm, "wasm", "src", "generated", "mod.rs"), "utf8") : "";
   const wtest = wgen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOutWasm, "wasm", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: WASM_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (wgen !== 0 || wtest !== 0 || !wlib.includes("mod cddl_generated_wasm_tests")) {
     console.error(`HARNESS FAILURE: wasm warm-up on a known-good spec failed (generate exit ${wgen}, cargo test exit ${wtest}, minted=${wlib.includes("mod cddl_generated_wasm_tests")}). The --wasm probe environment is unhealthy; no probes were run and nothing was written.`);
@@ -1126,7 +1130,7 @@ for (const prof of EMISSION_PROFILES) {
   writeFileSync(probeFile, "warm = [uint, tstr]\n");
   cleanOut();
   const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-  const lib = g === 0 ? readFileSync(join(ccOut, "rust", "src", "lib.rs"), "utf8") : "";
+  const lib = g === 0 ? readFileSync(join(ccOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
   const t = g === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (g !== 0 || t !== 0 || !lib.includes("mod cddl_generated_tests")) {
     console.error(`HARNESS FAILURE: emission-profile warm-up '${prof.name}' (flags: ${prof.flags.join(" ") || "none"}) failed (generate exit ${g}, cargo test exit ${t}, minted=${lib.includes("mod cddl_generated_tests")}). The '${prof.name}' probe pipeline is unhealthy; no probes were run and nothing was written.`);
