@@ -763,9 +763,16 @@ function composeCatalog(rows: CatalogRow[]): string {
     "#       holder = the rule is a transparent alias / named table / c-enum with no standalone decoder,",
     "#       so vectors are instances of `__probe_holder = [0, <rule>]` and decode routes through the",
     "#       GENERATED field-decode code (cbor_event's blanket impl would otherwise make it vacuous).",
-    "# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject row additionally",
-    "#       carries class (bug | limitation) + reason; a reject WITHOUT them is the mint's triage-pending",
-    "#       state — the drift gate stays RED until a human classifies it.",
+    "# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject vector carries a",
+    "#       class + reason. Two kinds, opposite spec-validity:",
+    "#         bug | limitation = spec-VALID CBOR the decoder WRONGLY rejects (a known gap); re-validated",
+    "#           spec-VALID at each mint and PRUNED when the gap closes. A class-less reject is the mint's",
+    "#           triage-pending state — the drift gate stays RED until a human classifies it.",
+    "#         constraint = spec-INVALID CBOR (source=\"hand\") that VIOLATES a constraint the row enforces",
+    "#           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the",
+    "#           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)",
+    "#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's",
+    "#           `enforce = yes (bounded-reject)` evidence.",
     "# pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.",
     "",
   ];
@@ -955,11 +962,26 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
     if (ruby === 0 && rust === 0) validatedAccept.push(c);
     else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
   }
+  // Class-aware reject re-validation (the inverse gates):
+  //   class="constraint" — spec-INVALID CBOR that violates a constraint the row enforces. Keep iff
+  //     BOTH oracles still REJECT it (nonzero exit); a constraint vector that has BECOME spec-valid is
+  //     upstream spec drift and is dropped/flagged. NOTE: the rust oracle (cddl 0.10.x) does NOT
+  //     enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne/.ge`) — it accepts in-type
+  //     boundary violations — so a boundary-violating vector on those rows cannot pass this
+  //     both-reject gate; those rows stay `enforce = unverified` by design (ROADMAP § findings). A
+  //     constraint vector must be BASE-TYPE-VALID (only the constraint rejects it) — a type-violation
+  //     vector is not enforcement evidence. `.size`, `.cbor`, and cut qualify on that standard.
+  //   bug/limitation — spec-VALID CBOR our decoder wrongly rejects. Keep iff BOTH oracles still ACCEPT.
   const validatedRejectPins: CatalogVector[] = [];
   for (const p of rejectPins) {
     const { ruby, rust } = validateBoth(spec, p.hex);
-    if (ruby === 0 && rust === 0) validatedRejectPins.push(p);
-    else dropped.push(`${id}/${p.hex} (reject pin no longer spec-valid; ruby ${ruby} rust ${rust})`);
+    if (p.class === "constraint") {
+      if (ruby !== 0 && rust !== 0) validatedRejectPins.push(p);
+      else dropped.push(`${id}/${p.hex} (constraint vector is no longer spec-INVALID per both oracles — upstream spec drift; ruby ${ruby} rust ${rust})`);
+    } else {
+      if (ruby === 0 && rust === 0) validatedRejectPins.push(p);
+      else dropped.push(`${id}/${p.hex} (reject pin no longer spec-valid; ruby ${ruby} rust ${rust})`);
+    }
   }
   if (validatedAccept.length === 0 && validatedRejectPins.length === 0) {
     // Every candidate was contested (an oracle rejected its own generator's output, or the two
@@ -987,7 +1009,9 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   validatedRejectPins.forEach((p, i) => {
     outVecs.push(p);  // keep the row either way (re-confirmed pin, or kept for human re-triage)
     if (res.get(`${foreignIdent(id)}_r${i}`) !== true)
-      pinBreak.push(`${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+      pinBreak.push(p.class === "constraint"
+        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
+        : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
   });
   return { id, axis, example, spec, mode, type_name: decodeType, vectors: outVecs };
 }

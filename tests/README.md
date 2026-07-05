@@ -245,6 +245,20 @@ and asserts they are accepted.
   into `class = "bug"` (ledger it in `cddl-matrix/ROADMAP.md` § findings) or
   `class = "limitation"` (cite `current_capacities.mdx` / the overlay note). `source = "hand"`
   supplement vectors survive re-mints and are re-validated like any candidate.
+- **Reject vectors split by class** — two opposite spec-validity claims live under `expect="reject"`:
+  - `class = "bug" | "limitation"` — spec-VALID CBOR the decoder WRONGLY rejects (the wrong-rejection
+    pins above). Re-validated **spec-VALID** (both oracles accept) at each mint; PRUNED when the gap
+    closes.
+  - `class = "constraint"` — spec-INVALID CBOR (`source = "hand"`) that VIOLATES a constraint the row
+    enforces (an over/under-`.size` string, a below-`.ge` negative, a non-uint `.cbor` payload, a
+    cut-violating map value) and that the generated decoder must **durably reject**. Re-validated
+    **spec-INVALID** (both oracles reject — the inverse gate) at each mint; NEVER pruned; `reason`
+    names the violated constraint. This is Q4's `enforce = yes (bounded-reject)` evidence
+    (`query_q4_directional.ts` counts `class="constraint"` only). NOTE: the rust corroborating oracle
+    (`cddl` 0.10.x) does not enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne`), so their
+    boundary-violating vectors cannot pass the both-reject gate even though our decoder rejects them —
+    those rows stay `enforce = unverified` (ROADMAP § findings), not engineered green with a
+    type-violation vector.
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and

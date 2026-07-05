@@ -149,10 +149,10 @@ for (const r of rows) {
     if (expect !== "accept" && expect !== "reject")
       problems.push(`${where}: \`expect\` must be "accept" or "reject" (got ${JSON.stringify(expect)})`);
     if (expect === "reject") {
-      if (v.class !== "bug" && v.class !== "limitation")
-        problems.push(`${where}: reject pin \`class\` must be "bug" or "limitation" (got ${JSON.stringify(v.class)}) — a class-less pin is triage-pending`);
+      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
+        problems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
       if (typeof v.reason !== "string" || v.reason.length === 0)
-        problems.push(`${where}: reject pin needs a nonempty \`reason\` (the ledgered bug / doc citation)`);
+        problems.push(`${where}: reject vector needs a nonempty \`reason\` (the ledgered bug / doc citation, or the violated constraint for class="constraint")`);
     }
   });
 }
@@ -183,6 +183,7 @@ const accepts = allVectors.filter(v => v.expect === "accept").length;
 const rejects = allVectors.filter(v => v.expect === "reject");
 const rejectBug = rejects.filter(v => v.class === "bug").length;
 const rejectLimitation = rejects.filter(v => v.class === "limitation").length;
+const rejectConstraint = rejects.filter(v => v.class === "constraint").length;
 
 if (problems.length) {
   console.log(`decode-conformance drift gate: ${problems.length} problem(s)`);
@@ -192,6 +193,6 @@ if (problems.length) {
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept, ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
-    `reject pins: ${rejectBug} bug, ${rejectLimitation} limitation · ${supported.size} supported matrix rows`,
+    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint · ${supported.size} supported matrix rows`,
 );
 process.exit(0);
