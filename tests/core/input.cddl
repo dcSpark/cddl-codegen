@@ -253,6 +253,25 @@ top_level_tagged_range = #6.5(3 .. 10)   ; tagged positive window: the wrapper m
 nint_ge_newtype = nint .ge -5 ; @newtype
 nint_le_newtype = nint .le -5 ; @newtype
 
+; Float value windows: enforced at deserialize AND constructor with a NaN-safe accept-form check.
+; Each field pins a distinct window shape (inclusive/exclusive rangeop, one-sided control ops, .eq,
+; and an f32 whose value is compared as f64 so the authored decimal is exact).
+float_bounds = [
+    incl: 0.5 .. 10.5,        ; inclusive both endpoints
+    excl: 0.5 ... 10.5,       ; exclusive upper endpoint (10.5 rejected)
+    lt: float64 .lt 10.5,     ; one-sided exclusive max
+    ge: float64 .ge 0.5,      ; one-sided inclusive min
+    eq: float64 .eq 3.5,      ; single accepted value
+    f32le: float32 .le 10.5   ; f32 variant, compared as f64
+]
+
+; Top-level literal float ranges WRAP into a bounds-enforcing newtype (a bare `pub type = f64` alias
+; would silently drop the window). Inclusive vs exclusive upper endpoint, plus a tagged variant whose
+; wrapper must write/require tag 5.
+float_range = 0.5 .. 10.5
+float_range_excl = 0.5 ... 10.5
+tagged_float_range = #6.5(0.5 .. 10.5)
+
 bounds_type_choice = bytes .size (0..64)
                    / text .size (0..64)
 

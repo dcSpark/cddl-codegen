@@ -891,6 +891,111 @@ mod tests {
     }
 
     #[test]
+    fn float_bounds() {
+        // `FloatBounds` fields (in order): incl 0.5..10.5, excl 0.5...10.5 (excludes 10.5),
+        // lt float64 .lt 10.5, ge float64 .ge 0.5, eq float64 .eq 3.5, f32le float32 .le 10.5.
+        // Every emitted check is NaN-safe accept-form (`!(x >= min && x <= max)`), so NaN — for
+        // which every comparison is false — is rejected on every field.
+        let base: [f64; 6] = [5.5, 5.5, 5.0, 5.0, 3.5, 5.0];
+        let make = |idx: usize, v: f64| {
+            let mut vals = base;
+            vals[idx] = v;
+            let mut cbor = arr_def(6);
+            for x in vals.iter() {
+                cbor.extend(cbor_float(*x));
+            }
+            FloatBounds::from_cbor_bytes(&cbor)
+        };
+        // baseline round-trips through both ctor and deserializer
+        let baseline = FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
+        deser_test(&baseline);
+        assert!(make(0, 5.5).is_ok());
+
+        // incl (0.5..10.5): both endpoints accepted, just-outside rejected, NaN rejected.
+        assert!(make(0, 0.5).is_ok());
+        assert!(make(0, 10.5).is_ok());
+        assert!(make(0, 0.4).is_err());
+        assert!(make(0, 10.6).is_err());
+        assert!(make(0, f64::NAN).is_err());
+        assert!(FloatBounds::new(f64::NAN, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
+        assert!(FloatBounds::new(0.5, 5.5, 5.0, 5.0, 3.5, 5.0).is_ok());
+        assert!(FloatBounds::new(10.5, 5.5, 5.0, 5.0, 3.5, 5.0).is_ok());
+        assert!(FloatBounds::new(10.6, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
+
+        // excl (0.5...10.5): the exclusive upper endpoint 10.5 is REJECTED; the min stays inclusive.
+        assert!(make(1, 0.5).is_ok());
+        assert!(make(1, 10.5).is_err());
+        assert!(make(1, 10.4).is_ok());
+        assert!(make(1, f64::NAN).is_err());
+
+        // lt (float64 .lt 10.5): one-sided exclusive max; no lower bound.
+        assert!(make(2, -100.0).is_ok());
+        assert!(make(2, 10.4).is_ok());
+        assert!(make(2, 10.5).is_err());
+        assert!(make(2, f64::NAN).is_err());
+
+        // ge (float64 .ge 0.5): one-sided inclusive min; no upper bound.
+        assert!(make(3, 0.5).is_ok());
+        assert!(make(3, 1000.0).is_ok());
+        assert!(make(3, 0.4).is_err());
+        assert!(make(3, f64::NAN).is_err());
+
+        // eq (float64 .eq 3.5): only 3.5 accepted.
+        assert!(make(4, 3.5).is_ok());
+        assert!(make(4, 3.4).is_err());
+        assert!(make(4, 3.6).is_err());
+        assert!(make(4, f64::NAN).is_err());
+
+        // f32le (float32 .le 10.5): f32 value compared as f64 so 10.5 (exact in f32) is the boundary.
+        assert!(make(5, 10.5).is_ok());
+        assert!(make(5, 10.6).is_err());
+        assert!(make(5, -5.0).is_ok());
+        assert!(make(5, f64::NAN).is_err());
+        assert!(FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.5).is_ok());
+        assert!(FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.6).is_err());
+    }
+
+    #[test]
+    fn top_level_float_ranges() {
+        // float_range = 0.5..10.5 wraps into a bounds-enforcing newtype: 10.5 accepted, 10.6/NaN
+        // rejected at BOTH new() and from_cbor_bytes. A bare `pub type = f64` alias would enforce
+        // nothing.
+        let fr = |v: f64| FloatRange::from_cbor_bytes(&cbor_float(v));
+        assert!(fr(0.5).is_ok());
+        assert!(fr(10.5).is_ok());
+        assert!(fr(5.5).is_ok());
+        assert!(fr(0.4).is_err());
+        assert!(fr(10.6).is_err());
+        assert!(fr(f64::NAN).is_err());
+        deser_test(&FloatRange::new(0.5).unwrap());
+        deser_test(&FloatRange::new(10.5).unwrap());
+        assert!(FloatRange::new(10.6).is_err());
+        assert!(FloatRange::new(f64::NAN).is_err());
+
+        // float_range_excl = 0.5...10.5: the exclusive upper endpoint 10.5 is rejected.
+        let fre = |v: f64| FloatRangeExcl::from_cbor_bytes(&cbor_float(v));
+        assert!(fre(10.4).is_ok());
+        assert!(fre(10.5).is_err());
+        assert!(FloatRangeExcl::new(10.5).is_err());
+        assert!(FloatRangeExcl::new(10.4).is_ok());
+
+        // tagged_float_range = #6.5(0.5..10.5): the wrapper writes tag 5 AND enforces the window.
+        let tagged = TaggedFloatRange::new(7.5).unwrap();
+        let tagged_bytes = tagged.to_cbor_bytes();
+        assert_eq!(tagged_bytes[0], 0xc5); // major type 6 (tag), argument 5
+        assert_eq!(tagged_bytes, [cbor_tag(5), cbor_float(7.5)].concat());
+        deser_test(&tagged);
+        assert!(TaggedFloatRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        // untagged input rejected (a bare alias would drop the tag)
+        assert!(TaggedFloatRange::from_cbor_bytes(&cbor_float(7.5)).is_err());
+        // out-of-window tagged input rejected
+        assert!(TaggedFloatRange::from_cbor_bytes(&[cbor_tag(5), cbor_float(10.6)].concat()).is_err());
+        // wrong tag rejected
+        assert!(TaggedFloatRange::from_cbor_bytes(&[cbor_tag(4), cbor_float(7.5)].concat()).is_err());
+        assert!(TaggedFloatRange::new(10.6).is_err());
+    }
+
+    #[test]
     fn used_as_key() {
         // this is just here to make sure this compiles (i.e. Ord traits are derived)
         let mut set_outer: std::collections::BTreeSet<Outer> = std::collections::BTreeSet::new();

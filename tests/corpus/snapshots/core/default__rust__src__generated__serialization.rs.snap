@@ -2226,6 +2226,201 @@ impl DeserializeEmbeddedGroup for First {
     }
 }
 
+impl cbor_event::se::Serialize for FloatBounds {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(6))?;
+        serializer.write_special(cbor_event::Special::Float(self.incl))?;
+        serializer.write_special(cbor_event::Special::Float(self.excl))?;
+        serializer.write_special(cbor_event::Special::Float(self.lt))?;
+        serializer.write_special(cbor_event::Special::Float(self.ge))?;
+        serializer.write_special(cbor_event::Special::Float(self.eq))?;
+        serializer.write_special(cbor_event::Special::Float(self.f32le as f64))?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for FloatBounds {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let len = raw.array()?;
+        let mut read_len = CBORReadLen::from(len);
+        read_len.read_elems(6)?;
+        read_len.finish()?;
+        (|| -> Result<_, DeserializeError> {
+            let incl = f64::deserialize(raw)
+                .and_then(|x| {
+                    if !(x >= 0.5f64 && x <= 10.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: Some(0.5f64),
+                            max: Some(10.5f64),
+                            min_inclusive: true,
+                            max_inclusive: true,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("incl"))?;
+            let excl = f64::deserialize(raw)
+                .and_then(|x| {
+                    if !(x >= 0.5f64 && x < 10.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: Some(0.5f64),
+                            max: Some(10.5f64),
+                            min_inclusive: true,
+                            max_inclusive: false,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("excl"))?;
+            let lt = f64::deserialize(raw)
+                .and_then(|x| {
+                    if !(x < 10.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: None,
+                            max: Some(10.5f64),
+                            min_inclusive: false,
+                            max_inclusive: false,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("lt"))?;
+            let ge = f64::deserialize(raw)
+                .and_then(|x| {
+                    if !(x >= 0.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: Some(0.5f64),
+                            max: None,
+                            min_inclusive: true,
+                            max_inclusive: false,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("ge"))?;
+            let eq = f64::deserialize(raw)
+                .and_then(|x| {
+                    if !(x >= 3.5f64 && x <= 3.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: Some(3.5f64),
+                            max: Some(3.5f64),
+                            min_inclusive: true,
+                            max_inclusive: true,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("eq"))?;
+            let f32le = f32::deserialize(raw)
+                .and_then(|x| {
+                    if !((x as f64) <= 10.5f64) {
+                        Err(DeserializeFailure::RangeCheckFloat {
+                            found: x as f64,
+                            min: None,
+                            max: Some(10.5f64),
+                            min_inclusive: false,
+                            max_inclusive: true,
+                        }
+                        .into())
+                    } else {
+                        Ok(x)
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("f32le"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(FloatBounds {
+                incl,
+                excl,
+                lt,
+                ge,
+                eq,
+                f32le,
+            })
+        })()
+        .map_err(|e| e.annotate("FloatBounds"))
+    }
+}
+
+impl cbor_event::se::Serialize for FloatRange {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_special(cbor_event::Special::Float(self.0))
+    }
+}
+
+impl Deserialize for FloatRange {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let inner = f64::deserialize(raw)?;
+        if !(inner >= 0.5f64 && inner <= 10.5f64) {
+            return Err(DeserializeError::new(
+                "FloatRange",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: true,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl cbor_event::se::Serialize for FloatRangeExcl {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_special(cbor_event::Special::Float(self.0))
+    }
+}
+
+impl Deserialize for FloatRangeExcl {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let inner = f64::deserialize(raw)?;
+        if !(inner >= 0.5f64 && inner < 10.5f64) {
+            return Err(DeserializeError::new(
+                "FloatRangeExcl",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: false,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
 impl cbor_event::se::Serialize for Foo {
     fn serialize<'se, W: Write>(
         &self,
@@ -5009,6 +5204,44 @@ impl Deserialize for TableMapWrapper {
             Ok(Self { key_721 })
         })()
         .map_err(|e| e.annotate("TableMapWrapper"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedFloatRange {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(5u64)?;
+        serializer.write_special(cbor_event::Special::Float(self.0))
+    }
+}
+
+impl Deserialize for TaggedFloatRange {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let inner = match raw.tag()? {
+            5 => f64::deserialize(raw)?,
+            tag => {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 5,
+                }
+                .into())
+            }
+        };
+        if !(inner >= 0.5f64 && inner <= 10.5f64) {
+            return Err(DeserializeError::new(
+                "TaggedFloatRange",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(0.5f64),
+                    max: Some(10.5f64),
+                    min_inclusive: true,
+                    max_inclusive: true,
+                },
+            ));
+        }
+        Ok(Self(inner))
     }
 }
 

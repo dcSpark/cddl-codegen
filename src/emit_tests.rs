@@ -87,8 +87,11 @@ pub(crate) enum MintValue {
     None,
     /// `false` (bool baseline / measured bool)
     Bool,
-    /// `0.0` (float baseline)
+    /// `0.0` (unbounded-float baseline)
     Float,
+    /// an in-window (or boundary/NaN) float literal for a bounded float type. `is_f32` selects the
+    /// typed constant needed for NaN / suffix (an f32 ctor param can't take `f64::NAN`).
+    FloatLit { value: f64, is_f32: bool },
     /// an integer literal; `prim` is the backing rust primitive (load-bearing for the wasm renderer,
     /// unused by `render_rust`). Covers unsigned/signed ints and `N64` (nint magnitude).
     Int {
@@ -158,6 +161,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::None => "None".to_owned(),
         MintValue::Bool => "false".to_owned(),
         MintValue::Float => "0.0".to_owned(),
+        MintValue::FloatLit { value, is_f32 } => render_float_lit(*value, *is_f32),
         MintValue::Int { value, .. } => format!("{value}"),
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
         MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
@@ -236,9 +240,14 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             RustStructType::GroupChoice { variants, .. } => {
                 choice_construct_reject(types, &name, variants, true)
             }
-            RustStructType::Wrapper { wrapped, min_max } => {
-                min_max.and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm))
-            }
+            RustStructType::Wrapper {
+                wrapped,
+                min_max,
+                float_min_max,
+            } => match float_min_max {
+                Some(window) => wrapper_construct_reject_float(&name, wrapped, window),
+                None => min_max.and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm)),
+            },
             _ => None,
         };
         if let Some(lines) = reject
@@ -285,9 +294,20 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
             RustStructType::GroupChoice { variants, .. } => {
                 choice_roundtrip(types, &name, variants, true, conf, rule_name, rt)
             }
-            RustStructType::Wrapper { wrapped, min_max } => {
-                wrapper_roundtrip(types, &name, wrapped, *min_max, conf, rule_name, rt)
-            }
+            RustStructType::Wrapper {
+                wrapped,
+                min_max,
+                float_min_max,
+            } => wrapper_roundtrip(
+                types,
+                &name,
+                wrapped,
+                *min_max,
+                *float_min_max,
+                conf,
+                rule_name,
+                rt,
+            ),
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
             RustStructType::CStyleEnum { .. } => None,
@@ -610,7 +630,7 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
     record
         .fields
         .iter()
-        .any(|f| !f.optional && f.rust_type.config.bounds.is_some())
+        .any(|f| !f.optional && f.rust_type.has_value_bounds())
 }
 
 /// Record round-trip: a valid baseline, plus one case per optional field with that field present.
@@ -744,11 +764,13 @@ fn choice_roundtrip(
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
 /// is present — the wrapper checks the raw measure, no nint transform).
+#[allow(clippy::too_many_arguments)]
 fn wrapper_roundtrip(
     types: &IntermediateTypes,
     name: &str,
     wrapped: &RustType,
     min_max: Option<Bounds>,
+    float_min_max: Option<crate::intermediate::FloatWindow>,
     conf: Option<&str>,
     dump_rule: Option<&str>,
     rt: RtEmit,
@@ -759,9 +781,15 @@ fn wrapper_roundtrip(
         Some(content) => Some(MintValue::StrLit {
             content: content.to_owned(),
         }),
-        None => match min_max {
-            Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
-            None => valid_value(types, wrapped),
+        None => match float_min_max {
+            Some(window) => Some(MintValue::FloatLit {
+                value: valid_float_in_window(&window),
+                is_f32: float_is_f32(wrapped),
+            }),
+            None => match min_max {
+                Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
+                None => valid_value(types, wrapped),
+            },
         },
     };
     let Some(inner) = inner else {
@@ -770,11 +798,11 @@ fn wrapper_roundtrip(
         );
         return None;
     };
-    // mirrors the wrapper ctor's fallibility rule: `new()` returns Result iff a min_max check exists
+    // mirrors the wrapper ctor's fallibility rule: `new()` returns Result iff a window check exists
     let base = render_rust(&MintValue::Wrapper {
         ident: name.to_owned(),
         inner: Box::new(inner),
-        can_fail: min_max.is_some(),
+        can_fail: min_max.is_some() || float_min_max.is_some(),
     });
     roundtrip_body(
         name,
@@ -821,11 +849,15 @@ fn record_deser_reject(
         }
     }
 
-    // the fields we can actually push out of bounds (bounded, non-nint, cheaply measurable)
+    // the fields we can actually push out of bounds: integer bounds cheaply measurable, or a float
+    // window (always testable — below/above/excluded-endpoint/NaN).
     let targets: Vec<&RustField> = ctor_fields
         .iter()
         .copied()
-        .filter(|f| f.rust_type.config.bounds.is_some() && measure_kind(&f.rust_type).is_some())
+        .filter(|f| {
+            (f.rust_type.config.bounds.is_some() && measure_kind(&f.rust_type).is_some())
+                || f.rust_type.config.float_bounds.is_some()
+        })
         .collect();
     if targets.is_empty() {
         return None;
@@ -850,13 +882,25 @@ fn record_deser_reject(
     let mut blocks = Vec::new();
     for target in targets {
         let field = &target.name;
-        let is_len = measure_kind(&target.rust_type) == Some(MeasureKind::Len);
-        let cases = bound_cases(
-            types,
-            &target.rust_type,
-            target.rust_type.config.bounds.unwrap(),
-            is_len,
-        );
+        // float window vs integer window: different case generator + reject failure variant. A NaN
+        // reject exercises the accept-form (NaN-safe) check that a reject-form check would let slip.
+        let (cases, failure) = if let Some(window) = &target.rust_type.config.float_bounds {
+            (
+                float_bound_cases(window, float_is_f32(&target.rust_type)),
+                "RangeCheckFloat",
+            )
+        } else {
+            let is_len = measure_kind(&target.rust_type) == Some(MeasureKind::Len);
+            (
+                bound_cases(
+                    types,
+                    &target.rust_type,
+                    target.rust_type.config.bounds.unwrap(),
+                    is_len,
+                ),
+                "RangeCheck",
+            )
+        };
         // skip fields whose bound coincides with the rust type's domain: no representable
         // out-of-bounds value exists, so the only cases are accepts and the test would be vacuous.
         if !cases.iter().any(|(_, accept, _)| !accept) {
@@ -887,7 +931,7 @@ fn record_deser_reject(
         let mut v = mk();
         v.{field} = {expr};
         let err = {name}::from_cbor_bytes(&v.to_cbor_bytes()).unwrap_err();
-        assert!(matches!(err.failure(), DeserializeFailure::RangeCheck {{ .. }}), \"{name}.{field} {label} must be rejected as RangeCheck, got {{:?}}\", err.failure());
+        assert!(matches!(err.failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}.{field} {label} must be rejected as {failure}, got {{:?}}\", err.failure());
     }}"
                 ));
             }
@@ -918,13 +962,23 @@ fn choice_construct_reject(
 
         // which arg (if any) carries a cheaply-testable bound?
         for (i, (arg_ty, _)) in arg_fields.iter().enumerate() {
-            let Some(kind) = measure_kind(arg_ty) else {
-                continue;
+            let (cases, failure) = if let Some(window) = &arg_ty.config.float_bounds {
+                (
+                    float_bound_cases(window, float_is_f32(arg_ty)),
+                    "RangeCheckFloat",
+                )
+            } else {
+                let Some(kind) = measure_kind(arg_ty) else {
+                    continue;
+                };
+                let Some(bounds) = arg_ty.config.bounds else {
+                    continue;
+                };
+                (
+                    bound_cases(types, arg_ty, bounds, kind == MeasureKind::Len),
+                    "RangeCheck",
+                )
             };
-            let Some(bounds) = arg_ty.config.bounds else {
-                continue;
-            };
-            let cases = bound_cases(types, arg_ty, bounds, kind == MeasureKind::Len);
             if !cases.iter().any(|(_, accept, _)| !accept) {
                 continue; // bound == type domain: no constructible out-of-bounds value
             }
@@ -951,7 +1005,7 @@ fn choice_construct_reject(
                     lines.push(if accept {
                         format!("    assert!({name}::{ctor}({args}).is_ok(), \"{name}::{ctor} {label} arg must be accepted\");")
                     } else {
-                        format!("    assert!(matches!({name}::{ctor}({args}).unwrap_err().failure(), DeserializeFailure::RangeCheck {{ .. }}), \"{name}::{ctor} {label} arg must be rejected as RangeCheck\");")
+                        format!("    assert!(matches!({name}::{ctor}({args}).unwrap_err().failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}::{ctor} {label} arg must be rejected as {failure}\");")
                     });
                 }
             }
@@ -1006,6 +1060,29 @@ fn wrapper_construct_reject(
     Some(lines.join("\n"))
 }
 
+/// construct-reject for a bounded FLOAT wrapper (`c = 0.5..10.5`, `#6.5(0.5..10.5)`). `new()` checks
+/// the NaN-safe window over the inner value (compared as f64), so each boundary/margin/NaN case is
+/// synthesized directly from the window and asserted to reject as `RangeCheckFloat`.
+fn wrapper_construct_reject_float(
+    name: &str,
+    wrapped: &RustType,
+    window: &crate::intermediate::FloatWindow,
+) -> Option<String> {
+    let cases = float_bound_cases(window, float_is_f32(wrapped));
+    let lines: Vec<String> = cases
+        .into_iter()
+        .map(|(expr, accept, label)| {
+            let expr = render_rust(&expr);
+            if accept {
+                format!("    assert!({name}::new({expr}).is_ok(), \"{name}::new {label} value must be accepted\");")
+            } else {
+                format!("    assert!(matches!({name}::new({expr}).unwrap_err().failure(), DeserializeFailure::RangeCheckFloat {{ .. }}), \"{name}::new {label} value must be rejected as RangeCheckFloat\");")
+            }
+        })
+        .collect();
+    Some(lines.join("\n"))
+}
+
 #[derive(PartialEq, Clone, Copy)]
 pub(crate) enum MeasureKind {
     /// the value itself is bounded (integer primitives)
@@ -1039,6 +1116,102 @@ pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
 /// In-range measure for a valid baseline: the inclusive min (or max, or 0).
 pub(crate) fn valid_measure(b: Bounds) -> i128 {
     b.0.or(b.1).unwrap_or(0)
+}
+
+/// Render a float literal for a `MintValue`. NaN needs a typed constant (an f32 ctor param rejects
+/// `f64::NAN`); finite values render via `{:?}` (round-trippable) with the `f32` suffix when needed.
+pub(crate) fn render_float_lit(value: f64, is_f32: bool) -> String {
+    if value.is_nan() {
+        if is_f32 { "f32::NAN" } else { "f64::NAN" }.to_owned()
+    } else if is_f32 {
+        format!("{value:?}f32")
+    } else {
+        format!("{value:?}")
+    }
+}
+
+/// A value safely INSIDE a float window (never a boundary), so a bounded float's round-trip / accessor
+/// baseline constructs successfully: the two-sided midpoint, or an interior point a unit past a
+/// one-sided endpoint (`.eq` collapses to its single value).
+fn valid_float_in_window(window: &crate::intermediate::FloatWindow) -> f64 {
+    match (window.0, window.1) {
+        (Some((lo, _)), Some((hi, _))) => {
+            if lo == hi {
+                lo
+            } else {
+                (lo + hi) / 2.0
+            }
+        }
+        (Some((lo, exclusive)), None) => {
+            if exclusive {
+                lo + 1.0
+            } else {
+                lo
+            }
+        }
+        (None, Some((hi, exclusive))) => {
+            if exclusive {
+                hi - 1.0
+            } else {
+                hi
+            }
+        }
+        (None, None) => 0.0,
+    }
+}
+
+/// Accept/reject boundary cases for a float window: `(value, accept, label)`. Always includes the
+/// out-of-window rejects (below min / above max with a unit of margin) and a NaN reject, plus an
+/// interior accept. For an f64 window (exact representation) it also pins each endpoint — included
+/// endpoints accept, excluded endpoints reject. f32 windows skip the exact-endpoint cases (an f32
+/// value cast back to f64 need not equal the authored decimal), keeping only the margin/NaN cases.
+fn float_bound_cases(
+    window: &crate::intermediate::FloatWindow,
+    is_f32: bool,
+) -> Vec<(MintValue, bool, &'static str)> {
+    let lit = |v: f64| MintValue::FloatLit { value: v, is_f32 };
+    let mut out = Vec::new();
+    // interior accept
+    out.push((lit(valid_float_in_window(window)), true, "in-window"));
+    if let Some((lo, exclusive)) = window.0 {
+        out.push((lit(lo - 1.0), false, "below min"));
+        if !is_f32 {
+            out.push((
+                lit(lo),
+                !exclusive,
+                if exclusive {
+                    "excluded min"
+                } else {
+                    "min boundary"
+                },
+            ));
+        }
+    }
+    if let Some((hi, exclusive)) = window.1 {
+        out.push((lit(hi + 1.0), false, "above max"));
+        if !is_f32 {
+            out.push((
+                lit(hi),
+                !exclusive,
+                if exclusive {
+                    "excluded max"
+                } else {
+                    "max boundary"
+                },
+            ));
+        }
+    }
+    // NaN must always be rejected by the NaN-safe accept-form check
+    out.push((lit(f64::NAN), false, "NaN"));
+    out
+}
+
+/// Whether a float primitive is f32 (its window value is stored as f64 but compared/minted as f32).
+fn float_is_f32(ty: &RustType) -> bool {
+    matches!(
+        ty.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::F32)
+    )
 }
 
 /// The in-range inner measure for a bounded wrapper's `new(inner)`. A bounded `nint` wrapper stores
@@ -1134,7 +1307,17 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Optional(_) => Some(MintValue::None),
         ConceptualRustType::Primitive(Primitive::Bool) => Some(MintValue::Bool),
-        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => Some(MintValue::Float),
+        // a bounded float must mint IN-WINDOW (a default 0.0 may sit outside the window and fail the
+        // ctor / round-trip); an unbounded float keeps the 0.0 baseline.
+        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => {
+            Some(match &ty.config.float_bounds {
+                Some(window) => MintValue::FloatLit {
+                    value: valid_float_in_window(window),
+                    is_f32: float_is_f32(ty),
+                },
+                None => MintValue::Float,
+            })
+        }
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
         // min (or 0 when unbounded) is in range.
@@ -1237,7 +1420,11 @@ pub(crate) fn mint_struct(
                 can_fail: record_ctor_can_fail(record),
             })
         }
-        RustStructType::Wrapper { wrapped, min_max } => {
+        RustStructType::Wrapper {
+            wrapped,
+            min_max,
+            float_min_max,
+        } => {
             // Tag-aware minting: when the wrapped type carries a CBOR tag whose RFC 8949 content the
             // reference `cddl` validator SEMANTICALLY enforces, the generic `"a"` baseline is
             // spec-violating (it round-trips byte-identically but the conformance oracle rejects it).
@@ -1247,17 +1434,27 @@ pub(crate) fn mint_struct(
                 Some(content) => MintValue::StrLit {
                     content: content.to_owned(),
                 },
-                None => match min_max {
-                    Some(mm) => {
-                        materialize_at(types, wrapped, wrapper_measure(wrapped, *mm), depth + 1)?
-                    }
-                    None => valid_value_at(types, wrapped, depth + 1)?,
+                None => match float_min_max {
+                    // a bounded float wrapper mints an in-window inner (0.0 may be outside the window)
+                    Some(window) => MintValue::FloatLit {
+                        value: valid_float_in_window(window),
+                        is_f32: float_is_f32(wrapped),
+                    },
+                    None => match min_max {
+                        Some(mm) => materialize_at(
+                            types,
+                            wrapped,
+                            wrapper_measure(wrapped, *mm),
+                            depth + 1,
+                        )?,
+                        None => valid_value_at(types, wrapped, depth + 1)?,
+                    },
                 },
             };
             Some(MintValue::Wrapper {
                 ident: name,
                 inner: Box::new(inner),
-                can_fail: min_max.is_some(),
+                can_fail: min_max.is_some() || float_min_max.is_some(),
             })
         }
         RustStructType::CStyleEnum { variants } => variants.first().map(|v| MintValue::CEnum {
@@ -1384,7 +1581,13 @@ fn materialize_at(
             Primitive::Str => Some(MintValue::Str { len: measure }),
             Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
             Primitive::Bool => Some(MintValue::Bool),
-            Primitive::F32 | Primitive::F64 => Some(MintValue::Float),
+            Primitive::F32 | Primitive::F64 => Some(match &ty.config.float_bounds {
+                Some(window) => MintValue::FloatLit {
+                    value: valid_float_in_window(window),
+                    is_f32: matches!(p, Primitive::F32),
+                },
+                None => MintValue::Float,
+            }),
         },
         ConceptualRustType::Array(elem) => {
             let e = valid_value_at(types, elem, depth)?;

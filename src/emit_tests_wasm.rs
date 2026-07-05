@@ -171,6 +171,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         MintValue::None => "None".to_owned(),
         MintValue::Bool => "false".to_owned(),
         MintValue::Float => "0.0".to_owned(),
+        MintValue::FloatLit { value, is_f32 } => emit_tests::render_float_lit(*value, *is_f32),
         MintValue::Int { value, .. } => format!("{value}"),
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
         MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),

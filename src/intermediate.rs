@@ -619,6 +619,10 @@ impl<'a> IntermediateTypes<'a> {
             }
             RustStructType::Wrapper {
                 min_max: Some(_), ..
+            }
+            | RustStructType::Wrapper {
+                float_min_max: Some(_),
+                ..
             } => {
                 self.mark_new_can_fail(rust_struct.ident.clone());
             }
@@ -1330,12 +1334,24 @@ pub enum CBOREncodingOperation {
     CBORBytes,
 }
 
+/// A per-side float bound window: `(min, max)` where each present side is `Some((value, exclusive))`.
+/// `exclusive == true` means the endpoint is EXCLUDED (`.gt`/`.lt`/the `...` exclusive rangeop);
+/// `false` means included (`.ge`/`.le`/`.eq`/the `..` inclusive rangeop). Unlike the integer window
+/// there is no ±1 collapse (float space is dense), so exclusivity is carried explicitly per side.
+/// Stored PARALLEL to — and mutually exclusive with — the integer `bounds` (a type never carries
+/// both). The value is kept as f64 even for an f32-typed member so the authored decimal literal is
+/// used exactly; emitted comparisons cast the f32 value to f64.
+pub type FloatWindow = (Option<(f64, bool)>, Option<(f64, bool)>);
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
     pub default: Option<FixedValue>,
     /// Bounds to check. Relevant to primitives + arrays + maps
     pub bounds: Option<(Option<i128>, Option<i128>)>,
+    /// Float value window to check (NaN-safe). Mutually exclusive with `bounds`; only ever set on
+    /// a float primitive member (`float64 .le 10.5`, `[f: 0.5..10.5]`).
+    pub float_bounds: Option<FloatWindow>,
     /// Basic group encoding override. If true basic encoding will not be used in (de)serialization
     pub basic_override: bool,
 }
@@ -1451,9 +1467,22 @@ impl RustType {
                 } else {
                     None
                 },
+                float_bounds: self.config.float_bounds,
                 basic_override: self.config.basic_override,
             },
         }
+    }
+
+    /// Attach a NaN-safe float value window (`float64 .le 10.5`, `[f: 0.5..10.5]`). Parallel to
+    /// `with_bounds`: a type never carries both integer and float bounds (asserted here). A window
+    /// with both sides absent collapses to no bound (returns self unchanged).
+    pub fn with_float_bounds(mut self, window: FloatWindow) -> Self {
+        assert!(self.config.bounds.is_none());
+        assert!(self.config.float_bounds.is_none());
+        if window.0.is_some() || window.1.is_some() {
+            self.config.float_bounds = Some(window);
+        }
+        self
     }
 
     pub fn not_basic(self) -> Self {
@@ -1463,6 +1492,7 @@ impl RustType {
             config: RustTypeSerializeConfig {
                 default: self.config.default,
                 bounds: self.config.bounds,
+                float_bounds: self.config.float_bounds,
                 basic_override: true,
             },
         }
@@ -1638,8 +1668,14 @@ impl RustType {
         }
     }
 
+    /// Whether this type carries a value window (integer OR float) that a constructor/setter must
+    /// enforce. Used to decide constructor fallibility at inline (field/variant/ctor) sites.
+    pub fn has_value_bounds(&self) -> bool {
+        self.config.bounds.is_some() || self.config.float_bounds.is_some()
+    }
+
     pub fn needs_bounds_check_if_inlined(&self, types: &IntermediateTypes) -> bool {
-        self.config.bounds.is_some()
+        self.has_value_bounds()
             || match self.resolve_alias_shallow() {
                 ConceptualRustType::Rust(ident) => types.can_new_fail(ident),
                 _ => false,
@@ -2722,6 +2758,10 @@ pub enum RustStructType {
     Wrapper {
         wrapped: RustType,
         min_max: Option<(Option<i128>, Option<i128>)>,
+        /// NaN-safe float window for a float-typed wrapper (`c = 0.5..10.5`, `#6.5(0.5..10.5)`).
+        /// Mutually exclusive with `min_max` (a wrapper never carries both). Its presence — like a
+        /// `Some` `min_max` — makes the wrapper's `new()`/deserialize fallible.
+        float_min_max: Option<FloatWindow>,
     },
     /// This is a no-op in generation but to prevent lookups of things in the prelude
     /// e.g. `int` from not being resolved while still being able to detect it when
@@ -2850,6 +2890,28 @@ impl RustStruct {
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
                 min_max,
+                float_min_max: None,
+            },
+        }
+    }
+
+    /// A float-windowed wrapper (`c = 0.5..10.5`, `#6.5(0.5..10.5)`). Parallel to `new_wrapper` but
+    /// carries a NaN-safe `FloatWindow` instead of an integer `min_max`.
+    pub fn new_wrapper_float(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        wrapped_type: RustType,
+        float_min_max: Option<FloatWindow>,
+    ) -> Self {
+        Self {
+            ident,
+            tag,
+            config: RustStructConfig::from(rule_metadata),
+            variant: RustStructType::Wrapper {
+                wrapped: wrapped_type,
+                min_max: None,
+                float_min_max,
             },
         }
     }

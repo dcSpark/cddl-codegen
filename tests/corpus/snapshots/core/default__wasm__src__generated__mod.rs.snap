@@ -1363,6 +1363,148 @@ impl AsRef<cddl_lib::First> for First {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct FloatBounds(cddl_lib::FloatBounds);
+
+#[wasm_bindgen]
+impl FloatBounds {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatBounds, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn incl(&self) -> f64 {
+        self.0.incl
+    }
+
+    pub fn excl(&self) -> f64 {
+        self.0.excl
+    }
+
+    pub fn lt(&self) -> f64 {
+        self.0.lt
+    }
+
+    pub fn ge(&self) -> f64 {
+        self.0.ge
+    }
+
+    pub fn eq(&self) -> f64 {
+        self.0.eq
+    }
+
+    pub fn f32le(&self) -> f32 {
+        self.0.f32le
+    }
+
+    pub fn new(
+        incl: f64,
+        excl: f64,
+        lt: f64,
+        ge: f64,
+        eq: f64,
+        f32le: f32,
+    ) -> Result<FloatBounds, JsError> {
+        cddl_lib::FloatBounds::new(incl, excl, lt, ge, eq, f32le)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::FloatBounds> for FloatBounds {
+    fn from(native: cddl_lib::FloatBounds) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatBounds> for cddl_lib::FloatBounds {
+    fn from(wasm: FloatBounds) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatBounds> for FloatBounds {
+    fn as_ref(&self) -> &cddl_lib::FloatBounds {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FloatRange(cddl_lib::FloatRange);
+
+#[wasm_bindgen]
+impl FloatRange {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatRange, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::FloatRange> for FloatRange {
+    fn from(native: cddl_lib::FloatRange) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatRange> for cddl_lib::FloatRange {
+    fn from(wasm: FloatRange) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatRange> for FloatRange {
+    fn as_ref(&self) -> &cddl_lib::FloatRange {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FloatRangeExcl(cddl_lib::FloatRangeExcl);
+
+#[wasm_bindgen]
+impl FloatRangeExcl {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatRangeExcl, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::FloatRangeExcl> for FloatRangeExcl {
+    fn from(native: cddl_lib::FloatRangeExcl) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatRangeExcl> for cddl_lib::FloatRangeExcl {
+    fn from(wasm: FloatRangeExcl) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatRangeExcl> for FloatRangeExcl {
+    fn as_ref(&self) -> &cddl_lib::FloatRangeExcl {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Foo(cddl_lib::Foo);
 
 #[wasm_bindgen]
@@ -3705,6 +3847,41 @@ impl From<TableMapWrapper> for cddl_lib::TableMapWrapper {
 
 impl AsRef<cddl_lib::TableMapWrapper> for TableMapWrapper {
     fn as_ref(&self) -> &cddl_lib::TableMapWrapper {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedFloatRange(cddl_lib::TaggedFloatRange);
+
+#[wasm_bindgen]
+impl TaggedFloatRange {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedFloatRange, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+}
+
+impl From<cddl_lib::TaggedFloatRange> for TaggedFloatRange {
+    fn from(native: cddl_lib::TaggedFloatRange) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedFloatRange> for cddl_lib::TaggedFloatRange {
+    fn from(wasm: TaggedFloatRange) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedFloatRange> for TaggedFloatRange {
+    fn as_ref(&self) -> &cddl_lib::TaggedFloatRange {
         &self.0
     }
 }

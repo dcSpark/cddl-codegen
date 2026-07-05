@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
-    FixedValue, GenericDef, GenericInstance, IntermediateTypes, ModuleScope, PlainGroupInfo,
-    Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
-    RustType, VariantIdent,
+    FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
+    PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct,
+    RustStructType, RustType, VariantIdent,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -19,6 +19,9 @@ use crate::utils::{
 #[allow(clippy::upper_case_acronyms)]
 enum ControlOperator {
     Range((Option<i128>, Option<i128>)),
+    /// A NaN-safe float value window (`float64 .le 10.5`, `0.5..10.5`, `float .le 10`). Carries
+    /// per-side exclusivity because float space is dense (no ±1 collapse like the integer window).
+    RangeFloat(FloatWindow),
     CBOR(RustType),
     Default(FixedValue),
 }
@@ -320,6 +323,151 @@ fn type2_to_number_literal(type2: &Type2) -> i128 {
     }
 }
 
+/// The numeric value of a literal `Type2` (uint/int/float) as f64, or `None` if it isn't a number
+/// literal. Used to build float windows without truncation (ints promote to f64 losslessly here).
+fn type2_to_f64(type2: &Type2) -> Option<f64> {
+    match type2 {
+        Type2::UintValue { value, .. } => Some(*value as f64),
+        Type2::IntValue { value, .. } => Some(*value as f64),
+        Type2::FloatValue { value, .. } => Some(*value),
+        _ => None,
+    }
+}
+
+/// Whether a literal `Type2` is a DECIMAL float (non-integer-valued), e.g. `10.5`. A whole float
+/// (`10.0`) or an int literal is not decimal — those keep the integer window path.
+fn type2_is_decimal_float(type2: &Type2) -> bool {
+    matches!(type2, Type2::FloatValue { value, .. } if value.fract() != 0.0)
+}
+
+/// Numeric classification of a range/control HEAD (the `type2` left of the operator).
+#[derive(Clone, Copy, PartialEq)]
+enum HeadNumeric {
+    /// a float primitive typename (`float16`/`float32`/`float64`) or a float literal (`0.5`)
+    Float,
+    /// an integer primitive typename (`uint`/`int`/`nint`)
+    NamedInt,
+    /// an integer literal (`0`, `-3`) — the head of a top-level literal range rule
+    IntLiteral,
+    Other,
+}
+
+fn head_numeric(type2: &Type2) -> HeadNumeric {
+    match type2 {
+        Type2::Typename { ident, .. } => {
+            match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
+                Some(Primitive::F32) | Some(Primitive::F64) => HeadNumeric::Float,
+                Some(Primitive::U64) | Some(Primitive::N64) | Some(Primitive::I64) => {
+                    HeadNumeric::NamedInt
+                }
+                _ => HeadNumeric::Other,
+            }
+        }
+        Type2::FloatValue { .. } => HeadNumeric::Float,
+        Type2::UintValue { .. } | Type2::IntValue { .. } => HeadNumeric::IntLiteral,
+        _ => HeadNumeric::Other,
+    }
+}
+
+/// Message naming the offending rule for a graceful float-constraint rejection. `None` (member
+/// position) omits the rule name; the op + remedy still make the message actionable.
+fn float_reject_rule_prefix(rule_name: Option<&RustIdent>) -> String {
+    match rule_name {
+        Some(r) => format!("rule `{r}`: "),
+        None => String::new(),
+    }
+}
+
+/// Intercepts the float-window and graceful-rejection cases of a numeric range/control operator,
+/// BEFORE the integer arms of `parse_control_operator` run (so `type2_to_number_literal`'s decimal
+/// assert is never reached from a range/control path). Returns:
+/// - `Some(RangeFloat(window))` when the constraint is a float window (float-typed head, or a
+///   literal-headed range promoted by a decimal-float endpoint);
+/// - `Some(Range((None, None)))` (a harmless placeholder) after RECORDING a graceful rejection for
+///   an unsupported shape (`.ne` over a float; a decimal float bound on an integer-typed head);
+/// - `None` when this is a genuine integer constraint (or a non-value op like `.size`/`.cbor`),
+///   which the caller then handles on the existing integer path.
+fn try_float_or_reject(
+    types: &mut IntermediateTypes,
+    type2: &Type2,
+    operator: &Operator,
+    rule_name: Option<&RustIdent>,
+) -> Option<ControlOperator> {
+    let head = head_numeric(type2);
+    match operator.operator {
+        RangeCtlOp::RangeOp { is_inclusive, .. } => {
+            let decimal_endpoint =
+                type2_is_decimal_float(type2) || type2_is_decimal_float(&operator.type2);
+            let is_float = head == HeadNumeric::Float || decimal_endpoint;
+            if !is_float {
+                return None;
+            }
+            match (type2_to_f64(type2), type2_to_f64(&operator.type2)) {
+                (Some(start), Some(end)) => Some(ControlOperator::RangeFloat((
+                    // range lower endpoint is always included; upper is excluded only for `a...b`
+                    Some((start, false)),
+                    Some((end, !is_inclusive)),
+                ))),
+                _ => {
+                    // a decimal float endpoint against a non-literal (e.g. named-int) head has no
+                    // representable numeric partner — reject gracefully instead of panicking.
+                    types.record_rejection(format!(
+                        "{}decimal float bound in a range against a non-numeric-literal head is unsupported — use a float head (float64) or integer bounds",
+                        float_reject_rule_prefix(rule_name)
+                    ));
+                    Some(ControlOperator::Range((None, None)))
+                }
+            }
+        }
+        RangeCtlOp::CtlOp { ctrl, .. } => {
+            use token::ControlOperator as Ctl;
+            // only the value-comparison control ops map onto a float window
+            if !matches!(
+                ctrl,
+                Ctl::EQ | Ctl::NE | Ctl::LE | Ctl::LT | Ctl::GE | Ctl::GT
+            ) {
+                return None;
+            }
+            let operand = &operator.type2;
+            if head == HeadNumeric::Float {
+                if matches!(ctrl, Ctl::NE) {
+                    // single-value exclusion has no principled float window (the integer min>max
+                    // ±1 hack is meaningless in dense float space) — reject gracefully.
+                    types.record_rejection(format!(
+                        "{}`.ne` on a float value is unsupported — single-value float exclusion has no representable window; use a range or remove the constraint",
+                        float_reject_rule_prefix(rule_name)
+                    ));
+                    return Some(ControlOperator::Range((None, None)));
+                }
+                let v =
+                    type2_to_f64(operand).expect("float control operand must be a numeric literal");
+                let window = match ctrl {
+                    Ctl::EQ => (Some((v, false)), Some((v, false))),
+                    Ctl::LE => (None, Some((v, false))),
+                    Ctl::LT => (None, Some((v, true))),
+                    Ctl::GE => (Some((v, false)), None),
+                    Ctl::GT => (Some((v, true)), None),
+                    _ => unreachable!(),
+                };
+                return Some(ControlOperator::RangeFloat(window));
+            }
+            // integer-typed head with a DECIMAL float bound: do not silently floor — reject.
+            if type2_is_decimal_float(operand) {
+                types.record_rejection(format!(
+                    "{}decimal float bound `{}` on an integer-typed head is unsupported — use an integer bound or a float head (float64)",
+                    float_reject_rule_prefix(rule_name),
+                    match operand {
+                        Type2::FloatValue { value, .. } => *value,
+                        _ => 0.0,
+                    }
+                ));
+                return Some(ControlOperator::Range((None, None)));
+            }
+            None
+        }
+    }
+}
+
 fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
     match type2 {
         Type2::UintValue { value, .. } => FixedValue::Uint(*value),
@@ -338,8 +486,16 @@ fn parse_control_operator(
     parent_visitor: &ParentVisitor,
     type2: &Type2,
     operator: &Operator,
+    // The enclosing rule name, when available (top-level rule position), for graceful-rejection
+    // messages naming the offending rule. `None` in member position (`rust_type_from_type1`).
+    rule_name: Option<&RustIdent>,
     cli: &Cli,
 ) -> ControlOperator {
+    // Float windows and graceful rejections (`.ne` over float, decimal bound on an int head) are
+    // decided first, so the integer arms below only ever see genuine integer operands.
+    if let Some(result) = try_float_or_reject(types, type2, operator, rule_name) {
+        return result;
+    }
     let lower_bound = match type2 {
         Type2::Typename { ident, .. } if ident.to_string() == "uint" => Some(0),
         _ => None,
@@ -548,6 +704,64 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
     }
 }
 
+/// Builds the ranged `RustType` for a FLOAT window: the given float primitive with the window
+/// attached as `float_bounds`. Unlike `range_to_primitive` there is no "collapses exactly onto a
+/// rust primitive" case — a float window is always a genuine sub-domain constraint (a both-`None`
+/// window, which never arises from a real op, drops to no bound via `with_float_bounds`).
+fn float_range_to_primitive(window: FloatWindow, primitive: Primitive) -> RustType {
+    RustType::from(ConceptualRustType::Primitive(primitive)).with_float_bounds(window)
+}
+
+/// Registers a top-level FLOAT range/control rule (`c = 0.5..10.5`, `#6.5(0.5..10.5)`,
+/// `float64 .le 10.5`). Mirrors `register_literal_range`'s three-way split for float windows:
+/// narrow window (or `@newtype`) → bounds-enforcing float wrapper; tag-only → wrapper that writes
+/// the tag; otherwise a transparent alias.
+#[allow(clippy::too_many_arguments)]
+fn register_float_range(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    mut ranged_type: RustType,
+    window: FloatWindow,
+    outer_tag: Option<usize>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    if ranged_type.config.float_bounds.is_some() || rule_metadata.newtype.is_some() {
+        // window carried in the wrapper's dedicated slot, not on the inner type
+        ranged_type.config.float_bounds = None;
+        types.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_wrapper_float(
+                type_name.clone(),
+                outer_tag,
+                Some(&rule_metadata),
+                ranged_type,
+                Some(window),
+            ),
+            cli,
+        );
+    } else if outer_tag.is_some() {
+        // full-domain float (no residual window) but tagged: wrap so the tag is written/checked
+        types.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_wrapper_float(
+                type_name.clone(),
+                None,
+                Some(&rule_metadata),
+                ranged_type.tag_if(outer_tag),
+                None,
+            ),
+            cli,
+        );
+    } else {
+        types.register_type_alias(
+            type_name.clone(),
+            AliasInfo::new_from_metadata(ranged_type.tag_if(outer_tag), rule_metadata),
+        );
+    }
+}
+
 /// Registers a top-level literal-headed range rule (`c = -10..-3`, `e = #6.5(3..10)`) using the same
 /// three-way split as the `Type2::Typename` Range arm, so literal-headed ranges wrap identically to
 /// their `int .op`-headed equivalents. `ranged_type` is the collapsed primitive (with any residual
@@ -652,10 +866,16 @@ fn parse_type(
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
                 let cddl_ident = CDDLIdent::new(ident.to_string());
-                let control = type1
-                    .operator
-                    .as_ref()
-                    .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
+                let control = type1.operator.as_ref().map(|op| {
+                    parse_control_operator(
+                        types,
+                        parent_visitor,
+                        &type1.type2,
+                        op,
+                        Some(type_name),
+                        cli,
+                    )
+                });
                 match control {
                     Some(control) => {
                         assert!(
@@ -716,6 +936,24 @@ fn parse_type(
                                         ),
                                     );
                                 }
+                            }
+                            ControlOperator::RangeFloat(window) => {
+                                // `float64 .le 10.5` (float typename head): wrap into a float
+                                // bounds-enforcing newtype (or tag/alias) — same three-way split.
+                                let ranged_type = float_range_to_primitive(
+                                    window,
+                                    ident_to_primitive(&cddl_ident).unwrap(),
+                                );
+                                register_float_range(
+                                    types,
+                                    parent_visitor,
+                                    type_name,
+                                    ranged_type,
+                                    window,
+                                    outer_tag,
+                                    rule_metadata,
+                                    cli,
+                                );
                             }
                             ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
                                 Some(Primitive::Bytes) => {
@@ -936,10 +1174,16 @@ fn parse_type(
         Type2::IntValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Nint(*value));
 
-            let control = type1
-                .operator
-                .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
+            let control = type1.operator.as_ref().map(|op| {
+                parse_control_operator(
+                    types,
+                    parent_visitor,
+                    &type1.type2,
+                    op,
+                    Some(type_name),
+                    cli,
+                )
+            });
             // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
             match control {
                 Some(ControlOperator::Range(min_max)) => {
@@ -960,6 +1204,20 @@ fn parse_type(
                         cli,
                     );
                 }
+                Some(ControlOperator::RangeFloat(window)) => {
+                    // `foo = 0..10.5` (int-literal head promoted by a decimal endpoint): wraps as a
+                    // float bounds-enforcing newtype, primitive f64.
+                    register_float_range(
+                        types,
+                        parent_visitor,
+                        type_name,
+                        float_range_to_primitive(window, Primitive::F64),
+                        window,
+                        outer_tag,
+                        rule_metadata,
+                        cli,
+                    );
+                }
                 _ => {
                     types.register_type_alias(
                         type_name.clone(),
@@ -974,10 +1232,16 @@ fn parse_type(
         Type2::UintValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
 
-            let control = type1
-                .operator
-                .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
+            let control = type1.operator.as_ref().map(|op| {
+                parse_control_operator(
+                    types,
+                    parent_visitor,
+                    &type1.type2,
+                    op,
+                    Some(type_name),
+                    cli,
+                )
+            });
             // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
             match control {
                 Some(ControlOperator::Range(min_max)) => {
@@ -988,6 +1252,19 @@ fn parse_type(
                         type_name,
                         range_to_primitive(min_max.0, min_max.1, Primitive::U64),
                         min_max,
+                        outer_tag,
+                        rule_metadata,
+                        cli,
+                    );
+                }
+                Some(ControlOperator::RangeFloat(window)) => {
+                    // `foo = 0..10.5` (uint-literal head promoted by a decimal endpoint): float f64.
+                    register_float_range(
+                        types,
+                        parent_visitor,
+                        type_name,
+                        float_range_to_primitive(window, Primitive::F64),
+                        window,
                         outer_tag,
                         rule_metadata,
                         cli,
@@ -1019,21 +1296,55 @@ fn parse_type(
         Type2::FloatValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Float(*value));
 
-            let control = type1
-                .operator
-                .as_ref()
-                .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
-            // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
-            let base_type = match control {
-                Some(ControlOperator::Range(min_max)) => {
-                    range_to_primitive(min_max.0, min_max.1, Primitive::F64)
+            let control = type1.operator.as_ref().map(|op| {
+                parse_control_operator(
+                    types,
+                    parent_visitor,
+                    &type1.type2,
+                    op,
+                    Some(type_name),
+                    cli,
+                )
+            });
+            // We end up here with float ranges like foo = 0.5..10.5 which is why we're not just
+            // reporting a fixed value.
+            match control {
+                Some(ControlOperator::RangeFloat(window)) => {
+                    // Top-level literal float range (`foo = 0.5..10.5`, `#6.5(0.5..10.5)`): WRAP into
+                    // a bounds-enforcing float newtype so its standalone to/from_cbor_bytes enforces
+                    // the window (and writes the tag). Pre-fix this dropped the window into a bare
+                    // `pub type Foo = f64;` alias — silent non-enforcement.
+                    register_float_range(
+                        types,
+                        parent_visitor,
+                        type_name,
+                        float_range_to_primitive(window, Primitive::F64),
+                        window,
+                        outer_tag,
+                        rule_metadata,
+                        cli,
+                    );
                 }
-                _ => fallback_type.into(),
-            };
-            types.register_type_alias(
-                type_name.clone(),
-                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
-            );
+                // an integer window can arise if a whole-float range were routed here, but the float
+                // head always takes the RangeFloat path above; keep the alias fallback for the bare
+                // constant (no operator) case.
+                Some(ControlOperator::Range(min_max)) => {
+                    let base_type = range_to_primitive(min_max.0, min_max.1, Primitive::F64);
+                    types.register_type_alias(
+                        type_name.clone(),
+                        AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
+                    );
+                }
+                _ => {
+                    types.register_type_alias(
+                        type_name.clone(),
+                        AliasInfo::new_from_metadata(
+                            RustType::from(fallback_type).tag_if(outer_tag),
+                            rule_metadata,
+                        ),
+                    );
+                }
+            }
         }
         Type2::ParenthesizedType { pt, .. } => {
             // The cddl parser keeps a parenthesized single type as a ParenthesizedType. Unwrap it here
@@ -1584,7 +1895,7 @@ fn rust_type_from_type1(
     let control = type1
         .operator
         .as_ref()
-        .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, cli));
+        .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, None, cli));
     let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
     // println!("type1: {:#?}", type1);
     match control {
@@ -1607,6 +1918,22 @@ fn rust_type_from_type1(
             Type2::IntValue { .. } => range_to_primitive(low, high, Primitive::I64),
             Type2::UintValue { .. } => range_to_primitive(low, high, Primitive::U64),
             _ => base_type.with_bounds((low, high)),
+        },
+        // member-position float window (`[f: 0.5..10.5]`, `[g: float64 .lt 10.5]`): attach the
+        // NaN-safe window to the primitive so the field's ctor/setter/deserialize enforce it.
+        Some(ControlOperator::RangeFloat(window)) => match &type1.type2 {
+            Type2::Typename { ident, .. } => {
+                match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
+                    Some(p) => float_range_to_primitive(window, p),
+                    None => base_type.with_float_bounds(window),
+                }
+            }
+            // literal-headed member range promoted to float by a decimal endpoint (`[f: 0.5..10.5]`,
+            // `[f: 0..10.5]`) — the base value is a Fixed constant, so use an f64 primitive.
+            Type2::IntValue { .. } | Type2::UintValue { .. } | Type2::FloatValue { .. } => {
+                float_range_to_primitive(window, Primitive::F64)
+            }
+            _ => base_type.with_float_bounds(window),
         },
         Some(ControlOperator::Default(default_value)) => base_type.default(default_value),
         None => base_type,
