@@ -40,6 +40,23 @@ import { ROOT, loadMatrixInputs, stableJson } from "./lib";
 
 process.chdir(ROOT);
 
+const verifyStartedAt = Date.now();
+const formatElapsed = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const millis = ms % 1000;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  if (seconds > 0) return `${seconds}.${millis.toString().padStart(3, "0")}s`;
+  return `${millis}ms`;
+};
+process.on("exit", () => {
+  console.log(`elapsed time        : ${formatElapsed(Date.now() - verifyStartedAt)}`);
+});
+
 // --- oracle locations (env-overridable; defaults assume the sibling-repo layout) ------------------
 const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script lives in
 const RUST_CDDL = process.env.RUST_CDDL ?? resolve(homedir(), "Documents/git/cddl/target/debug/cddl");
