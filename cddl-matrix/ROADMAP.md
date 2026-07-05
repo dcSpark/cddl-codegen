@@ -86,26 +86,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   execution-gated and the projections subsume today's interim hand pins
   (`tests/robustness/inline_group_occurrence.cddl`, `map_inline_group_zero_occurrence.cddl`, and the
   named-workaround cases in `occurrence_marker_on_inline_group_rejects_gracefully`).
-- **Identifier-hazard sweep follow-ons (the sweep is built; two generator gaps it surfaced remain).**
-  The NAME-shaped enumeration a construct axis can't catch — collisions between user-chosen names and
-  the emitted Rust — is now a Rust test module (`src/tests/identifier_hazard_tests.rs`), NOT a
-  `project_robustness.ts`-mold TS projection: the hazard × position table is static data with no
-  matrix verdict upstream to drift from, so a TS layer would only copy a constant into fixtures. It
-  sweeps the `RUST_KEYWORDS` list + the emitted generic names (`r`/`w`) + prelude/std type names
-  (`Option`/`Vec`/`Int`/…) × six name positions (rule name in BOTH emitted type shapes — record
-  struct AND type-choice enum — bareword map key, bareword array key, plain group name, `@name`
-  directive value; the rule-name position carries the shape axis because the collision surface is
-  shape-dependent, and a struct-only sweep would launder enum-shaped `w` as clean), snapshotting each
-  cell's generation outcome (`identifier_hazard_robustness_catalog`, default tier) and compile-gating
-  the `ok` cells (`identifier_hazard_crates_compile`, `#[ignore]` full tier). One gap it still pins
-  for a generator fix (the `r`/`w` reader/writer-generic collision is fixed — see § findings):
-  - **Reserved-name generation should reject, not panic.** A rule/group whose camel-cased name is a
-    reserved Rust type (`option`→`Option`, `box`→`Box`, `fn`→`Fn`) or a CDDL keyword (`true`/`false`)
-    aborts generation with an `assert!` in `RustIdent::new` (intermediate.rs:1146/1152) — a deliberate
-    reservation, but via panic on valid CDDL rather than a graceful `record_rejection` with a `@name`
-    remedy (the same shape the bareword-keyword-key rejection already uses). Route both asserts through
-    `record_rejection`; the sweep's snapshot flips those cells from `PANIC` to `error (graceful)` on
-    landing.
 - **Directive × attachment-position cells for the `dsl.*` features (fourth proven instance of the
   same under-enumeration).** Each comment-DSL feature (`dsl.name`, `dsl.newtype`, `dsl.doc`,
   `dsl.custom_serialize/deserialize/json`) is verdicted from ONE example in ONE attachment
@@ -342,6 +322,22 @@ from a degenerate example.**
   now-green `r`/`w` bundles of `identifier_hazard_crates_compile` (`EXPECTED_COMPILE_FAIL` is empty).
   The sweep's shape axis (struct AND type-choice enum for the rule-name position) stays — it exists
   because a struct-only pass had laundered enum-shaped `w` as clean.
+- **Reserved-name rule/group definitions are rejected gracefully, not via panic.** A rule or plain
+  group whose camel-cased name is a reserved Rust std/prelude type (`option`→`Option`, `box`→`Box`,
+  `fn`→`Fn`, `self`/`Self`→`Self`) or a CDDL keyword (`true`/`false`, prelude type names) is caught by
+  a pre-scan of user-chosen rule/group names in `api::with_types`
+  (`intermediate::reserved_ident_rejection`, mirroring the two `assert!` guards in `RustIdent::new`)
+  and surfaced through the normal `record_rejection` channel with a message that cites the rule and
+  explains the remedy (rename the identifier: unlike a struct field a `; @name` comment renames, a
+  rule/group name IS the emitted type name). The pre-scan runs and aborts BEFORE any
+  `rule_ident`/`RustIdent::new` call, because a reserved name can also be *referenced* by another
+  rule — any such reference reaches the same assert before `finalize` could drain the rejection. The
+  asserts in `RustIdent::new` stay as a backstop for synthesized/internal idents (which never route
+  through the pre-scan). `int` is excluded identically to `RustIdent::new`: it names the project's own
+  pre-registered extern struct, so `group-name int` still aborts on the plain-group representation
+  assert (`assert_eq!(found_rep, Some(rep))`) — a distinct collision, not a reserved-name reject.
+  Pinned by `reserved_rule_name_rejects_gracefully_not_panics` and the `PANIC → error (graceful)`
+  cells of `identifier_hazard_robustness_catalog`.
 - Nint/float fixed map keys on a struct-map record are **rejected gracefully** (pinned by
   `tests/robustness/record_map_unsupported_key.cddl`) rather than panicking generation — only uint
   and text fixed keys are implemented (the map-key write path and, under `--preserve-encodings`,

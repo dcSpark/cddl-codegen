@@ -3,15 +3,18 @@ source: src/tests/identifier_hazard_tests.rs
 expression: catalog
 ---
 # identifier-hazard sweep: generation outcome per (name-position × hazardous identifier) — a
-# SCORECARD, not a contract. A committed PANIC is a TRACKED-KNOWN gap (today: rule/group names
-# whose camel-cased form is a reserved Rust type name or a CDDL keyword hit the `assert!` guards
-# in `RustIdent::new`, intermediate.rs:1146/1152 — a deliberate reservation, but via panic
-# rather than a graceful `record_rejection`; candidate fix, not blessed-correct). A NEW panic —
-# a cell FLIPPING to PANIC, or a panic decaying to a silently-wrong `ok` — is a regression:
-# hazardous names must reject gracefully, never `panic!`/`assert!`. `ok` is generate-only — a
-# rule/group name that generates but does NOT compile (the r/w generic collision) still records
-# `ok`; the compile verdict is the `identifier_hazard_crates_compile` gate (full tier).
-# Source: src/tests/identifier_hazard_tests.rs.
+# SCORECARD, not a contract. A NEW panic — a cell FLIPPING to PANIC, or a panic decaying to a
+# silently-wrong `ok` — is a regression: hazardous names must reject gracefully, never
+# `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved
+# Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in
+# `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts
+# remain a backstop for synthesized idents. The one committed PANIC left — `group-name int` —
+# is a DISTINCT collision: a plain group named `int` clashes with the project's pre-registered
+# extern `int` struct and trips the plain-group representation assert, not a reserved-name
+# guard (`int` is special-cased out of the reserved check, so it is not pre-scanned). `ok` is
+# generate-only — a rule/group name that generates but does NOT compile (the historical r/w
+# generic collision, now fixed) still records `ok`; the compile verdict is the
+# `identifier_hazard_crates_compile` gate (full tier). Source: src/tests/identifier_hazard_tests.rs.
 
 rule-name       as         ok
 rule-name       break      ok
@@ -22,8 +25,8 @@ rule-name       dyn        ok
 rule-name       else       ok
 rule-name       enum       ok
 rule-name       extern     ok
-rule-name       false      PANIC
-rule-name       fn         PANIC
+rule-name       false      error (graceful)
+rule-name       fn         error (graceful)
 rule-name       for        ok
 rule-name       if         ok
 rule-name       impl       ok
@@ -37,13 +40,13 @@ rule-name       mut        ok
 rule-name       pub        ok
 rule-name       ref        ok
 rule-name       return     ok
-rule-name       self       PANIC
-rule-name       Self       PANIC
+rule-name       self       error (graceful)
+rule-name       Self       error (graceful)
 rule-name       static     ok
 rule-name       struct     ok
 rule-name       super      ok
 rule-name       trait      ok
-rule-name       true       PANIC
+rule-name       true       error (graceful)
 rule-name       type       ok
 rule-name       unsafe     ok
 rule-name       use        ok
@@ -54,7 +57,7 @@ rule-name       await      ok
 rule-name       try        ok
 rule-name       abstract   ok
 rule-name       become     ok
-rule-name       box        PANIC
+rule-name       box        error (graceful)
 rule-name       do         ok
 rule-name       final      ok
 rule-name       macro      ok
@@ -67,14 +70,14 @@ rule-name       yield      ok
 rule-name       gen        ok
 rule-name       r          ok
 rule-name       w          ok
-rule-name       option     PANIC
-rule-name       some       PANIC
-rule-name       none       PANIC
-rule-name       result     PANIC
-rule-name       ok         PANIC
-rule-name       err        PANIC
-rule-name       vec        PANIC
-rule-name       string     PANIC
+rule-name       option     error (graceful)
+rule-name       some       error (graceful)
+rule-name       none       error (graceful)
+rule-name       result     error (graceful)
+rule-name       ok         error (graceful)
+rule-name       err        error (graceful)
+rule-name       vec        error (graceful)
+rule-name       string     error (graceful)
 rule-name       int        ok
 rule-name       error      ok
 rule-name-enum  as         ok
@@ -86,8 +89,8 @@ rule-name-enum  dyn        ok
 rule-name-enum  else       ok
 rule-name-enum  enum       ok
 rule-name-enum  extern     ok
-rule-name-enum  false      PANIC
-rule-name-enum  fn         PANIC
+rule-name-enum  false      error (graceful)
+rule-name-enum  fn         error (graceful)
 rule-name-enum  for        ok
 rule-name-enum  if         ok
 rule-name-enum  impl       ok
@@ -101,13 +104,13 @@ rule-name-enum  mut        ok
 rule-name-enum  pub        ok
 rule-name-enum  ref        ok
 rule-name-enum  return     ok
-rule-name-enum  self       PANIC
-rule-name-enum  Self       PANIC
+rule-name-enum  self       error (graceful)
+rule-name-enum  Self       error (graceful)
 rule-name-enum  static     ok
 rule-name-enum  struct     ok
 rule-name-enum  super      ok
 rule-name-enum  trait      ok
-rule-name-enum  true       PANIC
+rule-name-enum  true       error (graceful)
 rule-name-enum  type       ok
 rule-name-enum  unsafe     ok
 rule-name-enum  use        ok
@@ -118,7 +121,7 @@ rule-name-enum  await      ok
 rule-name-enum  try        ok
 rule-name-enum  abstract   ok
 rule-name-enum  become     ok
-rule-name-enum  box        PANIC
+rule-name-enum  box        error (graceful)
 rule-name-enum  do         ok
 rule-name-enum  final      ok
 rule-name-enum  macro      ok
@@ -131,14 +134,14 @@ rule-name-enum  yield      ok
 rule-name-enum  gen        ok
 rule-name-enum  r          ok
 rule-name-enum  w          ok
-rule-name-enum  option     PANIC
-rule-name-enum  some       PANIC
-rule-name-enum  none       PANIC
-rule-name-enum  result     PANIC
-rule-name-enum  ok         PANIC
-rule-name-enum  err        PANIC
-rule-name-enum  vec        PANIC
-rule-name-enum  string     PANIC
+rule-name-enum  option     error (graceful)
+rule-name-enum  some       error (graceful)
+rule-name-enum  none       error (graceful)
+rule-name-enum  result     error (graceful)
+rule-name-enum  ok         error (graceful)
+rule-name-enum  err        error (graceful)
+rule-name-enum  vec        error (graceful)
+rule-name-enum  string     error (graceful)
 rule-name-enum  int        ok
 rule-name-enum  error      ok
 map-key         as         error (graceful)
@@ -278,8 +281,8 @@ group-name      dyn        error (graceful)
 group-name      else       error (graceful)
 group-name      enum       error (graceful)
 group-name      extern     error (graceful)
-group-name      false      PANIC
-group-name      fn         PANIC
+group-name      false      error (graceful)
+group-name      fn         error (graceful)
 group-name      for        error (graceful)
 group-name      if         error (graceful)
 group-name      impl       error (graceful)
@@ -293,13 +296,13 @@ group-name      mut        error (graceful)
 group-name      pub        error (graceful)
 group-name      ref        error (graceful)
 group-name      return     error (graceful)
-group-name      self       PANIC
-group-name      Self       PANIC
+group-name      self       error (graceful)
+group-name      Self       error (graceful)
 group-name      static     error (graceful)
 group-name      struct     error (graceful)
 group-name      super      error (graceful)
 group-name      trait      error (graceful)
-group-name      true       PANIC
+group-name      true       error (graceful)
 group-name      type       error (graceful)
 group-name      unsafe     error (graceful)
 group-name      use        error (graceful)
@@ -310,7 +313,7 @@ group-name      await      error (graceful)
 group-name      try        error (graceful)
 group-name      abstract   error (graceful)
 group-name      become     error (graceful)
-group-name      box        PANIC
+group-name      box        error (graceful)
 group-name      do         error (graceful)
 group-name      final      error (graceful)
 group-name      macro      error (graceful)
@@ -323,14 +326,14 @@ group-name      yield      error (graceful)
 group-name      gen        error (graceful)
 group-name      r          ok
 group-name      w          ok
-group-name      option     PANIC
-group-name      some       PANIC
-group-name      none       PANIC
-group-name      result     PANIC
-group-name      ok         PANIC
-group-name      err        PANIC
-group-name      vec        PANIC
-group-name      string     PANIC
+group-name      option     error (graceful)
+group-name      some       error (graceful)
+group-name      none       error (graceful)
+group-name      result     error (graceful)
+group-name      ok         error (graceful)
+group-name      err        error (graceful)
+group-name      vec        error (graceful)
+group-name      string     error (graceful)
 group-name      int        PANIC
 group-name      error      ok
 name-directive  as         error (graceful)
