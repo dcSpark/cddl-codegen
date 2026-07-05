@@ -97,18 +97,8 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   directive value; the rule-name position carries the shape axis because the collision surface is
   shape-dependent, and a struct-only sweep would launder enum-shaped `w` as clean), snapshotting each
   cell's generation outcome (`identifier_hazard_robustness_catalog`, default tier) and compile-gating
-  the `ok` cells (`identifier_hazard_crates_compile`, `#[ignore]` full tier). Two gaps it pins for a
-  generator fix:
-  - **The `r`/`w` reader/writer-generic collisions (SHAPE-DEPENDENT).** A rule named `r` camel-cases
-    to `R` and fails on BOTH shapes — struct: E0574 in the deserialize body
-    (`fn deserialize<R: BufRead + Seek>`); enum: E0599, the `R::U64`/`R::Text` variant paths resolve
-    to the reader type parameter — and a plain group named `r` (registered as struct `R`) fails the
-    same way. A rule named `w` fails on the ENUM shape only: E0599, `W::U64`/`W::Text` inside
-    `fn serialize<'se, W: Write>` resolve to the writer type param (the "pub enum W" case); the
-    struct shape compiles because a struct's serialize body never names its own type. Fix with
-    collision-proof generic names (compute the camel-cased rule-ident set at generation start and
-    pick the first non-colliding name from a fixed sequence, threading it through the ~20 `W`/`R`
-    format sites in `generation.rs`); on landing, flip the `EXPECTED_COMPILE_FAIL` pins.
+  the `ok` cells (`identifier_hazard_crates_compile`, `#[ignore]` full tier). One gap it still pins
+  for a generator fix (the `r`/`w` reader/writer-generic collision is fixed — see § findings):
   - **Reserved-name generation should reject, not panic.** A rule/group whose camel-cased name is a
     reserved Rust type (`option`→`Option`, `box`→`Box`, `fn`→`Fn`) or a CDDL keyword (`true`/`false`)
     aborts generation with an `assert!` in `RustIdent::new` (intermediate.rs:1146/1152) — a deliberate
@@ -335,18 +325,23 @@ from a degenerate example.**
   silent narrowing. The matrix cell `contain.occurrence-target.grpent.inline_group` is verdicted
   `unsupported` (graceful exit 1), so it projects no decode-conformance obligation — its former
   catalog row is removed (unsupported rows carry no row; the drift gate enforces this).
-- Single-letter rule names colliding with an emitted generic parameter generate non-compiling code —
-  and the collision is **SHAPE-DEPENDENT**: `r` fails on both emitted shapes (record struct: `E0574`
-  in the deserialize body; type-choice enum: `E0599`, `R::U64`/`R::Text` variant paths resolving to
-  the reader type parameter), while `w` fails on the enum shape only (`E0599`, `W::U64`/`W::Text`
-  inside `fn serialize<'se, W: Write>` — the `pub enum W` case) because a struct's serialize body
-  never names its own type. The class is "camel-cased rule name == an emitted generic"; candidate fix
-  is collision-proof generic names. **Swept and pinned** by `src/tests/identifier_hazard_tests.rs`
-  (`identifier_hazard_crates_compile`'s `EXPECTED_COMPILE_FAIL`: `r` in the struct rule-name, enum
-  rule-name, and plain-group-name positions; `w` in the enum rule-name position), so the pins flip
-  loudly when the fix lands. The shape axis exists in the sweep because a struct-only pass laundered
-  enum-shaped `w` as clean — the same under-enumeration failure mode the sweep hunts, caught in
-  review.
+- **Emitted `serialize`/`deserialize` fn generics are collision-proofed against the defined-ident
+  set.** A rule named `r`/`w` camel-cases to a type `R`/`W` that would shadow the hardcoded
+  `fn deserialize<R: BufRead + Seek>` / `fn serialize<'se, W: Write>` parameters, producing
+  non-compiling crates (E0574 struct-shape deserialize; E0599 enum-shape `R::U64`/`W::U64` variant
+  paths). To avoid this, generation computes the deterministic set of camel-cased idents the crate
+  defines (`IntermediateTypes::defined_rust_idents`, a `BTreeSet`) once at the start of `generate()`
+  and picks each generic name as the first non-colliding candidate from a fixed sequence
+  (`W`, `WSer`, `WSer0`… / `R`, `RDe`, `RDe0`…, via `pick_generic_name`), threading the choice
+  through `make_{serialization,deserialization}_function` — the two sites that declare the generics;
+  the bodies reference `Serializer<_>`/`Deserializer<_>` and the user type by name, so nothing else
+  changes. The static-runtime trait DECLARATIONS keep `R`/`W` (Rust matches impl generics by
+  position, not name). Default output is byte-identical — the bare `W`/`R` win whenever no collision
+  exists, so the snapshot corpus does not churn. Pinned by
+  `generic_names_are_collision_proofed_against_rw_idents` (fast tier, string-level) and the
+  now-green `r`/`w` bundles of `identifier_hazard_crates_compile` (`EXPECTED_COMPILE_FAIL` is empty).
+  The sweep's shape axis (struct AND type-choice enum for the rule-name position) stays — it exists
+  because a struct-only pass had laundered enum-shaped `w` as clean.
 - Nint/float fixed map keys on a struct-map record are **rejected gracefully** (pinned by
   `tests/robustness/record_map_unsupported_key.cddl`) rather than panicking generation — only uint
   and text fixed keys are implemented (the map-key write path and, under `--preserve-encodings`,

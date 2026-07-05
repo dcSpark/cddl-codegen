@@ -226,6 +226,26 @@ impl<'a> IntermediateTypes<'a> {
         &self.rust_structs
     }
 
+    /// Every camel-cased Rust type ident this crate will DEFINE (structs, user aliases, plain
+    /// groups, generic defs/instances). Deterministic (`BTreeSet`, no hashing). Consumed by
+    /// generation to pick collision-proof names for the emitted `serialize`/`deserialize` fn
+    /// generics: a rule named `r`/`w` camel-cases to a type `R`/`W` that would otherwise shadow the
+    /// hardcoded `fn deserialize<R: BufRead + Seek>` / `fn serialize<'se, W: Write>` parameters,
+    /// producing non-compiling crates (E0574 struct-shape / E0599 enum-variant-path).
+    pub fn defined_rust_idents(&self) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        out.extend(self.rust_structs.keys().map(|k| k.to_string()));
+        out.extend(self.plain_groups.keys().map(|k| k.to_string()));
+        out.extend(self.generic_defs.keys().map(|k| k.to_string()));
+        out.extend(self.generic_instances.keys().map(|k| k.to_string()));
+        for alias in self.type_aliases.keys() {
+            if let AliasIdent::Rust(ident) = alias {
+                out.insert(ident.to_string());
+            }
+        }
+        out
+    }
+
     /// The base idents (`generic_ident`) of every registered generic instance, e.g. `Foo` for the
     /// instance `Foo<Bar>`. For a generic EXTERN base this is the only place the bare base name lives:
     /// a generic extern (`Foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) is registered as a plain `Extern`
