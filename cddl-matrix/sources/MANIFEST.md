@@ -14,9 +14,13 @@ Retrieved: **2026-06-28**. Upstream branches move; the committed files are the p
 | `cddl.prelude` | CDDL standard prelude (= RFC 8610 Appendix D) | `raw.githubusercontent.com/cbor-wg/cddl/master/cddl.prelude` | `174a1c47…0a5d3ee5` |
 | `cddl-control-operators.csv` | IANA "CDDL Control Operators" registry (cross-RFC) | `www.iana.org/assignments/cddl/cddl-control-operators.csv` | `fdc273a6…d6f12aad` |
 | `appendix_a.json` | CBOR encoding examples (RFC 8949 Appendix A) | `raw.githubusercontent.com/cbor/test-vectors/master/appendix_a.json` | `80e78dc2…dc4e9f3a` |
+| `rfc8610.txt` | Base CDDL specification | `www.rfc-editor.org/rfc/rfc8610.txt` | `3713f2a5…04997089` |
+| `rfc9090.txt` | CDDL control operators for SDNV/OID data | `www.rfc-editor.org/rfc/rfc9090.txt` | `16e606aa…0e31cb89` |
+| `rfc9165.txt` | Additional general CDDL control operators | `www.rfc-editor.org/rfc/rfc9165.txt` | `94f86116…41976774` |
+| `rfc9682.txt` | Updates to the CDDL grammar | `www.rfc-editor.org/rfc/rfc9682.txt` | `d35602e7…6cdea89c` |
+| `rfc9741.txt` | Additional CDDL text conversion/processing control operators | `www.rfc-editor.org/rfc/rfc9741.txt` | `3234aeea…1e7a9ee3` |
 
-Full RFC bodies (RFC 8610 / 8949) are large human reference, not regeneration inputs; they're cached
-offline (gitignored) under `draft/golden-vectors/` and linked from the matrix `README.md`.
+Full RFC bodies are human reference, not regeneration inputs.
 
 ## Refresh / verify
 ```sh
@@ -30,4 +34,9 @@ a90f41b2d250f708ee5146e8aab70fc14428639ed0fd31925d10eb7fa381afea  cddl-1-1-updat
 174a1c470540da61dec8d1ce22e21b2374b38db8424bd19bdcc3bf630a5d3ee5  cddl.prelude
 fdc273a65beeb9cb4122616e13c50b46b5647916852b7eff4aafbb57d6f12aad  cddl-control-operators.csv
 80e78dc2f53cfdc9836094791d09e84c6818edf380f7cdd4be26a5c2dc4e9f3a  appendix_a.json
+3713f2a50e23a2bea0a6147ad6c4433605a00c3d00a868bfa86a42b204997089  rfc8610.txt
+16e606aa7e7d0d1f019cb67c95ece5f5e4dbada5585b5251860958c80e31cb89  rfc9090.txt
+94f86116c04fde0f11d54576465181090ec33983d78db82527c0703a41976774  rfc9165.txt
+d35602e7f784e509a5984283ea8d998adfee23f086ad0d77bd22f98c6cdea89c  rfc9682.txt
+3234aeea39d01b7c1c8e9c70d4d7dc8745852e0b6edbea167a3e55b91e7a9ee3  rfc9741.txt
 ```
