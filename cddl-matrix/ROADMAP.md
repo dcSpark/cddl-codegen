@@ -19,8 +19,9 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 
 > **North star.** Do the hard per-construct coverage work **once** and *project* it into the **many** docs
 > that need it, instead of hand-maintaining (and re-sweating) each. Corpus was the hard flagship;
-> `docs/docs/current_capacities.mdx` is next; more follow. The matrix is "good enough" when regenerating a
-> real hand doc from it is a **clear win**.
+> `docs/docs/current_capacities.mdx`'s **Limitations** section now projects Q1's support gaps too
+> (`query_q1_gaps.ts`); more docs follow. The matrix is "good enough" when regenerating a real hand doc
+> from it is a **clear win**.
 
 > **Findings ledger (F#)** from the cold critique (full write-up in git history): F1, F2, F4–F7 **done**;
 > **F3 done** (support is execution-gated — round-trip + reject tests run per probe; per-direction
@@ -33,12 +34,6 @@ per-cell **role × feature** coverage). The north-star — subsuming `tests/corp
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **`docs/docs/current_capacities.mdx` (Q1)** — cddl-codegen's hand-maintained "what we support" list. Its
-  natural query is Q1 ("constructs unsupported but in target profile" → the inverse is the *supported*
-  list). The support + profile data already exist in `matrix.json`; this is the right home for the
-  profile-filtered support/gap logic (a `query_q1_gaps.ts` prototype was built and removed as premature —
-  rebuild it here, against the real doc). Q1 stays a `QUERIES.md` definition-of-done query meanwhile — the
-  capability is proven, just not emitted as a standing artifact.
 - **Secondary query scripts (Q5/Q6)** from `QUERIES.md`. Q5 (matrix self-completeness) and Q6
   (profile/version diff) are largely already satisfied by `verify.ts`'s reconciliation + the F6 snapshot —
   they need only thin query scripts, built in the `query_q4_directional.ts` mold (a pure
@@ -183,6 +178,12 @@ and stays out of CI.
   (a positional id-substring arg filters to the "for construct C" form). Pure `matrix.json` +
   `tests/decode_conformance/catalog.toml` reads — no cargo/oracles, like `project_decode_conformance.ts`.
   `--check` runs the consistency invariants + vacuity floor as a gate (check.ts `local` tier).
+- `bun run query_q1_gaps.ts` — **answers `QUERIES.md` Q1**: the in-profile support gaps grouped by axis
+  (feature / control-op / contextual containment-cell), plus the inverse supported summary and the
+  out-of-profile rows bucketed separately (the F1 profile split). Pure `matrix.json` read — no
+  cargo/oracles. `--write` regenerates the marker-delimited `## Limitations` section of
+  `docs/docs/current_capacities.mdx`; `--check` runs the drift + consistency + vacuity gate (check.ts
+  `local` tier).
 
 ## 3. F4 / F5 follow-ons (only when their consumer exists)
 

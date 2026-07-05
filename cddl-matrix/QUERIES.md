@@ -17,6 +17,13 @@ those questions **concretely**. Their purpose is twofold:
 - **Requires:** per-tool support annotations (have) **+ a profile axis** so out-of-profile features are
   excluded from "gaps." → **needs F1.** Without F1 this query returns false positives (e.g. RFC 9682
   features against an RFC 8610-targeted tool).
+- **Answered by `query_q1_gaps.ts`**, a pure `matrix.json` read: default run prints the in-profile gaps
+  grouped by axis (feature / control-op / contextual containment-cell) with each construct's example +
+  a human note, plus the inverse supported summary and the out-of-profile rows bucketed separately (the
+  F1 profile split). A positional arg filters by id substring (the "for tool X, for construct C" form).
+  `--write` regenerates the marker-delimited `## Limitations` section of
+  `docs/docs/current_capacities.mdx`; `--check` runs the drift gate (in-memory regenerate + byte-compare
+  the block) plus consistency invariants and a vacuity floor (`check.ts` local tier).
 
 ### Q2 — Test-coverage gaps
 "List every construct tool X supports that **no test exercises**." (This is the `tests/corpus` coverage
