@@ -837,8 +837,8 @@ expect = "accept"
 [[row]]
 id = "ctl.eq"
 axis = "control_op"
-example = "x = uint .eq 5"
-spec = "x = uint .eq 5"
+example = "x = int .eq 5"
+spec = "x = int .eq 5"
 mode = "standalone"
 type_name = "X"
 
@@ -847,208 +847,337 @@ hex = "05"
 source = "ruby-generate"
 expect = "accept"
 
+[[row.vector]]
+hex = "06"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not equal to the `.eq 5` value — violates `int .eq 5`"
+
 [[row]]
 id = "ctl.ge"
 axis = "control_op"
-example = "x = uint .ge 0"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
-
-[[row]]
-id = "ctl.gt"
-axis = "control_op"
-example = "x = uint .gt 0"
-spec = "x = uint .gt 0"
+example = "x = int .ge 5"
+spec = "x = int .ge 5"
 mode = "standalone"
 type_name = "X"
 
 [[row.vector]]
-hex = "16"
+hex = "18fa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190223"
+hex = "190192"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "19069a"
+hex = "19029f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "1909a0"
+hex = "1904aa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190a07"
+hex = "190653"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190a88"
+hex = "190761"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190a8f"
+hex = "190c9b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190b19"
+hex = "190d74"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190cbf"
+hex = "190e5a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "191105"
-source = "ruby-generate"
-expect = "accept"
-
-[[row]]
-id = "ctl.le"
-axis = "control_op"
-example = "x = uint .le 10"
-spec = "x = uint .le 10"
-mode = "standalone"
-type_name = "X"
-
-[[row.vector]]
-hex = "01"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "02"
+hex = "190ebf"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
 hex = "04"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 4 is below the `.ge 5` bound — violates `int .ge 5`"
+
+[[row]]
+id = "ctl.gt"
+axis = "control_op"
+example = "x = int .gt 5"
+spec = "x = int .gt 5"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "1902e6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "06"
+hex = "1903bb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "07"
+hex = "1904fa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "08"
+hex = "1905a6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "1907bb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190a4e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190bdc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190c22"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190c8d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190f37"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "05"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 5 is not strictly greater than the `.gt 5` bound — violates `int .gt 5`"
+
+[[row]]
+id = "ctl.le"
+axis = "control_op"
+example = "x = int .le 10"
+spec = "x = int .le 10"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "382b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3836"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3858"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "388c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "38a5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "39014b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "39014c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901f0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902cd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "0b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 11 exceeds the `.le 10` bound — violates `int .le 10`"
+
+[[row]]
+id = "ctl.lt"
+axis = "control_op"
+example = "x = int .lt 10"
+spec = "x = int .lt 10"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "381f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3887"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "38ea"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "39014f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390155"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901d7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902bc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902c9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390317"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
 hex = "0a"
-source = "ruby-generate"
-expect = "accept"
-
-[[row]]
-id = "ctl.lt"
-axis = "control_op"
-example = "x = uint .lt 10"
-spec = "x = uint .lt 10"
-mode = "standalone"
-type_name = "X"
-
-[[row.vector]]
-hex = "00"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "01"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "02"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "04"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "07"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "08"
-source = "ruby-generate"
-expect = "accept"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 10 is not strictly less than the `.lt 10` bound — violates `int .lt 10`"
 
 [[row]]
 id = "ctl.ne"
 axis = "control_op"
-example = "x = uint .ne 5"
-spec = "x = uint .ne 5"
+example = "x = int .ne 5"
+spec = "x = int .ne 5"
 mode = "standalone"
 type_name = "X"
 
 [[row.vector]]
-hex = "190110"
+hex = "1853"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "1901a9"
+hex = "1871"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "19040d"
+hex = "190a77"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190751"
+hex = "191211"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190752"
+hex = "384e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190912"
+hex = "38eb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190a9d"
+hex = "390134"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190b73"
+hex = "390139"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190b8c"
+hex = "390268"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190be2"
+hex = "3902c8"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "05"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 5 equals the `.ne 5` excluded value — violates `int .ne 5`"
 
 [[row]]
 id = "ctl.size"

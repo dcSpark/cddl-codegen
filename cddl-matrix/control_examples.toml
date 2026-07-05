@@ -24,29 +24,36 @@ example = "x = bytes .cbor uint"   # uint payload, not bare int (a bare Int wrap
 id = "ctl.default"
 example = "m = { a: uint, ? b: uint .default 0 }"   # .default is a map-member default; 2 fields dodge the single-field-map bug
 
+# The six numeric range/eq ops target `int` (not `uint`): the rust cddl CLI (0.10.5) does not
+# enforce these ops over a `uint` target during validate (target-type-specific gap; repro +
+# upstream report in draft/rust-cddl-uint-control-op-gap.md), which blocked class="constraint"
+# reject vectors — the decode-conformance catalog certifies spec-INVALID only when BOTH oracles
+# reject. Over `int` both oracles enforce (verified: each boundary violation below exits 1 in
+# both). Bounds are literal and non-vacuous over the base type (.ge 5, not .ge 0) so an in-type
+# violating vector exists for every op.
 [[example]]
 id = "ctl.le"
-example = "x = uint .le 10"
+example = "x = int .le 10"
 
 [[example]]
 id = "ctl.lt"
-example = "x = uint .lt 10"
+example = "x = int .lt 10"
 
 [[example]]
 id = "ctl.ge"
-example = "x = uint .ge 0"
+example = "x = int .ge 5"
 
 [[example]]
 id = "ctl.gt"
-example = "x = uint .gt 0"
+example = "x = int .gt 5"
 
 [[example]]
 id = "ctl.eq"
-example = "x = uint .eq 5"
+example = "x = int .eq 5"
 
 [[example]]
 id = "ctl.ne"
-example = "x = uint .ne 5"
+example = "x = int .ne 5"
 
 [[example]]
 id = "ctl.bits"

@@ -285,15 +285,17 @@ function vacuityProblems(rs: Directional[]): string[] {
     problems.push(`no row reaches the enforcement axis (every enforce is n/a) — the ctl.* enforcement-axis read looks broken/empty`);
   // With class="constraint" vectors present, ≥1 row MUST project enforce=yes, and the green set must be
   // EXACTLY the rows whose vector's ONLY invalidity is the constraint itself (base-type-valid instance,
-  // both oracles certify spec-invalid, decoder durably rejects). Today that is the three rows below.
-  // The numeric range/eq ops (`.le/.lt/.gt/.eq/.ne/.ge`) are DELIBERATELY absent: the rust corroborating
-  // oracle (cddl 0.10.x) does not enforce them (it accepts in-type boundary violations), so a
-  // boundary-violating vector cannot pass the two-oracle spec-invalid gate even though ruby AND our
-  // decoder reject it — a recorded oracle-coverage gap (ROADMAP § findings) — and a type-violation
-  // vector (a negative for `uint .ge 0`) would test the base type, not the constraint, so it is not
-  // enforcement evidence. Assert the exact set so an accidental widening (a type-violation vector
-  // engineered onto a numeric row) or narrowing fails the gate.
-  const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.size", "memberkey.cut"];
+  // both oracles certify spec-invalid, decoder durably rejects). The numeric range/eq ops
+  // (`.le/.lt/.gt/.eq/.ne/.ge`) qualify because their probe examples target `int` with literal,
+  // non-vacuous bounds — over `int` BOTH oracles enforce them, so each row carries an in-type
+  // boundary-violating vector. The `int` targeting is load-bearing: the rust oracle (cddl 0.10.x)
+  // does not enforce these ops over a `uint` target (a recorded upstream gap,
+  // draft/rust-cddl-uint-control-op-gap.md), so a decay of the probe examples back to `uint` forms
+  // (or to a vacuous bound like `.ge 0`, whose only violating vector is a type violation testing the
+  // base type, not the constraint) drops rows from the green set and fails this gate. Assert the
+  // exact set so an accidental widening (a type-violation vector engineered onto a numeric row) or
+  // narrowing fails the gate.
+  const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne", "ctl.size", "memberkey.cut"];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);

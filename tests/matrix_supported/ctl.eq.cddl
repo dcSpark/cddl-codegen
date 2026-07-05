@@ -1,1 +1,1 @@
-x = uint .eq 5
+x = int .eq 5
