@@ -57,7 +57,11 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   (the exact `query_q1_gaps.ts` → `current_capacities.mdx` § Limitations pattern, local tier).
   Countable prose OUTSIDE the markers stays hand-owned — the gate catches exactly the numbers it
   generates, no more; the alternative (a human re-greps five counts per delivery) is the
-  hand-maintenance the matrix exists to retire.
+  hand-maintenance the matrix exists to retire. The same two-copies class extends beyond the
+  matrix docs: `tests/README.md`'s registry-shaped counts (e.g. "the five `#[ignore]`d gates" in
+  the tier-table prose) duplicate check.ts's gate registry, so the span-projection pattern applies
+  there too — with the registry (already self-checked against `cargo test -- --ignored --list` by
+  check.ts's meta-checks) as the deriving source instead of `matrix.json`.
 
 ## 2. Running the verification suite
 
