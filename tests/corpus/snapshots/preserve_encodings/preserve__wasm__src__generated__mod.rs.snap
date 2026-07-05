@@ -2752,6 +2752,14 @@ impl SignBounds {
         self.0.straddle
     }
 
+    pub fn ne_one(&self) -> i64 {
+        self.0.ne_one
+    }
+
+    pub fn ne_zero(&self) -> i64 {
+        self.0.ne_zero
+    }
+
     pub fn new(
         all_neg: i64,
         upto_zero: i64,
@@ -2761,9 +2769,11 @@ impl SignBounds {
         ne_pos: i64,
         ne_neg: i64,
         straddle: i64,
+        ne_one: i64,
+        ne_zero: i64,
     ) -> Result<SignBounds, JsError> {
         cddl_lib::SignBounds::new(
-            all_neg, upto_zero, le_neg, le_pos, ge_pos, ne_pos, ne_neg, straddle,
+            all_neg, upto_zero, le_neg, le_pos, ge_pos, ne_pos, ne_neg, straddle, ne_one, ne_zero,
         )
         .map(Into::into)
         .map_err(Into::into)

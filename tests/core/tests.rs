@@ -748,22 +748,23 @@ mod tests {
     fn sign_bounds() {
         // `SignBounds` exercises the per-CBOR-sign-arm partition of a signed-int (i64) value window.
         // Fields (in order): all_neg -10..-3, upto_zero -10..0, le_neg int .le -3, le_pos int .le 10,
-        // ge_pos int .ge 3, ne_pos int .ne 5, ne_neg int .ne -5, straddle -10..3.
+        // ge_pos int .ge 3, ne_pos int .ne 5, ne_neg int .ne -5, straddle -10..3,
+        // ne_one int .ne 1, ne_zero int .ne 0.
         // Baseline: every field in range (ne_* avoid their excluded value).
-        let base: [i128; 8] = [-5, -5, -5, 10, 3, 4, -4, 0];
+        let base: [i128; 10] = [-5, -5, -5, 10, 3, 4, -4, 0, 0, 1];
         // Build the wire array from an override of the in-range baseline. Sz::Eight fits every value
         // and default-mode decoding is minimality-agnostic, so one width serves all vectors.
         let make = |idx: usize, v: i128| {
             let mut vals = base;
             vals[idx] = v;
-            let mut cbor = arr_def(8);
+            let mut cbor = arr_def(10);
             for x in vals.iter() {
                 cbor.extend(cbor_int(*x, cbor_event::Sz::Eight));
             }
             SignBounds::from_cbor_bytes(&cbor)
         };
         // Baseline round-trips through both the constructor and the deserializer.
-        let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0).unwrap();
+        let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0, 0, 1).unwrap();
         deser_test(&baseline);
         assert!(make(0, -5).is_ok());
 
@@ -816,6 +817,19 @@ mod tests {
         assert!(make(7, 0).is_ok());
         assert!(make(7, -11).is_err());
         assert!(make(7, 4).is_err());
+
+        // ne_one (int .ne 1): the excluded-value boundary where the (N+1, N-1) exclusion encoding's
+        // max hits 0 — a per-side partition of (2, 0) once emitted `x < 2`, silently rejecting 0.
+        assert!(make(8, 0).is_ok()); // the value the mis-check rejected
+        assert!(make(8, 2).is_ok());
+        assert!(make(8, -1).is_ok()); // nint arm is unconstrained by a non-negative exclusion
+        assert!(make(8, 1).is_err());
+
+        // ne_zero (int .ne 0): encoding (1, -1) has a bound on each side of the sign split; only 0
+        // may reject.
+        assert!(make(9, 1).is_ok());
+        assert!(make(9, -1).is_ok());
+        assert!(make(9, 0).is_err());
     }
 
     #[test]

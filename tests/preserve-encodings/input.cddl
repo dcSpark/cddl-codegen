@@ -173,7 +173,9 @@ sign_bounds = [
     ge_pos: int .ge 3,
     ne_pos: int .ne 5,
     ne_neg: int .ne -5,
-    straddle: -10 .. 3
+    straddle: -10 .. 3,
+    ne_one: int .ne 1,
+    ne_zero: int .ne 0
 ]
 
 ; Literal-headed top-level range rules wrap into a bounds-enforcing struct (mirroring the

@@ -1149,6 +1149,8 @@ pub struct SignBounds {
     pub ne_pos: i64,
     pub ne_neg: i64,
     pub straddle: i64,
+    pub ne_one: i64,
+    pub ne_zero: i64,
     pub encodings: Option<SignBoundsEncoding>,
 }
 
@@ -1162,6 +1164,8 @@ impl SignBounds {
         ne_pos: i64,
         ne_neg: i64,
         straddle: i64,
+        ne_one: i64,
+        ne_zero: i64,
     ) -> Result<Self, DeserializeError> {
         if all_neg < -10 || all_neg > -3 {
             return Err(DeserializeFailure::RangeCheck {
@@ -1227,6 +1231,22 @@ impl SignBounds {
             }
             .into());
         }
+        if ne_one == 1 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ne_one as isize,
+                min: Some(2),
+                max: Some(0),
+            }
+            .into());
+        }
+        if ne_zero == 0 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ne_zero as isize,
+                min: Some(1),
+                max: Some(-1),
+            }
+            .into());
+        }
         Ok(Self {
             all_neg,
             upto_zero,
@@ -1236,6 +1256,8 @@ impl SignBounds {
             ne_pos,
             ne_neg,
             straddle,
+            ne_one,
+            ne_zero,
             encodings: None,
         })
     }

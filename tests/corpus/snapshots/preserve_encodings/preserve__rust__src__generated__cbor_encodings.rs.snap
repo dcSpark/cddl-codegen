@@ -210,6 +210,8 @@ pub struct SignBoundsEncoding {
     pub ne_pos_encoding: Option<cbor_event::Sz>,
     pub ne_neg_encoding: Option<cbor_event::Sz>,
     pub straddle_encoding: Option<cbor_event::Sz>,
+    pub ne_one_encoding: Option<cbor_event::Sz>,
+    pub ne_zero_encoding: Option<cbor_event::Sz>,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -238,7 +238,9 @@ sign_bounds = [
     ge_pos: int .ge 3,      ; one-sided positive lower (nint arm empty)
     ne_pos: int .ne 5,      ; exclusion of a non-negative value
     ne_neg: int .ne -5,     ; exclusion of a negative value
-    straddle: -10 .. 3      ; window spanning both signs
+    straddle: -10 .. 3,     ; window spanning both signs
+    ne_one: int .ne 1,      ; exclusion at the boundary where the (N+1, N-1) encoding's max hits 0
+    ne_zero: int .ne 0      ; exclusion of 0 itself (encoding (1, -1) spans the sign split)
 ]
 
 ; Literal-headed top-level range rules must WRAP (not emit a bare `pub type` alias) so their
