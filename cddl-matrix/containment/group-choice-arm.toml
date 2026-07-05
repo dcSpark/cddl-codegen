@@ -1,0 +1,124 @@
+# Containment — role.group-choice-arm × feature. The `//` arm itself is a container role.
+# Cell ids use `contain.group-choice-arm.<feature>[.<variant>]`, where the variant records the
+# representation (`map` / `array`) and any key-kind sub-axis because map-rep arms carry member keys
+# and array-rep arms do not. Schema = containment/type2.toml plus an `example`.
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.bareword.map"
+role = "role.group-choice-arm"
+feature = "memberkey.bareword"
+spec = "allowed"
+note = "Baseline map-representation group-choice arm with a bareword text key. RFC8610 §2.2.2, §3.5.1."
+example = "t = { a: uint // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.value.map"
+role = "role.group-choice-arm"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Map-representation group-choice arm with a supported fixed uint key. RFC8610 §2.2.2, §3.5.1."
+example = "t = { 1: uint // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.value.text_map"
+role = "role.group-choice-arm"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Map-representation group-choice arm with a supported fixed text key. RFC8610 §2.2.2, §3.5.1."
+example = "t = { \"k\": uint // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.value.nint_map"
+role = "role.group-choice-arm"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Map-representation group-choice arm with a fixed negative integer key. Key writing/verification is only implemented for uint/text keys, matching the record map path; real nint support should land there before this flips to supported. RFC8610 §2.2.2, §3.5.1."
+example = "neg = { -1: uint // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.value.float_map"
+role = "role.group-choice-arm"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Map-representation group-choice arm with a fixed float key. Key writing/verification is only implemented for uint/text keys, matching the record map path; real float-key support should land there before this flips to supported. RFC8610 §2.2.2, §3.5.1."
+example = "flt = { 1.5: uint // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.memberkey.type1.map"
+role = "role.group-choice-arm"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Map-representation group-choice arm with a non-fixed key (`k => v`). Collapsing such an arm into an enum variant has nowhere to store the key and used to silently drop it; supporting this requires real table-arm dispatch. RFC8610 §2.2.2, §3.5.2."
+example = "t = { uint => tstr // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.grpent.member.map"
+role = "role.group-choice-arm"
+feature = "grpent.member"
+spec = "disallowed"
+note = "Map-representation group-choice arm whose entry has no member key. A CBOR map arm must write key/value pairs, so a keyless arm has no well-formed wire shape; the Ruby reference rejects it as a map entry without member key while the Rust oracle accepts the grammar. A plain-group arm works because the referenced group owns its keys."
+example = "g = { bytes // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.grpent.groupname.map"
+role = "role.group-choice-arm"
+feature = "grpent.groupname"
+spec = "allowed"
+note = "Map-representation group-choice arm that references a named group; the referenced group owns the map keys. RFC8610 §2.2.1, §2.2.2."
+example = "g = { grp // b: tstr }\ngrp = (a: uint)"
+
+[[contain]]
+id = "contain.group-choice-arm.grpchoice.sequence.map"
+role = "role.group-choice-arm"
+feature = "grpchoice.sequence"
+spec = "allowed"
+note = "Map-representation group-choice arm with multiple fields, pinning arm dispatch for a whole grpchoice sequence rather than a single entry. RFC8610 §2.2.1, §2.2.2."
+example = "t = { a: uint, b: tstr // c: bytes }"
+
+[[contain]]
+id = "contain.group-choice-arm.type2.value.map"
+role = "role.group-choice-arm"
+feature = "type2.value"
+spec = "allowed"
+note = "Map-representation group-choice arm with a fixed-value member type, a distinct dispatch/generation surface from fixed keys. RFC8610 §2.1, §2.2.2."
+example = "t = { a: 0 // b: tstr }"
+
+[[contain]]
+id = "contain.group-choice-arm.grpent.member.array"
+role = "role.group-choice-arm"
+feature = "grpent.member"
+spec = "allowed"
+note = "Baseline array-representation group-choice arm: arms are positional entries and carry no map keys. RFC8610 §2.2.2, §3.4."
+example = "t = [ uint // tstr ]"
+
+[[contain]]
+id = "contain.group-choice-arm.grpchoice.sequence.array"
+role = "role.group-choice-arm"
+feature = "grpchoice.sequence"
+spec = "allowed"
+note = "Array-representation group-choice arm with multiple entries, pinning arm dispatch for a whole grpchoice sequence. RFC8610 §2.2.1, §2.2.2, §3.4."
+example = "t = [ a: uint, b: tstr // c: bytes ]"
+
+[[contain]]
+id = "contain.group-choice-arm.grpent.groupname.array"
+role = "role.group-choice-arm"
+feature = "grpent.groupname"
+spec = "allowed"
+note = "Array-representation group-choice arm that references a named group. RFC8610 §2.2.1, §2.2.2, §3.4."
+example = "t = [ grp // tstr ]\ngrp = (uint, uint)"
+
+[[contain]]
+id = "contain.group-choice-arm.grpent.inline_group.array"
+role = "role.group-choice-arm"
+feature = "grpent.inline_group"
+spec = "allowed"
+note = "Array-representation group-choice arm containing an inline parenthesized group. RFC8610 §2.2.1, §2.2.2, §3.4."
+example = "t = [ (uint, tstr) // bytes ]"
+
+[[contain]]
+id = "contain.group-choice-arm.type2.map.array"
+role = "role.group-choice-arm"
+feature = "type2.map"
+spec = "allowed"
+note = "Array-representation group-choice arm containing an anonymous map type; this isolates the anonymous-composite generation limit inside a `//` arm. RFC8610 §2.2.2, §3.4, §3.5."
+example = "t = [ {a: int, b: uint} // tstr ]"

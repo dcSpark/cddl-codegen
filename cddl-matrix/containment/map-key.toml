@@ -3,6 +3,10 @@
 # oracles to corroborate `spec`. The tagged-type-as-key cell is already in containment/type2.toml.
 # Key subtlety: a `type1 =>` memberkey admits any type1 (composite keys are legal) but NOT the
 # `/` type-choice, which is a `type`. Grammar anchor: memberkey = type1 ["^"] "=>" / bareword ":" / value ":".
+# Fixed-key spelling and arity are explicit axes because colon (`k: v`) and arrow (`k => v`) route
+# through different generator paths, and single-entry arrow keys must still route to the record path.
+# `true:` parses as a bareword text key, not a bool fixed key; bool fixed keys are only represented
+# here through the arrow spelling (`true => v`), which the parser classifies as a fixed Bool key.
 
 [[contain]]
 id = "contain.map-key.type2.array"
@@ -19,3 +23,147 @@ feature = "type.choice"
 spec = "disallowed"
 note = "A memberkey is a `type1`, which does NOT include the `/` type-choice (a `type`); the bare form `{ int / tstr => bool }` is rejected by both oracles. Parenthesizing — `(int / tstr)` — turns it into a type2 and is then a valid key. RFC8610 §3.5.2; ABNF memberkey / type1 (type1 excludes type-choice)."
 example = "m = { int / tstr => bool }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.uint_colon_single"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Single-entry struct map with a fixed uint colon key. RFC8610 §3.5.1."
+example = "m = { 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.uint_colon_multi"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Multi-entry struct map with a fixed uint colon key plus a sibling, pinning arity-sensitive record routing. RFC8610 §3.5.1."
+example = "m = { 2: uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.uint_arrow_single"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Single-entry fixed-value arrow key. A literal-key `k => v` is the same wire entry as `k: v`, so it must route to the record path rather than table-detecting a fixed domain."
+example = "m = { 1 => uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.uint_arrow_multi"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Multi-entry fixed-value arrow key with a sibling, pinning arrow-key record routing beyond the single-entry case. RFC8610 §3.5.2."
+example = "m = { 2 => uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.text_colon_single"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Single-entry struct map with a fixed text colon key. RFC8610 §3.5.1."
+example = "m = { \"k\": uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.text_colon_multi"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Multi-entry struct map with a fixed text colon key plus a sibling. RFC8610 §3.5.1."
+example = "m = { \"k\": uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.text_arrow_single"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Single-entry fixed text arrow key; equivalent wire shape to the colon spelling but a distinct parser/generator route. RFC8610 §3.5.2."
+example = "m = { \"k\" => uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.text_arrow_multi"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Multi-entry fixed text arrow key with a sibling, pinning arrow-key record routing. RFC8610 §3.5.2."
+example = "m = { \"k\" => uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.nint_colon_single"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Single-entry struct map with a fixed negative integer key. Only uint/text fixed keys are implemented on the record path; this should reject gracefully until real nint key support lands."
+example = "neg = { -1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.nint_colon_multi"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Multi-entry struct map with a fixed negative integer key plus a supported sibling, matching the hand-pin shape for unsupported record-map keys."
+example = "neg = { -1: uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.nint_arrow_single"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Single-entry fixed negative integer arrow key; it must reject gracefully rather than exposing a fixed-domain table path."
+example = "neg = { -1 => uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.nint_arrow_multi"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Multi-entry fixed negative integer arrow key with a sibling; unsupported nint fixed keys should reject gracefully on the record path."
+example = "neg = { -1 => uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.float_colon_single"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Single-entry struct map with a fixed float key. Only uint/text fixed keys are implemented on the record path; this should reject gracefully until real float key support lands."
+example = "flt = { 1.5: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.value.float_colon_multi"
+role = "role.map-key"
+feature = "memberkey.value"
+spec = "allowed"
+note = "Multi-entry struct map with a fixed float key plus a supported sibling. Unsupported float fixed keys should reject gracefully, not panic."
+example = "flt = { 1.5: uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.float_arrow_single"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Single-entry fixed float arrow key; it must reject gracefully rather than exposing a fixed-domain table path."
+example = "flt = { 1.5 => uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.float_arrow_multi"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Multi-entry fixed float arrow key with a sibling; unsupported float fixed keys should reject gracefully on the record path."
+example = "flt = { 1.5 => uint, 1: uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.bool_arrow_single"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Single-entry fixed bool arrow key. Bool fixed keys are expressible through `true => v`; the colon spelling `true:` is a bareword text key and is intentionally not a bool cell."
+example = "m = { true => uint }"
+
+[[contain]]
+id = "contain.map-key.memberkey.type1.bool_arrow_multi"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "Multi-entry fixed bool arrow key with a sibling. Unsupported bool fixed keys should reject gracefully rather than panic."
+example = "m = { true => uint, 1: uint }"

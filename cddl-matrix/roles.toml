@@ -41,8 +41,14 @@ grammar = "RFC8610 ABNF: type2 tagged-data -> type"
 [[role]]
 id = "role.choice-member"
 title = "Choice alternative"
-desc = "A member of a type choice (`/`) or group choice (`//`)."
-grammar = "RFC8610 ABNF: type (type1 *(\"/\" type1)) ; grpchoice"
+desc = "A member of a type choice (`/`)."
+grammar = "RFC8610 ABNF: type (type1 *(\"/\" type1))"
+
+[[role]]
+id = "role.group-choice-arm"
+title = "Group-choice arm"
+desc = "A `//` group-choice arm as a container; map-rep arms carry member keys, array-rep arms do not."
+grammar = "RFC8610 ABNF: grpchoice = group *(S \"//\" S group)"
 
 [[role]]
 id = "role.occurrence-target"

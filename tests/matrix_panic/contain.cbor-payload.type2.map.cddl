@@ -1,0 +1,1 @@
+b = bytes .cbor ({a: int, c: uint})

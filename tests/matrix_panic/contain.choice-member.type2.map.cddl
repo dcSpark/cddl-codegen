@@ -1,0 +1,1 @@
+t = {a: int, c: uint} / {b: tstr, d: uint}
