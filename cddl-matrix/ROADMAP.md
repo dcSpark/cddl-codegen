@@ -221,11 +221,17 @@ from a degenerate example.**
   branch (`~/Documents/git/cddl`, commit `cdba2b4`) carries the fix — rebuild and point `RUST_CDDL`
   at it to give future `verify.ts` runs an enforcing oracle (the matrix's evidence does not depend
   on it: the probes are `int`-targeted). Prune this entry and the draft note when the fix ships in
-  a release. A second, distinct oracle disagreement surfaced by the decode-vector mint: for
-  `a = [1*1 (int, tstr)]` (`contain.occurrence-target.grpent.inline_group.exactly_once_array`) ruby
-  accepts the generated instances while the pinned rust oracle rejects them, so the row is honestly
-  pinned vectorless in `tests/decode_conformance/catalog.toml` — un-pin and re-mint if a rust `cddl`
-  release starts validating exactly-once inline-group occurrences. A `uint .size N` probe variant
+  a release. A second, distinct oracle disagreement surfaced by the decode-vector mint, with a wide
+  blast radius (full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`): the rust
+  oracle validates a multi-entry group in an array (parenthesized inline OR named reference)
+  correctly ONLY as the sole entry with no occurrence indicator — inner entries are checked at
+  group-local indices as if absolute array positions (so a preceding sibling misaligns them even
+  with no occurrence), and occurrence bounds are compared against total array item count instead of
+  repetition count. Ruby accepts all the spec-valid instances. Two catalog rows sit on it honestly:
+  `contain.occurrence-target.grpent.inline_group.exactly_once_array` is pinned vectorless, and
+  `contain.occurrence-target.grpent.groupname` (`a = [* pair]`) carries only the empty-array accept
+  vector (the sole instance both oracles accept). Un-pin / re-mint both when a fixed rust `cddl`
+  release ships. A `uint .size N` probe variant
   stays unswept (the one-example-per-op enumeration gap,
   § 4 variation rows). The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
