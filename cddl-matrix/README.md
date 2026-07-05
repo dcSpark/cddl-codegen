@@ -25,7 +25,10 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > row under each non-default codegen profile (`preserve`, `json`) and records a per-profile verdict
 > (`emission.<name>.status`) — the axis is **filled**: a row with no `emission` keys is one whose
 > default verdict is not `supported`, hence unsupported under every profile (a derived fact, since
-> only default-`supported` rows are probed). **Three projections *generate* their hand docs:**
+> only default-`supported` rows are probed). These verdicts are load-bearing, not just reporting:
+> the Rust gate `all_supported_constructs_generate_all_profiles` derives its expected per-profile
+> generation failures from `emission.<profile>.status = "unsupported"` (no second hand list), and
+> `project_corpus.ts` renders them as per-row profile caveats in `tests/corpus/COVERAGE.md`. **Three projections *generate* their hand docs:**
 > `golden_hex` (encoding axis), the corpus feature-axis projection — `project_corpus.ts` generates
 > `tests/corpus/COVERAGE.md` (the original north-star target, now subsumed; `corpus_detect.ts` +
 > `annotations/corpus/`) — and `query_q1_gaps.ts`, which generates the `## Limitations` section of

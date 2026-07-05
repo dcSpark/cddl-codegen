@@ -141,11 +141,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type.  [`should not expose Fixed type in member`] |
 | `prelude.nint` | ✅ | nint | `primitives.cddl` |
 | `prelude.null` | ➖ | null | top-level `x = null` type panics — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values). Its supported choice-member role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
-| `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `prelude.regexp` | ✅ | regexp | `prelude.cddl` |
 | `prelude.tdate` | ✅ | tdate | `prelude.cddl` |
 | `prelude.text` | ✅ | text | `primitives.cddl` |
-| `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone type panics; cddl-codegen exposes fixed values only for serialization, not as types (fails as a struct member too). Same Fixed-type gap as `null`.  [`should not expose Fixed type in member`] |
 | `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
@@ -158,11 +158,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `rangeop.exclusive` | ✅ | Exclusive range (a...b) | `exclusive_range.cddl` |
-| `rangeop.exclusive.float` | ➕ | Exclusive range, float head (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.exclusive.float` | ➕ | Exclusive range, float head (a...b) | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `rangeop.exclusive.int` | ➕ | Exclusive range, signed-int head spanning both CBOR sign arms (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `rangeop.exclusive.nint` | ➕ | Exclusive range, all-negative head (uint arm empty) (a...b) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `rangeop.inclusive` | ✅ | Inclusive range (a..b) | `sized_int.cddl` |
-| `rangeop.inclusive.float` | ➕ | Inclusive range, float head (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `rangeop.inclusive.float` | ➕ | Inclusive range, float head (a..b) | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `rangeop.inclusive.int` | ➕ | Inclusive range, signed-int head spanning both CBOR sign arms (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `rangeop.inclusive.nint` | ➕ | Inclusive range, all-negative head (uint arm empty) (a..b) | supported, no corpus fixture (cddl-codegen exit 0) |
 

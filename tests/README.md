@@ -288,8 +288,11 @@ and asserts they are accepted.
   every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
   can't silently launder a bug), then regenerates under `--preserve-encodings=true` and asserts
   accept vectors decode AND re-encode **byte-identically** (the preserve contract is itself
-  decode-direction evidence). `PRESERVE_SKIP` (stale-guarded, like `EXPECTED_FAIL`) carries the
-  float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding.
+  decode-direction evidence). `PRESERVE_SKIP` (stale-guarded) carries the
+  float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It
+  stays a hand list on purpose — it is NOT the matrix emission axis: the replay specs embed rows as
+  members, so e.g. `prelude.float` skips here while its `emission.preserve` verdict (a bare-alias
+  probe) is `supported`.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),

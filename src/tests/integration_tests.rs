@@ -4216,53 +4216,54 @@ fn hostile_deep_rejects_without_aborting() {
 /// profile is already covered by the always-on `all_supported_constructs_generate`). Run it with
 /// `cargo test --bin cddl-codegen all_supported_constructs_generate_all_profiles -- --ignored`.
 ///
-/// `EXPECTED_FAIL` pins the known per-profile generation failures with a reason each (the default
-/// profile has none — every supported construct generates there). Four-state verdict per
-/// (profile, fixture), mirroring the wasm-matrix SKIP pattern: a NON-expected failure fails the
-/// gate (a real regression, or deliberately add it here with a reason); an EXPECTED failure that
-/// now generates fine fails the gate as "resurfaced" (remove it — the gap closed), so the list
-/// can't rot.
+/// Expected per-profile failures are DERIVED from the matrix emission axis
+/// (`cddl-matrix/annotations/cddl_codegen.toml`: `emission.<profile>.status = "unsupported"` on a
+/// default-`supported` row) rather than pinned in a second hand-maintained list, so a new matrix
+/// row can't leave a stale duplicate here. Four-state verdict per (profile, fixture), mirroring
+/// the wasm-matrix SKIP pattern: a NON-expected failure fails the gate (a real regression, or a
+/// genuine gap to record on the emission axis via a verify.ts probe); an EXPECTED failure that now
+/// generates fine fails the gate as "resurfaced" (the gap closed — re-probe so the emission
+/// verdict flips to supported), so the verdicts can't rot.
 #[test]
 #[ignore]
 fn all_supported_constructs_generate_all_profiles() {
     use crate::cli::Cli;
     use clap::Parser;
 
-    // (profile, fixture stem, reason) — constructs that FAIL to generate under a non-default
-    // profile. The default profile has no entries: `all_supported_constructs_generate` already
-    // proves every fixture generates there. A cell fails "as expected" if generation errors OR
-    // panics under EITHER wasm mode for that (profile, fixture). Only preserve has entries today —
-    // exactly the matrix's three recorded emission divergences (all `emission.preserve =
-    // unsupported` in the annotations): two are the SAME float `unimplemented!` class
-    // (generation.rs "preserve_encodings is not implemented for float") tracked by the
-    // `preserve_encodings_supports_floats` stub; the third is the tag-over-type-choice-enum
-    // preserve assert (generation.rs `assert!(!cli.preserve_encodings)` on the tagged-enum
-    // serialize path — per-variant encoding metadata has no home on the enum). When a gap closes,
-    // its entry clears and becomes resurfaced.
-    const EXPECTED_FAIL: &[(&str, &str, &str)] = &[
-        (
-            "preserve",
-            "prelude.number",
-            "number = int / float; float aborts generation under --preserve-encodings \
-             (generation.rs 'preserve_encodings is not implemented for float'). See the \
-             preserve_encodings_supports_floats stub.",
-        ),
-        (
-            "preserve",
-            "prelude.time",
-            "time is a float epoch; float aborts generation under --preserve-encodings \
-             (generation.rs 'preserve_encodings is not implemented for float'). See the \
-             preserve_encodings_supports_floats stub.",
-        ),
-        (
-            "preserve",
-            "contain.tag-content.type.choice",
-            "a CBOR tag over a type-choice enum is unimplemented under --preserve-encodings \
-             (generation.rs tagged-enum serialize path asserts !cli.preserve_encodings; \
-             'TODO: how to even store these?'). Recorded as emission.preserve = unsupported; \
-             also skip-listed in the decode replay's PRESERVE_SKIP.",
-        ),
-    ];
+    // Expected non-default generation failures are the matrix's emission-axis verdicts, not a
+    // second hand-maintained list. The default profile has no entries:
+    // `all_supported_constructs_generate` already proves every supported fixture generates there.
+    let matrix_src = std::fs::read_to_string("cddl-matrix/annotations/cddl_codegen.toml").unwrap();
+    let matrix_doc: toml::Value =
+        toml::from_str(&matrix_src).expect("cddl_codegen.toml is valid TOML");
+    let mut expected_fail: std::collections::BTreeMap<(String, String), String> =
+        std::collections::BTreeMap::new();
+    for support in matrix_doc
+        .get("support")
+        .and_then(|v| v.as_array())
+        .expect("cddl_codegen.toml has [[support]] entries")
+    {
+        let id = support
+            .get("id")
+            .and_then(|v| v.as_str())
+            .expect("support row has id");
+        if support.get("status").and_then(|v| v.as_str()) != Some("supported") {
+            continue;
+        }
+        let Some(emission) = support.get("emission").and_then(|v| v.as_table()) else {
+            continue;
+        };
+        for (profile, verdict) in emission {
+            if verdict.get("status").and_then(|v| v.as_str()) == Some("unsupported") {
+                let reason = verdict
+                    .get("evidence")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("emission profile is unsupported")
+                    .to_string();
+                expected_fail.insert((profile.to_string(), id.to_string()), reason);
+            }
+        }
+    }
 
     let dir = std::path::Path::new("tests/matrix_supported");
     let mut inputs: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
@@ -4282,10 +4283,7 @@ fn all_supported_constructs_generate_all_profiles() {
     for path in &inputs {
         let id = path.file_stem().unwrap().to_str().unwrap();
         for (profile, extra) in profiles {
-            let expected = EXPECTED_FAIL
-                .iter()
-                .find(|(p, i, _)| p == profile && i == &id)
-                .map(|(_, _, reason)| *reason);
+            let expected = expected_fail.get(&(profile.to_string(), id.to_string()));
             // A construct "fails under this profile" if generation errors/panics under EITHER wasm
             // mode (the float `unimplemented!` class aborts in core generation regardless of wasm;
             // running both modes keeps the wasm-binding emission path in scope like the default gate).
@@ -4317,7 +4315,7 @@ fn all_supported_constructs_generate_all_profiles() {
                 }
             }
             match (expected, fail_detail) {
-                (Some(_), None) => resurfaced.push(format!("{id}/{profile}")),
+                (Some(reason), None) => resurfaced.push(format!("{id}/{profile}: {reason}")),
                 (None, Some(detail)) => failures.push(detail),
                 _ => {} // (Some,Some)=red as expected; (None,None)=green as expected
             }
@@ -4325,14 +4323,15 @@ fn all_supported_constructs_generate_all_profiles() {
     }
     assert!(
         resurfaced.is_empty(),
-        "these EXPECTED_FAIL supported constructs now generate — remove them from EXPECTED_FAIL \
-         (the gap closed):\n{}",
+        "these emission-unsupported cells now generate — the gap closed; re-probe the row \
+         (cddl-matrix verify.ts) so its `emission.<profile>` verdict flips to supported:\n{}",
         resurfaced.join("\n")
     );
     assert!(
         failures.is_empty(),
-        "matrix-supported constructs failed to generate under a non-default profile (regression, \
-         or deliberately add to EXPECTED_FAIL with a reason):\n{}",
+        "matrix-supported constructs failed to generate under a non-default profile (a \
+         regression, or a genuine gap to record as `emission.<profile>.status = \"unsupported\"` \
+         in cddl-matrix/annotations/cddl_codegen.toml via a verify.ts probe):\n{}",
         failures.join("\n")
     );
 }
