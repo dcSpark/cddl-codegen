@@ -268,10 +268,12 @@ default-on `--wasm` probe — documented in `README.md` § annotations and `test
 matrix"). Remaining:
 - **Unminted wasm shapes** — wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`
   and `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl, so only
-  extern / raw-bytes ctor args (user-supplied types with no generated conversion), flatten points, and
-  the `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in `tests/README.md`
+  extern / raw-bytes ctor args (user-supplied types with no generated conversion) and the
+  `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in `tests/README.md`
   § "wasm-crate test module"); a cell built entirely from those mints no wasm surface and falls back
-  to the compile verdict.
+  to the compile verdict. (Flatten points are not on this list: optional fields are not ctor args, so
+  no mint ever constructs a present-null state — verified against the `nullable__*` cells, which all
+  mint or skip only for the unrelated transparent-alias reason.)
 
 **Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

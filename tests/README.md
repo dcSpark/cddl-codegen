@@ -438,8 +438,10 @@ wasm-API idioms baked in: `JsError: !Debug`, so a wasm `Result` is unwrapped `.o
 wrappers expose no wasm `new`, so a wrapper ENTRY type is built by decoding the rust twin's bytes and a
 wrapper CTOR ARG via its `From<cddl_lib::Native>` impl, while a wrapper COLLECTION arg
 (`FooList`/`FooMap`/`&Nums`) is a `new`/`add`/`insert` block expression. **Loud skips (never silent):**
-extern / raw-bytes ctor args, flatten points, and the whole module under any
-`--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. Mutation-verified
+extern / raw-bytes ctor args, and the whole module under any
+`--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. (Optional-nullable
+flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
+state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) Mutation-verified
 red-first (three `generation.rs` wasm-boundary mutations each turned exactly the intended assertion class
 red; see the `src/emit_tests_wasm.rs` header).
 

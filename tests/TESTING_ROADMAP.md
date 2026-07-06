@@ -120,7 +120,8 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      hand-caught, not gate-caught, during the wasm-ABI grid extension: the roadmap bullet tracking
      the read-fidelity gap, a `tests/core/tests_wasm.rs` comment citing the retired `#[ignore]`
      stubs, and a `project_wasm_matrix.ts` role comment claiming `{ ? f: T }` panics — it
-     generates). Two mechanical halves: (1) convention — a gap-tracking sentence names its pin by
+     generates; a fourth followed in the same audit: the wasm emitter's documented loud-skip lists
+     carried a "flatten points" entry with no corresponding skip site in the code, in any revision). Two mechanical halves: (1) convention — a gap-tracking sentence names its pin by
      exact identifier via the already-pervasive "pinned by/tracked by/gated by `name`" phrasing,
      and a *behavioral* claim ("X panics/rejects") gets a robustness-catalog row FIRST (the
      panic/reject catalogs flip loudly on a behavior change; the `{ ? f: T }` claim rotted
