@@ -117,7 +117,10 @@ const ROLES: Record<string, Role> = {
   // struct/optional-field serialization is executed by `tests/core` (its map-rep `Bar` has optional
   // fields) and the `mstruct` representative cell.
   "struct-field-opt": { wrap: (t) => `holder = [pre: uint, ? field0: ${t}]` }, // getter->Option<T>, set_field0
-  "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` }, // new(inner: T), getter
+  // wasm holder surface depends on the inner: cbor-bytes only for scalar/struct inners (no wasm
+  // `new`/getter — see docs/docs/wasm_differences.mdx § "Tag and @newtype wrappers"); a collection
+  // inner inherits the collection wrapper API. The role exercises the wrapper boundary conversions.
+  "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` },
 };
 
 // A typo'd role name in `roles`/`skipRoles` would be a silent no-op that shrinks the projected grid

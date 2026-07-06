@@ -245,9 +245,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   wrapper whose only boundary surface is `From<cddl_lib::Native>` + `to_cbor_bytes`/`from_cbor_bytes`
   (no wasm `new`, no inner-`T` getter), so a JS consumer can neither construct nor read the tagged
   content except by round-tripping CBOR — the tag payload is inaccessible from the binding. Surfaced by
-  the new `tag` grid cells (`tests/matrix_wasm/tag__*`). Candidate fix: emit a wasm `new(inner: T)` +
-  inner getter on tag wrappers, reusing the `@newtype` getter machinery in generation.rs
-  (`newtype_getter`, the adjacent single-field-wrapper precedent).
+  the new `tag` grid cells (`tests/matrix_wasm/tag__*`); `@newtype` wrappers over scalar/struct inners
+  share the same bare surface (collection inners inherit the collection API; a tag over a struct folds
+  into the struct and keeps its accessors). Current behavior is user-documented in
+  `docs/docs/wasm_differences.mdx` § "Tag and `@newtype` wrappers" — update it when this lands.
+  Candidate fix: emit a wasm `new(inner: T)` + inner getter on these wrappers, reusing the `@newtype`
+  getter machinery in generation.rs (`newtype_getter`, the adjacent single-field-wrapper precedent).
 
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
