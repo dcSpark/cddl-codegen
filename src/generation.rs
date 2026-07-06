@@ -9068,7 +9068,11 @@ fn generate_wrapper_struct(
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
-        s.field("pub inner", field_type.for_rust_member(types, false, cli));
+        // PRIVATE, matching the default profile's private tuple field: a pub `inner` would let
+        // downstream code literal-construct or mutate the wrapper, bypassing the bound check
+        // `new()` enforces. Access goes through the getter (same as default); `serialization.rs`
+        // is a child module so it still reads/constructs the field directly.
+        s.field("inner", field_type.for_rust_member(types, false, cli));
         let enc_fields = encoding_fields(
             types,
             "inner",

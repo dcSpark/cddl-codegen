@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Hash {
-    pub inner: Vec<u8>,
+    inner: Vec<u8>,
     pub encodings: Option<HashEncoding>,
 }
 

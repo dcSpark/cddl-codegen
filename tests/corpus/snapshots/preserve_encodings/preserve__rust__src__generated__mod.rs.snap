@@ -639,7 +639,7 @@ impl GroupChoice {
 
 #[derive(Clone, Debug)]
 pub struct Hash {
-    pub inner: Vec<u8>,
+    inner: Vec<u8>,
     pub encodings: Option<HashEncoding>,
 }
 
@@ -1328,7 +1328,7 @@ impl From<TaggedText> for String {
 
 #[derive(Clone, Debug)]
 pub struct String1632 {
-    pub inner: String,
+    inner: String,
     pub encodings: Option<String1632Encoding>,
 }
 
@@ -1365,7 +1365,7 @@ impl TryFrom<String> for String1632 {
 
 #[derive(Clone, Debug)]
 pub struct String64 {
-    pub inner: String,
+    inner: String,
     pub encodings: Option<String64Encoding>,
 }
 
@@ -1452,7 +1452,7 @@ impl TableArrMembers {
 
 #[derive(Clone, Debug)]
 pub struct TaggedFooBytes {
-    pub inner: Foo,
+    inner: Foo,
     pub encodings: Option<TaggedFooBytesEncoding>,
 }
 
@@ -1477,7 +1477,7 @@ impl From<Foo> for TaggedFooBytes {
 
 #[derive(Clone, Debug)]
 pub struct TaggedText {
-    pub inner: String,
+    inner: String,
     pub encodings: Option<TaggedTextEncoding>,
 }
 
@@ -1519,7 +1519,7 @@ impl Three {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelNegRange {
-    pub inner: i64,
+    inner: i64,
     pub encodings: Option<TopLevelNegRangeEncoding>,
 }
 
@@ -1556,7 +1556,7 @@ impl TryFrom<i64> for TopLevelNegRange {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelPosRange {
-    pub inner: u64,
+    inner: u64,
     pub encodings: Option<TopLevelPosRangeEncoding>,
 }
 
@@ -1593,7 +1593,7 @@ impl TryFrom<u64> for TopLevelPosRange {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelTaggedRange {
-    pub inner: u64,
+    inner: u64,
     pub encodings: Option<TopLevelTaggedRangeEncoding>,
 }
 
@@ -1710,7 +1710,7 @@ impl WidthCollapse {
 
 #[derive(Clone, Debug)]
 pub struct WrapperList {
-    pub inner: Vec<u64>,
+    inner: Vec<u64>,
     pub encodings: Option<WrapperListEncoding>,
 }
 
@@ -1741,7 +1741,7 @@ impl From<WrapperList> for Vec<u64> {
 
 #[derive(Clone, Debug)]
 pub struct WrapperTable {
-    pub inner: OrderedHashMap<u64, u64>,
+    inner: OrderedHashMap<u64, u64>,
     pub encodings: Option<WrapperTableEncoding>,
 }
 
