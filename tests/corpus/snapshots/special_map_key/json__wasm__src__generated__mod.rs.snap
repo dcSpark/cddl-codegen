@@ -78,7 +78,7 @@ impl AsRef<cddl_lib::BkeyHolder> for BkeyHolder {
     }
 }
 
-type Bkeys = MapBoolToU64;
+pub type Bkeys = MapBoolToU64;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

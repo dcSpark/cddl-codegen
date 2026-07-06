@@ -61,28 +61,7 @@ use super::integration_tests::{checkout_hash, tool_cmd};
 /// Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules above, not
 /// listed here (see the module header). A live finding not covered by an entry fails the gate; an
 /// entry with no matching live finding fails as "resurfaced".
-const PARITY_EXEMPT: &[(&str, &str, &str)] = &[
-    // TEMPORARY: the named-table wasm alias is emitted private (`type Mp = MapU64ToText;`) at
-    // `generation.rs`'s already-generated-map branch, which omits `.vis("pub")`. These three entries
-    // document that pre-fix finding so the gate lands green here; the very next commit adds the
-    // one-line `.vis("pub")` fix and REMOVES these — at which point the anti-rot guard fires
-    // ("resurfaced") if either half is forgotten.
-    (
-        "collmap__newtype-inner",
-        "Mp",
-        "named-table wasm alias emitted private (missing .vis(\"pub\") in generation.rs)",
-    ),
-    (
-        "passthrumap__newtype-inner",
-        "Mp",
-        "named-table wasm alias emitted private (missing .vis(\"pub\") in generation.rs)",
-    ),
-    (
-        "tests/core",
-        "StandaloneText",
-        "named-table wasm alias emitted private (missing .vis(\"pub\") in generation.rs)",
-    ),
-];
+const PARITY_EXEMPT: &[(&str, &str, &str)] = &[];
 
 /// Only these files may appear under `rust/src/generated/`; only `mod.rs` under `wasm/src/generated/`.
 /// A file outside these sets means a new emission surface the differential doesn't parse — fail with
