@@ -775,7 +775,11 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
 2. Every rust `pub type` alias has a same-named wasm public alias or wasm type — a **private** wasm
    `type` alias does *not* count (that is exactly the finding class the generator fix below closed).
 3. Every rust `pub` field on `T` has a wasm getter of the same name (no setter obligation: wasm emits
-   `set_*` only for optional fields).
+   `set_*` only for optional fields). One structural exemption: a field whose type is `Option<X>`/`X`
+   with `X` a pub struct defined in the emitted `cbor_encodings.rs` (the preserve profile's
+   `pub encodings: Option<XEncoding>` capture fields) is rust-only round-trip metadata, not boundary
+   API — no wasm getter obligation. Obligations still come from `mod.rs` only, so the `*Encoding`
+   structs themselves never impose any.
 4. Every rust inherent `pub fn` on `T` has a wasm inherent fn of the same name **and arity** (`self`
    excluded; return types unchecked — boundary conversions differ by construction). Rules 3–4 run
    only when a same-named wasm struct/enum is *defined*; a `pub use`/alias counterpart is full parity
@@ -791,18 +795,31 @@ check: *semantic* wrongness — an identity `.into()` where a transform was need
 Inputs are every `tests/matrix_wasm/*.cddl` cell (even `WASM_MATRIX_SKIP` ones — parity is
 parse-only, and their emitted sources parse even when they don't standalone *compile*) plus the two
 depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-sink shapes the minimal cells
-don't reach). It is **parse-only** (no cargo check/test of the generated crates), so it's ~100 fast
-generations and stays **always-on** (no `#[ignore]`) in the default `cargo test` / check.ts local
-tier. It scopes to `src/generated/mod.rs`; a file-set guard fails loudly if a future multi-file
-emission mode grows the generated dir, so the differential can't silently escape.
+don't reach), each swept across `ALL_PROFILES` (default / preserve / json — the flags substantially
+change the rust surface; a vacuity guard pins the swept (input, profile) pair count so the sweep
+can't silently shrink). Generation is **in-process** (`api::generated_strings` via `Cli::parse_from`,
+wrapped in `catch_unwind` — no subprocess, no scratch dirs) and **parse-only** (no cargo check/test
+of the generated crates), so the whole ~300-generation sweep stays ~30 s and **always-on** (no
+`#[ignore]`) in the default `cargo test` / check.ts local tier. It scopes to `src/generated/mod.rs`;
+a key-set guard over the returned file map fails loudly on any `.rs` name outside the per-profile
+allowlist (preserve additionally allows `cbor_encodings.rs`/`ordered_hash_map.rs`, both optional;
+the wasm side is `mod.rs`-only in every profile), so a future emission surface can't silently escape
+the differential. One (profile, input) pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve,
+tests/core) — a float member aborts generation under `--preserve-encodings` (issue #205, the
+`preserve_encodings_supports_floats` stub) — with a resurfaced guard both directions (a listed pair
+that generates fails as "gap closed — remove the pin"; an unlisted abort fails normally).
 
-Findings reconcile against a `PARITY_EXEMPT` ledger, the same `WASM_MATRIX_SKIP` idiom: a finding
-matching an entry is expected (no failure); an entry matching no live finding fails as "resurfaced" (a
-fix landed — remove it); an unexempted finding fails with the remedy spelled out (fix the emitter, or
-deliberately ledger it with a reason). The ledger is **empty** — the one finding class it launched
-with (the named-table wasm alias emitted as a private `type` instead of `pub type`) was fixed at the
-emitter (`generation.rs`'s already-generated-map branch now carries `.vis("pub")`, matching its
-sibling passthrough-alias site).
+Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
+`WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no
+live finding fails as "resurfaced" (a fix landed — remove it); an unexempted finding fails with the
+remedy spelled out (fix the emitter, or deliberately ledger it with a reason). The ledger is
+**empty** — both finding classes the gate has surfaced were fixed at the emitter rather than
+ledgered: the named-table wasm alias emitted as a private `type` instead of `pub type`
+(`generation.rs`'s already-generated-map branch now carries `.vis("pub")`, matching its sibling
+passthrough-alias site), and the preserve-profile wrapper `inner` field emitted `pub` (caught by the
+profile sweep's first run; now private like the default profile's tuple field, so downstream code
+can't literal-construct or mutate a wrapper past the bound check `new()` enforces — access goes
+through the getter in every profile).
 
 ## Coverage
 
