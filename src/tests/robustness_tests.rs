@@ -892,3 +892,61 @@ fn sign_partition_map_rep_generates_and_checks() {
         );
     }
 }
+
+/// `.size` over a signed `int` (`i = int .size 8`) must be a GRACEFUL rejection, not a supported
+/// mapping: per the RFC author's clarification (cbor-wg/cddl#32), a control distributes over
+/// `int = uint / nint` and an undefined application is a per-value NON-match, so `int .size N`
+/// matches exactly the `uint .size N` window — the historical `i{8N}` mapping accepted negatives
+/// the spec excludes and rejected `[2^(8N-1), 2^8N)` values it admits. We reject rather than
+/// aligning because the rust `cddl` oracle (parser dep + conformance validator) hard-errors on the
+/// construct, so an aligned implementation would be uncertifiable; revisit when upstream ships the
+/// per-value semantics (ledgered in `cddl-matrix/ROADMAP.md`; scoreboard in
+/// `draft/cddl-size-on-int-divergence.md`). Pins the message (actionable: names the rule and both
+/// conformant spellings) and the boundary: `uint .size N` must KEEP generating.
+#[test]
+fn size_on_signed_int_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_size_int_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "size_int_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // top-level rule position: message names the offending rule (in its RustIdent display form,
+    // like the sibling float-window rejections sharing `float_reject_rule_prefix`).
+    let msg = run("my_int = int .size 8\n", "top").expect_err(
+        "`int .size N` must be a graceful Err, not Ok (the i64 mapping mis-enforces the window)",
+    );
+    assert!(
+        msg.contains("rule `MyInt`"),
+        "rejection message should name the offending rule, got: {msg}"
+    );
+    assert!(
+        msg.contains("uint .size") && msg.contains("range"),
+        "rejection message should offer both conformant spellings (`uint .size N`, explicit range), got: {msg}"
+    );
+
+    // member position rejects too (no rule name available there — message still actionable).
+    let msg = run("m = [x: int .size 4]\n", "member")
+        .expect_err("`int .size N` in member position must also reject gracefully");
+    assert!(
+        msg.contains("uint .size"),
+        "member-position rejection should carry the same actionable message, got: {msg}"
+    );
+
+    // boundary: the uint half of `.size` stays supported.
+    run("u = uint .size 2\n", "uint_ok")
+        .expect("`uint .size N` is spec-defined and supported — must keep generating");
+}

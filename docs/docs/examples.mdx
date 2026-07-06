@@ -190,7 +190,7 @@ limitations = [
 	u_32: 0..4294967295,
 	u_64: uint .size 8,
 	i_8: -128..127,
-	i_64: int .size 8,
+	i_64: -9223372036854775808..9223372036854775807,
     hash32: bytes .size 32,
     bounded: text .size (10..20),
 ]
@@ -219,9 +219,13 @@ u32, etc...
 u_32: 0..4294967295
 u_64: uint .size 8
 i_8: -128..127
-i_64: int .size 8
+i_64: -9223372036854775808..9223372036854775807
 
 ```
+
+Note that signed types use explicit ranges, not `.size`: `int .size N` is rejected, because its
+spec meaning is the **unsigned** window (`.size` is not defined on negative integers —
+[cbor-wg/cddl#32](https://github.com/cbor-wg/cddl/issues/32)), which is spelled `uint .size N`.
 
 One can also limit strings (text or bytes) to a specific length
 
@@ -246,7 +250,7 @@ limitations = [
     u_32: 0..4294967295,
     u_64: uint .size 8,
     i_8: -128..127,
-    i_64: int .size 8,
+    i_64: -9223372036854775808..9223372036854775807,
     hash32: bytes .size 32,
     bounded: text .size (10..20),
 ]

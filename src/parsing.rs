@@ -632,21 +632,19 @@ fn parse_control_operator(
                         }
                     }
                     Type2::Typename { ident, .. } if ident.to_string() == "int" => {
-                        match &base_range {
-                            // this is complex to support since it requires two disjoint ranges of possible values
-                            ControlOperator::Range((Some(_), Some(_))) => panic!(
-                                ".size range unsupported for signed int type: {:?}",
-                                operator
-                            ),
-                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((
-                                Some(-i128::pow(2, ((8 * *h) - 1) as u32)),
-                                Some(i128::pow(2, ((8 * *h) - 1) as u32) - 1),
-                            )),
-                            _ => panic!(
-                                "unexpected partial range in size control operator: {:?}",
-                                operator
-                            ),
-                        }
+                        // Rejected, not mapped: per the RFC author (cbor-wg/cddl#32) a control
+                        // distributes over `int = uint / nint` and is undefined on `nint`
+                        // (per-value non-match), so `int .size N` matches exactly the
+                        // `uint .size N` window — the historical signed i{8N} mapping
+                        // mis-enforced it in both directions. The rust cddl oracle also
+                        // hard-errors on the construct, so an aligned window would be
+                        // uncertifiable; revisit when upstream ships the per-value semantics
+                        // (ledgered in cddl-matrix/ROADMAP.md).
+                        types.record_rejection(format!(
+                            "{}`.size` on a signed `int` is unsupported — its spec meaning is the `uint .size` window (cbor-wg/cddl#32), which the signed reading mis-enforces; use `uint .size N`, or an explicit range for an N-byte signed int",
+                            float_reject_rule_prefix(rule_name)
+                        ));
+                        ControlOperator::Range((None, None))
                     }
                     _ => {
                         match base_range {

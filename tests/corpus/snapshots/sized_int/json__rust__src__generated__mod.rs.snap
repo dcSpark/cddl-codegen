@@ -20,17 +20,15 @@ pub struct BoundedInts {
     pub u_16: u16,
     pub u_32: u32,
     pub i_8: i8,
-    pub i_64: i64,
 }
 
 impl BoundedInts {
-    pub fn new(u_8: u8, u_16: u16, u_32: u32, i_8: i8, i_64: i64) -> Self {
+    pub fn new(u_8: u8, u_16: u16, u_32: u32, i_8: i8) -> Self {
         Self {
             u_8,
             u_16,
             u_32,
             i_8,
-            i_64,
         }
     }
 }
