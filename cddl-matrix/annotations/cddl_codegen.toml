@@ -682,7 +682,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.exclusive"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -691,7 +691,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.exclusive.float"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "unsupported"
@@ -700,7 +700,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen panic (exi
 [[support]]
 id = "rangeop.exclusive.int"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -709,7 +709,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.exclusive.nint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -718,7 +718,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.inclusive"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -727,7 +727,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.inclusive.float"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 12 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "unsupported"
@@ -736,7 +736,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen panic (exi
 [[support]]
 id = "rangeop.inclusive.int"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -745,7 +745,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "rangeop.inclusive.nint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
