@@ -23,9 +23,10 @@
  *      distinguish, the escape that shipped holder-wrapped `8200…` scalars on the first rangeop mint).
  *      Mechanically: its leading CBOR major type must match the row's accept vectors' (majors 0/1
  *      merged — int-family instances legitimately span both signs); on a standalone row with no
- *      accepts (the non-uint-endpoint range rows — their accepts can't certify, see
- *      draft/rust-cddl-float-range-gap.md) it must not carry the mint's `8200` holder preamble. If a
- *      standalone row's instances genuinely begin `[0, …]`, add an accept vector sharing the shape.
+ *      accepts (an oracle gap can leave a row's accept side un-mintable — the non-uint-endpoint
+ *      range rows sat that way until the fork's `885c61c` fix) it must not carry the mint's `8200`
+ *      holder preamble. If a standalone row's instances genuinely begin `[0, …]`, add an accept
+ *      vector sharing the shape.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the

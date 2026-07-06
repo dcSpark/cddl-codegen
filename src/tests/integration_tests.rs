@@ -2761,7 +2761,7 @@ fn comment_dsl() {
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
 /// so a routine cddl bump that updates only Cargo.toml can't silently leave the oracle on a stale rev.
-const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"773b7231c86a94cab7ad97530251472dfdf5d6c2\" }\n";
+const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"885c61cf2e399457be6f3f7078778e362787de08\" }\n";
 
 #[test]
 fn cddl_oracle_dep_rev_matches_cargo_toml() {
@@ -3082,12 +3082,14 @@ fn ir_conformance_corpus() {
     // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
     // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
     // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
-    //   - sized_int: RUST VALIDATOR GAP. Its spec has `i_8: -128..127` and `i_64: int .size 8`; the
-    //     dcSpark cddl validator can't parse a range whose lower bound is a negative int ("lower
-    //     value must be a uint type. got -128") nor `.size` on a signed `int` ("target for .size must
-    //     a string or uint data type, got int"). Our minted values are in-spec (all zeros) — an
-    //     oracle constraint-evaluator limitation, not an encoder bug (see tests/README.md). The ruby
-    //     gem is a different parser/evaluator, so it CAN weigh in on these bytes.
+    //   - sized_int: RUST VALIDATOR GAP. Its spec has `i_64: int .size 8`, and the dcSpark cddl
+    //     validator can't evaluate `.size` on a signed `int` ("target for .size must a string or
+    //     uint data type, got int"). (Its other constraint, the negative-lower-bound range
+    //     `i_8: -128..127`, stopped being a gap at the fork's `885c61c` non-uint-range fix — the
+    //     `.size`-on-int half alone keeps this fixture skipped.) Our minted values are in-spec (all
+    //     zeros) — an oracle constraint-evaluator limitation, not an encoder bug (see
+    //     tests/README.md). The ruby gem is a different parser/evaluator, so it CAN weigh in on
+    //     these bytes.
     //   - nested_group: RUST VALIDATOR STRICTENING (as of the fork's `773b723` array-sequence rewrite).
     //     Its `inner = (a: uint, b: uint)` is a bare GROUP, not a type; cddl-codegen mints it as an
     //     array-serialized struct (`[0, 0]` = 0x82 00 00). The pre-`773b723` validator leniently

@@ -163,14 +163,14 @@ silently dropping enforcement evidence): the numeric ops' probe examples target 
 non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
 over a `uint` target (`draft/rust-cddl-uint-control-op-gap.md`), so `uint`-targeted or
 vacuously-bounded forms cannot pass the both-oracles-reject gate; the non-uint-endpoint range
-rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the rust oracle
-blanket-rejects EVERY instance of a float or negative-int range, valid or not
-(`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
-vector; and `ctl.size.uint`'s reject certification leans on RUBY plus the local-fixes oracle @
-`773b723`, which rejects the holder-wrapped violation discriminatingly (the released 0.10.x CLI
-misvalidates any control-op-carrying rule referenced as an array entry — gap #4 in § "Upstream
-oracle gaps" below; the fork fix is also what let the row's accept side mint). `ctl.default` is
-`n/a` (it governs an absent field — no rejectable instance).
+rows (`.int`/`.nint`/`.float`) carry rust corroboration only against the local-fixes oracle @
+`885c61c` — the released 0.10.x CLI blanket-rejects EVERY instance of a float or negative-int
+range, valid or not (gap #3 in § "Upstream oracle gaps" below; the fork fix is what let those six
+rows' accept side mint and made their rejects discriminating); and `ctl.size.uint`'s reject
+certification leans on RUBY plus the local-fixes oracle, which rejects the holder-wrapped violation
+discriminatingly (the released 0.10.x CLI misvalidates any control-op-carrying rule referenced as
+an array entry — gap #4 below; that fork fix is also what let the row's accept side mint).
+`ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
@@ -180,8 +180,8 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
-`773b723` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle shares it)
-carries fixes for #1/#2/#4; `RUST_CDDL` defaults to that build, giving `verify.ts` runs an enforcing
+`885c61c` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle shares it)
+carries fixes for all four; `RUST_CDDL` defaults to that build, giving `verify.ts` runs an enforcing
 oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
 development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
 somewhere immutable and point `RUST_CDDL` there first.
@@ -203,16 +203,17 @@ somewhere immutable and point `RUST_CDDL` there first.
    (`contain.occurrence-target.grpent.inline_group.exactly_once_array` and
    `contain.occurrence-target.grpent.groupname`) are re-minted with real accept vectors against that
    build. Full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`.
-3. **non-uint-endpoint range blanket rejection** (0.10.x AND `local-fixes`): every instance
-   validated against a range whose endpoints are not uint is rejected, valid or invalid (`invalid
-   cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`) AND
-   negative / sign-spanning int ranges (`-10..10`, `-10..-3`); `0..10` validates correctly.
-   `compile-cddl` accepts the spec; only `validate` blanket-rejects. Blast radius: the six
-   `rangeop.{inclusive,exclusive}.{int,nint,float}` variation rows carry NO accept vector (the
-   mint's two-oracle accept gate can't pass), and their reject certification leans on ruby (recorded
-   per-vector in `reason`) — cddl-codegen's own decoder is the enforcement oracle that matters (the
-   emitted per-sign-arm / NaN-safe range check, executed by the replay gate). Repro:
-   `draft/rust-cddl-float-range-gap.md`.
+3. **non-uint-endpoint range blanket rejection** (released 0.10.x — a 0.10.0 regression): every
+   instance validated against a range whose endpoints are not uint is rejected, valid or invalid
+   (`invalid cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`)
+   AND negative / sign-spanning int ranges (`-10..10`, `-10..-3`); `0..10` validates correctly.
+   `compile-cddl` accepts the spec; only `validate` blanket-rejects. FIXED in `local-fixes` @
+   `885c61c` (integer windows compare as i128 across any uint/int endpoint mix; float windows match
+   floats only, via a NaN-safe accept-form check); the six
+   `rangeop.{inclusive,exclusive}.{int,nint,float}` variation rows that sat on it with NO accept
+   vector are re-minted with real accept vectors against that build, and their `class="constraint"`
+   rejects are now corroborated discriminatingly by rust instead of leaning on ruby alone. Repro +
+   fix provenance: `draft/rust-cddl-float-range-gap.md`.
 4. **control-op-carrying rule as array entry misvalidated** (released 0.10.x): the WHOLE array is
    checked against the rule (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an
    uncontrolled `x = uint` in the same position validates fine). Subsumed by the same `773b723`

@@ -308,12 +308,12 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       enforce these ops over a `uint` target (draft/rust-cddl-uint-control-op-gap.md).
   //   (b) The range rows. `rangeop.{inclusive,exclusive}` (uint-headed base, `0..10`/`0...10`) and their
   //       head-type × sign variation rows `.int` / `.nint` / `.float`. Each carries a boundary-violation
-  //       reject vector (out-of-window / excluded endpoint / NaN). For the uint-headed base rows BOTH
-  //       oracles reject the violation. For the `.int` / `.nint` / `.float` rows the rust oracle
-  //       blanket-rejects EVERY instance of a non-uint-endpoint range (draft/rust-cddl-float-range-gap.md
-  //       — its validator requires uint endpoints, so negative-int AND float ranges over-reject), so
-  //       their reject certification leans on RUBY (which enforces the window) and their ACCEPT side
-  //       carries no vector; the enforcement oracle that matters is cddl-codegen's own generated decoder
+  //       reject vector (out-of-window / excluded endpoint / NaN). BOTH oracles reject the violations:
+  //       the released rust 0.10.x CLI blanket-rejected EVERY instance of a non-uint-endpoint range
+  //       (draft/rust-cddl-float-range-gap.md), leaving the `.int`/`.nint`/`.float` rows accept-less
+  //       with ruby-only reject certification, but the fork's `885c61c` fix made rust discriminating —
+  //       those rows now carry minted accepts too; the enforcement oracle that matters remains
+  //       cddl-codegen's own generated decoder
   //       (the emitted range check, executed by the replay gate). Assert the exact set so a widening
   //       (a type-violation vector engineered onto a numeric row) or a narrowing (a range row losing its
   //       reject vector, re-hiding a silent-acceptance hole) fails this gate.
