@@ -22,6 +22,18 @@ Map literals also generate a type for them with `len() -> usize` and `insert(K, 
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.
 
+## Tag and `@newtype` wrappers
+
+A CBOR tag over a non-struct type (`t = #6.10(uint)`) and a `; @newtype` rule both generate a wrapper
+struct. On the rust side the wrapper is fully usable — `new(inner)` plus `From` conversions in both
+directions. On the wasm side the wrapper currently exposes **only** `to_cbor_bytes()` /
+`from_cbor_bytes()`: no constructor taking the inner value and no getter reading it back, so from
+JavaScript the wrapped content can only be produced or inspected as CBOR bytes (for a plain `@newtype`
+the wrapper's bytes are exactly the inner value's bytes; for a tag they include the tag header). Two
+shapes avoid the limitation: a wrapper over a named array/map inherits that collection's wasm API
+(`new`/`add`/`insert`/`get`), and a tag over a struct needs no wrapper at all — the tag is folded into
+the struct's own serialization, so the struct keeps its normal constructor and getters.
+
 ## Nullable / nested Options
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
