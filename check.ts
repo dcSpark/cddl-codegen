@@ -45,14 +45,14 @@ const MATRIX = join(ROOT, "cddl-matrix");
 
 // ---- tiers ---------------------------------------------------------------------------------------
 const TIERS = ["fast", "local", "full"] as const;
-type Tier = (typeof TIERS)[number];
+export type Tier = (typeof TIERS)[number];
 const rank = (t: Tier) => TIERS.indexOf(t);
 
 // ---- gate model ----------------------------------------------------------------------------------
 type Status = "PASS" | "FAIL" | "SKIPPED" | "STUB" | "NOT_IN_TIER";
 interface Outcome { status: Status; reason?: string }
 interface Opts { skipMissing: boolean; refreshFuzz: boolean }
-interface Gate {
+export interface Gate {
   id: string;
   tier: Tier;
   kind: "cmd" | "fn" | "stub";
@@ -216,7 +216,7 @@ function runMatrixTypecheck(): Outcome {
 //   - `snapshot_quick` is the fast-tier inner loop; in local/full it is subsumed by the full
 //     `cargo test` but stays cheap (~5s) so tier-supersetting holds by construction.
 // ==================================================================================================
-const REGISTRY: Gate[] = [
+export const REGISTRY: Gate[] = [
   { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
     desc: "self-completeness meta-checks (ignored-test + matrix-script coverage + CI-is-fast-tier)" },
 
@@ -265,6 +265,10 @@ const REGISTRY: Gate[] = [
     script: "query_q5_completeness.ts", desc: "Q5 matrix-self-completeness query + reconciliation gate (matrix.json + sources/*.abnf/.prelude, no cargo)" },
   { id: "query_q6_diff", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q6_diff.ts", "--check"], cwd: MATRIX,
     script: "query_q6_diff.ts", desc: "Q6 profile/version-diff query + profile-set consistency gate (matrix.json, no cargo)" },
+  { id: "project_status_headers", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "project_status_headers.ts", "--check"], cwd: MATRIX,
+    script: "project_status_headers.ts",
+    desc: "status-header count spans drift gate (matrix.json + catalog.toml + check.ts registry → ROADMAP/README/tests-README, no cargo)" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
@@ -403,4 +407,4 @@ function main() {
   process.exit(0);
 }
 
-main();
+if (import.meta.main) main();
