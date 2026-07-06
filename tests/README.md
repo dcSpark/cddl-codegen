@@ -434,11 +434,16 @@ rust-API strings vs wasm-wrapper-API strings — read from it). The teeth, per m
    this half only confirms the acceptance plumbing.
 
 wasm-API idioms baked in: `JsError: !Debug`, so a wasm `Result` is unwrapped `.ok().expect(..)`, never
-`.unwrap()`; composite ctor params cross as `&Wrapper`; c-style enums cross by value; `@newtype`/tag
-wrappers expose no wasm `new`, so a wrapper ENTRY type is built by decoding the rust twin's bytes and a
-wrapper CTOR ARG via its `From<cddl_lib::Native>` impl, while a wrapper COLLECTION arg
+`.unwrap()`; composite ctor params cross as `&Wrapper`; c-style enums cross by value; every
+`@newtype`/tag/bounded wrapper exposes a wasm `new(inner)` ctor (`Result`-returning when the bound makes
+it fallible) plus an inner-value getter (`get`, or the `@newtype <name>` rename), so a wrapper ENTRY type
+is built through that public `new` — its minted inner rendered by the same ctor-arg machinery and (for a
+primitive inner) read back through the getter against the minted literal. A wrapper CTOR ARG is instead
+built via its `From<cddl_lib::Native>` impl (a convenience — the wrapper's own `new` is covered by its
+top-level entry test); if the inner is unmintable (extern/raw-bytes) the entry type falls back to
+decoding the rust twin's bytes with a loud skip of the ctor differential. A wrapper COLLECTION arg
 (`FooList`/`FooMap`/`&Nums`) is a `new`/`add`/`insert` block expression. **Loud skips (never silent):**
-extern / raw-bytes ctor args, and the whole module under any
+extern / raw-bytes ctor args (and the same-class wrapper-entry ctor differential), and the whole module under any
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. (Optional-nullable
 flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
 state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) Mutation-verified
@@ -626,7 +631,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`, `mstruct`
     (map-representation Record struct — bareword-keyed map), `cborwrap`/`cborwrap2`, `tag` (a CBOR-tag
     wrapper struct — crosses via a wasm `new(inner)` ctor and an inner-value `get()` accessor, plus
-    `From<cddl_lib::Tg>` / cbor bytes), `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
+    `From<cddl_lib::Tg>` / cbor bytes), `bwrap` (a bounded/range wrapper struct — the only
+    `Result`-returning wasm `new`: `new(inner)` enforces the `.size` bound, alongside `get()`),
+    `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
     `nullable` (`Option<T>`), `generic`, `chain`, `extern`, `rawbytes` (a user-supplied
     `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix

@@ -65,6 +65,10 @@ const SHAPES: Record<string, Shape> = {
   // (transparent-to-wrapper, which resolves to the inner `Foo` wrapper) and the `coll`/`collmap`
   // wrappers (which expose the richer `new`/`add`/`insert` collection API).
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg" },
+  // bounded/range wrapper struct — the ONLY `Result`-returning wasm `new`: `new(inner)` enforces the
+  // `.size` bound and returns `Result<_, JsError>`, alongside the inner-value `get()`. Pins the
+  // failable ctor + getter across roles (a bare `.size` range wraps WITHOUT `@newtype`).
+  bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw" },
   // c-style enum — Copy, re-exported by value (`pub use`)
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
   // data-carrying type-choice enum -> a `#[wasm_bindgen]` wrapper enum with per-variant ctors; a
@@ -144,7 +148,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 92; // 15 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 98; // 16 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

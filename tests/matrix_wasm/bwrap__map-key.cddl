@@ -1,0 +1,3 @@
+; cell: bwrap x map-key
+bw = bytes .size (0..32)
+holder = { * bw => uint }
