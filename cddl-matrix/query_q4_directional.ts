@@ -333,8 +333,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       rejected as FixedValueMismatch; both oracles certify.
   //       `value.number.{hex,bin}` carry hand wrong-fixed-value violations ([0] — the silent-zero
   //       radix-conversion trap — plus an off-by-one/truncated-digit guard each), rejected as
-  //       FixedValueMismatch; both oracles certify (the fork's 2c7548e radix lexer fix is what made
-  //       the rows mintable at all — README.md § oracle gap #5).
+  //       FixedValueMismatch; both oracles certify.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper",
