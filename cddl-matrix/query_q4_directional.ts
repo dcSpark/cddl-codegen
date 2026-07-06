@@ -326,9 +326,9 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       `ctl.size.uint` carries the 65536-over-the-u16-window violation, DURABLY rejected by the
   //       width-guarded member decode (the guard replaced the silent truncating `as u16` cast this
   //       row's first vector attempt exposed — README.md § "Gotchas"). Its certification leans on RUBY
-  //       (the rust CLI misvalidates any control-op-carrying rule referenced as an array entry —
-  //       the fourth oracle gap — which also keeps the row's ACCEPT side un-mintable), with the
-  //       bare-form reject verified against the local-fixes oracle @ cdba2b4.
+  //       plus the local-fixes oracle @ 773b723, which rejects the holder-wrapped violation
+  //       discriminatingly (the released 0.10.x CLI misvalidates any control-op-carrying rule
+  //       referenced as an array entry — oracle gap #4; the fork fix also let the accept side mint).
   //       `value.number.hexfloat` carries a wrong-float-value violation ([3.5] vs the fixed 3.0),
   //       rejected as FixedValueMismatch; both oracles certify.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",

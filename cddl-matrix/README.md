@@ -166,10 +166,11 @@ vacuously-bounded forms cannot pass the both-oracles-reject gate; the non-uint-e
 rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the rust oracle
 blanket-rejects EVERY instance of a float or negative-int range, valid or not
 (`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
-vector; and `ctl.size.uint` leans on RUBY too (the rust CLI misvalidates any control-op-carrying
-rule referenced as an array entry — gap #4 in § "Upstream oracle gaps" below — which also
-keeps its accept side un-mintable), with the bare-form reject verified against the local-fixes
-oracle @ `cdba2b4`. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
+vector; and `ctl.size.uint`'s reject certification leans on RUBY plus the local-fixes oracle @
+`773b723`, which rejects the holder-wrapped violation discriminatingly (the released 0.10.x CLI
+misvalidates any control-op-carrying rule referenced as an array entry — gap #4 in § "Upstream
+oracle gaps" below; the fork fix is also what let the row's accept side mint). `ctl.default` is
+`n/a` (it governs an absent field — no rejectable instance).
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
