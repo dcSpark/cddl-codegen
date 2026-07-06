@@ -13,7 +13,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 |------|---------|--------------|------------------|
 | `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~15s |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~4 min |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~15 min |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~30 min |
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
