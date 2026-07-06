@@ -16,5 +16,4 @@ pub struct BoundedIntsEncoding {
     pub u_16_encoding: Option<cbor_event::Sz>,
     pub u_32_encoding: Option<cbor_event::Sz>,
     pub i_8_encoding: Option<cbor_event::Sz>,
-    pub i_64_encoding: Option<cbor_event::Sz>,
 }

@@ -1,1 +1,1 @@
-bounded_ints = [u_8: uint .size 1, u_16: uint .le 65535, u_32: 0..4294967295, i_8: -128..127, i_64: int .size 8]
+bounded_ints = [u_8: uint .size 1, u_16: uint .le 65535, u_32: 0..4294967295, i_8: -128..127]

@@ -118,10 +118,10 @@ signed_ints = [
 	u_16: uint .size 2,
 	u_32: uint .size 4,
 	u_64: uint .size 8,
-	i_8: int .size 1,
-	i_16: int .size 2,
-	i_32: int .size 4,
-	i_64: int .size 8,
+	i_8: -128 .. 127,
+	i_16: -32768 .. 32767,
+	i_32: -2147483648 .. 2147483647,
+	i_64: -9223372036854775808 .. 9223372036854775807,
 	n_64: nint
 	u64_max: 18446744073709551615,
 	; this test assumes i64::BITS == isize::BITS (i.e. 64-bit programs) or else the cddl parsing lib would mess up
@@ -251,6 +251,6 @@ wrapper_list = [ * uint ] ; @newtype
 ; cast exactly like the default path — a bare `x as u16`/`as i8`/`as i64` silently truncated.
 width_collapse = [
     u16w: uint .size 2,
-    i8w: int .size 1,
-    i64w: int .size 8,
+    i8w: -128 .. 127,
+    i64w: -9223372036854775808 .. 9223372036854775807,
 ]

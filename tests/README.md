@@ -518,15 +518,14 @@ target cache is preserved. Two curated lists, each empirically justified:
   length check at embed sites and covered by `occurrence_holder`'s minted round-trip + deser-reject
   cases, where they were once misread as element VALUE bounds).
 - **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
-  (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
-  and `sized_int` (`.size` on a signed `int`, `i_64: int .size 8` — the rust validator hard-errors
-  on every instance, an over-rejection gap per the RFC author's clarified semantics
-  (cbor-wg/cddl#32: a control distributes over `int = uint / nint` and an undefined application is
-  a per-value non-match, so `int .size 8` matches exactly the `uint .size 8` window — scoreboard in
-  `draft/cddl-size-on-int-divergence.md`, which also records cddl-codegen's own `i{8N}` deviation);
-  its negative-lower-bound range `i_8: -128..127` stopped being a gap at the fork's `885c61c`
-  non-uint-range fix, but the `.size`-on-int half alone keeps it skipped; our minted values are
-  in-spec under every reading).
+  (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile
+  standalone). `sized_int` is a past resident, off the list twice over: its negative-lower-bound
+  range stopped being a validator gap at the fork's `885c61c` non-uint-range fix, and its
+  `int .size 8` member was dropped when cddl-codegen made `.size`-on-signed-`int` a graceful
+  rejection (per the RFC author's clarified semantics — cbor-wg/cddl#32 — the construct means the
+  `uint .size` window, which the old `i{8N}` mapping mis-enforced; the rust validator's hard error
+  on it remains an upstream over-rejection gap, scoreboard in
+  `draft/cddl-size-on-int-divergence.md`).
 
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,

@@ -60,12 +60,8 @@ impl BoundedInts {
         self.0.i_8
     }
 
-    pub fn i_64(&self) -> i64 {
-        self.0.i_64
-    }
-
-    pub fn new(u_8: u8, u_16: u16, u_32: u32, i_8: i8, i_64: i64) -> Self {
-        Self(cddl_lib::BoundedInts::new(u_8, u_16, u_32, i_8, i_64))
+    pub fn new(u_8: u8, u_16: u16, u_32: u32, i_8: i8) -> Self {
+        Self(cddl_lib::BoundedInts::new(u_8, u_16, u_32, i_8))
     }
 }
 

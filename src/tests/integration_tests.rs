@@ -3082,20 +3082,15 @@ fn ir_conformance_corpus() {
     // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
     // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
     // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
-    //   - sized_int: RUST VALIDATOR GAP (over-rejection). Its spec has `i_64: int .size 8`, and
-    //     the dcSpark cddl validator hard-errors on `.size` over a signed `int` ("target for .size
-    //     must a string or uint data type, got int") — rejecting every instance, valid or not. Per
-    //     the RFC author's clarification (cbor-wg/cddl#32): `int = uint / nint`, a control
-    //     distributes over the choice, and an undefined application (`.size` on `nint`) is a
-    //     per-value NON-match — so `int .size 8` matches exactly the `uint .size 8` window and a
-    //     validator must not error on it. The ruby gem (the author's tool) implements exactly that;
-    //     candidate fork fix + scoreboard in draft/cddl-size-on-int-divergence.md. NOTE the same
-    //     clarification makes cddl-codegen's own `int .size N` -> i{8N} mapping a known deviation
-    //     (accepts negatives the spec excludes; rejects [2^(8N-1), 2^8N) values it admits) — but
-    //     the fixture's minted all-zero values match under every reading, so the dumped bytes stay
-    //     judgeable by the ruby oracle. (The fixture's other constraint, the negative-lower-bound
-    //     range `i_8: -128..127`, stopped being a gap at the fork's `885c61c` non-uint-range fix —
-    //     the `.size`-on-int half alone keeps it skipped.)
+    //   (sized_int is a PAST resident, off the list twice over: its negative-lower-bound range
+    //   `i_8: -128..127` stopped being a validator gap at the fork's `885c61c` non-uint-range fix,
+    //   and its `i_64: int .size 8` member — which the rust validator hard-errors on, an
+    //   over-rejection gap per the RFC author's cbor-wg/cddl#32 clarification — was dropped from
+    //   the fixture when cddl-codegen made `int .size N` a graceful rejection (the old i{8N}
+    //   mapping mis-enforced the clarified uint-window semantics in both directions; scoreboard in
+    //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
+    //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
+    //   this list until the fork fix lands.)
     //   - nested_group: RUST VALIDATOR STRICTENING (as of the fork's `773b723` array-sequence rewrite).
     //     Its `inner = (a: uint, b: uint)` is a bare GROUP, not a type; cddl-codegen mints it as an
     //     array-serialized struct (`[0, 0]` = 0x82 00 00). The pre-`773b723` validator leniently
@@ -3110,7 +3105,7 @@ fn ir_conformance_corpus() {
     //     long-term fix (TESTING_ROADMAP): don't emit a conformance assertion for a bare-group rule that
     //     is not a validatable top-level instance type, which would restore per-rule rust coverage of
     //     `outer` here.
-    const RUST_ORACLE_SKIP: &[&str] = &["nested_group", "sized_int"];
+    const RUST_ORACLE_SKIP: &[&str] = &["nested_group"];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)

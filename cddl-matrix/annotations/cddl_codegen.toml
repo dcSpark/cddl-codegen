@@ -786,7 +786,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "type2.array"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
