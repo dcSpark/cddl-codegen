@@ -23,7 +23,7 @@ sidebar_position: 3
 * Deserialization for almost all supported types (see the [Limitations](#limitations) section).
 * CDDL Generics - `foo<T> = [T]`, `bar = foo<uint>`
 * Length bounds - `foo = bytes .size (0..32)`
-* Integer width via `.size` - `u = uint .size 1` maps to `u8`, `i = int .size 8` to `i64`, etc. Note: RFC 8610 defines `.size` only for strings and `uint`; the signed-`int` form is a cddl-codegen interpretation (the signed two's-complement window) that reference validators do not share — the ruby tool applies the unsigned window (rejecting every negative) and the rust tool refuses to evaluate it.
+* Integer width via `.size` - `u = uint .size 1` maps to `u8`, `i = int .size 8` to `i64`, etc. Note: the `i64` reading of `int .size 8` deviates from the spec semantics as clarified by the RFC author ([cbor-wg/cddl#32](https://github.com/cbor-wg/cddl/issues/32)): `int = uint / nint` and a control distributes over the choice, so `int .size N` matches exactly the `uint .size N` window `0...(256**N)` — negatives never match (`.size` is not defined on `nint`, and an undefined control application is a non-match). cddl-codegen's `i{8N}` mapping therefore accepts negatives the spec excludes and rejects `[2^(8N-1), 2^8N)` values the spec admits. If you mean an N-byte signed integer, the conformant spelling is the explicit range (e.g. `-9223372036854775808..9223372036854775807`), which is fully supported.
 * Value ranges - integer (`foo = -10..3`, `bar = int .le 10`) and float (`f = 0.5..10.5`, `g = float64 .lt 10.5`) windows are both enforced (float checks are NaN-safe; see the range note below for the boundaries)
 * cbor in bytes - `foo_bytes = bytes .cbor foo`
 * Support for the CDDL standard prelude (using raw CDDL from the RFC) - `biguint`, etc

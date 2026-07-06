@@ -92,15 +92,29 @@ are ledgered here (that's what the probe/gate error messages point at).
   radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
   ruby oracle fix — ruby corroborates radix in value position only
   (`draft/radix-oracle-deviations-verdict.md`).
-- When the WG resolves cbor-wg/cddl#32 (`.size` on a signed `int` — spec-undefined today; three-way
-  implementation divergence ledgered in `draft/cddl-size-on-int-divergence.md`) and the oracle
-  implementations follow: re-probe `sized_int`, revisit its `RUST_ORACLE_SKIP` entry, and reword
-  the `current_capacities.mdx` note that marks our `int .size N` → `i{8N}` mapping as an extension
-  (if the WG adopts the proposed signed window, the mapping becomes spec-conformant).
+- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
+  distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
+  per-value non-match, so `int .size N` matches exactly the `uint .size N` window. Two follow-ons
+  (scoreboard + detail in `draft/cddl-size-on-int-divergence.md`): (1) the rust CLI's hard error on
+  the construct is now a citable OVER-rejection bug — candidate `local-fixes` fork fix + upstream
+  PR (after which `sized_int`'s `RUST_ORACLE_SKIP` entry gets re-probed and a `ctl.size.int` row
+  becomes mintable); (2) cddl-codegen's own `int .size N` → `i{8N}` mapping is a known deviation —
+  see the findings entry below. When the clarification lands as erratum/spec text, reword the
+  `current_capacities.mdx` deviation note to cite it.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
+- **`int .size N` → `i{8N}` deviates from the clarified spec semantics in both directions.** Per the
+  RFC author (cbor-wg/cddl#32), `int .size N` matches exactly the `uint .size N` window
+  `0...(256**N)` (control distributes over `int = uint / nint`; the `nint` arm never matches). Our
+  `i{8N}` mapping accepts negatives the spec excludes AND rejects `[2^(8N-1), 2^8N)` values it
+  admits. Decision pending: align (generate the `u{8N}` window; breaking — spec authors who mean a
+  signed N-byte int have the conformant explicit-range spelling we already support), or keep as a
+  documented deviation (matches near-universal spec-author intent; `current_capacities.mdx` already
+  carries the deviation note), optionally with a generation-time warning. Whichever lands, TDD it
+  with the scoreboard vectors in `draft/cddl-size-on-int-divergence.md`; a future `ctl.size.int`
+  row (mintable after the rust-oracle fork fix, see close-outs above) would pin the outcome.
 - **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
   last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
   generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only

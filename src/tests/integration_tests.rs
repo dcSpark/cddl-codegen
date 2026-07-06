@@ -3082,16 +3082,20 @@ fn ir_conformance_corpus() {
     // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
     // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
     // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
-    //   - sized_int: SPEC-UNDEFINED CONSTRUCT. Its spec has `i_64: int .size 8`, and the dcSpark
-    //     cddl validator can't evaluate `.size` on a signed `int` ("target for .size must a string
-    //     or uint data type, got int") — defensibly: RFC 8610 §3.8.1 defines `.size` for strings
-    //     and `uint` only, and the ruby gem disagrees with BOTH rust and our i64 reading (it
-    //     applies the unsigned window, rejecting every negative — divergence table in
-    //     draft/cddl-size-on-int-divergence.md). (The fixture's other constraint, the
-    //     negative-lower-bound range `i_8: -128..127`, stopped being a gap at the fork's `885c61c`
-    //     non-uint-range fix — the `.size`-on-int half alone keeps it skipped.) Our minted values
-    //     are in-spec (all zeros) — not an encoder bug (see tests/README.md). The ruby gem is a
-    //     different parser/evaluator, so it CAN weigh in on these bytes.
+    //   - sized_int: RUST VALIDATOR GAP (over-rejection). Its spec has `i_64: int .size 8`, and
+    //     the dcSpark cddl validator hard-errors on `.size` over a signed `int` ("target for .size
+    //     must a string or uint data type, got int") — rejecting every instance, valid or not. Per
+    //     the RFC author's clarification (cbor-wg/cddl#32): `int = uint / nint`, a control
+    //     distributes over the choice, and an undefined application (`.size` on `nint`) is a
+    //     per-value NON-match — so `int .size 8` matches exactly the `uint .size 8` window and a
+    //     validator must not error on it. The ruby gem (the author's tool) implements exactly that;
+    //     candidate fork fix + scoreboard in draft/cddl-size-on-int-divergence.md. NOTE the same
+    //     clarification makes cddl-codegen's own `int .size N` -> i{8N} mapping a known deviation
+    //     (accepts negatives the spec excludes; rejects [2^(8N-1), 2^8N) values it admits) — but
+    //     the fixture's minted all-zero values match under every reading, so the dumped bytes stay
+    //     judgeable by the ruby oracle. (The fixture's other constraint, the negative-lower-bound
+    //     range `i_8: -128..127`, stopped being a gap at the fork's `885c61c` non-uint-range fix —
+    //     the `.size`-on-int half alone keeps it skipped.)
     //   - nested_group: RUST VALIDATOR STRICTENING (as of the fork's `773b723` array-sequence rewrite).
     //     Its `inner = (a: uint, b: uint)` is a bare GROUP, not a type; cddl-codegen mints it as an
     //     array-serialized struct (`[0, 0]` = 0x82 00 00). The pre-`773b723` validator leniently
