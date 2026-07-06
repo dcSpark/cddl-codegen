@@ -85,6 +85,11 @@ are ledgered here (that's what the probe/gate error messages point at).
 - When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
   in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
   draft, and the rangeop vectors' `reason` provenance).
+- When the WG resolves cbor-wg/cddl#32 (`.size` on a signed `int` — spec-undefined today; three-way
+  implementation divergence ledgered in `draft/cddl-size-on-int-divergence.md`) and the oracle
+  implementations follow: re-probe `sized_int`, revisit its `RUST_ORACLE_SKIP` entry, and reword
+  the `current_capacities.mdx` note that marks our `int .size N` → `i{8N}` mapping as an extension
+  (if the WG adopts the proposed signed window, the mapping becomes spec-conformant).
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
