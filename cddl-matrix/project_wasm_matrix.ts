@@ -52,8 +52,18 @@ const SHAPES: Record<string, Shape> = {
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   // wrapper struct (Record RustStruct)
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
+  // map-representation Record struct (bareword-keyed map). Wasm emission is byte-identical to `struct`
+  // modulo type names (the representation only changes rust-side serialization), so one representative
+  // cell suffices — it still compile-gates the map-rep rust code through the wasm crate's path-dependency
+  // and executes map-rep serialization in the roundtrips gate; full role coverage would only duplicate
+  // `struct`'s cells.
+  mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst", roles: ["array-element"] },
   // transparent-to-wrapper via `.cbor` (follows the inner wrapper `Foo`)
   cborwrap: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo"], ty: "fb" },
+  // CBOR-tag wrapper struct — a distinct wasm-ABI shape: no wasm `new` and no inner-value accessor (it
+  // crosses only via `From<cddl_lib::Tg>` / cbor bytes), unlike `cborwrap` (transparent-to-wrapper, which
+  // resolves to the inner `Foo` wrapper) and the `coll`/`collmap` wrappers (which expose `new`/`add`/`insert`).
+  tag: { defs: ["tg = #6.10(uint)"], ty: "tg" },
   // c-style enum — Copy, re-exported by value (`pub use`)
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
   // data-carrying type-choice enum -> a `#[wasm_bindgen]` wrapper enum with per-variant ctors; a
@@ -101,8 +111,11 @@ const ROLES: Record<string, Role> = {
   "map-value": { wrap: (t) => `holder = { * uint => ${t} }` }, // get()->Option<T>, insert(value: T)
   "map-key": { wrap: (t) => `holder = { * ${t} => uint }` }, // key param, keys() -> Vec<T>
   "struct-field": { wrap: (t) => `holder = [field0: ${t}]` }, // getter field0()->T, new(field0: T)
-  // array-rep 2-field: `{ ? f: T }` (map-rep bareword member key) panics the generator (parsing.rs
-  // "unsupported table map key"), so an optional field must use the array representation.
+  // array-rep 2-field. bareword-keyed map-rep fields (mandatory and `?`-optional) DO generate, but map-rep
+  // field-holder roles emit byte-identical wasm to these array-rep roles (probed), so enumerating them
+  // would only duplicate cells — the array representation stays as the single enumerated form. Map-rep
+  // struct/optional-field serialization is executed by `tests/core` (its map-rep `Bar` has optional
+  // fields) and the `mstruct` representative cell.
   "struct-field-opt": { wrap: (t) => `holder = [pre: uint, ? field0: ${t}]` }, // getter->Option<T>, set_field0
   "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` }, // new(inner: T), getter
 };
@@ -127,7 +140,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 85; // 14 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 3 single-role shapes
+const EXPECTED_CELLS = 92; // 15 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

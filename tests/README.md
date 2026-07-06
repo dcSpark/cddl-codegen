@@ -621,8 +621,10 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   and runs in CI's `matrix-drift` job.
 - **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
-    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`,
-    `cborwrap`/`cborwrap2`, `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
+    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`, `mstruct`
+    (map-representation Record struct — bareword-keyed map), `cborwrap`/`cborwrap2`, `tag` (a CBOR-tag
+    wrapper struct — no wasm `new` and no inner-value accessor, crosses only via `From<cddl_lib::Tg>` /
+    cbor bytes), `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
     `nullable` (`Option<T>`), `generic`, `chain`, `extern`, `rawbytes` (a user-supplied
     `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
@@ -631,9 +633,11 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
     `keys`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
-    `[pre: uint, ? field0: T]`); map-representation structs (bareword-keyed maps now generate) and
-    optional-fields-inside-maps are simply not yet enumerated as shapes here, so they're outside this
-    grid's scope for now. A shape may likewise skip a role
+    `[pre: uint, ? field0: T]`); the map representation is covered on the shape axis instead by the
+    `mstruct` representative cell. Map-rep field holders (a bareword-keyed map with a mandatory or
+    `?`-optional field) are deliberately not enumerated as separate roles because their wasm emission is
+    byte-identical to these array-rep roles (the representation only changes rust-side serialization). A
+    shape may likewise skip a role
     that would only pin a permanent red — `nullable` skips `map-key`: a nullable key is degenerate
     CDDL and its wasm bindings don't compile (`Option<u64>` fails `ErasableGeneric`), see the
     prune comment in the projection.
@@ -685,7 +689,7 @@ A *new* red cell (red but not in `WASM_MATRIX_SKIP`) also fails the gate: fix it
 
 **Adding / changing cells.** Edit `SHAPES`/`ROLES` in the projection, `bun run project_wasm_matrix.ts`,
 review the new fixtures, run the gate. Prune cells whose emission duplicates an existing one — the
-projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`) to one representative role.
+projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `mstruct`) to one representative role.
 
 > Sibling system: `tests/matrix_{supported,panic,reject}/` (projected by `cddl-matrix/project_robustness.ts`,
 > driven by `src/tests/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
