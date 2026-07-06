@@ -494,9 +494,9 @@ target cache is preserved. Two curated lists, each empirically justified:
 - **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
   `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed
   for the right reason). An expected-fail fixture that *passes* turns the gate RED ("IR bug apparently
-  fixed or oracle lost teeth — investigate, then remove from `EXPECTED_FAIL`"). **Currently empty** —
-  no corpus fixture mints a spec-violating value at HEAD. The machinery stays armed: the next IR-level
-  bug's fixture will trip this list. Its last resident, kept here as the illustrative case, was
+  fixed or oracle lost teeth — investigate, then remove from `EXPECTED_FAIL`"). Empty whenever no
+  corpus fixture mints a spec-violating value; the machinery stays armed — the next IR-level bug's
+  fixture will trip this list. Its last resident, kept here as the illustrative case, was
   `exclusive_range` (`[v: 0...10]`): the validator rejected the minted `11` as out of range
   `0 <= value < 10`, and it was removed once `parsing.rs` was corrected to emit `max = b-1` and the
   minted value became in-spec.

@@ -11,7 +11,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->5 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus <!-- gen:sh:roadmap-constraint -->26 `class="constraint"` enforcement reject vectors over 17 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement axis is
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->26 `class="constraint"` enforcement reject vectors over 17 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement axis is
 FULLY green: every row with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
 `query_q4_directional.ts --check`).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -459,8 +459,7 @@ from a degenerate example.**
   and now recorded on the emission axis (`contain.tag-content.type.choice` →
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
   float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
-  hitting the same native-float-under-preserve `unimplemented!` — the § float-window findings entry) —
-  five emission divergences total, all `preserve`-side.
+  hitting the same native-float-under-preserve `unimplemented!` — the § float-window findings entry).
 - **Signed-int field windows are partitioned per CBOR sign arm with three-state semantics.** An
   int-typed field's deserializer branches per CBOR major type (uint arm / nint arm), and the value
   window projects onto each arm as vacuous (no check), constraining (narrowed check), or arm-empty
@@ -544,8 +543,8 @@ from a degenerate example.**
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
 The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
-"wasm-ABI matrix". Every enumerated cell now compiles — the only entry left on
-`integration_tests::wasm_matrix_compiles`' `SKIP` is the permanent `extern__array-element` (it references
+"wasm-ABI matrix". Every enumerated cell compiles — `integration_tests::wasm_matrix_compiles`' `SKIP`
+is expected to hold only the permanent `extern__array-element` (it references
 a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
 cell reappearing is a **regression to fix**, not a backlog item. The remaining frontiers are extending the
 grid and the behavioural compile→round-trip upgrade (both below).
