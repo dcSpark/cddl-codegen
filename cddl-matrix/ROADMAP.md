@@ -355,10 +355,12 @@ from a degenerate example.**
   found=16896). Recorded on the `value.number.hexfloat` catalog row as its `class="bug"` reject pin
   (spec-valid, wrongly rejected; the mint re-validates it and it is pruned when a fixed cbor_event
   ships). Same disposition as the length-prefix over-allocation entry below: generated crates
-  depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`. The
-  standalone repro, exact one-arm fix, and the prune/re-mint steps for when it ships are in
-  `draft/cbor-event-f16-decode-fix.md` (local note) — bundle it with the over-allocation report
-  in one upstream conversation.
+  depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`. Known
+  upstream already: issue #16 reports the wrong data, and open PR #18 carries the exact arm fix but
+  gates the crate on the nightly-only `f16` primitive, so it cannot ship for stable consumers as
+  written — the stable-severable decode fix to propose there, plus the standalone repro and the
+  prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
+  note) — bundle it with the over-allocation report in one upstream conversation.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected gracefully**
