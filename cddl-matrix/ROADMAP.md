@@ -115,7 +115,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   bug can hide a codegen gap by rejecting the discriminating vector before our decoder ever sees it.
 - **A non-`?` occurrence on a heterogeneous ARRAY-record field is silently narrowed to a mandatory
   exactly-once field.** `foo = [uint, tstr, * bytes]` generates `index_2: Vec<u8>` (one bytes item,
-  required) — the generated decoder rejects the spec-valid zero-bytes and two-bytes instances. The
+  required) — the generated decoder rejects the spec-valid zero-bytes and two-bytes instances.
+  Probed blast radius: every marker and position — `+`, bounded (`2*3 bytes`, where a single-item
+  instance then decodes green BELOW the lower bound), leading (`[* bytes, uint]`), and middle
+  (`[uint, * bytes, tstr]`) — all narrow identically. The
   map-record path already guards exactly this (parsing.rs rejects zero-permitting occurrences on
   keyed map fields gracefully, citing "invisible to round-trip tests; only cross-producer data
   exposes it"); the array-record path (`Representation::Array => None` in the same field loop) has

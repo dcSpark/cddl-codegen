@@ -248,7 +248,10 @@ and asserts they are accepted.
   rule) so decoding routes through the *generated* field-decode path rather than cbor_event's
   blanket impls.
 - **Refresh flow** — `cd cddl-matrix && bun run verify.ts --mint-decode-foreign` (or
-  `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically). Generation is
+  `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically). The mint phase is
+  mint-ONLY (writes the catalog, never annotations) and takes "supported" from the committed
+  `matrix.json` — so a row whose verdict just flipped needs the plain probe run and a
+  `build_matrix.ts` fold BEFORE it can mint. Generation is
   randomized, so verdict stability comes from the COMMIT: the deterministic gates below replay
   committed bytes only. A spec-valid vector the decoder rejects is written as a **class-less
   `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
