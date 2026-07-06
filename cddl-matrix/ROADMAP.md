@@ -146,6 +146,20 @@ are ledgered here (that's what the probe/gate error messages point at).
   written — the stable-severable decode fix to propose there, plus the standalone repro and the
   prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
   note) — bundle it with the over-allocation report in one upstream conversation.
+- **A named table rule's JS class name is usage-dependent** — the wasm wrapper takes the structural
+  `MapKToV` name whenever the same map shape was already minted for an embedded/resolved use, leaving
+  the CDDL name as only a `pub type` alias (which wasm_bindgen does not export to JS).
+  `mp = { * uint => text }` surfaces to JS as class `Mp` when referenced only as a named field
+  (`collmap__struct-field`), but as `MapU64ToText` when e.g. a `@newtype` holder resolves the same
+  shape first (`collmap__newtype-inner`; same for `standalone_text` in `tests/core`) — so adding an
+  unrelated same-shape embedded map elsewhere in a spec silently RENAMES the JS class. Deterministic,
+  but consumer-facing and spec-nonlocal. Hand-caught reading generated output during the parity-gate
+  scoping; `wasm_api_parity` deliberately accepts the public alias as rust-source-level parity, so no
+  gate flags it today — the systematic catcher is the JS-name-visibility layer recorded on
+  `tests/TESTING_ROADMAP.md` item 8 (distinguish a defined `#[wasm_bindgen]` counterpart from an
+  alias-only one). Candidate fix: prefer the rule name for the wrapper when a single named table rule
+  owns the shape (the struct-field role's existing behavior), aliasing the structural name to it;
+  same-shape rule pairs still need the structural fallback.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
