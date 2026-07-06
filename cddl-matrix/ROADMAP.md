@@ -241,6 +241,13 @@ are ledgered here (that's what the probe/gate error messages point at).
   generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
+- **Tag wrappers expose no wasm ctor and no inner-value accessor.** A `#6.n(T)` type generates a wasm
+  wrapper whose only boundary surface is `From<cddl_lib::Native>` + `to_cbor_bytes`/`from_cbor_bytes`
+  (no wasm `new`, no inner-`T` getter), so a JS consumer can neither construct nor read the tagged
+  content except by round-tripping CBOR — the tag payload is inaccessible from the binding. Surfaced by
+  the new `tag` grid cells (`tests/matrix_wasm/tag__*`). Candidate fix: emit a wasm `new(inner: T)` +
+  inner getter on tag wrappers, reusing the `@newtype` getter machinery in generation.rs
+  (`newtype_getter`, the adjacent single-field-wrapper precedent).
 
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
@@ -253,9 +260,7 @@ grid and the behavioural compile→round-trip upgrade (both below).
 
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
-enumerating?" and add a shape. Un-modelled but distinct (add when a consumer or regression appears): tagged
-`#6.n(...)` types; map-representation structs (the struct roles currently use array-rep — bareword-keyed
-map structs now generate, so adding map-rep struct shapes is unblocked).
+enumerating?" and add a shape.
 
 **Behavioural upgrade — remaining.** The wasm-side minted round-trip surface has landed (the emitted
 `cddl_generated_wasm_tests` module, `integration_tests::wasm_matrix_roundtrips`, and `verify.ts`'s
@@ -267,9 +272,6 @@ matrix"). Remaining:
   the `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in `tests/README.md`
   § "wasm-crate test module"); a cell built entirely from those mints no wasm surface and falls back
   to the compile verdict.
-- **Fidelity gaps** — the wasm read-side flatten losses (optional-nullable field, double-nested enum
-  variant) remain generator-side, tracked by the `#[ignore]`'d fidelity tests; a presence-accessor fix,
-  not a test-surface change, closes them.
 
 **Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
 auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at

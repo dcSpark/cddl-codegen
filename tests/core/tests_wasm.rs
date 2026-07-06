@@ -29,8 +29,9 @@ fn tests_wasm_hook_is_wired() {
 
 // shape: struct (map representation) + role struct-field-opt (set_-style optional fields) + a
 // REQUIRED-nullable field (`1: uint / null` -> Option<u64>, where None unambiguously means "null
-// on the wire" — the ambiguous optional-nullable flatten is a tracked #[ignore] gap in
-// integration_tests.rs and deliberately not asserted here).
+// on the wire"). The ambiguous optional-nullable flatten's three-state read protocol is now covered
+// by the additive presence accessors (`has_<field>()` beside the flattened getter) and asserted by
+// the `tests/nullable-wasm` fixture; it's deliberately not re-asserted here.
 #[test]
 fn wasm_map_struct_optional_and_nullable_fields() {
     let foo = Foo::new(9, String::from("f"), vec![1, 2]);

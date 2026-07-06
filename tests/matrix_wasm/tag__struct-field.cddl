@@ -1,0 +1,3 @@
+; cell: tag x struct-field
+tg = #6.10(uint)
+holder = [field0: tg]
