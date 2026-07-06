@@ -2761,7 +2761,7 @@ fn comment_dsl() {
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
 /// so a routine cddl bump that updates only Cargo.toml can't silently leave the oracle on a stale rev.
-const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"885c61cf2e399457be6f3f7078778e362787de08\" }\n";
+const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"2c7548e1c90a8b7f1fe18c4123c7e28daea3d1b9\" }\n";
 
 #[test]
 fn cddl_oracle_dep_rev_matches_cargo_toml() {

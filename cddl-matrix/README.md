@@ -180,9 +180,9 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
-`885c61c` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle shares it)
-carries fixes for all four; `RUST_CDDL` defaults to that build, giving `verify.ts` runs an enforcing
-oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
+`2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
+cddl-codegen's own parser share it) carries fixes for all five; `RUST_CDDL` defaults to that build,
+giving `verify.ts` runs an enforcing oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
 development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
 somewhere immutable and point `RUST_CDDL` there first.
 
@@ -218,6 +218,19 @@ somewhere immutable and point `RUST_CDDL` there first.
    checked against the rule (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an
    uncontrolled `x = uint` in the same position validates fine). Subsumed by the same `773b723`
    array-sequence fix, so `ctl.size.uint` now carries real holder-wrapped accept vectors.
+5. **radix integer literals mis-lexed** (released 0.10.x — a PARSER gap, unlike 1–4, so it hit
+   cddl-codegen's own AST too, not just the validate oracle): the pest grammar had no `0x`/`0b`
+   uint alternatives — `0x10` mis-matched the exponent-optional `hexfloat` rule and died as
+   "Invalid hexfloat", while `0b1010` mis-lexed as `0` + identifier `b1010` (the unchecked CLI
+   entry then silently validated the wrong two-entry shape). FIXED in `local-fixes` @ `2c7548e`
+   (radix uint alternatives in every `uint_value` position — occurrence bounds, tag heads, member
+   keys, ranges, control-op args — case-insensitive per RFC 8610 §3.1; `hexfloat` now requires the
+   `p` exponent; adjacent strictness: leading-zero decimals like `042` are parse errors, `1e5`
+   floats now parse). The `value.number.{hex,bin}` rows flip on that pin. **Ruby oracle caveat:**
+   ruby corroborates radix literals in VALUE position only — its own radix handling in other
+   positions (occurrence bounds, tag heads, simple values) is broken
+   (`draft/radix-oracle-deviations-verdict.md`), so future radix-position rows can't lean on ruby.
+   Repro + fix provenance: `draft/rust-cddl-radix-int-literal-gap.md`.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

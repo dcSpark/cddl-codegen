@@ -37,5 +37,3 @@ ctl.sdnvseq                        error (graceful)
 prelude.any                        ok
 type2.tag_head_type                PANIC
 value.bytes                        error (graceful)
-value.number.bin                   error (graceful)
-value.number.hex                   error (graceful)
