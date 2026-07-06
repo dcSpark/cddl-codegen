@@ -188,8 +188,9 @@ For a second oracle whose **decode + constraint-evaluation** path is independent
 `deser_test_conformance.rs` validates our serialized bytes against the source `.cddl` using the `cddl`
 crate's validator (`validate_cbor_from_slice`, which decodes with ciborium and evaluates constraints
 itself). A **failure is a strong signal** (our bytes don't match the spec the generator was built
-from); a **pass is weak** — the validator has known gaps (it does not enforce `uint .size`, and
-mishandles `.size`-aliased element types inside arrays) AND it is *not fully decorrelated*: it parses
+from); a **pass is weak** — the validator has known gaps (they come and go with the pinned fork
+rev: the current ledger is `cddl-matrix/README.md` § "Upstream oracle gaps"; e.g. released 0.10.x
+does not enforce control ops over a `uint` target) AND it is *not fully decorrelated*: it parses
 the `.cddl` with the same dcSpark `cddl` fork at the same pinned rev as the generator's own front end
 (`CDDL_ORACLE_DEP`), so a **fork-level misparse** (grammar/AST bug that corrupts generator IR and this
 oracle's spec-interpretation identically) escapes it. That specific gap is now covered by a *lineage*-
@@ -554,7 +555,7 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   ledgered `(fixture, rule)` that stops diverging while still being swept turns the gate RED (stale
   entry), mirroring `EXPECTED_FAIL`.
 - **`GEN_SKIP` vs `RUST_ORACLE_SKIP`** — two distinct exclusions. `GEN_SKIP` (e.g. `dsl_custom`) can't
-  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` (e.g. `sized_int`) has
+  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` (e.g. `nested_group`) has
   a *rust*-validator gap but generates, round-trips, and dumps fine — so it's generated **without**
   `--emit-tests-conformance` (rust validate half off) yet its minted bytes are **still** swept by the
   ruby gem. A rust-validator blind spot must not cost the decorrelated oracle its coverage.
