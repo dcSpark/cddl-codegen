@@ -222,35 +222,37 @@ from a degenerate example.**
   matrix in `draft/rust-cddl-uint-control-op-gap.md`; our `ctl.size` constraint vector targets a
   bstr, so it is unaffected). The gap is **target-type-specific**: the identical controls over `int`
   ARE enforced. An upstream PR is submitted; until it merges, the sibling checkout's `local-fixes`
-  branch (`~/Documents/git/cddl`, commit `cdba2b4`) carries the fix — rebuild and point `RUST_CDDL`
-  at it to give future `verify.ts` runs an enforcing oracle (the six numeric range/eq ops' evidence
+  branch (`~/Documents/git/cddl`, commit `773b723` — also the `Cargo.toml` pinned rev, so the
+  generated-crate conformance oracle shares it) carries the fix — `RUST_CDDL` defaults to that
+  build, giving `verify.ts` runs an enforcing oracle (the six numeric range/eq ops' evidence
   does not depend on it — those probes are `int`-targeted; the ONE deliberate exception is
   `ctl.size.uint`, whose rust corroboration and 65536-reject certification lean on this build, as
   recorded later in this entry). Prune this entry and the draft note when the fix ships in
   a release. A second, distinct oracle disagreement surfaced by the decode-vector mint, with a wide
   blast radius (full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`): the rust
-  oracle validates a multi-entry group in an array (parenthesized inline OR named reference)
-  correctly ONLY as the sole entry with no occurrence indicator — inner entries are checked at
-  group-local indices as if absolute array positions (so a preceding sibling misaligns them even
-  with no occurrence), and occurrence bounds are compared against total array item count instead of
-  repetition count. Ruby accepts all the spec-valid instances. Two catalog rows sit on it honestly:
-  `contain.occurrence-target.grpent.inline_group.exactly_once_array` is pinned vectorless, and
-  `contain.occurrence-target.grpent.groupname` (`a = [* pair]`) carries only the empty-array accept
-  vector (the sole instance both oracles accept). Un-pin / re-mint both when a fixed rust `cddl`
-  release ships. The `uint .size N` variant is swept and enforce-green (`ctl.size.uint`,
+  oracle validated a multi-entry group in an array (parenthesized inline OR named reference)
+  correctly ONLY as the sole entry with no occurrence indicator — inner entries were checked at
+  group-local indices as if absolute array positions (so a preceding sibling misaligned them even
+  with no occurrence), and occurrence bounds were compared against total array item count instead of
+  repetition count. Ruby accepts all the spec-valid instances. FIXED in `local-fixes` @ `773b723`
+  ("array validation sequence semantics" — the full repro table re-probed green, negative controls
+  still reject); the two catalog rows that sat on it honestly
+  (`contain.occurrence-target.grpent.inline_group.exactly_once_array`, pinned vectorless, and
+  `contain.occurrence-target.grpent.groupname`, empty-array-only) are re-minted with real accept
+  vectors against that build. Prune the fix-provenance notes when an upstream release ships and the
+  pin moves back to crates.io. The `uint .size N` variant is swept and enforce-green (`ctl.size.uint`,
   `x = uint .size 2`): its committed `class="constraint"` vector (`82001a00010000`, 65536 over the
   u16-collapsed window) is durably rejected by the generated decoder's width guard — the vector's
   first mint attempt is what exposed the (since-fixed) silent `as u16` truncation, see the
   width-guard entry in the bugs/gaps list below. Its reject certification leans on RUBY, with the
-  bare-form violation additionally verified against the `local-fixes` build @ `cdba2b4` (released
-  0.10.x accepts it — this entry's under-enforcement gap; the provenance is recorded in the vector's
-  `reason`). Its ACCEPT side stays un-mintable on a fourth, distinct oracle gap (released 0.10.5 AND
-  `local-fixes`) — the rust CLI misvalidates a control-op-carrying rule referenced as an ARRAY
+  holder-wrapped violation additionally verified discriminatingly against the `local-fixes` build @
+  `773b723` (released 0.10.x accepts it — this entry's under-enforcement gap; the provenance is
+  recorded in the vector's `reason`). Its ACCEPT side was formerly un-mintable on a fourth, distinct
+  oracle gap — the released rust CLI misvalidated a control-op-carrying rule referenced as an ARRAY
   entry, checking the WHOLE array against the rule (`expected type uint, got Array([...])`) even as
   the sole entry (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an uncontrolled
-  `x = uint` in the same position validates fine), so every valid holder-wrapped instance is
-  rejected and the row honestly carries no accept vectors (the rangeop-variation precedent).
-  Re-mint its accept side when a fixed release ships.
+  `x = uint` in the same position validates fine). That gap is subsumed by the same `773b723`
+  array-sequence fix, so the row now carries real holder-wrapped accept vectors.
   The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
   catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
@@ -300,6 +302,18 @@ from a degenerate example.**
   vectors share their outer CBOR shape.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
+- **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
+  last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
+  generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only
+  type, dropping the `int` base arm (parsing.rs documents the `is_type_choice_alternate ignored` skip;
+  the `//=` group case is the same shape). Surfaced by the `773b723` array-sequence oracle fix: the old
+  rust oracle rejected the base-arm instances ITSELF (its own array/occurrence bug), so the mint's
+  two-oracle gate never presented them and the rows minted only the extension-arm accepts — masking the
+  drop. Against the fixed oracle, `assignt.extend` / `assigng.extend` re-mint with base-arm accept
+  candidates that ruby+rust both accept but our decoder REJECTS; committed as `class="limitation"` reject
+  pins (spec-valid, wrongly rejected — pruned when `/=`/`//=` extension is implemented, or rejected
+  loudly at generation instead of silently narrowing). A concrete instance of the lesson that an oracle
+  bug can hide a codegen gap by rejecting the discriminating vector before our decoder ever sees it.
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
 - **Every narrowing cast on the primitive deserialize path is WIDTH-GUARDED — never a silent

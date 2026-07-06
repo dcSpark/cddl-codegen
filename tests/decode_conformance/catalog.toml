@@ -26,7 +26,73 @@
 id = "assigng.extend"
 axis = "feature"
 example = "tcpopts = (1: int)\ntcpopts //= (2: tstr)"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "__probe_holder = [0, tcpopts]\ntcpopts = (1: int)\ntcpopts //= (2: tstr)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200190532"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200190811"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200190b3b"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200190d43"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200390196"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "82003901af"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200390236"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `(1: int)`: cddl-codegen ignores the incremental group-choice alternate (`//=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs, the is_group_choice_alternate analogue of the documented is_type_choice_alternate skip) — and the generated type models only the extension arm `(2: tstr)`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `//=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "820067636f6d62696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b70726f67656e69746f7273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b73746572656f7479706573"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "assignt.extend"
@@ -37,12 +103,64 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82006976656e747572696e67"
+hex = "82001904fa"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200190508"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "82001910d4"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200191220"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200390207"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "82003902a6"
+source = "ruby-generate"
+expect = "reject"
+class = "limitation"
+reason = "spec-valid instance of the BASE arm `a = int`: cddl-codegen ignores the incremental type-choice alternate (`/=`) — parse_rule re-registers the ident so the LAST definition wins (parsing.rs: 'is_type_choice_alternate ignored') — and the generated type models only the extension arm `tstr`, silently dropping the base arm; surfaced by the fixed local-fixes rust oracle @ 773b723 (the old oracle rejected these instances itself, masking the gap); ledgered in cddl-matrix/ROADMAP.md § findings; prune when `/=` extension is implemented (or rejected loudly at generation)"
+
+[[row.vector]]
+hex = "8200676c6f7272792773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82006a64697368746f77656c73"
+hex = "82006870726f7261746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006a70617274697a616e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006d566973616b68617061746e616d"
 source = "ruby-generate"
 expect = "accept"
 
@@ -366,13 +484,117 @@ expect = "accept"
 id = "contain.cbor-payload.type.choice"
 axis = "containment"
 example = "b = bytes .cbor (int / tstr)"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "__probe_holder = [0, b]\nb = bytes .cbor (int / tstr)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820043390146"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043390240"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004564726f6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820046656368656174"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820046656d6f72616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004867766f7563686573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b6a53636875796c65722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b6a6c616e64736c69646573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b6a6c696665776f726b2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004d6c7265646576656c6f70696e67"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "contain.cbor-payload.type2.tag"
 axis = "containment"
 example = "b = bytes .cbor (#6.10(uint))"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "__probe_holder = [0, b]\nb = bytes .cbor (#6.10(uint))"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820044ca190288"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca1902a2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca19047e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca190594"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca1905b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca1906f1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca19089f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca190bb1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca190ea5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044ca190f3c"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "contain.choice-member.prelude.null"
@@ -1528,11 +1750,103 @@ hex = "820080"
 source = "ruby-generate"
 expect = "accept"
 
+[[row.vector]]
+hex = "8200821902af657961726473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008619029266726169736573386d694275726765737327731904966b636f6d7065746974697665"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008619051c6641706961277339023067707570696c2773190c96686d617968656d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200861907c96747756576617261190dbe67526f6d756c75733902f969426f6f6c65616e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820088186f697363616d706572656439013f6963616e6973746572731912156a436f696d6261746f72653833666c6f61662773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820088190539657a6564277319060d625249383a67706f6c6b6165643901d0674d61727175657a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200881906136c6164756c7465726174696e673901296e636c61757374726f70686f62696119060b656170746c7939020168636f6e7175657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008838636b436861726d61696e652773190dfa66676f6f6469653902e66a456e676c6973686d656e3902be68726f617374657273"
+source = "ruby-generate"
+expect = "accept"
+
 [[row]]
 id = "contain.occurrence-target.grpent.inline_group.exactly_once_array"
 axis = "containment"
 example = "a = [1*1 (int, tstr)]"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "a = [1*1 (int, tstr)]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "82190255697363757a7a69657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821903fc67416d6572696e64"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190758687175697070696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190ab76c696e74656c6c6967656e6365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190b176452757373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190bce6d73796e6469636174696f6e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190c68684d634b656e7a6965"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82386c666265746f6f6b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82386d67626f6f73742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8238a46c746163746c6573736e657373"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "contain.occurrence-target.grpent.inline_group.plus_map"
@@ -2448,11 +2762,61 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
+hex = "82001903cd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190b03"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200191481"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001926ca"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200193d44"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200196cfe"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019711e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200199c6c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019bae8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019f5f1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
 hex = "82001a00010000"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 65536 is above the `.size 2` window (0..65535 — the exact u16 collapse) — violates `uint .size 2`; durably rejected by the generated decoder's width guard (RangeCheck). Certification leans on RUBY: at this holder shape the rust oracle's rejection is non-discriminating (it misvalidates any control-op-carrying rule referenced as an array entry — the fourth oracle gap, ROADMAP § oracle gaps — which also leaves the ACCEPT side un-mintable, so the row carries no accept vectors); the bare-form reject was additionally verified against the local-fixes rust oracle @ cdba2b4 (released 0.10.x under-enforces `.size` over uint)"
+reason = "the value 65536 is above the `.size 2` window (0..65535 — the exact u16 collapse) — violates `uint .size 2`; durably rejected by the generated decoder's width guard (RangeCheck). Certification leans on RUBY plus the local-fixes rust oracle @ 773b723, which rejects this holder-wrapped violation discriminatingly (released 0.10.x both under-enforces `.size` over uint and misvalidates a control-op-carrying rule referenced as an array entry; both are fixed in the fork, which is also what let this row's accept side mint)"
 
 [[row]]
 id = "dsl.custom_deserialize"
