@@ -83,6 +83,16 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 /// never round-trips here either.
 const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
+/// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
+/// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
+/// stem, reason)` marks a cell whose emitted wasm round-trip surface is a known structural gap
+/// UNDER THAT PROFILE — a red the sweep tolerates deliberately, distinct from `WASM_MATRIX_SKIP`'s
+/// "red in EVERY profile" (extern). Expected empty: probes show every cell round-trips green across
+/// `super::ALL_PROFILES`. A resurfaced guard fails the gate if a listed cell starts passing, and an
+/// up-front stale-pin guard rejects entries naming a dead profile or cell stem, so the list can't
+/// rot silently.
+const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
+
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
 /// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second
 /// deletes the first's fixtures/target mid-run (observed for `ir_conformance_corpus`). An advisory
@@ -539,9 +549,20 @@ fn reference_codec_differential_self_check() {
 /// Mirrors `run_test`'s external-file append (including the `use serialization::*;` the rust def needs for
 /// `RawBytesEncoding`/`Deserialize*`); the matrix never passes `--lib-name`, so the wasm def's `cddl_lib`
 /// path needs no substitution here.
-fn append_raw_bytes_defs(out: &std::path::Path) {
+///
+/// `json` selects the json-flavored rust def: the json flags make generated code delegate its JSON
+/// representation to the user type (serde::Serialize/Deserialize + schemars::JsonSchema bounds —
+/// part of the documented `_CDDL_CODEGEN_RAW_BYTES_TYPE_` contract), so the fixture must model a
+/// user who satisfies them. The wasm def has no flavor (its json fns delegate through the rust
+/// type's serde).
+fn append_raw_bytes_defs(out: &std::path::Path, json: bool) {
     use std::io::Write;
-    let rust_def = std::fs::read_to_string("tests/external_rust_raw_bytes_def").unwrap();
+    let rust_def_path = if json {
+        "tests/external_rust_raw_bytes_def_json"
+    } else {
+        "tests/external_rust_raw_bytes_def"
+    };
+    let rust_def = std::fs::read_to_string(rust_def_path).unwrap();
     // Append into the generated root scope (see `run_test`): the raw-bytes defs need the root scope's
     // imports and `use serialization::*;`, which live in `generated/mod.rs`, not the thin `lib.rs`.
     let mut rust_lib = std::fs::OpenOptions::new()
@@ -1251,7 +1272,7 @@ fn wasm_matrix_compiles() {
         // undefined in a bare crate. Unlike `extern` (whose defs live only in tests/extern-deps), the raw-bytes
         // defs are in-repo, so append them and the cell compiles for real instead of being skipped.
         if stem.starts_with("rawbytes__") {
-            append_raw_bytes_defs(&out);
+            append_raw_bytes_defs(&out, false);
         }
         let check = tool_cmd("cargo")
             .arg("check")
@@ -1291,20 +1312,32 @@ fn wasm_matrix_compiles() {
 /// (compile gate) while the wrapper API does a semantically wrong same-type conversion; that only
 /// surfaces when the emitted assertions RUN, which is what this gate adds.
 ///
-/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze (`cargo test`
-/// per cell is materially heavier than the compile gate's per-cell `cargo check`). Run it with
-/// `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`.
+/// Each cell is swept across `super::ALL_PROFILES` (default / preserve / json) — `--preserve-encodings`
+/// and the json flags substantially change codegen, so the wasm behavioural verdict must hold under
+/// each. This is strictly the WASM round-trip verdict per profile; rust-side non-default round-trip
+/// breadth stays `feature_corpus_roundtrips_nondefault_profiles`' job (this gate only `cargo test`s
+/// the wasm crate, exactly as the default-only version did). Each `(profile, cell)` output lives in
+/// `{stem}__{profile}` under one shared `CARGO_TARGET_DIR`, and its crate dir is freed after its
+/// verdict (the disk-space pattern from `feature_corpus_roundtrips_nondefault_profiles`).
 ///
-/// `WASM_MATRIX_SKIP` holds the deliberately-red cells with a per-entry reason. Same four-state
-/// verdict matrix as `wasm_matrix_compiles`: a red non-skip cell fails (real finding, or deliberately
-/// skip-list it with a ledger reason); a `WASM_MATRIX_SKIP` cell that now passes fails the resurfaced
-/// guard (a fix landed — take it off `WASM_MATRIX_SKIP`). `wasm_matrix_compiles` stays byte-for-byte
-/// untouched: the compile verdict remains the always-on CI floor, this is the manual round-trip
-/// verdict on top. Its own scratch dir name lets it run beside the compile gate. Note: a cell whose
-/// shape mints no wasm test surface (nothing the emitter can faithfully build — e.g. a pure c-enum,
-/// or a wrapper/collection ctor arg with no wasm build) simply emits no module and `cargo test`
-/// passes with zero emitted tests; that is a legitimate green here (the emitter skips loudly), NOT a
-/// false pass — the compile gate already pins that the cell's wasm ABI compiles.
+/// MANUAL/LOCAL ONLY — `#[ignore]`d so it stays out of CI under the feature freeze (`cargo test`
+/// per cell across three profiles is materially heavier than the compile gate's per-cell `cargo
+/// check`). Run it with `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`.
+///
+/// Two skip lists, both four-state (verdict matrix as `wasm_matrix_compiles`, labels `{stem}/{profile}`):
+/// `WASM_MATRIX_SKIP` holds cells red in EVERY profile (extern); `WASM_MATRIX_PROFILE_SKIP` (this gate
+/// only) holds `(profile, cell, reason)` cells red under a SPECIFIC profile. A red non-skip cell fails
+/// (real finding, or deliberately skip-list it with a ledger reason); a skip cell that now passes fails
+/// the resurfaced guard (a fix landed — take it off the list). An up-front stale-pin guard rejects a
+/// `WASM_MATRIX_PROFILE_SKIP` entry naming a dead profile or cell stem. `wasm_matrix_compiles` stays
+/// byte-for-byte untouched: it remains the always-on default-profile CI compile floor (non-default
+/// compile coverage is subsumed by this gate's `cargo test` at full tier, per cost policy); this is
+/// the manual per-profile round-trip verdict on top. Its own scratch dir name lets it run beside the
+/// compile gate. Note: a cell whose shape mints no wasm test surface (nothing the emitter can
+/// faithfully build — e.g. a pure c-enum, or a wrapper/collection ctor arg with no wasm build) simply
+/// emits no module and `cargo test` passes with zero emitted tests; that is a legitimate green here
+/// (the emitter skips loudly), NOT a false pass — the compile gate already pins that the cell's wasm
+/// ABI compiles.
 #[test]
 #[ignore]
 fn wasm_matrix_roundtrips() {
@@ -1330,76 +1363,115 @@ fn wasm_matrix_roundtrips() {
         "no wasm-matrix fixtures in {dir:?} (run `bun run project_wasm_matrix.ts`)"
     );
 
+    // Reject `WASM_MATRIX_PROFILE_SKIP` entries naming a dead profile or cell stem up front — a
+    // stale pin would rot silently (its resurfaced guard only fires on a (profile, cell) the sweep
+    // actually visits). Mirrors the `EXPECTED_GENERATION_FAIL` stale-pin guard in wasm_parity_tests.
+    let cell_stems: std::collections::BTreeSet<&str> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap())
+        .collect();
+    for (profile, stem, _) in WASM_MATRIX_PROFILE_SKIP {
+        assert!(
+            super::ALL_PROFILES.iter().any(|(name, _)| name == profile),
+            "WASM_MATRIX_PROFILE_SKIP names unknown profile `{profile}` — stale pin, remove or fix it"
+        );
+        assert!(
+            cell_stems.contains(stem),
+            "WASM_MATRIX_PROFILE_SKIP names cell `{stem}` that no longer exists in tests/matrix_wasm \
+             — stale pin, remove or fix it"
+        );
+    }
+
     // Own scratch dir (distinct from wasm_matrix_compiles) + one shared target so cbor_event/
-    // wasm-bindgen/the libtest harness build once, then each tiny crate tests incrementally.
+    // wasm-bindgen/the libtest harness build once, then each tiny crate tests incrementally. The
+    // shared target survives across all profiles/cells; each per-cell output dir is freed after its
+    // verdict (disk-space pattern from feature_corpus_roundtrips_nondefault_profiles).
     let scratch_name = format!("cddl_codegen_wasm_matrix_rt_{:016x}", checkout_hash());
     let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
     let root = std::env::temp_dir().join(&scratch_name);
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
-    let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real findings
-    let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now pass — remove them
+    let mut failures = vec![]; // red cells NOT skip-listed — real findings
+    let mut resurfaced = vec![]; // skip-listed cells that now pass — remove them
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
-        let skipped = WASM_MATRIX_SKIP.contains(&stem);
-        let out = root.join(stem);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
-            .arg(format!("--input={}", input.to_str().unwrap()))
-            .arg(format!("--output={}", out.to_str().unwrap()))
-            .arg("--wasm=true")
-            .arg("--emit-tests=true")
-            .output()
-            .unwrap();
-        if !gen_out.status.success() {
-            if !skipped {
-                failures.push(format!(
-                    "{stem}: generation failed\n{}",
-                    String::from_utf8_lossy(&gen_out.stderr)
-                ));
+        // Skipped in EVERY profile (extern).
+        let skipped_all = WASM_MATRIX_SKIP.contains(&stem);
+        for (profile, extra) in super::ALL_PROFILES {
+            let label = format!("{stem}/{profile}");
+            // Skipped in EVERY profile, or in THIS specific profile.
+            let skipped = skipped_all
+                || WASM_MATRIX_PROFILE_SKIP
+                    .iter()
+                    .any(|(p, s, _)| p == profile && s == &stem);
+            let out = root.join(format!("{stem}__{profile}"));
+            let gen_out = tool_cmd("cargo")
+                .args(["run", "--"])
+                .arg(format!("--input={}", input.to_str().unwrap()))
+                .arg(format!("--output={}", out.to_str().unwrap()))
+                .arg("--wasm=true")
+                .arg("--emit-tests=true")
+                .args(*extra)
+                .output()
+                .unwrap();
+            if !gen_out.status.success() {
+                if !skipped {
+                    failures.push(format!(
+                        "{label}: generation failed\n{}",
+                        String::from_utf8_lossy(&gen_out.stderr)
+                    ));
+                }
+                let _ = std::fs::remove_dir_all(&out);
+                continue;
             }
-            continue;
-        }
-        let wasm_dir = out.join("wasm");
-        if !wasm_dir.exists() {
-            // Every cell wraps its shape in a composite `holder`, so a wasm crate is always expected.
-            if skipped {
-                resurfaced.push(format!("{stem} (emits no wasm crate)"));
-            } else {
-                failures.push(format!(
-                    "{stem}: generated no wasm crate (expected a wasm wrapper for every cell — the cell \
-                     is no longer being round-trip-gated)"
-                ));
+            let wasm_dir = out.join("wasm");
+            if !wasm_dir.exists() {
+                // Every cell wraps its shape in a composite `holder`, so a wasm crate is always expected.
+                if skipped {
+                    resurfaced.push(format!("{label} (emits no wasm crate)"));
+                } else {
+                    failures.push(format!(
+                        "{label}: generated no wasm crate (expected a wasm wrapper for every cell — the \
+                         cell is no longer being round-trip-gated)"
+                    ));
+                }
+                let _ = std::fs::remove_dir_all(&out);
+                continue;
             }
-            continue;
-        }
-        // See wasm_matrix_compiles: append the in-repo raw-bytes defs so `rawbytes__*` cells compile/run.
-        if stem.starts_with("rawbytes__") {
-            append_raw_bytes_defs(&out);
-        }
-        let test = tool_cmd("cargo")
-            .arg("test")
-            .current_dir(&wasm_dir)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .output()
-            .unwrap();
-        match (skipped, test.status.success()) {
-            (false, false) => failures.push(format!(
-                "{stem}: cargo test failed (wasm round-trip red cell — fix the emitter/generator or, \
-                 deliberately, add to WASM_MATRIX_SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
-                String::from_utf8_lossy(&test.stdout),
-                String::from_utf8_lossy(&test.stderr)
-            )),
-            (true, true) => resurfaced.push(stem.to_string()),
-            _ => {} // (false,true)=green as expected; (true,false)=red as expected
+            // See wasm_matrix_compiles: append the in-repo raw-bytes defs so `rawbytes__*` cells
+            // compile/run under every profile. The wire defs are profile-agnostic (pinned by
+            // raw_bytes_preserve); json selects the flavor carrying the serde/schemars derives the
+            // json flags impose on user-supplied types.
+            if stem.starts_with("rawbytes__") {
+                append_raw_bytes_defs(&out, *profile == "json");
+            }
+            let test = tool_cmd("cargo")
+                .arg("test")
+                .current_dir(&wasm_dir)
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            match (skipped, test.status.success()) {
+                (false, false) => failures.push(format!(
+                    "{label}: cargo test failed (wasm round-trip red cell — fix the emitter/generator \
+                     or, deliberately, add to WASM_MATRIX_PROFILE_SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&test.stdout),
+                    String::from_utf8_lossy(&test.stderr)
+                )),
+                (true, true) => resurfaced.push(label),
+                _ => {} // (false,true)=green as expected; (true,false)=red as expected
+            }
+            // Free the per-cell crate dir as we go (keep the shared target) — near disk-full, and
+            // 98 cells × 3 profiles of generated crates add up.
+            let _ = std::fs::remove_dir_all(&out);
         }
     }
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
-        "these WASM_MATRIX_SKIP-listed wasm-matrix cells now round-trip — remove them from \
-         WASM_MATRIX_SKIP (a fix landed):\n{}",
+        "these skip-listed wasm-matrix cells now round-trip — remove them from WASM_MATRIX_SKIP / \
+         WASM_MATRIX_PROFILE_SKIP (a fix landed):\n{}",
         resurfaced.join("\n")
     );
     assert!(

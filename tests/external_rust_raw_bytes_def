@@ -1,3 +1,7 @@
+// Base flavor — keep in sync with `external_rust_raw_bytes_def_json`, which is identical except
+// for the serde/schemars derives the json flags impose on user-supplied types (see
+// docs/docs/comment_dsl.mdx, _CDDL_CODEGEN_RAW_BYTES_TYPE_). The wasm def has no flavor: the
+// generated wasm json fns delegate through the rust type's serde.
 use crate::serialization::RawBytesEncoding;
 
 #[derive(Clone, Debug)]

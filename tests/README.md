@@ -13,7 +13,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 |------|---------|--------------|------------------|
 | `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~15s |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~4 min |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~10 min |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~15 min |
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
@@ -459,12 +459,13 @@ Two consumers run it:
   wire-ambiguous `TypeChoice` trips the rust value-equality oracle), but the wasm crate builds the rust
   crate as a *non-test* dependency, so none of that compiles here.
 - **`integration_tests::wasm_matrix_roundtrips`** (`#[ignore]`d, manual — the round-trip upgrade of the
-  wasm-ABI matrix compile gate; see that section below).
+  wasm-ABI matrix compile gate, swept across `ALL_PROFILES` (default / preserve / json); see that
+  section below).
 
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~1.5 min
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~6 min (98 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -665,12 +666,18 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   was needed). Catching those is the job of the **round-trip** upgrade — `integration_tests::wasm_matrix_roundtrips`
   (`#[ignore]`d, manual): same cell enumeration, but each cell is generated `--emit-tests=true` and
   `cargo test`ed so the emitted `cddl_generated_wasm_tests` module (see § "wasm-crate test module" above)
-  RUNS its cross-crate byte differential + accessor read-back. It has its own scratch dir
-  (`cddl_codegen_wasm_matrix_rt`) and uses the module-level `WASM_MATRIX_SKIP` list so it runs beside
-  this always-on compile floor. Run it with
-  `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`; a cell
-  whose shape mints no wasm surface (loud emitter skip) passes with zero emitted tests, which is a
-  legitimate green (the compile gate already pins its ABI compiles).
+  RUNS its cross-crate byte differential + accessor read-back. It sweeps every cell across
+  `ALL_PROFILES` (default / preserve / json — `--preserve-encodings` and the json flags substantially
+  change codegen, so the wasm behavioural verdict must hold under each); the compile floor above stays
+  **default-profile only** by cost policy (non-default compile coverage is subsumed by this gate's
+  `cargo test` at full tier). It has its own scratch dir (`cddl_codegen_wasm_matrix_rt`) with one
+  shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
+  verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
+  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`, expected empty), each with
+  the four-state resurfaced-guard verdict and an up-front stale-pin guard, so it runs beside this
+  always-on compile floor. Run it with `cargo test --bin cddl-codegen wasm_matrix_roundtrips --
+  --ignored` (~6 min warm); a cell whose shape mints no wasm surface (loud emitter skip) passes with
+  zero emitted tests, which is a legitimate green (the compile gate already pins its ABI compiles).
 
 **Wrapper-vs-transparent — route through one predicate.** The recurring wasm-boundary bug source was
 naming, boundary conversion, and exposability each *separately* deciding whether an ident is exposed as a

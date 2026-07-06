@@ -264,21 +264,23 @@ The system itself (what it is, the axes, how to run/extend it) is documented in 
 "wasm-ABI matrix". Every enumerated cell compiles — `integration_tests::wasm_matrix_compiles`' `SKIP`
 is expected to hold only the permanent `extern__array-element` (it references
 a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
-cell reappearing is a **regression to fix**, not a backlog item. A third, always-on axis runs beside
-compile and round-trip: the rust→wasm API-surface parity differential
-(`wasm_parity_tests::wasm_api_parity` over the same cells + two depth fixtures — `tests/README.md` §
-"rust↔wasm API-surface parity"; its remaining sweeps are `tests/TESTING_ROADMAP.md` item 8). The
-remaining frontiers HERE are extending the grid and the behavioural compile→round-trip upgrade (both
-below).
+cell reappearing is a **regression to fix**, not a backlog item. A third axis runs beside compile and
+round-trip: the rust→wasm API-surface parity differential (`wasm_parity_tests::wasm_api_parity` over
+the same cells + two depth fixtures — `tests/README.md` § "rust↔wasm API-surface parity"; its
+remaining sweeps are `tests/TESTING_ROADMAP.md` item 8). The round-trip and parity axes both sweep the
+emission profiles (default / preserve / json via `ALL_PROFILES`), so `--preserve-encodings` and the
+json flags are exercised behaviourally and at the ABI surface — the compile floor stays
+default-profile only by cost policy. The remaining frontiers HERE are extending the grid and the
+behavioural compile→round-trip upgrade (both below).
 
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
 enumerating?" and add a shape.
 
 **Behavioural upgrade — remaining.** The wasm-side minted round-trip surface has landed (the emitted
-`cddl_generated_wasm_tests` module, `integration_tests::wasm_matrix_roundtrips`, and `verify.ts`'s
-default-on `--wasm` probe — documented in `README.md` § annotations and `tests/README.md` § "wasm-ABI
-matrix"). Remaining:
+`cddl_generated_wasm_tests` module, `integration_tests::wasm_matrix_roundtrips` — now swept across the
+emission profiles — and `verify.ts`'s default-on `--wasm` probe — documented in `README.md` §
+annotations and `tests/README.md` § "wasm-ABI matrix"). Remaining:
 - **Unminted wasm shapes** — a `@newtype`/tag/bounded wrapper ENTRY type builds through its public wasm
   `new(inner)`; wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`, and
   `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl. So only extern /
