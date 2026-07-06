@@ -6352,76 +6352,60 @@ expect = "accept"
 [[row]]
 id = "type2.array"
 axis = "feature"
-example = "foo = [uint, tstr, * bytes]"
-spec = "foo = [uint, tstr, * bytes]"
+example = "foo = [uint, tstr, bytes]"
+spec = "foo = [uint, tstr, bytes]"
 mode = "standalone"
 type_name = "Foo"
 
 [[row.vector]]
-hex = "821901ee6c696e63756d62656e63792773"
-source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
-
-[[row.vector]]
-hex = "8219076f6c70726f63657373696f6e6564"
-source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
-
-[[row.vector]]
-hex = "821907df6e70726f676e6f7374696361746573"
-source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
-
-[[row.vector]]
-hex = "82190b5468626c75696e672773"
-source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
-
-[[row.vector]]
-hex = "8319039c68696e747275646573485465726b656c2773"
+hex = "831901e5676d6f616e696e67484475726163656c6c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "83191145677374727574277349506f77657250432773"
+hex = "8319027a6b67656e65726174696f6e734770657263686573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "841901216d736f63696162696c697479277349706f737369626c65734a636f6f7264696e617465"
+hex = "8319029f67636f6d65646963434b6970"
 source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
+expect = "accept"
 
 [[row.vector]]
-hex = "84190d1b68736861646f7765644873696674657227734573756e6e79"
+hex = "8319073568706f6c697469657349637573746f6d697a65"
 source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
+expect = "accept"
 
 [[row.vector]]
-hex = "8619093f6b627574746572666c69656448637265646974656444504d656446706c6179656447626f62626c6564"
+hex = "8319086e6a6169726c696674696e6749616c636f686f6c2773"
 source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
+expect = "accept"
 
 [[row.vector]]
-hex = "86190a4a66646f75626c794444656e6146676c6f7727734a4170706f6d6174746f7847656e6e75692773"
+hex = "831908d9687472616e736974734749737361632773"
 source = "ruby-generate"
-expect = "reject"
-class = "limitation"
-reason = "spec-valid instance with a bytes count != 1: cddl-codegen silently narrows the trailing `* bytes` occurrence in a heterogeneous array record to a MANDATORY exactly-once field (parsing.rs record path: `Representation::Array => None` takes no occurrence guard — the map path rejects zero-permitting occurrences gracefully, the array path has no analogue), so the generated `Foo` demands exactly [uint, tstr, bytes]; surfaced by the first full mint against the fully-fixed local-fixes rust oracle @ 2c7548e (every earlier full mint's candidates died on oracle disagreement before reaching our decoder); ledgered in cddl-matrix/ROADMAP.md § findings; prune when array-record occurrences are honored as a Vec field (or rejected loudly at generation like the map path)"
+expect = "accept"
+
+[[row.vector]]
+hex = "8319093866617474756e6543576569"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83190b166573686f70734a706f72637570696e6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83190ef16b76696e61696772657474654456442773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8319121b68696d7075726573744c546f72726963656c6c692773"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "type2.map"
@@ -6659,11 +6643,6 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "810a"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "8100"
 source = "hand"
 expect = "reject"
@@ -6677,6 +6656,11 @@ expect = "reject"
 class = "constraint"
 reason = "the value 2 is `0b10` — a truncated-digit mis-lex of `0b1010` — and is not the fixed value 10 — violates `m = [v: 0b1010]` (digit-boundary guard: rejects any decode that stops lexing binary digits early)"
 
+[[row.vector]]
+hex = "810a"
+source = "ruby-generate"
+expect = "accept"
+
 [[row]]
 id = "value.number.hex"
 axis = "feature"
@@ -6686,16 +6670,16 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "8110"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "8100"
 source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 0 is not the fixed value 0x10 = 16 — violates `m = [v: 0x10]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0x10` as 0 flips exactly this vector; cf. the unwrap_or(0) conversion class in draft/rust-cddl-radix-int-literal-gap.md § post-implementation findings)"
+
+[[row.vector]]
+hex = "8110"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "8111"

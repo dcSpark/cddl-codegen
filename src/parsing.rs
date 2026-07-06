@@ -2397,6 +2397,45 @@ fn parse_record_from_group_choice(
                 types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
             }
             let optional_field = group_entry_optional(group_entry);
+            // A count-permitting occurrence (`*`, `+`, `n*m` with bounds ≠ 1*1) on an ARRAY-record
+            // field would be silently narrowed to a single mandatory item — a generated decoder
+            // that rejects spec-valid CBOR with any other repetition count (invisible to
+            // round-trip tests; only cross-producer data exposes it — the array analogue of the
+            // map-path guard below). Unlike unique map keys, `+` does not collapse to exactly-one
+            // in an array, so every marker except `?` and the pedantic `1*1` rejects.
+            if rep == Representation::Array {
+                let narrows = match group_entry {
+                    GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
+                    GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
+                    GroupEntry::InlineGroup { .. } => None,
+                }
+                .map(|o| {
+                    !matches!(
+                        o.occur,
+                        Occur::Optional { .. }
+                            | Occur::Exact {
+                                lower: Some(1),
+                                upper: Some(1),
+                                ..
+                            }
+                    )
+                })
+                .unwrap_or(false);
+                if narrows {
+                    let source_name = types
+                        .source_rule_name(name)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| name.to_string());
+                    types.record_rejection(format!(
+                        "rule `{source_name}`: array field `{field_name}` has an occurrence \
+                         (`*` / `+` / `n*m`), which would be silently narrowed to a single \
+                         mandatory item (generated decoders would reject valid CBOR with a \
+                         different repetition count). Use `?` for an optional item, a homogeneous \
+                         array (`[* t]`), or name the repeated part as its own array rule."
+                    ));
+                    return None;
+                }
+            }
             let key = match rep {
                 Representation::Map => {
                     // cite the rule by its SOURCE spelling (`m`), not the camel-cased
