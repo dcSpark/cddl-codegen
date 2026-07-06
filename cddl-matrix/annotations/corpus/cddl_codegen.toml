@@ -531,6 +531,22 @@ reason = "top-level numeric-literal type (`version = 5`) panics — same Fixed-t
 code_anchor = "should not expose Fixed type in member"
 
 [[note]]
+id = "value.number.hex"
+status = "unsupported"
+reason = "hex integer literal (`0x10`) rejected at parse — an UPSTREAM cddl-crate pest-lexer bug (mis-matched as an exponent-optional hexfloat, \"Invalid hexfloat\"), not codegen logic; both the pinned fork and released 0.10.x reject it. Flip candidate only when the pinned `cddl` dependency picks up an upstream fix (ROADMAP § findings; repro draft/rust-cddl-radix-int-literal-gap.md)."
+
+[[note]]
+id = "value.number.bin"
+status = "unsupported"
+reason = "binary integer literal (`0b1010`) rejected at parse — the same upstream cddl-crate pest-lexer gap (no `0b` alternative; lexes as uint `0` + identifier `b1010`); cddl-codegen's checked parse entry rejects gracefully, which is safer than the crate CLI's unchecked mis-parse. Flip candidate only on an upstream fix (ROADMAP § findings)."
+
+[[note]]
+id = "value.number.hexfloat"
+status = "unsupported"
+reason = "hexfloat literal member (`m = [v: 0x1.8p+1]` = 3.0) generates but does not compile — whole-valued float fixed values are Display-formatted, dropping the `.0` (E0308 at the Float emission sites); `v: 3.5` compiles, so the gap is the formatting, not float fixed members per se (ROADMAP § findings)."
+code_anchor = "cbor_event::Special::Float("
+
+[[note]]
 id = "value.text"
 status = "unsupported"
 reason = "top-level text-literal type (`marker = \"v1\"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above."

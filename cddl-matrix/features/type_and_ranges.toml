@@ -151,12 +151,46 @@ example = "t = 0.5...10.5"
 [[feature]]
 id = "type1.ctlop"
 production = "type1"
-alt = "type2 ctlop type2"
+alt = "type2 [S (rangeop / ctlop) S type2]"
 rfc = "RFC8610 §3.8; ABNF type1 / ctlop (ctlop = \".\" id)"
 profile = "RFC8610"
 title = "Control-operator application (.op)"
 desc = "Binds a target type2 to a controller type2 via a `.name` control operator (`type1 .op type2`). The operator vocabulary is the IANA-derived control-op axis — see reference ids `ctl.*` (e.g. ctl.size, ctl.cbor, ctl.lt); this row is the application construct only, not the operator list."
 example = "t = tstr .size 4"
+
+# --- control-op controller-VALUE variation rows (.ne boundary values, .size over uint) ---
+# The base `ctl.*` rows (control_examples.toml) probe one controller value per op. These enumerate the
+# controller-VALUE variations whose absence is an enforcement blind spot (§ 4): the variation axis here
+# is the controller value, not an ABNF alternative, so `alt` is omitted — the production resolves to the
+# IANA control-op registry (`resolveSource` → control-op). Enumerated per the § 4 lesson that the
+# enforcement axis reaches only as far as row/example enumeration, so a boundary the base example misses
+# is a blind spot, not just missing coverage.
+[[feature]]
+id = "ctl.ne.zero"
+production = "ne"
+rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne"
+profile = "RFC8610"
+title = "Not-equal control at the zero boundary (.ne 0)"
+desc = "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "x = int .ne 0"
+
+[[feature]]
+id = "ctl.ne.one"
+production = "ne"
+rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne"
+profile = "RFC8610"
+title = "Not-equal control at the one boundary (.ne 1)"
+desc = "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (§ sign-partition findings). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "x = int .ne 1"
+
+[[feature]]
+id = "ctl.size.uint"
+production = "size"
+rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .size"
+profile = "RFC8610"
+title = "Size control over a uint target (.size over uint)"
+desc = "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the § oracle-gap findings entry — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; see ROADMAP § oracle gaps). Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "x = uint .size 2"
 
 # --- rule incremental-extension operators (assignt = "=" / "/=", assigng = "=" / "//=") ---
 # The base "=" assignment is the ordinary rule form used by every example; the distinct constructs

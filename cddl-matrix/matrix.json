@@ -34,6 +34,51 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "ctl.ne.one",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "ctl.ne.zero",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "ctl.size.uint",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)",
             "status": "supported"
           },
@@ -409,6 +454,36 @@
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "occur.bounded.lower",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "occur.bounded.upper",
         "status": "supported"
       },
       {
@@ -1217,6 +1292,21 @@
         "status": "unsupported"
       },
       {
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "id": "value.number.bin",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
+        "id": "value.number.hex",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe: cddl-codegen generates but does not compile (cargo check exit 101); wasm round-trip FAILED (cargo test exit 101); ruby=ok rust=ok",
+        "id": "value.number.hexfloat",
+        "status": "unsupported"
+      },
+      {
         "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "value.text",
         "status": "unsupported"
@@ -1987,7 +2077,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },
@@ -3942,7 +4032,33 @@
       "title": "Bounded occurrence (n*m)"
     },
     {
-      "alt": "typename [genericparm]",
+      "alt": "[uint] \"*\" [uint]",
+      "desc": "One-sided variation of occur.bounded: a lower-bound-only occurrence (`2*`) whose count check has NO upper arm — the entry occurs at least n times, unbounded above. A distinct enforcement surface from the two-sided `2*5` base row, per the § 4 lesson that the enforcement axis reaches only as far as row enumeration.",
+      "example": "g = [2* uint]",
+      "id": "occur.bounded.lower",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.2; ABNF occur / [uint] \"*\" [uint]",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Lower-bound-only occurrence (n*)"
+    },
+    {
+      "alt": "[uint] \"*\" [uint]",
+      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a `Vec` length check (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "g = [*5 uint]",
+      "id": "occur.bounded.upper",
+      "production": "occur",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.2; ABNF occur / [uint] \"*\" [uint]",
+      "roles": [
+        "role.occurrence-target"
+      ],
+      "title": "Upper-bound-only occurrence (*m)"
+    },
+    {
+      "alt": "typename [genericparm] S assignt S type",
       "desc": "A type rule parametrized over one or more identifiers; each param is usable as a type in the body.",
       "example": "foo<a> = [a]",
       "id": "genericparm.type",
@@ -3952,7 +4068,7 @@
       "title": "Generic type definition"
     },
     {
-      "alt": "id *(\",\" id)",
+      "alt": "\"<\" S id S *(\",\" S id S ) \">\"",
       "desc": "A definition taking two or more comma-separated parameter identifiers.",
       "example": "pair<k, v> = [k, v]",
       "id": "genericparm.multiple",
@@ -3962,7 +4078,7 @@
       "title": "Multiple generic parameters"
     },
     {
-      "alt": "groupname [genericparm]",
+      "alt": "groupname [genericparm] S assigng S grpent",
       "desc": "A group rule parametrized over identifiers; the params stand in for entry types when the group is spliced.",
       "example": "set<a> = (* a)",
       "id": "genericparm.group",
@@ -3985,7 +4101,7 @@
       "title": "Generic type instantiation"
     },
     {
-      "alt": "type1 *(\",\" type1)",
+      "alt": "\"<\" S type1 S *(\",\" S type1 S ) \">\"",
       "desc": "Binding two or more comma-separated argument types, positionally matched to the parameters.",
       "example": "pair<k, v> = [k, v]\nx = pair<uint, tstr>",
       "id": "genericarg.multiple",
@@ -3998,7 +4114,7 @@
       "title": "Multiple generic arguments"
     },
     {
-      "alt": "type1",
+      "alt": "\"<\" S type1 S *(\",\" S type1 S ) \">\"",
       "desc": "A generic argument may be any type1 expression (e.g. a range or controlled type), not just a named type.",
       "example": "foo<a> = [a]\ninst = foo<1..10>",
       "id": "genericarg.type1",
@@ -4561,6 +4677,36 @@
       "title": "Numeric literal value"
     },
     {
+      "alt": "number",
+      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "m = [v: 0x10]",
+      "id": "value.number.hex",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number",
+      "title": "Hexadecimal integer literal (0x…)"
+    },
+    {
+      "alt": "number",
+      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "m = [v: 0b1010]",
+      "id": "value.number.bin",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number",
+      "title": "Binary integer literal (0b…)"
+    },
+    {
+      "alt": "number",
+      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the lexeme axis (§ findings); member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "m = [v: 0x1.8p+1]",
+      "id": "value.number.hexfloat",
+      "production": "value",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number",
+      "title": "Hexadecimal float literal (hexfloat)"
+    },
+    {
       "alt": "text",
       "desc": "A text-string literal used as a (fixed) value.",
       "encodings": [
@@ -4857,7 +5003,7 @@
       "title": "Exclusive range, float head (a...b)"
     },
     {
-      "alt": "type2 ctlop type2",
+      "alt": "type2 [S (rangeop / ctlop) S type2]",
       "desc": "Binds a target type2 to a controller type2 via a `.name` control operator (`type1 .op type2`). The operator vocabulary is the IANA-derived control-op axis — see reference ids `ctl.*` (e.g. ctl.size, ctl.cbor, ctl.lt); this row is the application construct only, not the operator list.",
       "example": "t = tstr .size 4",
       "id": "type1.ctlop",
@@ -4865,6 +5011,33 @@
       "profile": "RFC8610",
       "rfc": "RFC8610 §3.8; ABNF type1 / ctlop (ctlop = \".\" id)",
       "title": "Control-operator application (.op)"
+    },
+    {
+      "desc": "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "x = int .ne 0",
+      "id": "ctl.ne.zero",
+      "production": "ne",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne",
+      "title": "Not-equal control at the zero boundary (.ne 0)"
+    },
+    {
+      "desc": "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (§ sign-partition findings). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "x = int .ne 1",
+      "id": "ctl.ne.one",
+      "production": "ne",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne",
+      "title": "Not-equal control at the one boundary (.ne 1)"
+    },
+    {
+      "desc": "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the § oracle-gap findings entry — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; see ROADMAP § oracle gaps). Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "example": "x = uint .size 2",
+      "id": "ctl.size.uint",
+      "production": "size",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .size",
+      "title": "Size control over a uint target (.size over uint)"
     },
     {
       "alt": "\"/=\"",

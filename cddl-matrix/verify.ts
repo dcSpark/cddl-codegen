@@ -36,7 +36,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ROOT, loadMatrixInputs, stableJson } from "./lib";
+import { ALT_PRODUCTIONS, ROOT, grammarAltCoverage, loadMatrixInputs, stableJson } from "./lib";
 
 process.chdir(ROOT);
 
@@ -181,10 +181,6 @@ interface ContainmentCorr {
   support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
   emission?: Record<string, EmissionOutcome>;  // per-emission-profile verdicts (iff support === "supported")
 }
-interface AltCoverage {
-  abnf_alternatives: string[]; feature_rows: string[]; covered: string[]; uncovered: string[]; modeled: boolean;
-}
-
 function resolveRubyCddl(): string | null {
   if (process.env.RUBY_CDDL) {
     if (existsSync(process.env.RUBY_CDDL)) return process.env.RUBY_CDDL;
@@ -315,72 +311,18 @@ for (const c of contain) {
 }
 
 // 2d. PER-ALTERNATIVE completeness for the grammar axis.
-function stripComment(s: string): string {
-  let out = "", inQ = false;
-  for (const ch of s) {
-    if (ch === '"') inQ = !inQ;
-    if (ch === ";" && !inQ) break;
-    out += ch;
-  }
-  return out.replace(/\s+$/, "");
-}
-
-function splitTopAlts(s: string): string[] {
-  const alts: string[] = [];
-  let buf = "", depth = 0, inQ = false;
-  for (const ch of s) {
-    if (inQ) { buf += ch; if (ch === '"') inQ = false; }
-    else if (ch === '"') { inQ = true; buf += ch; }
-    else if (ch === "(" || ch === "[" || ch === "{") { depth++; buf += ch; }
-    else if (ch === ")" || ch === "]" || ch === "}") { depth--; buf += ch; }
-    else if (ch === "/" && depth === 0) { alts.push(buf); buf = ""; }
-    else buf += ch;
-  }
-  if (buf) alts.push(buf);
-  return alts.map(a => a.trim()).filter(a => a.length);
-}
-
-function productionAlternatives(name: string): string[] | null {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const raw of splitlines(abnfText)) {
-    const m = raw.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*)$/);
-    if (m) {
-      if (m[1] === name) { inBlock = true; out.push(stripComment(m[2])); }
-      else if (inBlock) break;
-      continue;
-    }
-    if (inBlock) {
-      const s = raw.trim();
-      if (s === "") break;
-      out.push(stripComment(s));
-    }
-  }
-  if (!inBlock) return null;
-  return splitTopAlts(out.filter(x => x).join(" "));
-}
-
-const normalizeAlt = (s: string): string => stripComment(s).replace(/\bS\b/g, "").replace(/\s/g, "");
-
-const ALT_PRODUCTIONS = ["type2", "value", "rangeop", "occur", "memberkey", "group", "grpchoice",
-  "grpent", "type", "type1", "assignt", "assigng", "rule", "genericparm", "genericarg", "head-number"];
-
-const alt_coverage: Record<string, AltCoverage> = {};
-for (const prod of ALT_PRODUCTIONS) {
-  const alts = productionAlternatives(prod);
-  const feat_norms = new Set(features.filter(f => f.production === prod && f.alt).map(f => normalizeAlt(f.alt!)));
-  const rows = features.filter(f => f.production === prod).map(f => f.id);
-  const covered: string[] = [], uncovered: string[] = [];
-  for (const a of alts ?? []) (feat_norms.has(normalizeAlt(a)) ? covered : uncovered).push(a);
-  alt_coverage[prod] = { abnf_alternatives: alts ?? [], feature_rows: [...rows].sort(), covered, uncovered, modeled: rows.length > 0 };
-}
+const altCoverageResult = grammarAltCoverage(features, abnfText);
+const alt_coverage = altCoverageResult.coverage;
 const type2_uncovered: string[] = alt_coverage["type2"].uncovered;
-// Floor assertion for the HARD gate: productionAlternatives stops at the first blank line inside a
-// production block, so a re-pinned ABNF with a mid-block blank line would silently TRUNCATE the
-// alternatives list and shrink the gate's `uncovered` set (the vacuous-pass direction). Pin the count.
-const TYPE2_MIN_ALTERNATIVES = 12; // the pinned cddl-1-1-update.abnf type2 block
-if (alt_coverage["type2"].abnf_alternatives.length < TYPE2_MIN_ALTERNATIVES) {
-  console.error(`HARNESS FAILURE: type2 extraction yielded ${alt_coverage["type2"].abnf_alternatives.length} alternatives (expected >= ${TYPE2_MIN_ALTERNATIVES}); the ABNF block extraction truncated.`);
+const alt_uncovered = ALT_PRODUCTIONS.flatMap(prod => alt_coverage[prod].uncovered.map(alt => ({ production: prod, alt })));
+const alt_accounted = ALT_PRODUCTIONS.reduce((n, prod) => {
+  const cov = alt_coverage[prod];
+  return n + cov.covered.length + cov.delegated.length + cov.modeled_under.length;
+}, 0);
+const alt_alternatives = ALT_PRODUCTIONS.reduce((n, prod) => n + alt_coverage[prod].abnf_alternatives.length, 0);
+if (altCoverageResult.problems.some(p => p.includes("extraction yielded"))) {
+  console.error(`HARNESS FAILURE: ABNF alternative extraction truncated:`);
+  for (const p of altCoverageResult.problems.filter(p => p.includes("extraction yielded"))) console.error(`  - ${p}`);
   process.exit(2);
 }
 
@@ -1531,6 +1473,8 @@ const report = {
   fabricated,
   link_errors,
   type2_uncovered_alternatives: type2_uncovered,
+  uncovered_alternatives: alt_uncovered,
+  alternative_coverage_problems: altCoverageResult.problems,
   alternative_coverage: alt_coverage,
   spec_invalid: spec_invalid.map(pr => pr.id),
   out_of_profile,
@@ -1573,6 +1517,10 @@ const report = {
     gaps: gaps.length,
     cddl_codegen_gaps: cddl_codegen_gaps.length,
     link_errors: link_errors.length,
+    alt_productions: ALT_PRODUCTIONS.length,
+    alt_alternatives,
+    alt_accounted,
+    alt_uncovered: alt_uncovered.length,
     type2_alternatives: alt_coverage["type2"].abnf_alternatives.length,
     type2_covered: alt_coverage["type2"].covered.length,
     type2_uncovered: type2_uncovered.length,
@@ -1602,7 +1550,7 @@ console.log(`embed-fallback      : ${s.embedded_upgraded} feature probe(s) + ${s
 console.log(`control-op support  : supported=${s.controlop_supported} unsupported=${s.controlop_unsupported} (of ${s.control_ops}; missing example=${s.controlop_missing_example})`);
 console.log(`emission axis       : ${EMISSION_PROFILES.map(p => `${p.name}(supported=${emissionCounts[p.name].supported} unsupported=${emissionCounts[p.name].unsupported})`).join("  ")}  divergent=${s.emission_divergent}`);
 console.log(`reconcile (BIDIRECTIONAL grammar lint):`);
-console.log(`  forward  (source->feature): type2 alternatives covered ${s.type2_covered}/${s.type2_alternatives} (uncovered=${s.type2_uncovered})`);
+console.log(`  forward  (source->feature): ${s.alt_accounted}/${s.alt_alternatives} alternatives accounted across ${s.alt_productions} productions (uncovered=${s.alt_uncovered})`);
 console.log(`  backward (feature->source): fabricated=${s.fabricated} (feature.production resolving to no ABNF/prelude/control-op source)`);
 console.log(`  prelude gaps=${s.gaps}  link_errors=${s.link_errors}`);
 console.log(`type2 per-alt       : ${s.type2_covered}/${s.type2_alternatives} covered (uncovered=${s.type2_uncovered})`);
@@ -1610,13 +1558,18 @@ console.log(`spec-invalid (ref-rejected examples): ${s.spec_invalid}`);
 console.log(`parser limitations (rust): features=${s.parser_limitations} containment=${s.containment_parser_limitations}`);
 console.log(`containment         : contradictions=${s.containment_contradictions}`);
 
-console.log("\nALTERNATIVE COVERAGE (type2 gates; others best-effort/logged):");
+console.log("\nALTERNATIVE COVERAGE (hard-gated for every listed production):");
 for (const prod of ALT_PRODUCTIONS) {
   const cov = alt_coverage[prod];
-  const nAlt = cov.abnf_alternatives.length, nCov = cov.covered.length;
-  const tag = prod === "type2" ? "HARD" : "soft";
-  if (!cov.modeled) console.log(`  - ${prod.padEnd(12)} [${tag}] NOT MODELED (0 feature rows) — ${nAlt} ABNF alternative(s)`);
-  else console.log(`  - ${prod.padEnd(12)} [${tag}] ${nCov}/${nAlt} alternatives covered${cov.uncovered.length ? "  uncovered: " + cov.uncovered.join("; ") : ""}`);
+  const nAlt = cov.abnf_alternatives.length;
+  const nAcct = cov.covered.length + cov.delegated.length + cov.modeled_under.length;
+  const extras = [
+    cov.delegated.length ? `${cov.delegated.length} delegated` : null,
+    cov.modeled_under.length ? `${cov.modeled_under.length} modelled-under` : null,
+    cov.uncovered.length ? `uncovered: ${cov.uncovered.join("; ")}` : null,
+  ].filter(Boolean).join("  ");
+  if (!cov.modeled) console.log(`  - ${prod.padEnd(12)} [HARD] NOT MODELED (0 feature rows) — ${nAlt} ABNF alternative(s)`);
+  else console.log(`  - ${prod.padEnd(12)} [HARD] ${nAcct}/${nAlt} alternatives accounted${extras ? "  " + extras : ""}`);
 }
 
 if (fabricated.length) {
@@ -1626,6 +1579,10 @@ if (fabricated.length) {
 if (gaps.length) { console.log("\nCOMPLETENESS GAPS (prelude):"); for (const g of gaps) console.log(`  - ${JSON.stringify(g)}`); }
 if (link_errors.length) { console.log("\nLINK-INTEGRITY ERRORS:"); for (const e of link_errors) console.log(`  - ${e.kind}: ${e.id} -> unknown '${e.ref}'`); }
 if (type2_uncovered.length) { console.log("\nTYPE2 PER-ALTERNATIVE GAPS (no covering feature row):"); for (const a of type2_uncovered) console.log(`  - ${a}`); }
+if (altCoverageResult.problems.length) {
+  console.log("\nALTERNATIVE COVERAGE GAPS:");
+  for (const p of altCoverageResult.problems) console.log(`  - ${p}`);
+}
 if (spec_invalid.length) {
   console.log("\nSPEC-INVALID EXAMPLES (REFERENCE parser rejects an authored example):");
   for (const pr of spec_invalid) console.log(`  - ${pr.id}: ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}  ex=${JSON.stringify(pr.example)}`);
@@ -1675,7 +1632,7 @@ if (harness_timeouts_retried)
 
 console.log("\nwrote verify_report.json");
 
-const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || type2_uncovered.length ||
+const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || altCoverageResult.problems.length ||
   spec_invalid.length || containment_contradictions.length || controlop_missing_example.length || containment_missing_example.length;
 if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above; annotations/cddl_codegen.toml left untouched)"); process.exit(1); }
 const prevAnno = existsSync(annoPath) ? readFileSync(annoPath, "utf8") : "";

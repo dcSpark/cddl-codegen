@@ -11,7 +11,7 @@
  *      and `control_operators` (the IANA registry axis, derived complete-by-construction).
  *   2. `sources/cddl-1-1-update.abnf` — the pinned grammar. The ABNF *alternatives* are NOT embedded in
  *      matrix.json (only each feature's `alt` string is), so the forward lint re-extracts them here with
- *      the SAME block/alt/normalize logic verify.ts uses (kept in sync deliberately — see below).
+ *      the shared block/alt/normalize logic verify.ts uses.
  *   3. `sources/cddl.prelude` — the pinned standard prelude (RFC 8610 App. D) type names.
  *
  * THE TWO DIRECTIONS (neither alone is sufficient — forward-only admits invented features,
@@ -22,17 +22,12 @@
  *     source — an ABNF production, the prelude pseudo-production, the IANA control-op registry, or the
  *     `CDDL_CODEGEN` vendor source (comment-DSL / sentinel). Catches an invented feature with no source.
  *
- * FORWARD LINT — HARD for `type2` ONLY (the honest coverage boundary, ROADMAP.md § 4):
- *   - `type2`'s 12 ABNF alternatives are the closed, hard-gated set (this is the check that caught the
- *     missing `#7` alternative). Q5 is AUTHORITATIVE here: an uncovered `type2` alternative is a real
- *     modelling gap and `--check` hard-fails on it.
- *   - Every OTHER production's alt-coverage is BEST-EFFORT and clearly labelled soft: `normalizeAlt`
- *     does exact-string matching after whitespace/`S` stripping, so it reports `rule` / `type1` /
- *     `genericarg` / `genericparm` / `assignt` / `assigng` as false-uncovered even though feature rows
- *     exist, and `head-number`'s semantics live under the `type2.*` rows so it renders "NOT MODELED"
- *     with zero rows. These soft columns are diagnostics, not gates. Fixing `normalizeAlt` (and adding
- *     the missing variation rows called out in ROADMAP § 4) is a SEPARATE item — this query does NOT
- *     touch it; it reports the soft coverage with the caveat so the noise is never mistaken for a gap.
+ * FORWARD LINT — HARD for every enumerated production:
+ *   - every pinned ABNF alternative in the enumerated grammar productions is either covered by a feature
+ *     row, explicitly delegated with a reason, or modelled under named feature rows;
+ *   - every production has a pinned alternative-count floor so extraction truncation cannot pass
+ *     vacuously;
+ *   - stale delegation strings and missing modelled-under feature ids hard-fail.
  *
  * BACKWARD LINT + PRELUDE/CONTROL-OP COMPLETENESS — all HARD:
  *   - every feature resolves to a source (else it is invented) — `--check` hard-fails;
@@ -43,10 +38,11 @@
  * Run from cddl-matrix/:
  *   bun run query_q5_completeness.ts          -> the readable completeness report (both directions)
  *   bun run query_q5_completeness.ts type2    -> only productions/features whose id contains "type2"
- *   bun run query_q5_completeness.ts --check   -> hard-fail on any uncovered type2 alt / unresolved
- *                                                 feature source / prelude gap + vacuity floor; exit nonzero
+ *   bun run query_q5_completeness.ts --check   -> hard-fail on any uncovered alt / unresolved feature
+ *                                                 source / prelude gap + vacuity floor; exit nonzero
  */
 import { readFileSync } from "node:fs";
+import { ALT_PRODUCTIONS, grammarAltCoverage } from "./lib";
 
 const HERE = import.meta.dir;
 const splitlines = (s: string): string[] => s.split(/\r?\n/);
@@ -85,71 +81,8 @@ const controlop_prod_names = new Set<string>([
   ...control_ops.map(co => (co.name ?? "").replace(/^\.+/, "")),
 ]);
 
-// --- ABNF alternative extraction — SAME logic as verify.ts (kept in sync deliberately) -------------
-// This forward lint must produce byte-identical alternatives to verify.ts's reconciliation so the two
-// never disagree about what "covered" means. normalizeAlt is COPIED AS-IS: fixing its exact-string
-// noise is a separate ROADMAP § 4 item, not this query's job (see header).
-function stripComment(s: string): string {
-  let out = "", inQ = false;
-  for (const ch of s) {
-    if (ch === '"') inQ = !inQ;
-    if (ch === ";" && !inQ) break;
-    out += ch;
-  }
-  return out.replace(/\s+$/, "");
-}
-function splitTopAlts(s: string): string[] {
-  const alts: string[] = [];
-  let buf = "", depth = 0, inQ = false;
-  for (const ch of s) {
-    if (inQ) { buf += ch; if (ch === '"') inQ = false; }
-    else if (ch === '"') { inQ = true; buf += ch; }
-    else if (ch === "(" || ch === "[" || ch === "{") { depth++; buf += ch; }
-    else if (ch === ")" || ch === "]" || ch === "}") { depth--; buf += ch; }
-    else if (ch === "/" && depth === 0) { alts.push(buf); buf = ""; }
-    else buf += ch;
-  }
-  if (buf) alts.push(buf);
-  return alts.map(a => a.trim()).filter(a => a.length);
-}
-function productionAlternatives(name: string): string[] | null {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const raw of splitlines(abnfText)) {
-    const m = raw.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*)$/);
-    if (m) {
-      if (m[1] === name) { inBlock = true; out.push(stripComment(m[2])); }
-      else if (inBlock) break;
-      continue;
-    }
-    if (inBlock) {
-      const s = raw.trim();
-      if (s === "") break;
-      out.push(stripComment(s));
-    }
-  }
-  if (!inBlock) return null;
-  return splitTopAlts(out.filter(x => x).join(" "));
-}
-const normalizeAlt = (s: string): string => stripComment(s).replace(/\bS\b/g, "").replace(/\s/g, "");
-
-// type2 is the HARD gate; the rest are soft/best-effort (see header + ROADMAP § 4).
-const HARD_PRODUCTION = "type2";
-const SOFT_PRODUCTIONS = ["value", "rangeop", "occur", "memberkey", "group", "grpchoice", "grpent",
-  "type", "type1", "assignt", "assigng", "rule", "genericparm", "genericarg", "head-number"];
-const TYPE2_MIN_ALTERNATIVES = 12; // the pinned cddl-1-1-update.abnf type2 block (verify.ts's floor)
-
-interface AltCoverage { production: string; alternatives: string[]; covered: string[]; uncovered: string[]; rows: number }
-function altCoverage(prod: string): AltCoverage {
-  const alts = productionAlternatives(prod) ?? [];
-  const feat_norms = new Set(features.filter(f => f.production === prod && f.alt).map(f => normalizeAlt(f.alt!)));
-  const rows = features.filter(f => f.production === prod).length;
-  const covered: string[] = [], uncovered: string[] = [];
-  for (const a of alts) (feat_norms.has(normalizeAlt(a)) ? covered : uncovered).push(a);
-  return { production: prod, alternatives: alts, covered, uncovered, rows };
-}
-const type2Cov = altCoverage(HARD_PRODUCTION);
-const softCov = SOFT_PRODUCTIONS.map(altCoverage);
+const altCoverageResult = grammarAltCoverage(features, abnfText);
+const altCoverage = altCoverageResult.coverage;
 
 // --- BACKWARD: every feature resolves to a first-party source -------------------------------------
 type Source = "grammar" | "prelude" | "control-op" | "vendor";
@@ -174,13 +107,7 @@ const preludeGaps = prelude_names.filter(n => !prelude_feature_ids.has(`prelude.
 // --- gate ------------------------------------------------------------------------------------------
 function problems(): string[] {
   const ps: string[] = [];
-  // Harness floor: a re-pinned ABNF with a mid-block blank line silently truncates the alternatives
-  // list (the vacuous-pass direction). Pin the count exactly as verify.ts does.
-  if (type2Cov.alternatives.length < TYPE2_MIN_ALTERNATIVES)
-    ps.push(`type2 extraction yielded ${type2Cov.alternatives.length} alternatives (expected >= ${TYPE2_MIN_ALTERNATIVES}) — the ABNF block extraction truncated`);
-  // HARD forward: no uncovered type2 alternative.
-  for (const a of type2Cov.uncovered)
-    ps.push(`type2 alternative not modelled by any feature: ${JSON.stringify(a)}`);
+  ps.push(...altCoverageResult.problems);
   // HARD backward: every feature resolves to a source.
   for (const r of unresolved)
     ps.push(`feature \`${r.id}\` (production ${JSON.stringify(r.production)}) resolves to NO first-party source (grammar/prelude/control-op/vendor)`);
@@ -191,8 +118,7 @@ function problems(): string[] {
 }
 function vacuityProblems(): string[] {
   const ps: string[] = [];
-  if (type2Cov.alternatives.length !== TYPE2_MIN_ALTERNATIVES)
-    ps.push(`expected exactly ${TYPE2_MIN_ALTERNATIVES} type2 alternatives, saw ${type2Cov.alternatives.length} — the pinned grammar shape changed (review before re-pinning the floor)`);
+  ps.push(...altCoverageResult.vacuityProblems);
   if (control_ops.length !== 37)
     ps.push(`expected 37 IANA control operators, saw ${control_ops.length} — the registry axis read looks broken/incomplete`);
   if (control_ops.some(c => !c.id))
@@ -216,8 +142,13 @@ if (isCheck) {
     for (const p of all) console.log(`  FAIL ${p}`);
     process.exit(1);
   }
+  const totalCovered = ALT_PRODUCTIONS.reduce((n, prod) => {
+    const c = altCoverage[prod];
+    return n + c.covered.length + c.delegated.length + c.modeled_under.length;
+  }, 0);
+  const totalAlternatives = ALT_PRODUCTIONS.reduce((n, prod) => n + altCoverage[prod].abnf_alternatives.length, 0);
   console.log(
-    `Q5 completeness gate OK — forward: type2 ${type2Cov.covered.length}/${type2Cov.alternatives.length} alternatives covered (HARD, 0 uncovered) · ` +
+    `Q5 completeness gate OK — forward: ${totalCovered}/${totalAlternatives} alternatives covered/delegated/modelled-under across ${ALT_PRODUCTIONS.length} productions (HARD, 0 uncovered) · ` +
       `backward: ${resolutions.length} features all resolve (${bySource.grammar} grammar, ${bySource.prelude} prelude, ${bySource.vendor} vendor, ${bySource["control-op"]} control-op) · ` +
       `prelude ${prelude_feature_ids.size}/${prelude_names.length} complete · ${control_ops.length} control ops (complete by construction)`,
   );
@@ -231,33 +162,27 @@ const match = (s: string): boolean => !filter || s.toLowerCase().includes(filter
 console.log(`\nQ5 — matrix self-completeness (constructs the profile defines that the matrix does NOT model)`);
 console.log(`Sources: grammar (sources/cddl-1-1-update.abnf) ∪ prelude (sources/cddl.prelude) ∪ IANA control-op registry.\n`);
 
-// FORWARD — hard type2 gate.
-if (match("type2")) {
-  console.log(`### FORWARD (source → feature) — HARD gate: type2 alternatives`);
-  console.log(`type2 is the closed, hard-gated set: every ABNF alternative must have >= 1 covering feature.`);
-  console.log(`  covered:   ${type2Cov.covered.length}/${type2Cov.alternatives.length}`);
-  if (type2Cov.uncovered.length) {
-    console.log(`  UNCOVERED (real modelling gaps — --check fails):`);
-    for (const a of type2Cov.uncovered) console.log(`    - ${a}`);
-  } else {
-    console.log(`  uncovered: 0  ✓ (type2 fully modelled)`);
-  }
-  console.log("");
-}
-
-// FORWARD — soft best-effort columns.
-const shownSoft = softCov.filter(c => match(c.production));
-if (shownSoft.length) {
-  console.log(`### FORWARD (source → feature) — SOFT / best-effort: other productions`);
-  console.log(`These are DIAGNOSTIC, not gated. \`normalizeAlt\` does exact-string matching, so it reports`);
-  console.log(`rule / type1 / genericarg / genericparm / assignt / assigng as false-uncovered though feature`);
-  console.log(`rows exist, and head-number renders NOT MODELED because its semantics live under the type2.*`);
-  console.log(`rows. Fixing this (tightening normalizeAlt + adding the ROADMAP § 4 variation rows) is a`);
-  console.log(`SEPARATE item — Q5 is authoritative ONLY for type2 (above).`);
-  const w = Math.max(...shownSoft.map(c => c.production.length), 10);
-  for (const c of shownSoft) {
-    const tag = c.rows === 0 ? "NOT MODELED (0 rows)" : c.uncovered.length ? `${c.uncovered.length} soft-uncovered (likely normalizeAlt noise)` : "ok";
-    console.log(`  ${c.production.padEnd(w)}  ${String(c.covered.length + "/" + c.alternatives.length).padEnd(6)} covered  ${c.rows} row(s)  ${tag}`);
+// FORWARD.
+const shownForward = ALT_PRODUCTIONS.map(prod => altCoverage[prod]).filter(c => match(c.production));
+if (shownForward.length) {
+  console.log(`### FORWARD (source → feature) — HARD gate: ABNF alternatives`);
+  console.log(`Every enumerated ABNF alternative must be covered by a feature row, delegated with a reason, or modelled under named feature rows.`);
+  const w = Math.max(...shownForward.map(c => c.production.length), 10);
+  for (const c of shownForward) {
+    const accounted = c.covered.length + c.delegated.length + c.modeled_under.length;
+    const rows = c.feature_rows.length;
+    const extras = [
+      c.delegated.length ? `${c.delegated.length} delegated` : null,
+      c.modeled_under.length ? `${c.modeled_under.length} modelled-under` : null,
+      c.uncovered.length ? `${c.uncovered.length} UNCOVERED` : null,
+    ].filter(Boolean).join(", ");
+    console.log(`  ${c.production.padEnd(w)}  ${String(accounted + "/" + c.abnf_alternatives.length).padEnd(6)} accounted  ${rows} row(s)  ${extras || "ok"}`);
+    for (const d of c.delegated)
+      console.log(`    delegated ${d.alt} — ${d.reason}`);
+    for (const m of c.modeled_under)
+      console.log(`    ${m.alt} — modelled under ${m.featureIds.join(", ")}`);
+    for (const a of c.uncovered)
+      console.log(`    UNCOVERED ${a}`);
   }
   console.log("");
 }
@@ -286,6 +211,6 @@ if (!filter || match("prelude") || match("control") || match("ctl")) {
   console.log("");
 }
 
-console.log(`Summary: Q5 is AUTHORITATIVE for type2 (${type2Cov.uncovered.length} gap(s)) and for the backward /`);
-console.log(`prelude / control-op directions (${unresolved.length + preludeGaps.length} gap(s)); the other productions' forward`);
-console.log(`coverage is best-effort until normalizeAlt is tightened (ROADMAP § 4).`);
+const forwardGaps = ALT_PRODUCTIONS.reduce((n, prod) => n + altCoverage[prod].uncovered.length, 0);
+console.log(`Summary: Q5 is AUTHORITATIVE for forward grammar coverage across ${ALT_PRODUCTIONS.length} productions`);
+console.log(`(${forwardGaps} gap(s)) and for the backward / prelude / control-op directions (${unresolved.length + preludeGaps.length} gap(s)).`);

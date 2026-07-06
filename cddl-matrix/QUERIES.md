@@ -63,13 +63,11 @@ matrix does **not** model."
   registry is *referenced*, not pinned/enumerated as a source.)
 - **Answered by `query_q5_completeness.ts`**, a pure read of `matrix.json` + `sources/cddl-1-1-update.abnf`
   + `sources/cddl.prelude` (the standing, projectable form of `verify.ts`'s reconciliation). Forward
-  (source → feature) is **hard-authoritative for `type2`'s 12 alternatives only** — an uncovered `type2`
-  alternative is a real modelling gap that `--check` fails on; the other productions' alt-coverage is
-  best-effort/soft (labelled with ROADMAP § 4's `normalizeAlt` exact-string caveat, so its noise is never
-  mistaken for a gap). Backward (feature → source), prelude completeness, and control-op completeness are
-  all hard. `--check` hard-fails on any uncovered `type2` alternative / unresolved feature source / prelude
-  gap, with a vacuity floor (12 `type2` alternatives, 37 control ops, > 20 prelude names — check.ts local
-  tier).
+  (source → feature) is **hard-authoritative for every enumerated production** — an uncovered
+  non-delegated, non-modelled-under ABNF alternative is a real modelling gap that `--check` fails on.
+  Backward (feature → source), prelude completeness, and control-op completeness are all hard. `--check`
+  hard-fails on any uncovered alternative / unresolved feature source / prelude gap, with pinned
+  per-production alternative-count floors plus registry/prelude vacuity floors (check.ts local tier).
 
 ### Q6 — Profile / version diff
 "What changed — in the feature set or in tool X's support — when moving from CDDL profile P to P+1, or
@@ -116,5 +114,4 @@ in `ROADMAP.md`).
 **This bar is met.** Each query has a standing script (the "Answered by" notes above): Q1
 `query_q1_gaps.ts`, Q2 `project_corpus.ts`, Q3 `project_golden_hex.ts`, Q4 `query_q4_directional.ts`,
 Q5 `query_q5_completeness.ts`, Q6 `query_q6_diff.ts` — all pure file reads with `--check` gates in
-`check.ts`. Known honest partiality lives with the query it affects (Q4's numeric-op enforcement gap,
-Q5's type2-only hard authority — see the notes above and `ROADMAP.md` § findings / § 4).
+`check.ts`. Known honest partiality lives with the query it affects (Q4's numeric-op enforcement gap).

@@ -99,11 +99,20 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `memberkey.type1` | ✅ | Type memberkey (t =>) | `table.cddl` |
 | `memberkey.value` | ✅ | Value memberkey (1:) | `value_key.cddl` |
 
-### `occur` (4)
+### `ne` (2)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `ctl.ne.one` | ➕ | Not-equal control at the one boundary (.ne 1) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `ctl.ne.zero` | ➕ | Not-equal control at the zero boundary (.ne 0) | supported, no corpus fixture (cddl-codegen exit 0) |
+
+### `occur` (6)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `occur.bounded` | ✅ | Bounded occurrence (n*m) | `occurrence.cddl` |
+| `occur.bounded.lower` | ➕ | Lower-bound-only occurrence (n*) | supported, no corpus fixture (cddl-codegen exit 0) |
+| `occur.bounded.upper` | ➕ | Upper-bound-only occurrence (*m) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `occur.one_or_more` | ✅ | One-or-more occurrence (+) | `occurrence.cddl` |
 | `occur.optional` | ✅ | Optional occurrence (?) | `optional.cddl` |
 | `occur.zero_or_more` | ✅ | Zero-or-more occurrence (*) | `homogeneous_array.cddl` |
@@ -173,6 +182,12 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `genericparm.group` | ➖ | Generic group definition | a generic GROUP definition (`set<a> = (* a)`) is rejected — generics are supported on type rules, not on plain groups.  [`Generics not supported on plain groups`] |
 | `genericparm.type` | ✅ | Generic type definition | `generics.cddl` |
 
+### `size` (1)
+
+| construct | | description | evidence |
+|-----------|---|-------------|----------|
+| `ctl.size.uint` | ➕ | Size control over a uint target (.size over uint) | supported, no corpus fixture (cddl-codegen exit 0) |
+
 ### `type` (2)
 
 | construct | | description | evidence |
@@ -204,12 +219,15 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
 | `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
 
-### `value` (3)
+### `value` (6)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)  [`Ignoring Type2`] |
 | `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
+| `value.number.bin` | ➖ | Binary integer literal (0b…) | binary integer literal (`0b1010`) rejected at parse — the same upstream cddl-crate pest-lexer gap (no `0b` alternative; lexes as uint `0` + identifier `b1010`); cddl-codegen's checked parse entry rejects gracefully, which is safer than the crate CLI's unchecked mis-parse. Flip candidate only on an upstream fix (ROADMAP § findings). |
+| `value.number.hex` | ➖ | Hexadecimal integer literal (0x…) | hex integer literal (`0x10`) rejected at parse — an UPSTREAM cddl-crate pest-lexer bug (mis-matched as an exponent-optional hexfloat, "Invalid hexfloat"), not codegen logic; both the pinned fork and released 0.10.x reject it. Flip candidate only when the pinned `cddl` dependency picks up an upstream fix (ROADMAP § findings; repro draft/rust-cddl-radix-int-literal-gap.md). |
+| `value.number.hexfloat` | ➖ | Hexadecimal float literal (hexfloat) | hexfloat literal member (`m = [v: 0x1.8p+1]` = 3.0) generates but does not compile — whole-valued float fixed values are Display-formatted, dropping the `.0` (E0308 at the Float emission sites); `v: 3.5` compiles, so the gap is the formatting, not float fixed members per se (ROADMAP § findings).  [`cbor_event::Special::Float(`] |
 | `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
 
 ## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
@@ -306,7 +324,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **98** — ✅ 54 covered · ➕ 13 supported-untested · ⚠️ 6 partial · ➖ 25 not supported
+- Features: **106** — ✅ 54 covered · ➕ 18 supported-untested · ⚠️ 6 partial · ➖ 28 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 50
 

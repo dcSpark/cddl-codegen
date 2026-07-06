@@ -5,15 +5,17 @@ hard-won findings — the two things a future agent can't re-derive from the cod
 the done work landed lives in git history (this doc was pruned of it; the project already did the same with
 the scale report + cold-critique).
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->98 features (87 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 80 containment cells, and 212 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 80 containment cells, and 220 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->5 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->26 `class="constraint"` enforcement reject vectors over 17 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement axis is
-FULLY green: every row with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
-`query_q4_directional.ts --check`).
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->32 `class="constraint"` enforcement reject vectors over 22 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — every row whose
+generated decoder really rejects its constraint violation projects `enforce = yes (bounded-reject)`,
+pinned exactly by `query_q4_directional.ts --check`; the one `unverified` exception, `ctl.size.uint`,
+is a VERIFIED enforcement gap — the decoder silently truncates instead of rejecting — held out of the
+green set on purpose, § findings).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
 (the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
@@ -33,9 +35,11 @@ subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold revie
 > reference vectors exist for the decode direction via the decode-conformance harness, encode via the
 > conformance oracles; the 5-way Q4 answer is projected by `query_q4_directional.ts` — see `README.md`
 > § "Directional support evidence"; the enforcement axis carries `class="constraint"` reject
-> vectors so EVERY supported enforcement row projects `enforce = yes (bounded-reject)` — the numeric
+> vectors so every supported enforcement row where the decoder really rejects projects
+> `enforce = yes (bounded-reject)` — the numeric
 > range/eq ops via `int`-targeted probe examples that sidestep the rust oracle's uint-target gap,
-> which remains an upstream report — see § findings); **F8–F11
+> which remains an upstream report; the one verified NON-enforcing row, `ctl.size.uint`, reads
+> `unverified` — see § findings); **F8–F11
 > out of scope** (bottom). Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
@@ -111,12 +115,11 @@ gotcha is documented in `tests/README.md` § "Running everything".
   `docs/docs/current_capacities.mdx`; `--check` runs the drift + consistency + vacuity gate (check.ts
   `local` tier).
 - `bun run query_q5_completeness.ts` — **answers `QUERIES.md` Q5**: the standing, projectable form of
-  `verify.ts`'s bidirectional reconciliation. Forward (source → feature) is HARD-authoritative for
-  `type2`'s 12 alternatives only; the other productions' alt-coverage is best-effort/soft (labelled with
-  the `normalizeAlt` caveat, § 4). Backward (feature → source), prelude completeness, and control-op
-  completeness are all hard. Reads `matrix.json` + `sources/cddl-1-1-update.abnf` + `sources/cddl.prelude`
-  — no cargo/oracles. `--check` hard-fails on any uncovered `type2` alternative / unresolved feature
-  source / prelude gap, plus a vacuity floor (check.ts `local` tier).
+  `verify.ts`'s bidirectional reconciliation. Forward (source → feature), backward (feature → source),
+  prelude completeness, and control-op completeness are all hard. Reads `matrix.json` +
+  `sources/cddl-1-1-update.abnf` + `sources/cddl.prelude` — no cargo/oracles. `--check` hard-fails on
+  any uncovered non-delegated, non-modelled-under alternative / unresolved feature source / prelude gap,
+  plus vacuity floors (check.ts `local` tier).
 - `bun run query_q6_diff.ts` — **answers `QUERIES.md` Q6**: no args prints the per-profile view (features
   each profile introduces + cddl-codegen's support split); two args `old.json new.json` (e.g. a
   `git show REF:cddl-matrix/matrix.json` snapshot) prints a structural diff — added/removed ids per axis
@@ -145,26 +148,19 @@ gotcha is documented in `tests/README.md` § "Running everything".
   declared target profile if it updates its `cddl` dependency.
 - **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
   consumer adopts it.
-- **Representability gaps (features the matrix cannot even mark as uncovered):** the grammar lint is
-  hard-gated only for `type2`'s 12 alternatives; the soft alt-coverage for the other productions is
-  currently too noisy to promote (`normalizeAlt` exact-string matching reports `rule`/`type1`/
-  `genericarg`/`genericparm` as false-uncovered although feature rows exist, and `head-number`'s
-  semantics live under `type2.*` rows so it renders "NOT MODELED"). Separately, some *variations inside*
-  one ABNF alternative have no feature row at all: one-sided occurrence bounds (`n*`/`*m` — prose-only
-  in `occur.bounded`'s desc; only `2*5` is probed anywhere), the `uint` radix forms `0x`/`0b` +
-  `hexfloat`, and control-op **boundary values** (`ctl.ne`'s one example `x = int .ne 5` misses the
-  excluded-value-0/1 boundary where the sign-partition's NE encoding degenerates — the class the
-  `.ne 1` mis-check hid in; the Rust-side `sign_bounds` grids sweep it, the matrix example doesn't). The
-  range **head-type × sign** axis USED to sit here and is now enumerated: `rangeop.{inclusive,exclusive}`
-  each carry `.int` (sign-spanning), `.nint` (uint arm empty), and `.float` variation rows alongside the
-  uint-headed base, every one certified by a `class="constraint"` boundary-violation reject vector so
-  non-enforcement projects `enforce = no`, not a vacuous green — the row set that would have caught the
-  float-range silent-acceptance hole up front instead of leaving it to manual probing. The durable lesson
-  those escapes encode: silent-acceptance bugs are visible ONLY to the enforcement axis, and that axis
-  reaches exactly as far as row/example enumeration — so an enumeration gap here is an enforcement blind
-  spot, not just coverage accounting; enumerate the variation row (with its reject vector) before
-  trusting a green. Until the REMAINING variations above have rows, Q5 ("everything the matrix does not
-  model") is authoritative only for `type2` — tighten `normalizeAlt` and add the rest before claiming more.
+- **Intra-alternative variation rows (the enforcement-blind-spot class):** the known *variations inside*
+  one ABNF alternative are all enumerated as rows now — the range **head-type × sign** axis
+  (`rangeop.{inclusive,exclusive}.{int,nint,float}`), one-sided occurrence bounds
+  (`occur.bounded.{lower,upper}`), the `uint` radix / `hexfloat` lexemes (`value.number.{hex,bin,hexfloat}`),
+  and the control-op boundary/target-type values (`ctl.ne.{zero,one}`, `ctl.size.uint`) — each with a
+  `class="constraint"` boundary-violation reject vector where the decoder genuinely enforces (Q4 pins the
+  exact enforce-green set). We enumerate these as rows, not prose, because the durable lesson stands:
+  silent-acceptance bugs are visible ONLY to the enforcement axis, and that axis reaches exactly as far
+  as row/example enumeration — an enumeration gap here is an enforcement blind spot, not just coverage
+  accounting; enumerate the variation row (with its reject vector) before trusting a green. The close-out
+  proved the lesson twice over: `ctl.size.uint`'s reject vector exposed a real silent-truncation decode
+  bug, and `value.number.{hex,bin}` exposed an upstream parser mis-lex (both in § findings). When a new
+  variation axis appears (a new controller value class, a new literal lexeme), add its row + vector first.
 
 ## Findings & gotchas (durable — read before touching the support seam or probe examples)
 
@@ -239,14 +235,30 @@ from a degenerate example.**
   `contain.occurrence-target.grpent.inline_group.exactly_once_array` is pinned vectorless, and
   `contain.occurrence-target.grpent.groupname` (`a = [* pair]`) carries only the empty-array accept
   vector (the sole instance both oracles accept). Un-pin / re-mint both when a fixed rust `cddl`
-  release ships. A `uint .size N` probe variant
-  stays unswept (the one-example-per-op enumeration gap,
-  § 4 variation rows). The six ops' probe examples (`control_examples.toml`) target `int` with
+  release ships. The `uint .size N` variant is now swept (`ctl.size.uint`, `x = uint .size 2`): its
+  bare-form boundary violation (65536) was certified against ruby + the `local-fixes` build @ `cdba2b4`
+  (released 0.10.x accepts it — this entry's under-enforcement gap), which exposed a REAL cddl-codegen
+  decode bug — the member decode silently truncates (`as u16`), accepting 65536 as 0 — so the row
+  deliberately carries NO `class="constraint"` vector (that class's contract is "decoder durably
+  rejects", which would be false) and projects `enforce = unverified`; the bug is ledgered in the
+  bugs/gaps list below. Mint the vector (with the cdba2b4 provenance in its `reason` until a fixed
+  release ships) only when the truncation fix lands. Its ACCEPT side is separately un-mintable: a
+  fourth, distinct oracle gap (released 0.10.5 AND `local-fixes`) — the rust CLI misvalidates a
+  control-op-carrying rule referenced as an ARRAY entry, checking the WHOLE array against the rule
+  (`expected type uint, got Array([...])`) even as the sole entry (`h = [x]`, `x = uint .size 2`,
+  instance `[4786]` rejects; an uncontrolled `x = uint` in the same position validates fine), so every
+  valid holder-wrapped instance is rejected and the row is pinned vectorless (the
+  groupname-precedent shape). Un-pin when a fixed release ships.
+  The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
   catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
   vector per row — over `int` both oracles reject each violation, cddl-codegen's generated decoder
   rejects it too (the emitted `RangeCheck`, executed by the replay gate), and all six rows project
-  `enforce = yes (bounded-reject)` alongside `ctl.size` / `ctl.cbor` / `memberkey.cut`. The `int`
+  `enforce = yes (bounded-reject)` alongside `ctl.size` / `ctl.cbor` / `memberkey.cut`, the
+  `ctl.ne.{zero,one}` boundary-value rows (`00`/`01` — the `(1,-1)` and degenerate `(2,0)` NE
+  encodings, int-targeted for the same reason), the `occur.bounded{,.lower,.upper}` count rows
+  (holder-wrapped out-of-count arrays; sole-primitive-entry shape keeps repetition count == item
+  count, dodging the group-occurrence gap above), and the rangeop rows. The `int`
   targeting (and the non-vacuous `.ge 5` bound — `.ge 0` over a base type admitting no in-type
   violation would leave only a type-violation vector, which tests the base type, not the constraint)
   is load-bearing: `query_q4_directional.ts --check` pins the exact enforce-green set so a decay of
@@ -288,6 +300,35 @@ from a degenerate example.**
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
+- **`uint .size N` member decode silently TRUNCATES instead of rejecting** — a data-corrupting
+  over-acceptance: `x = uint .size 2` collapses to the exact-width alias `pub type X = u16`, but the
+  member-position deserializer reads the full u64 and casts (`raw.unsigned_integer()? as u16`), so the
+  out-of-window 65536 decodes "successfully" as 0. Invisible to round-trip tests by construction (the
+  encoder can only produce in-window values); surfaced ONLY by the `ctl.size.uint` enforcement row's
+  boundary-violation vector (`82001a00010000`), which the mint's replay caught decoding cleanly — the
+  § 4 lesson working as designed. The catalog row therefore carries no `class="constraint"` vector
+  (its contract is "decoder durably rejects") and Q4 projects `enforce = unverified` — the closest
+  honest mechanical state until an over-acceptance vector class exists (the F10 pending call, noted in
+  `query_q4_directional.ts`). Candidate fix: emit a checked narrowing (`u16::try_from` + reject) on
+  the member read path; then mint the vector and flip the row into the Q4 enforce-green pin.
+- **The `uint` radix literals `0x…`/`0b…` are unusable — an UPSTREAM `cddl`-crate parser bug, not
+  codegen logic** (`value.number.{hex,bin}` unsupported; full repro + fix direction in
+  `draft/rust-cddl-radix-int-literal-gap.md`): the crate's pest grammar has no radix alternatives, so
+  `0x10` mis-matches the exponent-optional `hexfloat` rule and dies in `parse_hexf64` ("Invalid
+  hexfloat"), while `0b1010` mis-lexes as `0` + identifier `b1010` — cddl-codegen's checked parse
+  entry rejects it gracefully (`missing definition for rule b1010`), which is strictly SAFER than the
+  CLI's unchecked entry accepting the two-entry mis-parse and then validating the wrong shape. Present
+  in released 0.10.5, the pinned dcSpark rev `d6cad9e`, and `local-fixes`; both rows flip candidates
+  only when the pinned `cddl` dependency picks up an upstream fix.
+- **Whole-valued float fixed members emit integer-formatted literals — generates but does not
+  compile** (the F3 compile-gate false-positive class, caught by the compile gate exactly as
+  designed): `m = [v: 0x1.8p+1]` (= 3.0) and equally the plain-decimal `m = [v: 3.0]` emit
+  `Special::Float(3)` / `if v_value != 3` / `Key::Float(3)` — three E0308 "expected f64, found
+  integer" — because the fixed-value f64 is formatted via `Display`, which drops the decimal point on
+  whole values (`generation.rs` ~1888 `Float({f})`, ~2597 `Key::Float({x})`); `m = [v: 3.5]` compiles
+  fine, so the gap is the formatting, not float fixed members per se. The hexfloat LEXEME itself
+  parses fine (unlike the radix ints above). Candidate fix: format float fixed values with `{:?}` or
+  an explicit `f64` suffix at both emission sites; `value.number.hexfloat` then flips on re-probe.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected gracefully**

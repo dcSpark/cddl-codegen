@@ -2238,6 +2238,136 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "ctl.ne.one"
+axis = "feature"
+example = "x = int .ne 1"
+spec = "x = int .ne 1"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "01"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 1 equals the `.ne 1` excluded value — violates `int .ne 1` (the degenerate `(2,0)` NE encoding the historical `.ne 1` mis-check hid in; must route whole to the uint arm)"
+
+[[row.vector]]
+hex = "19058b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "1907b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190828"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190b43"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190e4c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390158"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "39017c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901ab"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390292"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390317"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "ctl.ne.zero"
+axis = "feature"
+example = "x = int .ne 0"
+spec = "x = int .ne 0"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "00"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 0 equals the `.ne 0` excluded value — violates `int .ne 0` (the `(1,-1)` sign-boundary NE encoding; must route whole to one CBOR sign arm, never split per side)"
+
+[[row.vector]]
+hex = "190291"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190e2a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190fa1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "1910d4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "388e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "38de"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "38f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390170"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902cf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902e1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "ctl.size"
 axis = "control_op"
 example = "x = bytes .size 4"
@@ -2308,6 +2438,12 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 5-byte string is over the `.size 4` length — violates `bytes .size 4`"
+
+[[row]]
+id = "ctl.size.uint"
+axis = "feature"
+example = "x = uint .size 2"
+pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
 
 [[row]]
 id = "dsl.custom_deserialize"
@@ -3299,54 +3435,188 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82008218e9190c66"
+hex = "82008100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 1-element array is below the `2*5` occurrence lower bound — violates `[2*5 uint]`"
+
+[[row.vector]]
+hex = "82008319048f19109f190b9a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200821907db19114c"
+hex = "820083190b781909161907bb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190acf190719"
+hex = "8200841850190521190e6e190249"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190bbc1902f6"
+hex = "8200841902711909da190f2c1901a5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190cf6190e9a"
+hex = "8200841905ad190eb8190d3c1903c5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008319037619027618d7"
+hex = "82008419086f1906e319091919036a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083190a9018c9191088"
+hex = "8200841909f31908a5190c7119036b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084185e190a0219116619089f"
+hex = "820084190a2d19068319073619121a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008419065a190588190648190555"
+hex = "820084190ceb1903b2190ea8190b9c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841911cc190a9c191017190e25"
+hex = "82008419125f190da5190170191011"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "820086000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 6-element array is above the `2*5` occurrence upper bound — violates `[2*5 uint]`"
+
+[[row]]
+id = "occur.bounded.lower"
+axis = "feature"
+example = "g = [2* uint]"
+spec = "__probe_holder = [0, g]\ng = [2* uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 1-element array is below the `2*` occurrence lower bound (no upper arm) — violates `[2* uint]`"
+
+[[row.vector]]
+hex = "8200821903b5190b22"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821904e7190ba4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190842190bcd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190d35190ec2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f23190518"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831904e6190d5f190e85"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831908b5190530190e6b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190f1819124e18d4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084190b8f19037d190be21909c3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200841912461911b3190719190956"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occur.bounded.upper"
+axis = "feature"
+example = "g = [*5 uint]"
+spec = "__probe_holder = [0, g]\ng = [*5 uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200810f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190383"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190495"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831907e4190327190e88"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083191011190383190399"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008419055e19018b1907c4190736"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008419100c1909a919094619093c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "a 6-element array is above the `*5` occurrence upper bound (zero-permitting, no lower arm) — violates `[*5 uint]`"
 
 [[row]]
 id = "occur.one_or_more"

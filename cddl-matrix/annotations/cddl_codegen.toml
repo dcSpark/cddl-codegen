@@ -70,6 +70,33 @@ emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 
 [[support]]
+id = "ctl.ne.one"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "ctl.ne.zero"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "ctl.size.uint"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+
+[[support]]
 id = "dsl.custom_deserialize"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
@@ -294,6 +321,24 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "occur.bounded"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+
+[[support]]
+id = "occur.bounded.lower"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+
+[[support]]
+id = "occur.bounded.upper"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
@@ -827,6 +872,21 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fai
 id = "value.number"
 status = "unsupported"
 evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+
+[[support]]
+id = "value.number.bin"
+status = "unsupported"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+
+[[support]]
+id = "value.number.hex"
+status = "unsupported"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)"
+
+[[support]]
+id = "value.number.hexfloat"
+status = "unsupported"
+evidence = "probe: cddl-codegen generates but does not compile (cargo check exit 101); wasm round-trip FAILED (cargo test exit 101); ruby=ok rust=ok"
 
 [[support]]
 id = "value.text"
@@ -1383,7 +1443,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok
 [[support]]
 id = "ctl.and"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b32"
