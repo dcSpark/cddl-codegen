@@ -24,12 +24,17 @@
 //! **wasm-API facts baked in here** (all verified against generated core output): `JsError: !Debug`,
 //! so a wasm `Result` is unwrapped as `.ok().expect(..)`, never `.unwrap()`/`.expect()`; composite
 //! ctor params cross as `&Wrapper` (hence the `&` before composite args); c-style enums cross by
-//! value as the re-exported rust enum (no wrapper); fixed-value fields are omitted from `new`; and
-//! `@newtype`/tag wrappers expose NO wasm `new` in the generated crate, so a wrapper ENTRY type is
-//! built by decoding the rust twin's bytes (`from_cbor_bytes`), and a wrapper CTOR ARG is built via
-//! the `From<cddl_lib::Native>` impl every wasm wrapper carries (`wasm_named`); a wrapper COLLECTION
-//! ctor arg (`FooList`/`FooMap`, or an aliased `nums = [* uint]` -> `&Nums`) is built as a block
-//! expression through the wrapper's `new`/`add`/`insert` API (`wasm_collection_build`).
+//! value as the re-exported rust enum (no wrapper); fixed-value fields are omitted from `new`; every
+//! `@newtype`/tag/bounded wrapper exposes a wasm `new(inner)` ctor (`Result`-returning when the bound
+//! makes it fallible) plus an inner-value getter (`get`, or the `@newtype <name>` rename), so a
+//! wrapper ENTRY type is built through that public `new` (`wasm_wrapper_roundtrip`) — the minted inner
+//! is rendered by the same ctor-arg machinery (`wasm_arg`) and the getter is read back against the
+//! minted literal for a primitive inner. A wrapper CTOR ARG (a wrapper appearing as another type's
+//! ctor field) is instead built via the `From<cddl_lib::Native>` impl every wasm wrapper carries
+//! (`wasm_named`): a convenience choice, since the native expr is already at hand there and every
+//! named wrapper is a top-level rule that gets its own entry test exercising `new`. A wrapper
+//! COLLECTION ctor arg (`FooList`/`FooMap`, or an aliased `nums = [* uint]` -> `&Nums`) is built as a
+//! block expression through the wrapper's `new`/`add`/`insert` API (`wasm_collection_build`).
 //!
 //! **Loud skips (never silent):** every shape this renderer can't faithfully express emits an
 //! `eprintln!("cddl-codegen --emit-tests: ...")` and is dropped — extern / raw-bytes ctor args
@@ -105,7 +110,9 @@ pub fn emit_generated_wasm_tests(types: &IntermediateTypes, cli: &Cli) -> Option
             RustStructType::GroupChoice { variants, .. } => {
                 wasm_choice_roundtrip(types, &name, variants, true, &scoped, cli)
             }
-            RustStructType::Wrapper { .. } => wasm_wrapper_roundtrip(types, ident, &name, &scoped),
+            RustStructType::Wrapper { .. } => {
+                wasm_wrapper_roundtrip(types, ident, &name, &scoped, cli)
+            }
             // c-style enums serialize inline (no standalone wasm CBOR surface); tables/arrays are
             // wrapper types with NO CBOR methods (exercised only inside composite mints); extern/raw
             // reference user code.
@@ -320,12 +327,12 @@ fn wasm_named(
             };
             Some(format!("Int::new({value})"))
         }
-        // `@newtype`/tag wrappers (and named table/array wrappers) export NO wasm `new`, but every
-        // wasm wrapper carries `From<cddl_lib::Native>` (see `add_conversion_methods`). Build the arg
-        // by converting the SAME mint rendered as a fully-scoped rust value: `Wrapper::from(<rust
-        // twin>)`. This leans on the conversion impl, but the arg's boundary conversion + its
-        // serialization are still exercised by the enclosing byte differential — only the wrapper's
-        // own (absent) `new` goes uncovered here.
+        // `@newtype`/tag wrappers now expose a wasm `new(inner)`, but as a CTOR ARG we build them via
+        // the `From<cddl_lib::Native>` impl every wasm wrapper carries (see `add_conversion_methods`)
+        // — a convenience: the fully-scoped rust twin is already at hand here, and every named wrapper
+        // is a top-level rule whose own entry test (`wasm_wrapper_roundtrip`) exercises its `new`.
+        // Named table/array wrappers have no scalar `new`, so `From` is their only build. Either way
+        // the arg's boundary conversion + serialization stay covered by the enclosing byte differential.
         RustStructType::Wrapper { .. }
         | RustStructType::Table { .. }
         | RustStructType::Array { .. } => {
@@ -637,22 +644,69 @@ fn wasm_wrapper_roundtrip(
     ident: &crate::intermediate::RustIdent,
     name: &str,
     scoped: &ScopeMap,
+    cli: &Cli,
 ) -> Option<String> {
-    // No wasm `new` for wrappers in the generated crate: build the wasm value by decoding the rust
-    // twin's bytes, then assert the wasm wire round-trip is byte-identical.
     let entry_mv = mint_struct(types, ident, 0)?;
-    if !matches!(entry_mv, MintValue::Wrapper { .. }) {
+    let MintValue::Wrapper { inner, .. } = &entry_mv else {
         return None;
-    }
+    };
     let rust_build = rust_scoped(&entry_mv, scoped);
-    Some(format!(
-        "    {{
+    // The wrapped inner type — drives the inner wasm expression through the wrapper's public `new`.
+    let RustStructType::Wrapper { wrapped, .. } = types.rust_struct(ident)?.variant() else {
+        return None;
+    };
+
+    // Build the inner value through the SAME ctor-arg machinery the wrapper's `new(inner)` param uses
+    // (`wasm_arg` applies the by-ref/`&` boundary of `for_wasm_param`). When the inner has no faithful
+    // wasm build (extern / raw-bytes class), fall back to decoding the rust twin's bytes with a loud
+    // skip of the ctor differential — the wire round-trip still runs.
+    let Some(inner_expr) = wasm_arg(types, inner, wrapped, scoped, cli) else {
+        eprintln!(
+            "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner is extern/raw-bytes); building via from_cbor_bytes, ctor differential skipped"
+        );
+        return Some(format!(
+            "    {{
         let rust_v = {rust_build};
         let bytes = rust_v.to_cbor_bytes();
         let wasm_v = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes\");
         assert_eq!(wasm_v.to_cbor_bytes(), bytes, \"{name}: wasm wire round-trip must be byte-identical\");
     }}"
-    ))
+        ));
+    };
+
+    // Build through the public wasm `new`. A bounded/range wrapper's `new` returns `Result<_, JsError>`;
+    // the minted inner is in-window by construction, so `.ok().expect(..)` it (JsError: !Debug — never
+    // `.unwrap()`). The REJECT direction stays rust-side (its JsError error path panics under host tests).
+    let ctor = format!("{name}::new({inner_expr})");
+    let wasm_build = finish_fallible(ctor, types.can_new_fail(ident), name);
+
+    // §3 getter read-back: a primitive inner is compared against its emit-time literal on the freshly
+    // BUILT value (a broken getter conversion still fails here); non-primitive inners skip the literal
+    // compare (same policy as struct accessor read-back — the byte differential + wire cover them).
+    let getter = wrapper_getter_name(types, ident);
+    let mut readbacks = Vec::new();
+    if let Some(expected) = scalar_readback(wrapped, inner) {
+        readbacks.push(format!(
+            "        assert_eq!(wasm_v.{getter}(), {expected}, \"{name}.{getter}() must read back the minted inner value\");"
+        ));
+    }
+    Some(roundtrip_body(name, &wasm_build, &rust_build, &readbacks))
+}
+
+/// The effective inner-value getter name for a wrapper: an explicit `@newtype <name>` renames it,
+/// otherwise every wrapper (bare tag, plain `@newtype`, bounded/range) exposes the inner under `get`
+/// — the same resolution `generate_wrapper_struct` uses to emit the getter.
+fn wrapper_getter_name(
+    types: &IntermediateTypes,
+    ident: &crate::intermediate::RustIdent,
+) -> String {
+    match types
+        .rust_struct(ident)
+        .and_then(|s| s.config().newtype_getter.as_ref())
+    {
+        Some(Some(name)) => name.clone(),
+        _ => "get".to_owned(),
+    }
 }
 
 /// The shared body for a single-value (record/wrapper) round-trip test: §1 differential, §2 wire, §3.

@@ -241,17 +241,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
-- **Tag wrappers expose no wasm ctor and no inner-value accessor.** A `#6.n(T)` type generates a wasm
-  wrapper whose only boundary surface is `From<cddl_lib::Native>` + `to_cbor_bytes`/`from_cbor_bytes`
-  (no wasm `new`, no inner-`T` getter), so a JS consumer can neither construct nor read the tagged
-  content except by round-tripping CBOR — the tag payload is inaccessible from the binding. Surfaced by
-  the new `tag` grid cells (`tests/matrix_wasm/tag__*`); `@newtype` wrappers over scalar/struct inners
-  share the same bare surface (collection inners inherit the collection API; a tag over a struct folds
-  into the struct and keeps its accessors). Current behavior is user-documented in
-  `docs/docs/wasm_differences.mdx` § "Tag and `@newtype` wrappers" — update it when this lands.
-  Candidate fix: emit a wasm `new(inner: T)` + inner getter on these wrappers, reusing the `@newtype`
-  getter machinery in generation.rs (`newtype_getter`, the adjacent single-field-wrapper precedent).
-
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
 The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
@@ -269,12 +258,14 @@ enumerating?" and add a shape.
 `cddl_generated_wasm_tests` module, `integration_tests::wasm_matrix_roundtrips`, and `verify.ts`'s
 default-on `--wasm` probe — documented in `README.md` § annotations and `tests/README.md` § "wasm-ABI
 matrix"). Remaining:
-- **Unminted wasm shapes** — wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`
-  and `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl, so only
-  extern / raw-bytes ctor args (user-supplied types with no generated conversion) and the
-  `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in `tests/README.md`
-  § "wasm-crate test module"); a cell built entirely from those mints no wasm surface and falls back
-  to the compile verdict. (Flatten points are not on this list: optional fields are not ctor args, so
+- **Unminted wasm shapes** — a `@newtype`/tag/bounded wrapper ENTRY type builds through its public wasm
+  `new(inner)`; wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`, and
+  `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl. So only extern /
+  raw-bytes ctor args (user-supplied types with no generated conversion) — including a wrapper entry
+  whose inner is that class, which falls back to a `from_cbor_bytes` build with a loud-skipped ctor
+  differential — and the `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in
+  `tests/README.md` § "wasm-crate test module"); a cell built entirely from those mints no wasm surface
+  and falls back to the compile verdict. (Flatten points are not on this list: optional fields are not ctor args, so
   no mint ever constructs a present-null state — verified against the `nullable__*` cells, which all
   mint or skip only for the unrelated transparent-alias reason.)
 
