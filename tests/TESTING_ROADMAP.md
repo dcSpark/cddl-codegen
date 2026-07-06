@@ -207,29 +207,20 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-8. **Rust↔wasm API-surface parity differential (medium-low, but the class is structural).** A
-   method emitted on the rust side of the crate boundary with NO wasm counterpart is invisible to
-   every existing oracle, because they all derive from the emitted API and treat it as ground
-   truth: snapshots pin whatever was emitted, compile gates compile whatever was emitted, and the
-   wasm test mint is *written against* the surface that exists — it exercises what's there, it
-   cannot demand what's missing (the wrapper mint was literally built AROUND the hole, decoding
-   the rust twin's bytes because no ctor existed). Proven instance: wrapper types shipped for
-   years with rust `new`/`From` but no wasm ctor or getter — `generate_wrapper_struct` BUILT a
-   `wasm_new` and never pushed it (dead code, complete with an unformatted `"Result<{}, JsError>"`
-   ret type), found only by reading the generator; the symptom sat as a hand-curated
-   findings-ledger bullet, not a red cell. Division of labor with pending items: the full
-   `cargo-mutants` sweep (item 1) DOES flag the dead-code half — every mutation inside a
-   never-pushed builder is a trivial survivor, and triaging that cluster points straight at "no
-   observable effect" — but mutation can't flag ABSENCE (a method never emitted mutates nothing).
-   The missing system: per generated type, enumerate the rust crate's public ctor/accessor surface
-   and assert the wasm crate exposes a corresponding boundary member or a **ledgered exemption**
-   (legitimate asymmetries are the curated half: collection-API inheritance, tag-over-struct
-   folding, `pub use`d Copy enums, rust-only trait impls). Run it over the wasm-matrix cells (the
-   grid already enumerates shape × role) or the snapshot corpus, parsing the emitted sources
-   (`syn` is already a transitive dep) rather than asking the generator to self-report — an
-   output-side check catches emission bugs, not just intent drift. The wrapper instance is now
-   behaviorally pinned (the roundtrips mint builds through the public `new`), so this item is
-   about the next one-sided hole, not re-catching the last.
+8. **Widen the rust↔wasm API-surface parity differential beyond the default profile (low).** The
+   one-directional rust→wasm presence differential now exists and runs always-on
+   (`src/tests/wasm_parity_tests.rs::wasm_api_parity`, documented in `tests/README.md` § "rust↔wasm
+   API-surface parity"): it parses the emitted `mod.rs` of both crates over the wasm-matrix cells +
+   the two depth fixtures and asserts every rust pub type/field/inherent-fn has a wasm counterpart or
+   a ledgered exemption. Two axes it deliberately does NOT yet sweep:
+   - **Emission-profile axis.** It runs the *default* profile only. `--preserve-encodings` adds
+     rust-only `*Encoding` structs (in `cbor_encodings.rs`, itself out of the current file-set scope)
+     that have no wasm counterpart by design — sweeping the preserve/json profiles needs a baked-in
+     class rule for that asymmetry FIRST (mirroring how the default-profile classes are structural,
+     not ledgered), or every preserve run floods the ledger.
+   - **Corpus-wide input axis.** It covers the matrix cells + two depth fixtures, not the whole
+     snapshot corpus (`tests/*/input.cddl` under their per-dir flags). Extending it there should
+     reuse each dir's committed flag set so coverage stays mechanically checkable.
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated

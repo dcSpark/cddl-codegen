@@ -264,6 +264,7 @@ dependencies = [
  "nom 8.0.0",
  "pathdiff",
  "semver",
+ "syn",
  "toml",
  "toml_edit 0.25.12+spec-1.1.0",
  "which",

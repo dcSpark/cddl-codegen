@@ -64,7 +64,7 @@ fn command_line_flags_mdx_documents_all_clap_long_flags() {
 /// Stable per-checkout discriminator for scratch dirs under `temp_dir()`: concurrent `cargo test`
 /// runs from different checkouts/worktrees (an endorsed workflow) would otherwise share a fixed
 /// path and `remove_dir_all` each other's fixtures/target mid-run.
-fn checkout_hash() -> u64 {
+pub(crate) fn checkout_hash() -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     std::env::current_dir().unwrap().hash(&mut h);
@@ -171,7 +171,7 @@ fn tool_exists(bin: &str) -> bool {
 /// `RUSTFLAGS="-D warnings"` into the job env, which nested cargo builds would otherwise inherit
 /// and fail on those unused-import warnings. The root workspace keeps `-D warnings` via the
 /// dedicated Build/clippy steps; only these nested generated-crate builds must be insulated.
-fn tool_cmd(program: &str) -> std::process::Command {
+pub(crate) fn tool_cmd(program: &str) -> std::process::Command {
     let mut c = std::process::Command::new(program);
     c.env_remove("RUSTFLAGS");
     c
