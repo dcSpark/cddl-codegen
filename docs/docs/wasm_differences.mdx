@@ -12,11 +12,11 @@ In the wasm crate we can't always go one to one with the rust crate. Here are so
 `wasm_bindgen` cannot expose doubly-nested types like `Vec<Vec<T>` which can be a limitation if `T` was a non-byte primitive.
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.
 This lets us get around the `wasm_bindgen` limitation (without implementing cross-boundary traits which could be inefficient/tedious/complicated).
-This array wrapper implements `len() -> self`, `get(usize) -> T` and `add(T)`.
+This array wrapper implements `len() -> usize`, `get(usize) -> T` and `add(T)`.
 
 ## Tables
 
-Map literals also generate a type for them with `len() -> usize` and `insert(K, V) -> Option<V>`. The table type will have a `MapKeyToValue` name for whichever `Key` and `Value` types it's exposed as if it's anonymously inlined as a member, or will take on the identifier if it's a named one.
+Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. The table type will have a `MapKeyToValue` name for whichever `Key` and `Value` types it's exposed as if it's anonymously inlined as a member. A named table rule takes on its identifier — unless a `MapKeyToValue` wrapper for the same map shape was already emitted for an anonymously-inlined or resolved-inline use (e.g. as the inner of a `@newtype` wrapper), in which case the named rule reuses that shared wrapper and its identifier survives only as a rust-level `pub type` alias in the wasm crate (`wasm_bindgen` does not export type aliases, so the JS class is the `MapKeyToValue` name in that case).
 
 ## Enums
 
