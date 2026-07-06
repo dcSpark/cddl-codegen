@@ -86,8 +86,11 @@ gotcha is documented in `tests/README.md` § "Running everything".
   it never downgrades a verdict. Opt out for a faster run with `--no-wasm` (or `VERIFY_WASM=0`), which
   roughly halves the per-probe cargo work. Needs the three oracles (ruby `cddl`, rust `cddl` CLI,
   `cddl-codegen`) — installable: `gem install --user-install cddl`, `cargo install cddl` (set
-  `RUST_CDDL`), cddl-codegen builds from this repo. Slow (probes ~156 examples × generate + `cargo test`
-  ×2 crates via `cargo`).
+  `RUST_CDDL`), cddl-codegen builds from this repo. The slowest gate, but not prohibitive: probes
+  ~170 examples × generate + `cargo test` ×2 crates — measured ~11 min warm-cache on the dev machine
+  (wasm + decode-foreign on); hours cold, the shared-target warm-up dominating. A `--no-wasm` run is
+  faster but rewrites every row's evidence WITHOUT the wasm bits (wholesale diff churn) — keep wasm
+  on for any run whose annotations will be committed.
 - `bun run project_corpus.ts` — **generates `tests/corpus/COVERAGE.md`** + the overlay validator gate
   (canonical-fixture drift + note↔support agreement + `code_anchor` exists in `src/` + floor completeness +
   per-cell role coverage drift + cell-support check H). Builds/runs `examples/ast_roles.rs` (the role

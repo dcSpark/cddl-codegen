@@ -123,8 +123,9 @@ const EMISSION_PROFILES = extractEmissionProfiles();
 
 // --smoke=N (dev tooling): probe only the first N features, skip the containment/control-op loops and
 // all harness-health guards, TOML-parse-validate the composed annotation content, PRINT it, and write
-// NOTHING (neither annotations nor verify_report.json). Lets new probe code run end-to-end in minutes
-// so the multi-hour full run isn't its first execution.
+// NOTHING (neither annotations nor verify_report.json). Lets new probe code run end-to-end quickly
+// so the full run isn't its first execution (measured full-run wall time: ~11 min warm-cache on the
+// dev machine with wasm + decode-foreign on; hours cold — the shared-target warm-up dominates).
 const smokeArg = process.argv.find(a => a.startsWith("--smoke="));
 const SMOKE_N = smokeArg ? parseInt(smokeArg.slice("--smoke=".length), 10) : 0;
 const SMOKE = SMOKE_N > 0;
@@ -1381,7 +1382,7 @@ const annoPath = `${ROOT}/annotations/cddl_codegen.toml`;
 const annoContent = annoLines.join("\n").replace(/\s+$/, "") + "\n";
 
 // Parse-validate the composed annotation content BEFORE it is written (or, in smoke, printed): a
-// writer bug (a mis-emitted dotted key, an unescaped string) must not cost a completed multi-hour run
+// writer bug (a mis-emitted dotted key, an unescaped string) must not cost a completed full run
 // at the final step, and a malformed file must never land on disk.
 try {
   Bun.TOML.parse(annoContent);
