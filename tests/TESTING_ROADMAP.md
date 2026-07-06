@@ -154,7 +154,21 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      since fixed as a graceful rejection, pinned by projected `tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`
      fixtures and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
-## Explicitly not worth it (decided, not overlooked)
+7. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
+   ACCEPTS (low, but the gap is proven).** The decode-conformance catalog can only express two
+   truths — "must accept" and "durably rejects" (`class="constraint"`) — so a known
+   silent-acceptance bug has NO standing pin: the `uint .size 2` member decode truncating 65536 to
+   0 (`as u16`; ROADMAP § findings) was caught only by one-off observation during a mint replay,
+   and its row's honest projection collapses to `enforce = unverified`, indistinguishable at the
+   Q4 level from "vector not yet minted". The missing system is the `KNOWN_SILENT_DROP` /
+   `EXPECTED_COMPILE_FAIL` pattern applied to decode: a pinned vector class (e.g.
+   `class="over-acceptance"`) for certified-spec-invalid bytes the decoder CURRENTLY accepts,
+   replayed as "still wrongly accepts" so the pin flips loudly when a fix lands (prompting
+   promotion to `class="constraint"` and the Q4 enforce-green pin). Q4 could then project the
+   stronger honest fact `enforce = no (over-accepts)` instead of `unverified`, and the
+   `EXPECTED_ENFORCE_UNVERIFIED` pin in `query_q4_directional.ts` shrinks to genuinely-unminted
+   rows only. This is also the F10 "over-acceptance denominator" pending call made concrete —
+   resolve them together.
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated

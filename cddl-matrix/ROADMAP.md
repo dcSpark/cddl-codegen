@@ -223,8 +223,10 @@ from a degenerate example.**
   bstr, so it is unaffected). The gap is **target-type-specific**: the identical controls over `int`
   ARE enforced. An upstream PR is submitted; until it merges, the sibling checkout's `local-fixes`
   branch (`~/Documents/git/cddl`, commit `cdba2b4`) carries the fix — rebuild and point `RUST_CDDL`
-  at it to give future `verify.ts` runs an enforcing oracle (the matrix's evidence does not depend
-  on it: the probes are `int`-targeted). Prune this entry and the draft note when the fix ships in
+  at it to give future `verify.ts` runs an enforcing oracle (the six numeric range/eq ops' evidence
+  does not depend on it — those probes are `int`-targeted; the ONE deliberate exception is
+  `ctl.size.uint`, whose rust corroboration and 65536-reject certification lean on this build, as
+  recorded later in this entry). Prune this entry and the draft note when the fix ships in
   a release. A second, distinct oracle disagreement surfaced by the decode-vector mint, with a wide
   blast radius (full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`): the rust
   oracle validates a multi-entry group in an array (parenthesized inline OR named reference)
@@ -309,7 +311,8 @@ from a degenerate example.**
   § 4 lesson working as designed. The catalog row therefore carries no `class="constraint"` vector
   (its contract is "decoder durably rejects") and Q4 projects `enforce = unverified` — the closest
   honest mechanical state until an over-acceptance vector class exists (the F10 pending call, noted in
-  `query_q4_directional.ts`). Candidate fix: emit a checked narrowing (`u16::try_from` + reject) on
+  `query_q4_directional.ts`; the missing system is recorded as `tests/TESTING_ROADMAP.md` item 7).
+  Candidate fix: emit a checked narrowing (`u16::try_from` + reject) on
   the member read path; then mint the vector and flip the row into the Q4 enforce-green pin.
 - **The `uint` radix literals `0x…`/`0b…` are unusable — an UPSTREAM `cddl`-crate parser bug, not
   codegen logic** (`value.number.{hex,bin}` unsupported; full repro + fix direction in
@@ -319,7 +322,11 @@ from a degenerate example.**
   entry rejects it gracefully (`missing definition for rule b1010`), which is strictly SAFER than the
   CLI's unchecked entry accepting the two-entry mis-parse and then validating the wrong shape. Present
   in released 0.10.5, the pinned dcSpark rev `d6cad9e`, and `local-fixes`; both rows flip candidates
-  only when the pinned `cddl` dependency picks up an upstream fix.
+  only when the pinned `cddl` dependency picks up an upstream fix. Repo-side close-out once it does:
+  bump the pinned rev in `Cargo.toml`, re-probe with a full `verify.ts` run (the two rows flip on
+  probe evidence, never by hand-editing annotations), then the corpus ➖ notes
+  (`annotations/corpus/cddl_codegen.toml`) and the generated docs follow via the projectors; prune
+  this entry and the draft note last.
 - **Whole-valued float fixed members emit integer-formatted literals — generates but does not
   compile** (the F3 compile-gate false-positive class, caught by the compile gate exactly as
   designed): `m = [v: 0x1.8p+1]` (= 3.0) and equally the plain-decimal `m = [v: 3.0]` emit
