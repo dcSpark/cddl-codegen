@@ -3679,7 +3679,7 @@ impl AsRef<cddl_lib::StandaloneTable> for StandaloneTable {
     }
 }
 
-type StandaloneText = MapTextToText;
+pub type StandaloneText = MapTextToText;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

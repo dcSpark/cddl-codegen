@@ -701,8 +701,14 @@ impl GenerationScope {
                                     cli,
                                 );
                             } else {
-                                self.wasm(types, rust_ident)
-                                    .push_type_alias(TypeAlias::new(rust_ident, map_ident));
+                                // Emit the named-table alias `pub` (like the passthrough-alias site
+                                // above): a wasm-crate rust consumer sees a private `type Mp = …;` as
+                                // an inaccessible boundary type, which the rust side exposes as
+                                // `pub type Mp = …;`. wasm_bindgen exports no type aliases either way,
+                                // so this only affects the rust-source-level parity contract.
+                                self.wasm(types, rust_ident).push_type_alias(
+                                    TypeAlias::new(rust_ident, map_ident).vis("pub").clone(),
+                                );
                             }
                         }
                         //self

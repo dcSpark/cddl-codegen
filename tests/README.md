@@ -799,10 +799,10 @@ emission mode grows the generated dir, so the differential can't silently escape
 Findings reconcile against a `PARITY_EXEMPT` ledger, the same `WASM_MATRIX_SKIP` idiom: a finding
 matching an entry is expected (no failure); an entry matching no live finding fails as "resurfaced" (a
 fix landed — remove it); an unexempted finding fails with the remedy spelled out (fix the emitter, or
-deliberately ledger it with a reason). The ledger currently holds one finding class — the named-table
-wasm alias emitted as a private `type` instead of `pub type` (`generation.rs`'s already-generated-map
-branch omits the `.vis("pub")` its sibling passthrough-alias site carries) — pending the one-line
-emitter fix that will empty it.
+deliberately ledger it with a reason). The ledger is **empty** — the one finding class it launched
+with (the named-table wasm alias emitted as a private `type` instead of `pub type`) was fixed at the
+emitter (`generation.rs`'s already-generated-map branch now carries `.vis("pub")`, matching its
+sibling passthrough-alias site).
 
 ## Coverage
 
