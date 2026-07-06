@@ -272,6 +272,17 @@ float_range = 0.5 .. 10.5
 float_range_excl = 0.5 ... 10.5
 tagged_float_range = #6.5(0.5 .. 10.5)
 
+; WHOLE-valued float fixed members must emit valid f64 literals (`3.0`, not `3`): f64 Display
+; drops the decimal point on whole values, which once emitted three E0308s per member
+; (Special::Float(3) / v_value != 3 / Key::Float(3)) — the crate didn't compile. The hexfloat
+; spelling (0x1.8p+1 = 3.0) rides the same emission; the non-whole control field (3.5) pins the
+; already-correct formatting byte-identical.
+float_fixed_whole = [
+    w: 3.0,
+    hx: 0x1.8p+1,
+    frac: 3.5
+]
+
 bounds_type_choice = bytes .size (0..64)
                    / text .size (0..64)
 

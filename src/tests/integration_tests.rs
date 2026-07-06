@@ -4769,6 +4769,13 @@ fn decode_conformance_replay() {
              preserve_encodings_supports_floats stub) — default-profile decode still replays its \
              boundary-violation reject vectors",
         ),
+        (
+            "value.number.hexfloat",
+            "a fixed float member (`m = [v: 0x1.8p+1]`) panics generation under --preserve-encodings \
+             (generation.rs fixed-float deserialize arm `unimplemented!` — the same native-float class \
+             as the rangeop.*.float rows; see the preserve_encodings_supports_floats stub) — \
+             default-profile decode still replays its accept + FixedValueMismatch reject vectors",
+        ),
         // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
         // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
         // `assert!(!cli.preserve_encodings)` in generation.rs's tagged-enum serialize path, guarding

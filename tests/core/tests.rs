@@ -431,6 +431,75 @@ mod tests {
     }
 
     #[test]
+    fn signed_ints_width_rejects() {
+        // The exact-width collapses (u_8 0..255 -> u8, u_16 uint .size 2 -> u16, u_32 -> u32,
+        // i_8/i_16/i_32 -> i8/i16/i32, i_64 int .size 8 -> i64) carry no residual bounds, so the
+        // member deserializer's only guard is the type width itself. The wire readers return
+        // WIDER values (u64 from unsigned_integer, i64/i128 from the nint readers); a bare
+        // truncating cast (`raw.unsigned_integer()? as u16`) decoded 65536 "successfully" as 0 —
+        // a silent-corruption class invisible to round-trips (the encoder can only produce
+        // in-width values), surfaced by the matrix's ctl.size.uint enforcement row.
+        // Field order: u_8, u_16, u_32, u_64, i_8, i_16, i_32, i_64, n_64, then the fixed
+        // u64_max / i64_min tail. Baseline: zeros (n_64 = -1). Sz::Eight fits every value and
+        // default-mode decoding is minimality-agnostic, so one width serves all vectors.
+        let base: [i128; 9] = [0, 0, 0, 0, 0, 0, 0, 0, -1];
+        let make = |idx: usize, v: i128| {
+            let mut vals = base;
+            vals[idx] = v;
+            let mut cbor = arr_def(11);
+            for x in vals.iter() {
+                cbor.extend(cbor_int(*x, cbor_event::Sz::Eight));
+            }
+            cbor.extend(cbor_int(u64::MAX as i128, cbor_event::Sz::Eight));
+            cbor.extend(cbor_int(i64::MIN as i128, cbor_event::Sz::Eight));
+            SignedInts::from_cbor_bytes(&cbor)
+        };
+        // Boundary (exactly-representable) values decode on every field.
+        assert!(make(0, 255).is_ok());
+        assert!(make(1, 65535).is_ok());
+        assert!(make(2, 4294967295).is_ok());
+        assert!(make(3, u64::MAX as i128).is_ok());
+        assert!(make(4, 127).is_ok());
+        assert!(make(4, -128).is_ok());
+        assert!(make(5, 32767).is_ok());
+        assert!(make(5, -32768).is_ok());
+        assert!(make(6, 2147483647).is_ok());
+        assert!(make(6, -2147483648).is_ok());
+        assert!(make(7, i64::MAX as i128).is_ok());
+        assert!(make(7, i64::MIN as i128).is_ok());
+        // One-past-width values must REJECT (pre-fix: silently truncate-decoded).
+        assert!(make(0, 256).is_err());
+        assert!(make(1, 65536).is_err());
+        assert!(make(2, 4294967296).is_err());
+        assert!(make(4, 128).is_err());
+        assert!(make(4, -129).is_err());
+        assert!(make(5, 32768).is_err());
+        assert!(make(5, -32769).is_err());
+        assert!(make(6, 2147483648).is_err());
+        assert!(make(6, -2147483649).is_err());
+        // i64 itself: the uint arm reads a u64 and must not wrap 2^63 to a negative; the nint
+        // arm reads an i128 and must not wrap below i64::MIN.
+        assert!(make(7, (i64::MAX as i128) + 1).is_err());
+        assert!(make(7, (i64::MIN as i128) - 1).is_err());
+    }
+
+    #[test]
+    fn float_fixed_whole() {
+        // Fixed float members 3.0 / 0x1.8p+1 (= 3.0) / 3.5: whole values once emitted integer
+        // literals in f64 positions (three E0308s per member — the crate didn't compile), so
+        // this test COMPILING and running is most of the point. The 3.5 control field pins the
+        // already-valid non-whole formatting.
+        let ffw = FloatFixedWhole::new();
+        deser_test(&ffw);
+        let expected: Vec<u8> = [arr_def(3), cbor_float(3.0), cbor_float(3.0), cbor_float(3.5)].concat();
+        assert_eq!(ffw.to_cbor_bytes(), expected);
+        assert!(FloatFixedWhole::from_cbor_bytes(&expected).is_ok());
+        // A wrong value in a whole-fixed slot rejects (FixedValueMismatch).
+        let wrong: Vec<u8> = [arr_def(3), cbor_float(3.5), cbor_float(3.0), cbor_float(3.5)].concat();
+        assert!(FloatFixedWhole::from_cbor_bytes(&wrong).is_err());
+    }
+
+    #[test]
     fn defaults() {
         let mut md = MapWithDefaults::new();
         deser_test(&md);

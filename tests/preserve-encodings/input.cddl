@@ -245,3 +245,12 @@ custom_field_holder = [ nested: struct_with_custom_serialization ]
 
 wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
+
+; Exact-width collapses under --preserve-encodings: the _sz read path (u64 from
+; unsigned_integer_sz, i128 from negative_integer_sz) must width-check before its narrowing
+; cast exactly like the default path — a bare `x as u16`/`as i8`/`as i64` silently truncated.
+width_collapse = [
+    u16w: uint .size 2,
+    i8w: int .size 1,
+    i64w: int .size 8,
+]

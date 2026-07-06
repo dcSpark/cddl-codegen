@@ -2443,7 +2443,16 @@ reason = "a 5-byte string is over the `.size 4` length — violates `bytes .size
 id = "ctl.size.uint"
 axis = "feature"
 example = "x = uint .size 2"
-pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
+spec = "__probe_holder = [0, x]\nx = uint .size 2"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82001a00010000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 65536 is above the `.size 2` window (0..65535 — the exact u16 collapse) — violates `uint .size 2`; durably rejected by the generated decoder's width guard (RangeCheck). Certification leans on RUBY: at this holder shape the rust oracle's rejection is non-discriminating (it misvalidates any control-op-carrying rule referenced as an array entry — the fourth oracle gap, ROADMAP § oracle gaps — which also leaves the ACCEPT side un-mintable, so the row carries no accept vectors); the bare-form reject was additionally verified against the local-fixes rust oracle @ cdba2b4 (released 0.10.x under-enforces `.size` over uint)"
 
 [[row]]
 id = "dsl.custom_deserialize"
@@ -5840,3 +5849,30 @@ expect = "accept"
 hex = "8200191169"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "value.number.hexfloat"
+axis = "feature"
+example = "m = [v: 0x1.8p+1]"
+spec = "m = [v: 0x1.8p+1]"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "81f94200"
+source = "ruby-generate"
+expect = "reject"
+class = "bug"
+reason = "spec-valid [3.0] encoded as a HALF-PRECISION float (f9 4200): cbor_event 2.4.0's Special decoder casts the raw 16-bit pattern to f64 (16896.0) instead of decoding the half-float bits (src/de.rs, the 0x19 arm; the 0x1a arm correctly does f32::from_bits) — so the fixed-value compare sees 16896 != 3.0 and rejects. A dependency-level decode bug that silently corrupts ANY half-precision float value (ledgered in cddl-matrix/ROADMAP.md § findings); prune when a fixed cbor_event ships"
+
+[[row.vector]]
+hex = "81fb4008000000000000"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "81fb400c000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 3.5 differs from the fixed value 3.0 (0x1.8p+1) — violates the fixed-value member (FixedValueMismatch); both oracles certify the violation (the rust oracle enforces fixed float values at this shape)"

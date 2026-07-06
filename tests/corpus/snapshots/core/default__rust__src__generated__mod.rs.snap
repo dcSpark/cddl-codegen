@@ -550,6 +550,21 @@ impl FloatBounds {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FloatFixedWhole;
+
+impl FloatFixedWhole {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Default for FloatFixedWhole {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct FloatRange(f64);
 

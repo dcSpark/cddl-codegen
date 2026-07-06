@@ -24,7 +24,7 @@ use cbor_encodings::{
     SignBoundsEncoding, SignedIntsEncoding, String1632Encoding, String64Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
-    TopLevelTaggedRangeEncoding, WrapperListEncoding, WrapperTableEncoding,
+    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -1656,6 +1656,25 @@ impl TypeChoice {
 }
 
 pub type U32 = u32;
+
+#[derive(Clone, Debug)]
+pub struct WidthCollapse {
+    pub u16w: u16,
+    pub i8w: i8,
+    pub i64w: i64,
+    pub encodings: Option<WidthCollapseEncoding>,
+}
+
+impl WidthCollapse {
+    pub fn new(u16w: u16, i8w: i8, i64w: i64) -> Self {
+        Self {
+            u16w,
+            i8w,
+            i64w,
+            encodings: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct WrapperList {

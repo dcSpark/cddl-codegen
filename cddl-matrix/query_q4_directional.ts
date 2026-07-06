@@ -186,11 +186,11 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // EXCEPTION: `ctl.default` governs an ABSENT field (`? b: uint .default 0` supplies a value when the
 // member is missing) — there is no rejectable instance, so it carries no enforcement constraint and
 // derives n/a rather than an honest-gap `unverified`.
-// KNOWN-UNENFORCED, reads `unverified`: `ctl.size.uint` (supported, vectorless) is VERIFIED
-// unenforced — the member decode is a silent truncating `as u16` cast, so the boundary-violation
-// vector 82001a00010000 (65536) decodes cleanly and the catalog's `class="constraint"` contract
-// ("decoder DURABLY rejects") cannot carry it (ROADMAP § findings). `unverified` is the closest
-// honest mechanical projection until an over-acceptance vector class exists (the F10 pending call).
+// (`ctl.size.uint` once sat here as a KNOWN-UNENFORCED `unverified` exception — the member decode
+// silently truncated via a bare `as u16` cast, so its boundary vector decoded cleanly. The decode
+// path now width-guards every narrowing cast and the row carries its committed constraint vector,
+// so it projects `enforce = yes` like the rest; the episode is kept in ROADMAP § findings as the
+// motivating example for an over-acceptance vector class, the F10 pending call.)
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
@@ -323,21 +323,28 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       `occur.bounded{,.lower,.upper}` carry holder-wrapped out-of-count arrays (below the lower
   //       bound / above the upper bound); both oracles certify (the sole-primitive-entry array shape
   //       keeps repetition count == item count, dodging the rust group-occurrence gap).
-  //       `ctl.size.uint` is deliberately ABSENT: its boundary violation (65536 over the u16-collapsed
-  //       window) is NOT durably rejected — the member decode truncates (`as u16`), a verified
-  //       enforcement gap (ROADMAP § findings) — and its accept side is un-mintable (the rust CLI
-  //       misvalidates any control-op-carrying rule referenced as an array entry, rejecting valid
-  //       holder instances; ROADMAP § oracle gaps).
+  //       `ctl.size.uint` carries the 65536-over-the-u16-window violation, DURABLY rejected by the
+  //       width-guarded member decode (the guard replaced the silent truncating `as u16` cast this
+  //       row's first vector attempt exposed — ROADMAP § findings). Its certification leans on RUBY
+  //       (the rust CLI misvalidates any control-op-carrying rule referenced as an array entry —
+  //       the fourth oracle gap — which also keeps the row's ACCEPT side un-mintable), with the
+  //       bare-form reject verified against the local-fixes oracle @ cdba2b4.
+  //       `value.number.hexfloat` carries a wrong-float-value violation ([3.5] vs the fixed 3.0),
+  //       rejected as FixedValueMismatch; both oracles certify.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
-    "ctl.ne.one", "ctl.ne.zero", "ctl.size", "memberkey.cut",
+    "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
-    "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint"];
+    "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
+    "value.number.hexfloat"];
   // The unverified set is pinned EXACTLY like the green set (same decay argument, opposite
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
   // into `unverified` with no gate noticing — the § 4 lesson is that an unenumerated/unvectored
   // constraint is an enforcement blind spot, so growing this set must be a conscious pin edit.
-  const EXPECTED_ENFORCE_UNVERIFIED = ["ctl.size.uint"];
+  // EMPTY today: the one former entry (ctl.size.uint, a verified truncation gap) is fixed — the
+  // member decode width-guards the narrowing cast and the row's constraint vector is committed —
+  // so every supported enforcement-bearing row is green. The pin stays as the decay gate.
+  const EXPECTED_ENFORCE_UNVERIFIED: string[] = [];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);

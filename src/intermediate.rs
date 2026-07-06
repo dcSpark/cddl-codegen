@@ -1021,7 +1021,11 @@ impl FixedValue {
             FixedValue::Bool(b) => b.to_string(),
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
-            FixedValue::Float(f) => f.to_string(),
+            // `{:?}`, not Display: Display on a whole-valued f64 drops the decimal point
+            // (3.0 -> "3"), rendering an integer literal in a float position (E0308). Debug
+            // round-trips (3.0 -> "3.0"); unsuffixed so the literal also types as f32 where
+            // the target is f32.
+            FixedValue::Float(f) => format!("{f:?}"),
             FixedValue::Text(s) => format!("\"{}\".to_owned()", escape_rust_str(s)),
         }
     }

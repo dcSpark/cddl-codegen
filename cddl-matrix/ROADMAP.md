@@ -10,12 +10,11 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->5 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->32 `class="constraint"` enforcement reject vectors over 22 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — every row whose
-generated decoder really rejects its constraint violation projects `enforce = yes (bounded-reject)`,
-pinned exactly by `query_q4_directional.ts --check`; the one `unverified` exception, `ctl.size.uint`,
-is a VERIFIED enforcement gap — the decoder silently truncates instead of rejecting — held out of the
-green set on purpose, § findings).
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->6 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->34 `class="constraint"` enforcement reject vectors over 24 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+axis is FULLY green: every supported row with a rejectable constraint projects
+`enforce = yes (bounded-reject)`, with BOTH the green set and the (now-empty) unverified set pinned
+exactly by `query_q4_directional.ts --check`).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
 (the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
@@ -35,11 +34,9 @@ subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold revie
 > reference vectors exist for the decode direction via the decode-conformance harness, encode via the
 > conformance oracles; the 5-way Q4 answer is projected by `query_q4_directional.ts` — see `README.md`
 > § "Directional support evidence"; the enforcement axis carries `class="constraint"` reject
-> vectors so every supported enforcement row where the decoder really rejects projects
-> `enforce = yes (bounded-reject)` — the numeric
+> vectors so EVERY supported enforcement row projects `enforce = yes (bounded-reject)` — the numeric
 > range/eq ops via `int`-targeted probe examples that sidestep the rust oracle's uint-target gap,
-> which remains an upstream report; the one verified NON-enforcing row, `ctl.size.uint`, reads
-> `unverified` — see § findings); **F8–F11
+> which remains an upstream report — see § findings); **F8–F11
 > out of scope** (bottom). Only still-open findings are sections below.
 
 ## 1. Remaining work — projections & queries
@@ -159,7 +156,7 @@ gotcha is documented in `tests/README.md` § "Running everything".
   as row/example enumeration — an enumeration gap here is an enforcement blind spot, not just coverage
   accounting; enumerate the variation row (with its reject vector) before trusting a green. The close-out
   proved the lesson twice over: `ctl.size.uint`'s reject vector exposed a real silent-truncation decode
-  bug, and `value.number.{hex,bin}` exposed an upstream parser mis-lex (both in § findings). When a new
+  bug (since fixed — the width-guard entry in § findings), and `value.number.{hex,bin}` exposed an upstream parser mis-lex (both in § findings). When a new
   variation axis appears (a new controller value class, a new literal lexeme), add its row + vector first.
 
 ## Findings & gotchas (durable — read before touching the support seam or probe examples)
@@ -237,20 +234,20 @@ from a degenerate example.**
   `contain.occurrence-target.grpent.inline_group.exactly_once_array` is pinned vectorless, and
   `contain.occurrence-target.grpent.groupname` (`a = [* pair]`) carries only the empty-array accept
   vector (the sole instance both oracles accept). Un-pin / re-mint both when a fixed rust `cddl`
-  release ships. The `uint .size N` variant is now swept (`ctl.size.uint`, `x = uint .size 2`): its
-  bare-form boundary violation (65536) was certified against ruby + the `local-fixes` build @ `cdba2b4`
-  (released 0.10.x accepts it — this entry's under-enforcement gap), which exposed a REAL cddl-codegen
-  decode bug — the member decode silently truncates (`as u16`), accepting 65536 as 0 — so the row
-  deliberately carries NO `class="constraint"` vector (that class's contract is "decoder durably
-  rejects", which would be false) and projects `enforce = unverified`; the bug is ledgered in the
-  bugs/gaps list below. Mint the vector (with the cdba2b4 provenance in its `reason` until a fixed
-  release ships) only when the truncation fix lands. Its ACCEPT side is separately un-mintable: a
-  fourth, distinct oracle gap (released 0.10.5 AND `local-fixes`) — the rust CLI misvalidates a
-  control-op-carrying rule referenced as an ARRAY entry, checking the WHOLE array against the rule
-  (`expected type uint, got Array([...])`) even as the sole entry (`h = [x]`, `x = uint .size 2`,
-  instance `[4786]` rejects; an uncontrolled `x = uint` in the same position validates fine), so every
-  valid holder-wrapped instance is rejected and the row is pinned vectorless (the
-  groupname-precedent shape). Un-pin when a fixed release ships.
+  release ships. The `uint .size N` variant is swept and enforce-green (`ctl.size.uint`,
+  `x = uint .size 2`): its committed `class="constraint"` vector (`82001a00010000`, 65536 over the
+  u16-collapsed window) is durably rejected by the generated decoder's width guard — the vector's
+  first mint attempt is what exposed the (since-fixed) silent `as u16` truncation, see the
+  width-guard entry in the bugs/gaps list below. Its reject certification leans on RUBY, with the
+  bare-form violation additionally verified against the `local-fixes` build @ `cdba2b4` (released
+  0.10.x accepts it — this entry's under-enforcement gap; the provenance is recorded in the vector's
+  `reason`). Its ACCEPT side stays un-mintable on a fourth, distinct oracle gap (released 0.10.5 AND
+  `local-fixes`) — the rust CLI misvalidates a control-op-carrying rule referenced as an ARRAY
+  entry, checking the WHOLE array against the rule (`expected type uint, got Array([...])`) even as
+  the sole entry (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an uncontrolled
+  `x = uint` in the same position validates fine), so every valid holder-wrapped instance is
+  rejected and the row honestly carries no accept vectors (the rangeop-variation precedent).
+  Re-mint its accept side when a fixed release ships.
   The six ops' probe examples (`control_examples.toml`) target `int` with
   literal, non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) precisely so the decode-conformance
   catalog's both-oracles-reject gate can certify an in-type boundary-violating `class="constraint"`
@@ -302,18 +299,26 @@ from a degenerate example.**
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes — the matrix's actual payoff):**
 - Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
   values serialize fine as struct members. A singleton-value type is a reasonable feature.
-- **`uint .size N` member decode silently TRUNCATES instead of rejecting** — a data-corrupting
-  over-acceptance: `x = uint .size 2` collapses to the exact-width alias `pub type X = u16`, but the
-  member-position deserializer reads the full u64 and casts (`raw.unsigned_integer()? as u16`), so the
-  out-of-window 65536 decodes "successfully" as 0. Invisible to round-trip tests by construction (the
-  encoder can only produce in-window values); surfaced ONLY by the `ctl.size.uint` enforcement row's
-  boundary-violation vector (`82001a00010000`), which the mint's replay caught decoding cleanly — the
-  § 4 lesson working as designed. The catalog row therefore carries no `class="constraint"` vector
-  (its contract is "decoder durably rejects") and Q4 projects `enforce = unverified` — the closest
-  honest mechanical state until an over-acceptance vector class exists (the F10 pending call, noted in
-  `query_q4_directional.ts`; the missing system is recorded as `tests/TESTING_ROADMAP.md` item 7).
-  Candidate fix: emit a checked narrowing (`u16::try_from` + reject) on
-  the member read path; then mint the vector and flip the row into the Q4 enforce-green pin.
+- **Every narrowing cast on the primitive deserialize path is WIDTH-GUARDED — never a silent
+  truncation.** The wire readers return wider values than the target type (u64 from the unsigned
+  readers, i64/i128 from the nint readers), so each exact-width collapse (`uint .size 2` → u16,
+  `i8 = -128..127` → i8 — which carry NO residual bounds) and each signed arm without a capping
+  authored bound gets a `RangeCheck` guard emitted before the (now provably lossless) `as` cast, on
+  the default AND preserve paths; the guard is skipped exactly where the authored/classified check
+  already caps the failing side, so bounded emissions stayed byte-identical. We guard rather than
+  trust the collapse because the bare cast silently CORRUPTED data — `x = uint .size 2` decoded
+  65536 "successfully" as 0, and a plain `int` field wrapped u64 values above i64::MAX negative —
+  invisible to round-trip tests by construction (the encoder only produces in-width values). It was
+  surfaced ONLY by the `ctl.size.uint` enforcement row's boundary-violation vector
+  (`82001a00010000`), which the mint's replay caught decoding cleanly — the § 4 lesson working as
+  designed; that vector is now committed and durably rejected (Q4 enforce-green). One deliberate
+  consequence: `int` members now REJECT spec-valid CBOR outside i64 (uint > i64::MAX, nint <
+  i64::MIN) as a representability rejection instead of silently mis-decoding it. Pinned by the
+  `signed_ints_width_rejects` (tests/core) and `width_collapse_rejects` (tests/preserve-encodings)
+  execution fixtures — boundary accepts + one-past-width rejects per width, both sign arms. The
+  episode remains the motivating example for a first-class over-acceptance vector class (the F10
+  pending call, `tests/TESTING_ROADMAP.md` item 7 — the systemic gap is unfixed even though this
+  instance is).
 - **The `uint` radix literals `0x…`/`0b…` are unusable — an UPSTREAM `cddl`-crate parser bug, not
   codegen logic** (`value.number.{hex,bin}` unsupported; full repro + fix direction in
   `draft/rust-cddl-radix-int-literal-gap.md`): the crate's pest grammar has no radix alternatives, so
@@ -327,15 +332,30 @@ from a degenerate example.**
   probe evidence, never by hand-editing annotations), then the corpus ➖ notes
   (`annotations/corpus/cddl_codegen.toml`) and the generated docs follow via the projectors; prune
   this entry and the draft note last.
-- **Whole-valued float fixed members emit integer-formatted literals — generates but does not
-  compile** (the F3 compile-gate false-positive class, caught by the compile gate exactly as
-  designed): `m = [v: 0x1.8p+1]` (= 3.0) and equally the plain-decimal `m = [v: 3.0]` emit
-  `Special::Float(3)` / `if v_value != 3` / `Key::Float(3)` — three E0308 "expected f64, found
-  integer" — because the fixed-value f64 is formatted via `Display`, which drops the decimal point on
-  whole values (`generation.rs` ~1888 `Float({f})`, ~2597 `Key::Float({x})`); `m = [v: 3.5]` compiles
-  fine, so the gap is the formatting, not float fixed members per se. The hexfloat LEXEME itself
-  parses fine (unlike the radix ints above). Candidate fix: format float fixed values with `{:?}` or
-  an explicit `f64` suffix at both emission sites; `value.number.hexfloat` then flips on re-probe.
+- **Float fixed-value literals are emitted via `{:?}` (`float_fixed_literal`), never `Display`** —
+  at every emission site (serialize write, deserialize compare, mismatch-error construction, the
+  wasm constant fn, and `to_primitive_str_assign` for defaults). Display drops the decimal point on
+  whole values, so `m = [v: 0x1.8p+1]` (= 3.0) and the plain-decimal `m = [v: 3.0]` emitted
+  `Special::Float(3)` / `if v_value != 3` / `Key::Float(3)` — three E0308s per member, the F3
+  compile-gate false-positive class caught by the compile gate exactly as designed; `{:?}` renders
+  whole values as `3.0` while keeping non-whole literals byte-identical (`3.5`). NaN/inf can't reach
+  the sites (CDDL fixed-value lexemes denote finite values; a `debug_assert!` documents it). The
+  hexfloat LEXEME always parsed fine (unlike the radix ints above); `value.number.hexfloat` is now
+  supported end to end with a FixedValueMismatch-certified constraint vector (its preserve leg stays
+  in the pinned native-float-under-preserve gap, emission divergence #6). Pinned by the
+  `float_fixed_whole` execution fixture (tests/core — bytes-exact serialize, round-trip, wrong-value
+  reject; the `3.5` control field pins the already-correct formatting).
+- **cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats — dependency-level, fix deferred
+  upstream like the over-allocation entry.** Its Special decoder's `0x19` arm casts the raw 16-bit
+  pattern to f64 (`Special::Float(f as f64)` — `f9 4200` = 3.0 decodes as 16896.0) instead of
+  decoding the half-float bits the way the `0x1a` arm does `f32::from_bits`. Blast radius: EVERY
+  f16-encoded value read by any generated decoder is silently corrupted; it became VISIBLE only on a
+  fixed-value member, where the wrong value fails the equality check (ruby's generator minted
+  `[3.0]` as `81 f9 4200`, both oracles accept it, our decoder rejects with FixedValueMismatch
+  found=16896). Recorded on the `value.number.hexfloat` catalog row as its `class="bug"` reject pin
+  (spec-valid, wrongly rejected; the mint re-validates it and it is pruned when a fixed cbor_event
+  ships). Same disposition as the length-prefix over-allocation entry below: generated crates
+  depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected gracefully**
@@ -522,7 +542,10 @@ from a degenerate example.**
   wrongly rejecting 0). The `.ne` exclusion encoding (min > max = exclude the single value `min-1`)
   must therefore be routed WHOLE to the arm the excluded value lives in, never split per side. The
   i64 non-preserve nint arm keeps its `negative_integer_sz` full-window check (i64::MIN support,
-  cbor_event #9). Pinned by the `sign_bounds` execution fixtures (tests/core +
+  cbor_event #9). On every arm whose authored/classified check does not already cap the failing
+  side, a type-WIDTH guard now precedes the narrowing cast (see the width-guard entry in the
+  bugs/gaps list — the arms read wider wire values than the target type, so an unguarded cast
+  silently wrapped). Pinned by the `sign_bounds` execution fixtures (tests/core +
   tests/preserve-encodings; the position × sign grid incl. both endpoints, the vacuous-arm accept,
   and both exclusion directions) and the map-rep generation regression
   (`sign_partition_map_rep_generates_and_checks`).
