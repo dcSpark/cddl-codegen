@@ -113,6 +113,23 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      type is a bare group — rather than emitting one the oracle can't answer — would let `nested_group`
      leave `RUST_ORACLE_SKIP` and restore rust-oracle coverage of `outer`. Small `emit_tests.rs`
      change gated by the existing `ir_conformance_corpus` gate.
+   - **Tracked-gap prose must cite its pin — and a lint should assert cited pins exist (low).**
+     Prose that tracks a live gap ("tracked by the `#[ignore]`'d fidelity tests", "construct X
+     panics the generator") rots silently when the gap closes: the fix retires the test/pin, but
+     nothing ties the sentence to it, so the claim outlives its referent (three instances were
+     hand-caught, not gate-caught, during the wasm-ABI grid extension: the roadmap bullet tracking
+     the read-fidelity gap, a `tests/core/tests_wasm.rs` comment citing the retired `#[ignore]`
+     stubs, and a `project_wasm_matrix.ts` role comment claiming `{ ? f: T }` panics — it
+     generates). Two mechanical halves: (1) convention — a gap-tracking sentence names its pin by
+     exact identifier via the already-pervasive "pinned by/tracked by/gated by `name`" phrasing,
+     and a *behavioral* claim ("X panics/rejects") gets a robustness-catalog row FIRST (the
+     panic/reject catalogs flip loudly on a behavior change; the `{ ? f: T }` claim rotted
+     precisely because it lived only in prose); (2) a drift-gate lint that extracts
+     `pinned by`/`tracked by`/`gated by` citations from the gap-tracking docs (`*ROADMAP*.md`,
+     `tests/README.md`, `cddl-matrix/README.md`) and asserts each cited identifier still exists in
+     the tree — the same shape as the `cddl-matrix/verify.ts` DSL-name forward lint, and the
+     narrow, greppable complement to the declined docs-vs-behavior snippet harness (bottom of this
+     doc): identifier existence, not prose semantics.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
