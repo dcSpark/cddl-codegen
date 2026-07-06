@@ -1027,7 +1027,7 @@
             "status": "unsupported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.exclusive.float",
         "status": "supported"
       },
@@ -1042,7 +1042,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.exclusive.int",
         "status": "supported"
       },
@@ -1057,7 +1057,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.exclusive.nint",
         "status": "supported"
       },
@@ -1087,7 +1087,7 @@
             "status": "unsupported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.inclusive.float",
         "status": "supported"
       },
@@ -1102,7 +1102,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.inclusive.int",
         "status": "supported"
       },
@@ -1117,7 +1117,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "rangeop.inclusive.nint",
         "status": "supported"
       },
@@ -2087,7 +2087,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },

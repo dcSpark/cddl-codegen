@@ -5667,25 +5667,75 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
+hex = "fb3ff20827927bdd3a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb400181ac3406da98"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb400b48fe7126a332"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4016689caf2e666e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb401733797a59bafa"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb401a345979930008"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb40218da261b55016"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4023cb32fe803b9b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb402415500ed80490"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4024f20565fbb284"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
 hex = "fb4025000000000000"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 10.5 is the EXCLUDED upper endpoint of `0.5...10.5` (half-open excludes 10.5) — violates the exclusive float range (reject certified by ruby; rust blanket-rejects all float-range instances, see draft/rust-cddl-float-range-gap.md)"
+reason = "the value 10.5 is the EXCLUDED upper endpoint of `0.5...10.5` (half-open excludes 10.5) — violates the exclusive float range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
 [[row.vector]]
 hex = "fb4025333333333333"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 10.6 is above the `0.5...10.5` float window — violates the exclusive range (reject certified by ruby; rust blanket-rejects all float-range instances)"
+reason = "the value 10.6 is above the `0.5...10.5` float window — violates the exclusive range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
 [[row.vector]]
 hex = "fb7ff8000000000000"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "NaN is not in the `0.5...10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby; rust blanket-rejects all float-range instances)"
+reason = "NaN is not in the `0.5...10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
 [[row]]
 id = "rangeop.exclusive.int"
@@ -5694,6 +5744,16 @@ example = "t = -10...10"
 spec = "t = -10...10"
 mode = "standalone"
 type_name = "T"
+
+[[row.vector]]
+hex = "01"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "09"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "0a"
@@ -5708,6 +5768,41 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `-10...10` window — violates the exclusive range"
+
+[[row.vector]]
+hex = "22"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "23"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "24"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "26"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "27"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "28"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "rangeop.exclusive.nint"
@@ -5730,6 +5825,36 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -3 is the EXCLUDED upper endpoint of `-10...-3` (half-open excludes -3) — violates the all-negative exclusive range"
+
+[[row.vector]]
+hex = "23"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "24"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "26"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "27"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "28"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "rangeop.inclusive"
@@ -5785,18 +5910,68 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
+hex = "fb3ff80c61a4f5bd0c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb3ffb77d30dc2cf75"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb3ffbfb5c87c30369"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4000418b2d9acede"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb400171e609730f3e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4002dcf0cb4f3245"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4012b6b425ea04e0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb401c8b85b297dcb3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb401f333d327f89d3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb40249a683bcde382"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
 hex = "fb4025333333333333"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 10.6 is above the `0.5..10.5` float window — violates the inclusive range (reject certified by ruby; rust blanket-rejects all float-range instances, see draft/rust-cddl-float-range-gap.md)"
+reason = "the value 10.6 is above the `0.5..10.5` float window — violates the inclusive range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
 [[row.vector]]
 hex = "fb7ff8000000000000"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "NaN is not in the `0.5..10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby; rust blanket-rejects all float-range instances)"
+reason = "NaN is not in the `0.5..10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
 [[row]]
 id = "rangeop.inclusive.int"
@@ -5807,11 +5982,56 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
+hex = "01"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "06"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "0a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
 hex = "0b"
 source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `-10..10` window — violates the inclusive range (uint sign arm)"
+
+[[row.vector]]
+hex = "20"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "21"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "22"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "27"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "2a"
@@ -5834,6 +6054,41 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -2 is above the `-10..-3` window — violates the all-negative inclusive range"
+
+[[row.vector]]
+hex = "22"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "24"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "25"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "26"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "27"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "28"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "2a"

@@ -82,9 +82,9 @@ are ledgered here (that's what the probe/gate error messages point at).
 - When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
   crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
   `reason` provenance).
-- When a release validates non-uint-endpoint ranges: un-pin / re-mint the
-  `rangeop.{inclusive,exclusive}.{int,nint,float}` rows' accept side (README gap #3,
-  `draft/rust-cddl-float-range-gap.md`).
+- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
+  in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
+  draft, and the rangeop vectors' `reason` provenance).
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 

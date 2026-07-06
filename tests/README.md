@@ -270,10 +270,11 @@ and asserts they are accepted.
     does not enforce these ops over a `uint` target (upstream gap,
     `draft/rust-cddl-uint-control-op-gap.md`), so a `uint`-targeted form can't pass the both-reject
     gate; `query_q4_directional.ts --check` pins the exact green set against such a decay. The
-    `rangeop` rows with non-uint endpoints (`.int`/`.nint`/`.float`) sit on a SECOND rust-oracle gap
-    (`draft/rust-cddl-float-range-gap.md`: `validate` blanket-rejects every instance of a float or
-    negative-int range), so their reject certification leans on ruby and their accept side carries
-    no vector; each vector's `reason` says so.
+    `rangeop` rows with non-uint endpoints (`.int`/`.nint`/`.float`) sat on a SECOND rust-oracle gap
+    (`draft/rust-cddl-float-range-gap.md`: released 0.10.x `validate` blanket-rejects every instance
+    of a float or negative-int range); the fork's `885c61c` fix closed it, so those rows carry real
+    accept vectors and discriminating rust reject corroboration (the float vectors' `reason` records
+    the provenance).
     **Authoring rule — vector SHAPE is load-bearing:** a constraint vector for a `standalone` row is
     a BARE in-type instance of the row's type (`0b`, `fb…`), decodable up to the constraint itself so
     the emitted range/size check is the only possible rejection. A holder-wrapped scalar
@@ -510,8 +511,10 @@ target cache is preserved. Two curated lists, each empirically justified:
   cases, where they were once misread as element VALUE bounds).
 - **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
-  and `sized_int` (validator gap — it cannot evaluate a range with a negative lower bound, `i_8:
-  -128..127`, nor `.size` on a signed `int`, `i_64: int .size 8`; our minted values are in-spec).
+  and `sized_int` (validator gap — it cannot evaluate `.size` on a signed `int`, `i_64: int .size 8`;
+  its negative-lower-bound range `i_8: -128..127` stopped being a gap at the fork's `885c61c`
+  non-uint-range fix, but the `.size`-on-int half alone keeps it skipped; our minted values are
+  in-spec).
 
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
