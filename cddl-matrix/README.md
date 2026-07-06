@@ -154,8 +154,11 @@ the guard that replaced the silent truncation this row's vector exposed; pinned 
 `signed_ints_width_rejects` / `width_collapse_rejects` execution fixtures),
 the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
 rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
-(out-of-count arrays against the generated `Vec` length check), and `value.number.hexfloat` (a
-wrong-value instance against the fixed 3.0, rejected as FixedValueMismatch). Upstream rust-oracle
+(out-of-count arrays against the generated `Vec` length check), and the three fixed-value lexeme
+rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
+rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
+radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation
+findings). Upstream rust-oracle
 gaps shape what "certified" means per family
 (`query_q4_directional.ts --check` pins the exact green set — and the now-empty unverified set — so
 a decay fails loudly rather than
@@ -226,7 +229,8 @@ somewhere immutable and point `RUST_CDDL` there first.
    (radix uint alternatives in every `uint_value` position — occurrence bounds, tag heads, member
    keys, ranges, control-op args — case-insensitive per RFC 8610 §3.1; `hexfloat` now requires the
    `p` exponent; adjacent strictness: leading-zero decimals like `042` are parse errors, `1e5`
-   floats now parse). The `value.number.{hex,bin}` rows flip on that pin. **Ruby oracle caveat:**
+   floats now parse). The `value.number.{hex,bin}` rows flipped `supported` on that pin (minted
+   accept vectors + hand wrong-fixed-value constraint pins). **Ruby oracle caveat:**
    ruby corroborates radix literals in VALUE position only — its own radix handling in other
    positions (occurrence bounds, tag heads, simple values) is broken
    (`draft/radix-oracle-deviations-verdict.md`), so future radix-position rows can't lean on ruby.
