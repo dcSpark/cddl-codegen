@@ -5738,6 +5738,11 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
+hex = "00"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
 hex = "01"
 source = "ruby-generate"
 expect = "accept"
@@ -5749,6 +5754,11 @@ expect = "accept"
 
 [[row.vector]]
 hex = "03"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "04"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5768,7 +5778,7 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "09"
+hex = "08"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5795,52 +5805,64 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "fb3fe533a98b09e8c8"
+hex = "f97e00"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "NaN encoded as f16 is not in the `0.5...10.5` float window — the NaN-safe accept-form check must reject NaN at every float width, not just f64"
+
+[[row.vector]]
+hex = "fb3fe0000000000000"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb3fe240cbfa20c30e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb3ff3a3a0b86673e6"
+hex = "fb3fe780974cfcf600"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb4003f122836f7da3"
+hex = "fb4006285135059b50"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb40076b4041193db3"
+hex = "fb4009226bbc9f3848"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb401b89dbc50f3dcf"
+hex = "fb400f08225feaebde"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb401bd80078611ee2"
+hex = "fb4010a7b052d6d44c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb401c462afb75f750"
+hex = "fb40218edc6570bea9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb402051d3dd488b55"
+hex = "fb4022746612274405"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb40215cedb63330dd"
+hex = "fb40246e43013174c7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb4023fdc88714f684"
+hex = "fb4024a075f8b0ce20"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5865,6 +5887,13 @@ expect = "reject"
 class = "constraint"
 reason = "NaN is not in the `0.5...10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
+[[row.vector]]
+hex = "fbbfe0000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -0.5 is below the `0.5...10.5` float window — violates the exclusive range"
+
 [[row]]
 id = "rangeop.exclusive.int"
 axis = "feature"
@@ -5884,17 +5913,7 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "03"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "08"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "09"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5913,19 +5932,41 @@ class = "constraint"
 reason = "the value 11 is above the `-10...10` window — violates the exclusive range"
 
 [[row.vector]]
-hex = "23"
+hex = "20"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "25"
+hex = "21"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "27"
+hex = "24"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "26"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "28"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "2a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -11 is below the `-10...10` window — violates the exclusive range (nint sign arm)"
 
 [[row]]
 id = "rangeop.exclusive.nint"
@@ -5970,14 +6011,16 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "28"
+hex = "29"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "29"
-source = "ruby-generate"
-expect = "accept"
+hex = "2a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -11 is below the `-10...-3` window — violates the all-negative exclusive range"
 
 [[row]]
 id = "rangeop.inclusive"
@@ -5998,7 +6041,7 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "02"
+hex = "04"
 source = "ruby-generate"
 expect = "accept"
 
@@ -6008,8 +6051,18 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "09"
+hex = "06"
 source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "07"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "0a"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]
@@ -6028,53 +6081,70 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "fb3ff9882bf506a8b9"
+hex = "f97e00"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "NaN encoded as f16 is not in the `0.5..10.5` float window — the NaN-safe accept-form check must reject NaN at every float width, not just f64"
+
+[[row.vector]]
+hex = "fb3fe0000000000000"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb3fe658e902b9edb8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb400f04e29d35c978"
+hex = "fb400b99148f08cd8c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb40147073b5dd48da"
+hex = "fb40103c4fb72ceef0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb40176a0e2314bd7a"
+hex = "fb40104fe62d5e22d1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb40183dd8834ea3d6"
+hex = "fb4012a8410b734d20"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb401afba870daea9e"
+hex = "fb4017f315362a5355"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb401d4ee3f5232f83"
+hex = "fb401f8352cf50f322"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb4020312f4fbe2680"
+hex = "fb4020949324eb5240"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb4021a2e7c1ca0953"
+hex = "fb4022cc1990cd3d69"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "fb4024c8d1e70b50a9"
+hex = "fb4024514cfd946f99"
 source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "fb4025000000000000"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]
@@ -6091,6 +6161,13 @@ expect = "reject"
 class = "constraint"
 reason = "NaN is not in the `0.5..10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
 
+[[row.vector]]
+hex = "fbbfe0000000000000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -0.5 is below the `0.5..10.5` float window — violates the inclusive range"
+
 [[row]]
 id = "rangeop.inclusive.int"
 axis = "feature"
@@ -6100,18 +6177,28 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "00"
+hex = "03"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "01"
+hex = "04"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "05"
+hex = "07"
 source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "08"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "0a"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]
@@ -6122,27 +6209,12 @@ class = "constraint"
 reason = "the value 11 is above the `-10..10` window — violates the inclusive range (uint sign arm)"
 
 [[row.vector]]
-hex = "20"
+hex = "22"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
 hex = "25"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "26"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "27"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "29"
 source = "ruby-generate"
 expect = "accept"
 
@@ -6169,11 +6241,6 @@ class = "constraint"
 reason = "the value -2 is above the `-10..-3` window — violates the all-negative inclusive range"
 
 [[row.vector]]
-hex = "22"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "23"
 source = "ruby-generate"
 expect = "accept"
@@ -6189,11 +6256,6 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "26"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "27"
 source = "ruby-generate"
 expect = "accept"
@@ -6201,6 +6263,11 @@ expect = "accept"
 [[row.vector]]
 hex = "28"
 source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "29"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]
