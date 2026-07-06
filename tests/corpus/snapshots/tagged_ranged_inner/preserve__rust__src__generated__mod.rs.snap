@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct TaggedRanged {
-    pub inner: u8,
+    inner: u8,
     pub encodings: Option<TaggedRangedEncoding>,
 }
 

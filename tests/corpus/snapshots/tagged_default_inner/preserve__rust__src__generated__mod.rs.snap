@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct TaggedDefault {
-    pub inner: u64,
+    inner: u64,
     pub encodings: Option<TaggedDefaultEncoding>,
 }
 

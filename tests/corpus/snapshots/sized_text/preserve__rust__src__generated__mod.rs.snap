@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct SizedText {
-    pub inner: String,
+    inner: String,
     pub encodings: Option<SizedTextEncoding>,
 }
 
