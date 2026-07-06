@@ -207,17 +207,13 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-8. **Widen the rust↔wasm API-surface parity differential beyond the default profile (low).** The
-   one-directional rust→wasm presence differential now exists and runs always-on
+8. **Widen the rust↔wasm API-surface parity differential (low).** The one-directional rust→wasm
+   presence differential now exists and runs always-on
    (`src/tests/wasm_parity_tests.rs::wasm_api_parity`, documented in `tests/README.md` § "rust↔wasm
    API-surface parity"): it parses the emitted `mod.rs` of both crates over the wasm-matrix cells +
-   the two depth fixtures and asserts every rust pub type/field/inherent-fn has a wasm counterpart or
-   a ledgered exemption. Three axes it deliberately does NOT yet sweep:
-   - **Emission-profile axis.** It runs the *default* profile only. `--preserve-encodings` adds
-     rust-only `*Encoding` structs (in `cbor_encodings.rs`, itself out of the current file-set scope)
-     that have no wasm counterpart by design — sweeping the preserve/json profiles needs a baked-in
-     class rule for that asymmetry FIRST (mirroring how the default-profile classes are structural,
-     not ledgered), or every preserve run floods the ledger.
+   the two depth fixtures, swept across all three emission profiles, and asserts every rust pub
+   type/field/inherent-fn has a wasm counterpart or a ledgered exemption. Two axes it deliberately
+   does NOT yet sweep:
    - **Corpus-wide input axis.** It covers the matrix cells + two depth fixtures, not the whole
      snapshot corpus (`tests/*/input.cddl` under their per-dir flags). Extending it there should
      reuse each dir's committed flag set so coverage stays mechanically checkable.

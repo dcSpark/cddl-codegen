@@ -24,6 +24,12 @@
 //! - *No setter obligation.* A rust `pub` field yields a wasm getter (rule 3), never a setter: wasm
 //!   emits `set_*` only for optional fields, so rust pub-field mutability has no uniform wasm
 //!   counterpart by design.
+//! - *Encoding-capture fields are rust-only (preserve profile).* Under `--preserve-encodings` every
+//!   encoding-capturing struct gains a `pub encodings: Option<XEncoding>` field whose `XEncoding`
+//!   type is defined in `cbor_encodings.rs`, never on the wasm boundary — round-trip byte-fidelity
+//!   metadata, not user-facing API. Rule 3 recognises this structurally (a `pub` field whose type is
+//!   `Option<X>`/`X` with `X` a struct defined in the emitted `cbor_encodings.rs`) and imposes no
+//!   wasm getter obligation, so the class needs no per-type ledger entries.
 //! - *Return types unchecked (rule 4).* Boundary conversions differ by construction
 //!   (`Result<Self, DeserializeError>` vs `Result<T, JsError>`, by-ref args, `.into()`), so a
 //!   same-name/same-arity wasm fn satisfies the obligation; only ABSENCE is a finding.
@@ -34,39 +40,61 @@
 //!
 //! **What it does NOT check.** Semantic wrongness — an identity `.into()` where a transform was
 //! needed — stays `wasm_matrix_roundtrips`' job (this gate is a *presence* differential, parse-only).
-//! It also scopes to `src/generated/mod.rs`: `serialization.rs`/`error.rs` are trait impls + runtime
-//! plumbing (`CBORReadLen` etc.), not per-type boundary API. A file-set guard fails loudly if a
-//! future multi-file emission mode grows the generated dir, so the differential can't silently escape.
+//! It also scopes to `src/generated/mod.rs`: `serialization.rs`/`error.rs`/`cbor_encodings.rs`/
+//! `ordered_hash_map.rs` are trait impls + runtime plumbing (`CBORReadLen`, encoding structs, …),
+//! not per-type boundary API. A key-set guard fails loudly if a future multi-file emission mode grows
+//! the generated dir, so the differential can't silently escape.
 //!
-//! **Inputs & cost.** Every `tests/matrix_wasm/*.cddl` cell (the wasm-ABI shape × role grid — even
-//! `WASM_MATRIX_SKIP` ones, whose emitted sources still *parse* even when they don't standalone
-//! *compile*) plus the two depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-
-//! sink shapes the minimal cells don't reach). Each is generated `--wasm=true` and parsed — no cargo
-//! check/test of the generated crates, so the whole gate is ~100 generations (tens of seconds),
-//! far lighter than its compile sibling `wasm_matrix_compiles`. Always-on (no `#[ignore]`), so it
-//! joins the plain `cargo test` / check.ts local tier.
+//! **Inputs, profiles & cost.** Every `tests/matrix_wasm/*.cddl` cell (the wasm-ABI shape × role
+//! grid — even `WASM_MATRIX_SKIP` ones, whose emitted sources still *parse* even when they don't
+//! standalone *compile*) plus the two depth fixtures `tests/core/input.cddl` and `example/test.cddl`
+//! (kitchen-sink shapes the minimal cells don't reach). Each input is swept across `super::ALL_PROFILES`
+//! (default / preserve / json — `--preserve-encodings` and the json flags substantially change the
+//! rust surface), generating in-process via `api::generated_strings` (`Cli::parse_from`, wrapped in
+//! `catch_unwind`) — no subprocess, no scratch dirs, no cargo check/test of the generated crates, so
+//! the whole 3-profile sweep is cheaper than the old single-profile subprocess run. Always-on (no
+//! `#[ignore]`), so it joins the plain `cargo test` / check.ts local tier.
+//!
+//! **Generation-fail pin (the `WASM_MATRIX_SKIP` idiom).** One `(profile, input)` pair aborts
+//! generation — a float member under `--preserve-encodings` (the `unimplemented!` class, issue #205).
+//! It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both directions: a listed pair
+//! that now generates fails ("gap closed — remove the pin"); an unlisted abort fails as a normal
+//! generation failure.
 //!
 //! **Ledger + anti-rot (the `WASM_MATRIX_SKIP` idiom).** `PARITY_EXEMPT` holds deliberately-accepted
-//! asymmetries by `(input, "Type" or "Type::member", reason)`. A finding matching a ledger entry is
-//! expected (no failure); a ledger entry matching NO live finding fails as "resurfaced" (a fix
-//! landed, or the rust member is gone — remove the entry); an unexempted finding fails with the
+//! asymmetries by `(profile, input, "Type" | "Type::member", reason)`. A finding matching a ledger
+//! entry is expected (no failure); a ledger entry matching NO live finding fails as "resurfaced" (a
+//! fix landed, or the rust member is gone — remove the entry); an unexempted finding fails with the
 //! remedy spelled out (fix the emitter, or — deliberately — ledger it with a reason).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 
-use super::integration_tests::{checkout_hash, tool_cmd};
+use crate::cli::Cli;
+use clap::Parser;
 
-/// Deliberately-accepted rust→wasm asymmetries: `(input label, "Type" | "Type::member", reason)`.
-/// Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules above, not
-/// listed here (see the module header). A live finding not covered by an entry fails the gate; an
-/// entry with no matching live finding fails as "resurfaced".
-const PARITY_EXEMPT: &[(&str, &str, &str)] = &[];
+/// Deliberately-accepted rust→wasm asymmetries: `(profile, input label, "Type" | "Type::member",
+/// reason)`. Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules
+/// above, not listed here (see the module header). A live finding not covered by an entry fails the
+/// gate; an entry with no matching live finding fails as "resurfaced".
+const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[];
 
-/// Only these files may appear under `rust/src/generated/`; only `mod.rs` under `wasm/src/generated/`.
-/// A file outside these sets means a new emission surface the differential doesn't parse — fail with
-/// "extend wasm_api_parity" rather than silently skip it. `serialization.rs`/`error.rs` are
-/// deliberately out of scope (runtime plumbing, not per-type boundary API).
+/// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
+/// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");
+/// an unlisted abort fails as a normal generation failure.
+const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
+    "preserve",
+    "tests/core",
+    "float member aborts generation under --preserve-encodings (issue #205; see the \
+     preserve_encodings_supports_floats stub)",
+)];
+
+/// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
+/// `mod.rs` under `wasm/src/generated/`. A file outside these sets means a new emission surface the
+/// differential doesn't parse — fail with "extend wasm_api_parity" rather than silently skip it.
+/// `serialization.rs`/`error.rs` are deliberately out of scope (runtime plumbing, not per-type
+/// boundary API).
 const ALLOWED_RUST_GENERATED: &[&str] = &["mod.rs", "serialization.rs", "error.rs"];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs"];
 
@@ -75,8 +103,10 @@ const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs"];
 struct RustSurface {
     /// `pub struct` / `pub enum` names.
     types: BTreeSet<String>,
-    /// type -> its `pub` named fields (structs only; enums have no top-level named fields).
-    fields: BTreeMap<String, BTreeSet<String>>,
+    /// type -> its `pub` named fields as `field name -> inner type ident` (structs only; enums have
+    /// no top-level named fields). The inner ident unwraps one `Option<..>` so the preserve
+    /// encoding-capture exemption (rule 3) can recognise `pub encodings: Option<XEncoding>`.
+    fields: BTreeMap<String, BTreeMap<String, Option<String>>>,
     /// type -> inherent `pub fn`s as (name, self-excluded arity).
     inherent_fns: BTreeMap<String, BTreeSet<(String, usize)>>,
     /// `pub type` alias names.
@@ -106,6 +136,23 @@ fn impl_self_ident(ty: &syn::Type) -> Option<String> {
         syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
         _ => None,
     }
+}
+
+/// The "inner" type ident of a field: the last path segment, unwrapping a single `Option<..>`
+/// layer so `Option<XEncoding>` reports `XEncoding` (the preserve encoding-capture exemption keys
+/// off this). Returns `None` for non-path types (tuples, references, …).
+fn type_inner_ident(ty: &syn::Type) -> Option<String> {
+    let syn::Type::Path(p) = ty else {
+        return None;
+    };
+    let seg = p.path.segments.last()?;
+    if seg.ident == "Option"
+        && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = ab.args.first()
+    {
+        return type_inner_ident(inner);
+    }
+    Some(seg.ident.to_string())
 }
 
 /// Count of non-receiver args (arity with `self` excluded).
@@ -150,7 +197,7 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                         if is_pub(&f.vis)
                             && let Some(id) = &f.ident
                         {
-                            entry.insert(id.to_string());
+                            entry.insert(id.to_string(), type_inner_ident(&f.ty));
                         }
                     }
                 }
@@ -216,15 +263,40 @@ fn parse_wasm_surface(src: &str) -> WasmSurface {
     s
 }
 
+/// Pub struct names defined in the emitted `cbor_encodings.rs` (the `*Encoding` set the preserve
+/// encoding-capture exemption keys off). Empty for profiles that don't emit the file.
+fn parse_encoding_structs(src: &str) -> BTreeSet<String> {
+    let file = syn::parse_file(src).expect("generated cbor_encodings.rs must parse");
+    let mut out = BTreeSet::new();
+    for item in &file.items {
+        if let syn::Item::Struct(st) = item
+            && is_pub(&st.vis)
+        {
+            out.insert(st.ident.to_string());
+        }
+    }
+    out
+}
+
 /// A single rust→wasm parity gap. `item` is `"Type"` (rules 1–2) or `"Type::member"` (rules 3–4).
 struct Finding {
+    profile: String,
     label: String,
     item: String,
     msg: String,
 }
 
 /// Run the four correspondence rules for one input's parsed surfaces, appending any gaps.
-fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut Vec<Finding>) {
+/// `encoding_structs` are the pub structs defined in the emitted `cbor_encodings.rs` (preserve
+/// profile); a rust pub field of type `Option<X>`/`X` with `X` in that set is exempt from rule 3.
+fn diff_surfaces(
+    profile: &str,
+    label: &str,
+    rust: &RustSurface,
+    wasm: &WasmSurface,
+    encoding_structs: &BTreeSet<String>,
+    out: &mut Vec<Finding>,
+) {
     // A rust struct/enum has a wasm counterpart if a wasm struct/enum is defined, a `pub use`
     // re-exports it, or a PUBLIC `pub type` aliases it.
     let wasm_has_type = |name: &str| {
@@ -237,6 +309,7 @@ fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut 
     for t in &rust.types {
         if !wasm_has_type(t) {
             out.push(Finding {
+                profile: profile.to_string(),
                 label: label.to_string(),
                 item: t.clone(),
                 msg: "rust pub struct/enum has no wasm counterpart (no same-named wasm \
@@ -251,6 +324,7 @@ fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut 
     for a in &rust.type_aliases {
         if !wasm_has_type(a) {
             out.push(Finding {
+                profile: profile.to_string(),
                 label: label.to_string(),
                 item: a.clone(),
                 msg: "rust `pub type` alias has no PUBLIC wasm counterpart (a private wasm `type` \
@@ -271,11 +345,19 @@ fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut 
             .map(|m| m.iter().map(|(n, _)| n.as_str()).collect())
             .unwrap_or_default();
 
-        // Rule 3: every rust pub field `f` on `T` has a wasm inherent getter `f` on `T`.
+        // Rule 3: every rust pub field `f` on `T` has a wasm inherent getter `f` on `T`, EXCEPT
+        // encoding-capture fields (`pub encodings: Option<XEncoding>` under preserve), which are
+        // rust-only round-trip metadata defined in `cbor_encodings.rs` — no wasm boundary member.
         if let Some(fields) = rust.fields.get(t) {
-            for f in fields {
+            for (f, inner) in fields {
+                if let Some(inner_ident) = inner
+                    && encoding_structs.contains(inner_ident)
+                {
+                    continue;
+                }
                 if !wasm_names.contains(f.as_str()) {
                     out.push(Finding {
+                        profile: profile.to_string(),
                         label: label.to_string(),
                         item: format!("{t}::{f}"),
                         msg: "rust pub field has no wasm getter of the same name".to_string(),
@@ -293,6 +375,7 @@ fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut 
                     .unwrap_or(false);
                 if !matched {
                     out.push(Finding {
+                        profile: profile.to_string(),
                         label: label.to_string(),
                         item: format!("{t}::{name}"),
                         msg: format!(
@@ -306,29 +389,21 @@ fn diff_surfaces(label: &str, rust: &RustSurface, wasm: &WasmSurface, out: &mut 
     }
 }
 
-/// Assert the generated dir contains no `.rs` file outside `allowed`, so a future multi-file
-/// emission mode can't silently escape the differential.
-fn assert_file_set(dir: &Path, allowed: &[&str], crate_label: &str) {
+/// Collect the `.rs` basenames under `prefix` in the generated-files map that fall outside
+/// `allowed`, so a future multi-file emission mode can't silently escape the differential.
+fn stray_keys(files: &BTreeMap<String, String>, prefix: &str, allowed: &[&str]) -> Vec<String> {
     let mut stray = vec![];
-    if let Ok(rd) = std::fs::read_dir(dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) == Some("rs") {
-                let name = p.file_name().unwrap().to_str().unwrap().to_string();
-                if !allowed.contains(&name.as_str()) {
-                    stray.push(name);
-                }
+    for k in files.keys() {
+        if let Some(rest) = k.strip_prefix(prefix) {
+            let base = rest.rsplit('/').next().unwrap_or(rest);
+            if base.ends_with(".rs") && !allowed.contains(&base) {
+                stray.push(base.to_string());
             }
         }
     }
     stray.sort();
-    assert!(
-        stray.is_empty(),
-        "unexpected file(s) under {crate_label} generated dir {dir:?}: {} — a new emission surface \
-         the parity differential doesn't parse; extend wasm_api_parity to cover it (allowed: {:?})",
-        stray.join(", "),
-        allowed
-    );
+    stray.dedup();
+    stray
 }
 
 /// The full input set: every wasm-matrix cell (by file stem) plus the two depth fixtures under
@@ -361,62 +436,171 @@ fn parity_inputs() -> Vec<(String, PathBuf)> {
 fn wasm_api_parity() {
     let inputs = parity_inputs();
 
-    let root =
-        std::env::temp_dir().join(format!("cddl_codegen_wasm_parity_{:016x}", checkout_hash()));
-    let _ = std::fs::remove_dir_all(&root);
+    // A pin naming a (profile, input) pair the sweep never visits would rot silently (its two-way
+    // guard only fires on visited pairs) — validate every pin against the live axes up front.
+    for (p, l, _) in EXPECTED_GENERATION_FAIL {
+        assert!(
+            super::ALL_PROFILES.iter().any(|(name, _)| name == p),
+            "EXPECTED_GENERATION_FAIL pin names unknown profile `{p}` — stale pin, remove or fix it"
+        );
+        assert!(
+            inputs.iter().any(|(label, _)| label == l),
+            "EXPECTED_GENERATION_FAIL pin names input `{l}` that is no longer swept — stale pin, \
+             remove or fix it"
+        );
+    }
 
     let mut findings: Vec<Finding> = vec![];
+    let mut strays: Vec<String> = vec![]; // new emission surface the differential doesn't parse
+    let mut gen_failures: Vec<String> = vec![]; // unlisted generation aborts (real regressions)
+    let mut gap_closed: Vec<String> = vec![]; // EXPECTED_GENERATION_FAIL that now generates
+    let mut swept = 0usize;
+
     for (label, input) in &inputs {
-        // A `/` in a depth-fixture label would nest; flatten for the scratch subdir.
-        let out = root.join(label.replace('/', "_"));
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
-            .arg(format!("--input={}", input.to_str().unwrap()))
-            .arg(format!("--output={}", out.to_str().unwrap()))
-            .arg("--wasm=true")
-            .output()
-            .unwrap();
-        assert!(
-            gen_out.status.success(),
-            "generation failed for {label} ({input:?}):\n{}",
-            String::from_utf8_lossy(&gen_out.stderr)
-        );
+        let input_str = input.to_str().unwrap();
+        for (profile, extra) in super::ALL_PROFILES {
+            swept += 1;
+            let expected_fail = EXPECTED_GENERATION_FAIL
+                .iter()
+                .any(|(p, l, _)| p == profile && l == label);
 
-        let rust_gen = out.join("rust/src/generated");
-        let wasm_gen = out.join("wasm/src/generated");
-        assert!(
-            rust_gen.join("mod.rs").exists(),
-            "{label}: no rust/src/generated/mod.rs"
-        );
-        assert!(
-            wasm_gen.join("mod.rs").exists(),
-            "{label}: no wasm/src/generated/mod.rs (expected a wasm crate for every input)"
-        );
-        assert_file_set(&rust_gen, ALLOWED_RUST_GENERATED, "rust");
-        assert_file_set(&wasm_gen, ALLOWED_WASM_GENERATED, "wasm");
+            // In-process generation: build the Cli via clap and run the `#[cfg(test)]`
+            // `generated_strings` producer, guarded against the float `unimplemented!` panic.
+            let mut args = vec![
+                "cddl-codegen",
+                "--input",
+                input_str,
+                "--output",
+                "wasm_api_parity_unused",
+                "--wasm=true",
+            ];
+            args.extend(extra.iter().copied());
+            let cli = Cli::parse_from(args);
+            // Keep the abort detail (error string / panic payload) so an unexpected generation
+            // failure reports its cause, not just its coordinates.
+            let generated = match std::panic::catch_unwind(AssertUnwindSafe(|| {
+                crate::api::generated_strings(&cli)
+            })) {
+                Ok(Ok(files)) => Ok(files),
+                Ok(Err(e)) => Err(format!("error: {e}")),
+                Err(payload) => Err(format!(
+                    "PANIC: {}",
+                    payload
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| payload.downcast_ref::<&str>().copied())
+                        .unwrap_or("<non-string payload>")
+                )),
+            };
 
-        let rust_src = std::fs::read_to_string(rust_gen.join("mod.rs")).unwrap();
-        let wasm_src = std::fs::read_to_string(wasm_gen.join("mod.rs")).unwrap();
-        let rust = parse_rust_surface(&rust_src);
-        let wasm = parse_wasm_surface(&wasm_src);
-        diff_surfaces(label, &rust, &wasm, &mut findings);
+            let files = match (expected_fail, generated) {
+                (true, Err(_)) => continue, // expected abort — nothing to diff
+                (true, Ok(_)) => {
+                    gap_closed.push(format!("({profile}, {label})"));
+                    continue;
+                }
+                (false, Err(detail)) => {
+                    gen_failures.push(format!("{profile}/{label} ({input:?}): {detail}"));
+                    continue;
+                }
+                (false, Ok(files)) => files,
+            };
+
+            // Key-set guard: preserve additionally emits cbor_encodings.rs / ordered_hash_map.rs.
+            let allowed_rust: Vec<&str> = if *profile == "preserve" {
+                ALLOWED_RUST_GENERATED
+                    .iter()
+                    .copied()
+                    .chain(["cbor_encodings.rs", "ordered_hash_map.rs"])
+                    .collect()
+            } else {
+                ALLOWED_RUST_GENERATED.to_vec()
+            };
+            for base in stray_keys(&files, "rust/src/generated/", &allowed_rust) {
+                strays.push(format!("{profile}/{label} rust: {base}"));
+            }
+            for base in stray_keys(&files, "wasm/src/generated/", ALLOWED_WASM_GENERATED) {
+                strays.push(format!("{profile}/{label} wasm: {base}"));
+            }
+
+            let rust_src = files
+                .get("rust/src/generated/mod.rs")
+                .unwrap_or_else(|| panic!("{profile}/{label}: no rust/src/generated/mod.rs"));
+            let wasm_src = files.get("wasm/src/generated/mod.rs").unwrap_or_else(|| {
+                panic!("{profile}/{label}: no wasm/src/generated/mod.rs (expected a wasm crate)")
+            });
+            let encoding_structs = files
+                .get("rust/src/generated/cbor_encodings.rs")
+                .map(|s| parse_encoding_structs(s))
+                .unwrap_or_default();
+
+            let rust = parse_rust_surface(rust_src);
+            let wasm = parse_wasm_surface(wasm_src);
+            diff_surfaces(
+                profile,
+                label,
+                &rust,
+                &wasm,
+                &encoding_structs,
+                &mut findings,
+            );
+        }
     }
-    let _ = std::fs::remove_dir_all(&root);
+
+    // Vacuity guard: every (input, profile) pair must have been visited. A filter bug that shrinks
+    // the input set (or a dropped profile) fails here rather than passing a hollow sweep.
+    let cell_count = std::fs::read_dir("tests/matrix_wasm")
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("cddl"))
+        .count();
+    assert_eq!(
+        inputs.len(),
+        cell_count + 2,
+        "input enumeration drifted from (matrix_wasm cells + 2 depth fixtures)"
+    );
+    assert_eq!(
+        swept,
+        inputs.len() * super::ALL_PROFILES.len(),
+        "sweep shrank: expected every (input, profile) pair to be visited"
+    );
+
+    // Structural guards (the emission surface / generation-abort verdicts) before the parity diff.
+    assert!(
+        strays.is_empty(),
+        "unexpected file(s) under a generated dir — a new emission surface the parity differential \
+         doesn't parse; extend wasm_api_parity to cover it:\n{}",
+        strays.join("\n")
+    );
+    assert!(
+        gap_closed.is_empty(),
+        "these EXPECTED_GENERATION_FAIL pins now generate — the gap closed; remove them:\n{}",
+        gap_closed.join("\n")
+    );
+    assert!(
+        gen_failures.is_empty(),
+        "generation failed for these (profile, input) pairs (a regression, or — if a genuine new \
+         gap — pin it in EXPECTED_GENERATION_FAIL with a reason):\n{}",
+        gen_failures.join("\n")
+    );
 
     // Reconcile findings against the ledger (the `WASM_MATRIX_SKIP` idiom).
-    let exempt: BTreeSet<(&str, &str)> = PARITY_EXEMPT.iter().map(|(l, i, _)| (*l, *i)).collect();
-    let live: BTreeSet<(&str, &str)> = findings
+    let exempt: BTreeSet<(&str, &str, &str)> = PARITY_EXEMPT
         .iter()
-        .map(|f| (f.label.as_str(), f.item.as_str()))
+        .map(|(p, l, i, _)| (*p, *l, *i))
+        .collect();
+    let live: BTreeSet<(&str, &str, &str)> = findings
+        .iter()
+        .map(|f| (f.profile.as_str(), f.label.as_str(), f.item.as_str()))
         .collect();
 
     let unexempted: Vec<&Finding> = findings
         .iter()
-        .filter(|f| !exempt.contains(&(f.label.as_str(), f.item.as_str())))
+        .filter(|f| !exempt.contains(&(f.profile.as_str(), f.label.as_str(), f.item.as_str())))
         .collect();
-    let resurfaced: Vec<&(&str, &str, &str)> = PARITY_EXEMPT
+    let resurfaced: Vec<&(&str, &str, &str, &str)> = PARITY_EXEMPT
         .iter()
-        .filter(|(l, i, _)| !live.contains(&(*l, *i)))
+        .filter(|(p, l, i, _)| !live.contains(&(*p, *l, *i)))
         .collect();
 
     assert!(
@@ -425,7 +609,7 @@ fn wasm_api_parity() {
          member is gone); remove them from the ledger:\n{}",
         resurfaced
             .iter()
-            .map(|(l, i, r)| format!("  ({l}, {i}) — was: {r}"))
+            .map(|(p, l, i, r)| format!("  ({p}, {l}, {i}) — was: {r}"))
             .collect::<Vec<_>>()
             .join("\n")
     );
@@ -435,7 +619,7 @@ fn wasm_api_parity() {
          PARITY_EXEMPT entry with a reason):\n{}",
         unexempted
             .iter()
-            .map(|f| format!("  [{}] {}: {}", f.label, f.item, f.msg))
+            .map(|f| format!("  [{}/{}] {}: {}", f.profile, f.label, f.item, f.msg))
             .collect::<Vec<_>>()
             .join("\n")
     );
