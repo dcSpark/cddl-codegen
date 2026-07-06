@@ -16,10 +16,10 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 
 > **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: 98 features and 80 containment
-> cells across all axes (incl. the `CDDL_CODEGEN` vendor profile), with 212 cddl-codegen support
-> annotations, **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
-> (all 37 IANA ops probed) — "supported" means the
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->98 features and 80 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->212 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
+> (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
 > it generates and compiles. A second, orthogonal **emission axis** re-probes every default-`supported`
 > row under each non-default codegen profile (`preserve`, `json`) and records a per-profile verdict
@@ -28,11 +28,13 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > only default-`supported` rows are probed). These verdicts are load-bearing, not just reporting:
 > the Rust gate `all_supported_constructs_generate_all_profiles` derives its expected per-profile
 > generation failures from `emission.<profile>.status = "unsupported"` (no second hand list), and
-> `project_corpus.ts` renders them as per-row profile caveats in `tests/corpus/COVERAGE.md`. **Three projections *generate* their hand docs:**
+> `project_corpus.ts` renders them as per-row profile caveats in `tests/corpus/COVERAGE.md`. **Four projections *generate* their hand docs:**
 > `golden_hex` (encoding axis), the corpus feature-axis projection — `project_corpus.ts` generates
 > `tests/corpus/COVERAGE.md` (the original north-star target, now subsumed; `corpus_detect.ts` +
-> `annotations/corpus/`) — and `query_q1_gaps.ts`, which generates the `## Limitations` section of
-> `docs/docs/current_capacities.mdx`. **Every consumer query Q1–Q6 is answered by a standing script**
+> `annotations/corpus/`) — `query_q1_gaps.ts`, which generates the `## Limitations` section of
+> `docs/docs/current_capacities.mdx`, and `project_status_headers.ts`, which drift-checks the countable
+> status-header prose (feature/annotation/op/divergence/constraint counts) as spans in this README,
+> `ROADMAP.md`, and `tests/README.md`. **Every consumer query Q1–Q6 is answered by a standing script**
 > (`QUERIES.md` § "Definition of done"). Any "seed / only `type2` worked" or "renderer is the
 > remaining piece" framing below this line is historical.
 

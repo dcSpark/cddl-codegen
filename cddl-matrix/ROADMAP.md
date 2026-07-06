@@ -5,21 +5,20 @@ hard-won findings — the two things a future agent can't re-derive from the cod
 the done work landed lives in git history (this doc was pruned of it; the project already did the same with
 the scale report + cold-critique).
 
-**Status: gate-green.** 98 features (87 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile),
-80 containment cells, and 212 cddl-codegen annotations, all axes reconciled/deterministic, with
-execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (all 37 IANA ops
-probed): "supported" requires the generated crate's `--emit-tests`
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->98 features (87 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 80 containment cells, and 212 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
+"supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; 5 divergences, all `preserve`-side —
-see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus 26
-`class="constraint"` enforcement reject vectors over 17 enforce-green rows — the enforcement axis is
-FULLY green: every row
-with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->5 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+see § findings) and supported rows carry decode-foreign corroboration clauses (0 failures; plus <!-- gen:sh:roadmap-constraint -->26 `class="constraint"` enforcement reject vectors over 17 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement axis is
+FULLY green: every row with a rejectable constraint projects `enforce = yes (bounded-reject)`, pinned by
 `query_q4_directional.ts --check`).
-Three projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
-`corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), and `query_q1_gaps.ts`
-(the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1). **Every consumer query
+Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
+`corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
+(the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
+`project_status_headers.ts` (the countable status-header prose in these docs + `tests/README.md`,
+including this paragraph's own counts). **Every consumer query
 Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"). The north-star —
 subsuming `tests/corpus/COVERAGE.md` — is **DONE** (two independent cold reviews: "clear win").
 
@@ -47,21 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Status-header projection — drift-check the countable prose.** The gate-green status paragraphs in
-  this file and `README.md` carry hand-maintained counts (features per profile, annotations, emission
-  divergences, constraint vectors × enforce-green rows) that silently drift on every delivery: "3
-  divergences, all preserve-side" survived TWO doc-updating commits after the real count became 5, and
-  only a manual audit caught it — no gate reads this prose. Every one of those numbers is already
-  derivable from `matrix.json` + `tests/decode_conformance/catalog.toml`, so this is the north star's
-  own class of problem: project the counts into marker-delimited spans with a `--check` drift gate
-  (the exact `query_q1_gaps.ts` → `current_capacities.mdx` § Limitations pattern, local tier).
-  Countable prose OUTSIDE the markers stays hand-owned — the gate catches exactly the numbers it
-  generates, no more; the alternative (a human re-greps five counts per delivery) is the
-  hand-maintenance the matrix exists to retire. The same two-copies class extends beyond the
-  matrix docs: `tests/README.md`'s registry-shaped counts (e.g. "the five `#[ignore]`d gates" in
-  the tier-table prose) duplicate check.ts's gate registry, so the span-projection pattern applies
-  there too — with the registry (already self-checked against `cargo test -- --ignored --list` by
-  check.ts's meta-checks) as the deriving source instead of `matrix.json`.
 
 ## 2. Running the verification suite
 
@@ -138,6 +122,12 @@ gotcha is documented in `tests/README.md` § "Running everything".
   `git show REF:cddl-matrix/matrix.json` snapshot) prints a structural diff — added/removed ids per axis
   array + changed annotation statuses. Pure `matrix.json` read — no cargo/oracles. `--check` (no-args
   mode) runs the profile-set consistency + vacuity gate (check.ts `local` tier).
+- `bun run project_status_headers.ts` — projects the countable status-header prose (features per profile,
+  containment cells, annotations, IANA ops, emission divergences, constraint vectors × enforce-green rows,
+  and the manual `#[ignore]`d-gate roll-call) into marker-delimited spans in this file, `README.md`, and
+  `tests/README.md`; `--write` regenerates the spans, `--check` is the drift + invariants + vacuity gate.
+  Pure `matrix.json` + `tests/decode_conformance/catalog.toml` + check.ts-registry read — no cargo/oracles
+  (check.ts `local` tier).
 
 ## 3. F4 / F5 follow-ons (only when their consumer exists)
 

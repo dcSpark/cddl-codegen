@@ -19,11 +19,10 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
-`cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog drift
-gate (`project_decode_conformance.ts`) live here, NOT in CI. `full` additionally runs the
-manual gates (the five `#[ignore]`d gates `wasm_matrix_roundtrips` / `ir_conformance_corpus` /
-`decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` /
-`feature_corpus_roundtrips_nondefault_profiles`, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+`cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog +
+status-header count drift gates (`project_decode_conformance.ts`, `project_status_headers.ts`) live
+here, NOT in CI. `full` additionally runs the
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the six `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
