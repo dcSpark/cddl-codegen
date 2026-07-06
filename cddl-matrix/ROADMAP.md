@@ -14,7 +14,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->6 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->34 `class="constraint"` enforcement reject vectors over 24 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->38 `class="constraint"` enforcement reject vectors over 26 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis is FULLY green: every supported row with a rejectable constraint projects
 `enforce = yes (bounded-reject)`, with BOTH the green set and the (now-empty) unverified set pinned
 exactly by `query_q4_directional.ts --check`).
@@ -85,6 +85,13 @@ are ledgered here (that's what the probe/gate error messages point at).
 - When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
   in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
   draft, and the rangeop vectors' `reason` provenance).
+- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
+  35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
+  notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
+  (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
+  radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
+  ruby oracle fix — ruby corroborates radix in value position only
+  (`draft/radix-oracle-deviations-verdict.md`).
 - When the WG resolves cbor-wg/cddl#32 (`.size` on a signed `int` — spec-undefined today; three-way
   implementation divergence ledgered in `draft/cddl-size-on-int-divergence.md`) and the oracle
   implementations follow: re-probe `sized_int`, revisit its `RUST_ORACLE_SKIP` entry, and reword
@@ -106,21 +113,18 @@ are ledgered here (that's what the probe/gate error messages point at).
   pins (spec-valid, wrongly rejected — pruned when `/=`/`//=` extension is implemented, or rejected
   loudly at generation instead of silently narrowing). A concrete instance of the lesson that an oracle
   bug can hide a codegen gap by rejecting the discriminating vector before our decoder ever sees it.
-- Top-level fixed-value / null **types** panic (`should not expose Fixed type in member`), though fixed
-  values serialize fine as struct members. A singleton-value type is a reasonable feature.
-- **The `uint` radix literals `0x…`/`0b…` are unusable — an UPSTREAM `cddl`-crate parser bug, not
-  codegen logic** (`value.number.{hex,bin}` unsupported; full repro + fix direction in
-  `draft/rust-cddl-radix-int-literal-gap.md`): the crate's pest grammar has no radix alternatives, so
-  `0x10` mis-matches the exponent-optional `hexfloat` rule and dies in `parse_hexf64` ("Invalid
-  hexfloat"), while `0b1010` mis-lexes as `0` + identifier `b1010` — cddl-codegen's checked parse
-  entry rejects it gracefully (`missing definition for rule b1010`), which is strictly SAFER than the
-  CLI's unchecked entry accepting the two-entry mis-parse and then validating the wrong shape. Present
-  in released 0.10.5, the pinned dcSpark rev `d6cad9e`, and `local-fixes`; both rows flip candidates
-  only when the pinned `cddl` dependency picks up an upstream fix. Repo-side close-out once it does:
-  bump the pinned rev in `Cargo.toml`, re-probe with a full `verify.ts` run (the two rows flip on
-  probe evidence, never by hand-editing annotations), then the corpus ➖ notes
-  (`annotations/corpus/cddl_codegen.toml`) and the generated docs follow via the projectors; prune
-  this entry and the draft note last.
+- **A non-`?` occurrence on a heterogeneous ARRAY-record field is silently narrowed to a mandatory
+  exactly-once field.** `foo = [uint, tstr, * bytes]` generates `index_2: Vec<u8>` (one bytes item,
+  required) — the generated decoder rejects the spec-valid zero-bytes and two-bytes instances. The
+  map-record path already guards exactly this (parsing.rs rejects zero-permitting occurrences on
+  keyed map fields gracefully, citing "invisible to round-trip tests; only cross-producer data
+  exposes it"); the array-record path (`Representation::Array => None` in the same field loop) has
+  no analogue. Surfaced by the `2c7548e` bump's full re-mint — the first ever against a fully-fixed
+  rust oracle: every earlier full mint's `type2.array` candidates died on two-oracle disagreement
+  (the row sat on `pinned_reason` with zero vectors), so our decoder never saw a discriminating
+  instance — the `773b723` masking lesson repeating on another row. Committed as
+  `class="limitation"` reject pins on `type2.array`; candidate fix: honor the occurrence as a
+  `Vec`-typed tail field, or extend the map path's graceful rejection to array records.
 - **cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats — dependency-level, fix deferred
   upstream like the over-allocation entry.** Its Special decoder's `0x19` arm casts the raw 16-bit
   pattern to f64 (`Special::Float(f as f64)` — `f9 4200` = 3.0 decodes as 16896.0) instead of

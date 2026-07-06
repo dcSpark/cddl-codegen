@@ -331,12 +331,16 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       referenced as an array entry — oracle gap #4; the fork fix also let the accept side mint).
   //       `value.number.hexfloat` carries a wrong-float-value violation ([3.5] vs the fixed 3.0),
   //       rejected as FixedValueMismatch; both oracles certify.
+  //       `value.number.{hex,bin}` carry hand wrong-fixed-value violations ([0] — the silent-zero
+  //       radix-conversion trap — plus an off-by-one/truncated-digit guard each), rejected as
+  //       FixedValueMismatch; both oracles certify (the fork's 2c7548e radix lexer fix is what made
+  //       the rows mintable at all — README.md § oracle gap #5).
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
-    "value.number.hexfloat"];
+    "value.number.bin", "value.number.hex", "value.number.hexfloat"];
   // The unverified set is pinned EXACTLY like the green set (same decay argument, opposite
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
   // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored

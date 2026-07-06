@@ -15,14 +15,17 @@ which-rustfmt = ["which"]
 [dependencies]
 cbor_event = "2.4.0"
 # dcSpark fork pinned to fixes not yet in a crates.io release. Parser (feeds our AST): upstream
-# discards all comments (breaking our @name/@newtype/@doc DSL) and mis-parses a colon member key `b:`
-# as an arrow/type key when a `=>` appears anywhere in the entry. Validator (feeds the generated-crate
-# conformance oracle, CDDL_ORACLE_DEP): control ops over a uint target were unenforced, a
-# multi-entry group in an array only validated as the sole entry with no occurrence
+# discards all comments (breaking our @name/@newtype/@doc DSL), mis-parses a colon member key `b:`
+# as an arrow/type key when a `=>` appears anywhere in the entry, and mis-lexes the RFC 8610 radix
+# integer literals (`0x10` dies as "Invalid hexfloat", `0b1010` splits into `0` + identifier;
+# draft/rust-cddl-radix-int-literal-gap.md — the fix also tightens adjacent lexing: leading-zero
+# decimals like `042` are now parse errors, `1e5` floats now parse). Validator (feeds the
+# generated-crate conformance oracle, CDDL_ORACLE_DEP): control ops over a uint target were
+# unenforced, a multi-entry group in an array only validated as the sole entry with no occurrence
 # (draft/rust-cddl-group-occurrence-array-count-gap.md), and ranges with non-uint endpoints
 # (`-10..10`, `0.5..10.5`) blanket-rejected every instance (draft/rust-cddl-float-range-gap.md).
 # Move back to a crates.io version once all land in anweiss/cddl + release. See tests/TESTING_ROADMAP.md.
-cddl = { git = "https://github.com/dcSpark/cddl", rev = "885c61cf2e399457be6f3f7078778e362787de08" }
+cddl = { git = "https://github.com/dcSpark/cddl", rev = "2c7548e1c90a8b7f1fe18c4123c7e28daea3d1b9" }
 clap = { version = "4.5", features = ["derive"] }
 # dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
