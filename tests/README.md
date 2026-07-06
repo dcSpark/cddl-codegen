@@ -511,10 +511,11 @@ target cache is preserved. Two curated lists, each empirically justified:
   cases, where they were once misread as element VALUE bounds).
 - **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
-  and `sized_int` (validator gap — it cannot evaluate `.size` on a signed `int`, `i_64: int .size 8`;
-  its negative-lower-bound range `i_8: -128..127` stopped being a gap at the fork's `885c61c`
-  non-uint-range fix, but the `.size`-on-int half alone keeps it skipped; our minted values are
-  in-spec).
+  and `sized_int` (`.size` on a signed `int`, `i_64: int .size 8` — a construct RFC 8610 leaves
+  undefined, which the rust validator refuses to evaluate and the references disagree on
+  (three-way divergence table: `draft/cddl-size-on-int-divergence.md`); its negative-lower-bound
+  range `i_8: -128..127` stopped being a gap at the fork's `885c61c` non-uint-range fix, but the
+  `.size`-on-int half alone keeps it skipped; our minted values are in-spec).
 
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
