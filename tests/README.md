@@ -29,7 +29,10 @@ the fuzz-crate compile-rot check) — run it before shipping a feature. Every ru
 every in-tier gate first).
 
 `verify.ts` needs two oracles (ruby `cddl`, rust `cddl`); the runner preflights them and prints
-install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). The fuzz
+install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). It is the
+slowest single gate but not prohibitive: ~170 examples × generate + `cargo test` × 2 crates — measured
+~11 min warm-cache on the dev machine (wasm + decode-foreign on); hours cold, the shared-target
+warm-up dominating. The fuzz
 gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
 
 > **Fold before committing after a `full` run.** The `verify` gate rewrites
@@ -640,6 +643,17 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   `cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored`; a cell
   whose shape mints no wasm surface (loud emitter skip) passes with zero emitted tests, which is a
   legitimate green (the compile gate already pins its ABI compiles).
+
+**Wrapper-vs-transparent — route through one predicate.** The recurring wasm-boundary bug source was
+naming, boundary conversion, and exposability each *separately* deciding whether an ident is exposed as a
+`#[wasm_bindgen]` wrapper struct or a transparent `pub type` — a *struct-table* property, not a
+`ConceptualRustType` shape (a named collection `nums = [* uint]` is a wrapper; a passthrough `arr2 = arr`
+is transparent — same IR shape). The single source of truth is `IntermediateTypes::has_wasm_wrapper(ident)`;
+new decision sites should consult it instead of re-deriving. Gotcha it encodes: an exposable named array
+has a wrapper struct *and* is used transparently as `Vec<T>`, so a passthrough-alias emission must gate on
+`has_wasm_wrapper(target) && !base_type.directly_wasm_exposable()` (maps are never directly exposable;
+exposable arrays are — that split is what keeps `passthrumap` pointing at the wrapper while `passthru`
+stays a transparent `Vec`).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
