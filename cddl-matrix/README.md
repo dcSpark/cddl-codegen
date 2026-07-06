@@ -14,8 +14,9 @@ consumer filters `CDDL_CODEGEN` out as out-of-profile, exactly as it filters a n
 resolve to a pinned in-repo source (`src/comment_ast.rs` + `docs/docs/comment_dsl.mdx`) via the same
 bidirectional lint as spec features — so "not pure RFC" does not mean "unanchored."
 
-> **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
-> (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
+> **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
+> upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
+> (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
 > consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 80 containment cells<!-- /gen:sh:readme-counts -->
 > across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->220 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
@@ -95,7 +96,7 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 | `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live**; each cell carries an `example` that `verify.ts` also probes for **per-cell tool support** | nesting (C) |
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
 | `control_examples.toml` | minimal probe `example` per IANA control op (the CSV is byte-pinned, so examples live here); joined onto the control-op axis by `lib.ts` and probed by `verify.ts` for **per-control-op support** | control-op |
-| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict; keyed by a **`ctl.<name>`** id it is the **per-control-op** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). **Support is execution-gated**: `verify.ts` generates with `--emit-tests=true` and requires the crate's IR-minted round-trip/reject tests to *pass* (`cargo test`), not just that cddl-codegen exits 0 — catching non-compiling emissions (`x = any` → `pub type X = Any;`, a type defined nowhere) AND compiles-but-miscompiled round-trips. Types that mint no STANDALONE test surface (transparent aliases, bounded/newtype-able aliases, named tables/arrays, pure c-enums) are re-probed wrapped in a synthetic record holder (`__probe_holder = [0, <rule>]`) so their embed-site wire path runs — the only wire path these shapes have — and the evidence reads "round-trips when embedded" (per-probe `embedded` bit). If the synthetic can't generate (a generic rule needing type args) or can't round-trip, the probe keeps the compile verdict; the embed only ever UPGRADES evidence, never downgrades a verdict. **Emission axis:** a default-`supported` row is ALSO re-probed under each non-default codegen profile (`preserve`, `json` — the flag sets from `src/tests/mod.rs`'s `ALL_PROFILES`) via the identical rust-only pipeline (no ruby/rust/wasm re-run), recorded as dotted `emission.<name>.status`/`emission.<name>.evidence` keys. Absence of `emission` keys means the row's default verdict is not `supported`, so it is unsupported under every profile — a *derived* fact, never hand-authored; only a passing `verify.ts` run fills the axis. **Decode-foreign clause:** a supported row's evidence also records whether the generated decoder ACCEPTS the committed spec-derived vectors from `tests/decode_conformance/catalog.toml` (instances our code did not produce — `; accepts N foreign spec-derived vector(s)`; see `tests/README.md` § "Decode-direction conformance"). Corroboration only, default-on (`--no-decode-foreign` opts out), never changes a verdict. | — |
+| `annotations/<tool>.toml` | per-consumer support, keyed by master id (NOT part of the spec master). A `[[support]]` row keyed by a **feature** id is the top-level verdict; keyed by a **containment** id it is the **per-cell (role × feature)** verdict; keyed by a **`ctl.<name>`** id it is the **per-control-op** verdict — so the master records "supported *here*, not *there*" (e.g. `type2.map` supported as tag-content, unsupported inline as a choice/array member). **Support is execution-gated**: `verify.ts` generates with `--emit-tests=true` and requires the crate's IR-minted round-trip/reject tests to *pass* (`cargo test`), not just that cddl-codegen exits 0 — catching non-compiling emissions (`x = any` → `pub type X = Any;`, a type defined nowhere) AND compiles-but-miscompiled round-trips. Types that mint no STANDALONE test surface (transparent aliases, bounded/newtype-able aliases, named tables/arrays, pure c-enums) are re-probed wrapped in a synthetic record holder (`__probe_holder = [0, <rule>]`) so their embed-site wire path runs — the only wire path these shapes have — and the evidence reads "round-trips when embedded" (per-probe `embedded` bit). If the synthetic can't generate (a generic rule needing type args) or can't round-trip, the probe keeps the compile verdict; the embed only ever UPGRADES evidence, never downgrades a verdict. **Emission axis:** a default-`supported` row is ALSO re-probed under each non-default codegen profile (`preserve`, `json` — the flag sets from `src/tests/mod.rs`'s `ALL_PROFILES`) via the identical rust-only pipeline (no ruby/rust/wasm re-run), recorded as dotted `emission.<name>.status`/`emission.<name>.evidence` keys. Absence of `emission` keys means the row's default verdict is not `supported`, so it is unsupported under every profile — a *derived* fact, never hand-authored; only a passing `verify.ts` run fills the axis. **Wasm probe:** a **default-on** `--wasm` probe (opt out with `--no-wasm` / `VERIFY_WASM=0`) additionally `cargo test`s the generated wasm crate — the emitted `cddl_generated_wasm_tests` module constructs through the wrapper API, round-trips, and cross-checks against an independent `cddl_lib::` rust build (see `tests/README.md` § "wasm-crate test module") — and threads `minted_wasm` / `wasm_roundtrips` into the per-feature and per-cell evidence. **Decode-foreign clause:** a supported row's evidence also records whether the generated decoder ACCEPTS the committed spec-derived vectors from `tests/decode_conformance/catalog.toml` (instances our code did not produce — `; accepts N foreign spec-derived vector(s)`; see `tests/README.md` § "Decode-direction conformance"). Corroboration only, default-on (`--no-decode-foreign` opts out), never changes a verdict. | — |
 
 **3. Generated view — `matrix.json`** (produced by `build_matrix.ts`) joins the overlay with the native
 sources into one universal artifact for downstream/cross-language consumption. Imported axes are
@@ -149,7 +150,8 @@ certified spec-invalid at mint and durably rejected by the generated decoder. Th
 rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
-the guard that replaced the silent truncation this row's vector exposed, `ROADMAP.md` § findings),
+the guard that replaced the silent truncation this row's vector exposed; pinned by the
+`signed_ints_width_rejects` / `width_collapse_rejects` execution fixtures),
 the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
 rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
 (out-of-count arrays against the generated `Vec` length check), and `value.number.hexfloat` (a
@@ -165,12 +167,125 @@ rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the
 blanket-rejects EVERY instance of a float or negative-int range, valid or not
 (`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
 vector; and `ctl.size.uint` leans on RUBY too (the rust CLI misvalidates any control-op-carrying
-rule referenced as an array entry — the fourth oracle gap, `ROADMAP.md` § oracle gaps — which also
+rule referenced as an array entry — gap #4 in § "Upstream oracle gaps" below — which also
 keeps its accept side un-mintable), with the bare-form reject verified against the local-fixes
 oracle @ `cdba2b4`. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
+
+## Upstream oracle gaps (rust `cddl` CLI)
+
+None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
+what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
+§ findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
+`773b723` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle shares it)
+carries fixes for #1/#2/#4; `RUST_CDDL` defaults to that build, giving `verify.ts` runs an enforcing
+oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
+development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
+somewhere immutable and point `RUST_CDDL` there first.
+
+1. **uint-target control-op under-enforcement** (released 0.10.x): `validate` does not enforce
+   control operators over a `uint` target — it accepts a boundary violation like `0x0b` (11) against
+   `x = uint .le 10`. Scope: the numeric range/eq ops (`.le`/`.lt`/`.gt`/`.eq`/`.ne`/`.ge`) AND
+   `.size`/`.bits` over uint targets; the gap is target-type-specific — the identical controls over
+   `int` ARE enforced. Upstream PR submitted; full repro in `draft/rust-cddl-uint-control-op-gap.md`.
+   This is why the six ops' probe examples (`control_examples.toml`) target `int` with literal,
+   non-vacuous bounds (§ Q4), and why `ctl.size.uint`'s rust corroboration leans on the local-fixes
+   build.
+2. **group-in-array sequence/occurrence misvalidation** (released 0.10.x): a multi-entry group in an
+   array (parenthesized inline OR named reference) validated correctly ONLY as the sole entry with
+   no occurrence indicator — inner entries were checked at group-local indices as if absolute array
+   positions, and occurrence bounds were compared against total array item count instead of
+   repetition count. Ruby accepts all the spec-valid instances. FIXED in `local-fixes` @ `773b723`;
+   the two catalog rows that sat on it honestly
+   (`contain.occurrence-target.grpent.inline_group.exactly_once_array` and
+   `contain.occurrence-target.grpent.groupname`) are re-minted with real accept vectors against that
+   build. Full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`.
+3. **non-uint-endpoint range blanket rejection** (0.10.x AND `local-fixes`): every instance
+   validated against a range whose endpoints are not uint is rejected, valid or invalid (`invalid
+   cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`) AND
+   negative / sign-spanning int ranges (`-10..10`, `-10..-3`); `0..10` validates correctly.
+   `compile-cddl` accepts the spec; only `validate` blanket-rejects. Blast radius: the six
+   `rangeop.{inclusive,exclusive}.{int,nint,float}` variation rows carry NO accept vector (the
+   mint's two-oracle accept gate can't pass), and their reject certification leans on ruby (recorded
+   per-vector in `reason`) — cddl-codegen's own decoder is the enforcement oracle that matters (the
+   emitted per-sign-arm / NaN-safe range check, executed by the replay gate). Repro:
+   `draft/rust-cddl-float-range-gap.md`.
+4. **control-op-carrying rule as array entry misvalidated** (released 0.10.x): the WHOLE array is
+   checked against the rule (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an
+   uncontrolled `x = uint` in the same position validates fine). Subsumed by the same `773b723`
+   array-sequence fix, so `ctl.size.uint` now carries real holder-wrapped accept vectors.
+
+## Gotchas (read before touching the support seam or probe examples)
+
+The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
+(ledger it in `ROADMAP.md` § findings), not something to engineer away by making the probe green —
+and the inverse, don't *invent* a gap from a degenerate example.**
+
+- **Support seam — a probe verdict is only as good as its example.** The probe runs the cell's
+  minimal `example`, and cddl-codegen only emits for *named composite types* — so a degenerate
+  example can die on an *orthogonal* limitation and misattribute the gap, while editing an example
+  to green a probe can equally hide a real gap. The discipline: examples are minimal and
+  *feature-isolating* (`memberkey.bareword` → `m = [name: tstr]`, `occur.optional` →
+  `g = [? name: tstr]` — single-field **arrays**, chosen when single-field **maps** still panicked;
+  that bug is since fixed, so these could move to map forms on a future `verify.ts` refresh;
+  `type2.map` → `foo = { * tstr => int }`, a table), and a genuine gap stays `unsupported` with a
+  ➖ note in the corpus overlay, never relabelled to green the drift-check.
+- **Anonymous-group limitation (pervasive contextual fact, surfaced by per-cell support).** An INLINE
+  anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value
+  position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named**. A named RULE
+  works in every position; the `@name` naming route the panic message advertises works only where the
+  comment can reach the naming site — verified for the choice-member position, while at member
+  positions (array-element, map-value) the directive never arrives and the panic stands (a pinned
+  `KNOWN_SILENT_DROP` finding — see the comment-DSL entry in `ROADMAP.md` § findings). The one
+  exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
+  tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
+  per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
+  group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
+  gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
+- **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
+  `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
+  any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
+  a name), with no single-field-map shape to confound it.
+- **Execution-gate exemptions.** 4 user-code features stay `supported` via the documented
+  `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code, so they can't compile (or
+  test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`
+  (integration-tested instead). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
+  `pub type X = Any;` — an undefined type (root cause: `any` absent from `is_identifier_reserved`).
+- **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize`
+  is gated on `target_arch = "wasm32"`, so there's no free serde dump on a native build;
+  `examples/ast_roles.rs` hand-walks via the crate's `Visitor` trait instead. Role-detection only
+  needs the crate to PARSE (soft caveat) — which it does for the whole corpus by construction.
+  `project_corpus.ts` verifies a role-keyed `[[cover]]` against the AST role floor AND the per-cell
+  support verdict (check H), so it can't claim ✅ on an unsupported cell.
+- **Over-acceptance / silent corruption is invisible to round-trip tests by construction** — the
+  encoder only produces in-width/in-window values, so a decoder that accepts (or silently wraps)
+  spec-invalid data round-trips green. Only an enforcement vector (a spec-invalid instance the
+  decoder must reject) can see this class, so a constraint fix lands TOGETHER with its enforcing
+  matrix rows/fixtures — a row with no reject vector re-hides the very bug it exists to catch.
+  Proven twice: the silent `as u16` width truncation (65536 decoded "successfully" as 0, caught only
+  by the `ctl.size.uint` boundary vector; every narrowing decode cast is now width-guarded, pinned
+  by the `signed_ints_width_rejects` / `width_collapse_rejects` execution fixtures — one deliberate
+  consequence, pinned there: `int` members reject spec-valid CBOR outside i64 as a representability
+  rejection instead of silently mis-decoding it) and the float range/control windows (NaN-safe
+  accept-form checks + bounds-enforcing wrapper newtypes for top-level ranges, pinned by the
+  `float_bounds` / `top_level_float_ranges` fixtures and the `rangeop.*.float` constraint vectors).
+  The systemic over-acceptance vector class stays `tests/TESTING_ROADMAP.md` item 7.
+- **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
+  must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
+  itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped
+  scalar (`[0, 11]` = `82000b`) against a standalone row still passes every current gate — the
+  decoder rejects it as a TYPE mismatch before any bounds check runs (the replay gate asserts `Err`,
+  not the rejection reason, and the Q4 pin fixes the row *set*, not vector quality) — which is
+  vacuous enforcement evidence indistinguishable from the real thing. This exact decay shipped once
+  and was caught only by review. The structural catch is BUILT: `project_decode_conformance.ts` § 6
+  (local-tier drift gate) fails a constraint vector whose leading CBOR major-type class differs from
+  its row's accepts (majors 0/1 merged — int-family instances span both signs), and bans the `8200`
+  holder preamble on an accept-less standalone row. The behavioral layer — the replay gate asserting
+  the rejection REASON names the violated check — stays `tests/TESTING_ROADMAP.md` item 5; the
+  authoring rule remains: holder shapes belong ONLY to `mode = "holder"` rows, and a row's accept
+  and reject vectors share their outer CBOR shape.
 
 ## Evidence/id convention
 

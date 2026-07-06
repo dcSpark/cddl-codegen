@@ -26,7 +26,9 @@
  * `cddl_generated_wasm_tests` module — cross-crate byte differential + wire round-trip + accessor
  * read-back), recorded as additional per-probe evidence (`minted_wasm` / `wasm_roundtrips`). The rust
  * round-trip verdict still gates support; wasm is corroborating evidence. Opt out for a faster run with
- * `--no-wasm` (or `VERIFY_WASM=0`), which roughly halves per-probe cargo work.
+ * `--no-wasm` (or `VERIFY_WASM=0`), which roughly halves per-probe cargo work — but a `--no-wasm` run
+ * rewrites every row's evidence WITHOUT the wasm bits (wholesale diff churn), so keep wasm ON for any
+ * run whose annotations will be committed.
  *
  * Exit codes: 0 PASS · 1 hard failure (gate) · 2 HARNESS failure (broken environment / oracle paths /
  * repeated timeouts — verdicts were not trustworthy, so no verdict files were (re)written).
@@ -929,7 +931,8 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   //     enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne/.ge`) over a `uint` target
   //     (int-target controls ARE enforced — draft/rust-cddl-uint-control-op-gap.md) — it accepts
   //     in-type boundary violations — so a boundary-violating vector on those rows cannot pass this
-  //     both-reject gate; those rows stay `enforce = unverified` by design (ROADMAP § findings). A
+  //     both-reject gate; those rows stay `enforce = unverified` by design (README.md § "Upstream
+//     oracle gaps"). A
   //     constraint vector must be BASE-TYPE-VALID (only the constraint rejects it) — a type-violation
   //     vector is not enforcement evidence. `.size`, `.cbor`, and cut qualify on that standard.
   //   bug/limitation — spec-VALID CBOR our decoder wrongly rejects. Keep iff BOTH oracles still ACCEPT.

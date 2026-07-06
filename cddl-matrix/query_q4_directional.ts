@@ -59,7 +59,7 @@
  * with a type-violation vector (a negative for `uint .ge 0` — which tests the uint base type, not the
  * bound; that example's bound is vacuous over its base type, so NO in-type violation even exists),
  * those rows honestly read `unverified (no reject vector)`; the oracle-coverage gap is recorded in
- * ROADMAP.md § findings. The `--check` vacuity floor asserts the EXACT green set so neither an
+ * README.md § "Upstream oracle gaps". The `--check` vacuity floor asserts the EXACT green set so neither an
  * accidental widening (a numeric row engineered green via a type violation) nor a narrowing slips
  * through.
  *
@@ -174,7 +174,7 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 
 // The enforcement-bearing rows: the ctl.* axis plus the cut feature — Q4's prose names exactly
 // "`.size`/cut enforcement" as where generators cut corners, so cut must not read n/a (no constraint).
-// Also enforcement-bearing (the § 4 classification-gap lesson — an enforced constraint invisible as
+// Also enforcement-bearing (the variation-row classification-gap lesson (ROADMAP § Expansion) — an enforced constraint invisible as
 // n/a is indistinguishable from "carries no constraint", so a vector loss would silently shed
 // enforcement evidence instead of reading as a gap):
 //   - `occur.bounded*` — occurrence bounds are a rejectable count constraint (the generated decoder's
@@ -189,8 +189,8 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // (`ctl.size.uint` once sat here as a KNOWN-UNENFORCED `unverified` exception — the member decode
 // silently truncated via a bare `as u16` cast, so its boundary vector decoded cleanly. The decode
 // path now width-guards every narrowing cast and the row carries its committed constraint vector,
-// so it projects `enforce = yes` like the rest; the episode is kept in ROADMAP § findings as the
-// motivating example for an over-acceptance vector class, the F10 pending call.)
+// so it projects `enforce = yes` like the rest; the episode is kept in README.md § "Gotchas" (the
+// over-acceptance gotcha) as the motivating example for an over-acceptance vector class.)
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
@@ -317,7 +317,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       (the emitted range check, executed by the replay gate). Assert the exact set so a widening
   //       (a type-violation vector engineered onto a numeric row) or a narrowing (a range row losing its
   //       reject vector, re-hiding a silent-acceptance hole) fails this gate.
-  //   (c) The controller-value / occurrence-bound variation rows (the § 4 enumeration close-out).
+  //   (c) The controller-value / occurrence-bound variation rows (the variation-row enumeration, ROADMAP § Expansion).
   //       `ctl.ne.zero` / `ctl.ne.one` carry the NE sign-boundary violations (`00` / `01` — the `(1,-1)`
   //       and degenerate `(2,0)` encodings), int-targeted so both oracles certify like family (a).
   //       `occur.bounded{,.lower,.upper}` carry holder-wrapped out-of-count arrays (below the lower
@@ -325,7 +325,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       keeps repetition count == item count, dodging the rust group-occurrence gap).
   //       `ctl.size.uint` carries the 65536-over-the-u16-window violation, DURABLY rejected by the
   //       width-guarded member decode (the guard replaced the silent truncating `as u16` cast this
-  //       row's first vector attempt exposed — ROADMAP § findings). Its certification leans on RUBY
+  //       row's first vector attempt exposed — README.md § "Gotchas"). Its certification leans on RUBY
   //       (the rust CLI misvalidates any control-op-carrying rule referenced as an array entry —
   //       the fourth oracle gap — which also keeps the row's ACCEPT side un-mintable), with the
   //       bare-form reject verified against the local-fixes oracle @ cdba2b4.
@@ -339,7 +339,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "value.number.hexfloat"];
   // The unverified set is pinned EXACTLY like the green set (same decay argument, opposite
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
-  // into `unverified` with no gate noticing — the § 4 lesson is that an unenumerated/unvectored
+  // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored
   // constraint is an enforcement blind spot, so growing this set must be a conscious pin edit.
   // EMPTY today: the one former entry (ctl.size.uint, a verified truncation gap) is fixed — the
   // member decode width-guards the narrowing cast and the row's constraint vector is committed —
