@@ -131,6 +131,12 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      the tree — the same shape as the `cddl-matrix/verify.ts` DSL-name forward lint, and the
      narrow, greppable complement to the declined docs-vs-behavior snippet harness (bottom of this
      doc): identifier existence, not prose semantics.
+   - **Markdown-structure lint over the hand docs (low).** A ROADMAP findings-bullet prune ate the
+     blank line separating the deleted bullet from the next `##` heading — valid-but-mangled
+     markdown caught only by in-session review, a class orthogonal to the citation lint above
+     (structure, not referents). An MD022-class check (blank line before headings) over
+     `*ROADMAP*.md` / `tests/README.md` / `cddl-matrix/README.md` is a one-liner in the drift
+     gates; worth wiring only if hand-doc surgery keeps being a per-feature step (it currently is).
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles` and `wasm_matrix_compiles` shell
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
@@ -200,6 +206,30 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    `unverified`, and the `EXPECTED_ENFORCE_UNVERIFIED` pin in `query_q4_directional.ts` (empty
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
+
+8. **Rust↔wasm API-surface parity differential (medium-low, but the class is structural).** A
+   method emitted on the rust side of the crate boundary with NO wasm counterpart is invisible to
+   every existing oracle, because they all derive from the emitted API and treat it as ground
+   truth: snapshots pin whatever was emitted, compile gates compile whatever was emitted, and the
+   wasm test mint is *written against* the surface that exists — it exercises what's there, it
+   cannot demand what's missing (the wrapper mint was literally built AROUND the hole, decoding
+   the rust twin's bytes because no ctor existed). Proven instance: wrapper types shipped for
+   years with rust `new`/`From` but no wasm ctor or getter — `generate_wrapper_struct` BUILT a
+   `wasm_new` and never pushed it (dead code, complete with an unformatted `"Result<{}, JsError>"`
+   ret type), found only by reading the generator; the symptom sat as a hand-curated
+   findings-ledger bullet, not a red cell. Division of labor with pending items: the full
+   `cargo-mutants` sweep (item 1) DOES flag the dead-code half — every mutation inside a
+   never-pushed builder is a trivial survivor, and triaging that cluster points straight at "no
+   observable effect" — but mutation can't flag ABSENCE (a method never emitted mutates nothing).
+   The missing system: per generated type, enumerate the rust crate's public ctor/accessor surface
+   and assert the wasm crate exposes a corresponding boundary member or a **ledgered exemption**
+   (legitimate asymmetries are the curated half: collection-API inheritance, tag-over-struct
+   folding, `pub use`d Copy enums, rust-only trait impls). Run it over the wasm-matrix cells (the
+   grid already enumerates shape × role) or the snapshot corpus, parsing the emitted sources
+   (`syn` is already a transitive dep) rather than asking the generator to self-report — an
+   output-side check catches emission bugs, not just intent drift. The wrapper instance is now
+   behaviorally pinned (the roundtrips mint builds through the public `new`), so this item is
+   about the next one-sided hole, not re-catching the last.
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
