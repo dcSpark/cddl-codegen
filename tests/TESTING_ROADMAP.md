@@ -107,6 +107,14 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      nested cargo per cell in the default `cargo test` suite (check.ts `local` tier, not CI); the
      shared `CARGO_TARGET_DIR` amortizes deps. If wall-time bites: batch cells into fewer crates,
      adopt `cargo-nextest` as the suite runner, or gate only changed cells.
+   - **One unattributed full-suite flake (2026-07-06) — capture before rerunning.** The `test` gate
+     (`cargo test --all-features --all-targets`) failed once with exit 101 on a doc/TS-only change,
+     then passed on an immediate identical rerun and a second full run; the failing test's name was
+     lost (the output was truncated before the `failures:` list, and reruns were green). Nothing can
+     attribute a transient failure after the fact, so the discipline on recurrence is: save the full
+     output (`2>&1 | tee`) BEFORE any rerun, then triage. Likeliest transient class: the nested-cargo
+     integration gates above (shared `CARGO_TARGET_DIR`; a racing cargo lock/link step). A second
+     sighting with a captured name turns this bullet into a real fix item.
 
 5. **Assert the rejection REASON for `class="constraint"` replay vectors (behavioral layer over the
    standing shape lint).** The replay gate asserts only that a reject vector `Err`s — it cannot tell

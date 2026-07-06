@@ -12,6 +12,12 @@
  * `query_q1_gaps.ts` → `current_capacities.mdx` pattern, local tier). Countable prose OUTSIDE the markers
  * stays hand-owned — the gate catches exactly the numbers it generates, no more.
  *
+ * Before adding a NEW span, ask whether the count IS the claim (a status header's scale/completeness
+ * assertion, where the number is the point). An INCIDENTAL count is better deleted (redundant beside
+ * its own enumeration) or reworded into a drift-proof policy claim ("SKIP is expected to hold only X")
+ * than projected — projection retires drift, not churn. Frozen historical counts and structural counts
+ * ("three tiers") never drift and never need spans.
+ *
  * Deriving sources (all committed, all read-only):
  *   - `matrix.json` — features (+ per-profile split), containment, control operators, cddl-codegen
  *     annotations (+ the `emission.<profile>.status` divergence axis).
