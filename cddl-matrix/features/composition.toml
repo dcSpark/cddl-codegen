@@ -163,3 +163,30 @@ title = "Bounded occurrence (n*m)"
 desc = "Same '*' production as zero-or-more but with explicit lower and/or upper bound (n*, *m, or n*m): the entry occurs between n and m times."
 example = "g = [2*5 uint]"
 roles = ["role.occurrence-target"]
+
+# --- occur one-sided-bound variation rows (n* / *m) ---
+# The occur.bounded base row above is probed only from the two-sided form `2*5`. These enumerate the
+# one-sided arms of the SAME `[uint] "*" [uint]` alternative — the variation the base desc mentions only
+# in prose. Enumerated for the § 4 reason: the enforcement axis reaches only as far as row enumeration,
+# so a one-sided bound with no row is an enforcement blind spot, not just missing coverage accounting.
+[[feature]]
+id = "occur.bounded.lower"
+production = "occur"
+alt = '[uint] "*" [uint]'
+rfc = "RFC8610 §3.2; ABNF occur / [uint] \"*\" [uint]"
+profile = "RFC8610"
+title = "Lower-bound-only occurrence (n*)"
+desc = "One-sided variation of occur.bounded: a lower-bound-only occurrence (`2*`) whose count check has NO upper arm — the entry occurs at least n times, unbounded above. A distinct enforcement surface from the two-sided `2*5` base row, per the § 4 lesson that the enforcement axis reaches only as far as row enumeration."
+example = "g = [2* uint]"
+roles = ["role.occurrence-target"]
+
+[[feature]]
+id = "occur.bounded.upper"
+production = "occur"
+alt = '[uint] "*" [uint]'
+rfc = "RFC8610 §3.2; ABNF occur / [uint] \"*\" [uint]"
+profile = "RFC8610"
+title = "Upper-bound-only occurrence (*m)"
+desc = "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a `Vec` length check (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+example = "g = [*5 uint]"
+roles = ["role.occurrence-target"]

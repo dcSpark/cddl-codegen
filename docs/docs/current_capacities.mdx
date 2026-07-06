@@ -94,6 +94,9 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Literal value as a type | `answer = 42` | panics generation |
 | Byte-string literal value | `magic = h'cafe'` | rejected gracefully at parse |
 | Numeric literal value | `version = 5` | panics generation |
+| Binary integer literal (0b…) | `m = [v: 0b1010]` | rejected gracefully at parse |
+| Hexadecimal integer literal (0x…) | `m = [v: 0x10]` | rejected gracefully at parse |
+| Hexadecimal float literal (hexfloat) | `m = [v: 0x1.8p+1]` | generates but does not compile |
 | Text literal value | `marker = "v1"` | panics generation |
 
 ### Control operators

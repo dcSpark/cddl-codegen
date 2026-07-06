@@ -106,3 +106,174 @@ export function stableJson(obj: unknown): string {
       : v;
   return JSON.stringify(obj, sortKeys, 2) + "\n";
 }
+
+export function stripComment(s: string): string {
+  let out = "", inQ = false;
+  for (const ch of s) {
+    if (ch === '"') inQ = !inQ;
+    if (ch === ";" && !inQ) break;
+    out += ch;
+  }
+  return out.replace(/\s+$/, "");
+}
+
+export function splitTopAlts(s: string): string[] {
+  const alts: string[] = [];
+  let buf = "", depth = 0, inQ = false;
+  for (const ch of s) {
+    if (inQ) { buf += ch; if (ch === '"') inQ = false; }
+    else if (ch === '"') { inQ = true; buf += ch; }
+    else if (ch === "(" || ch === "[" || ch === "{") { depth++; buf += ch; }
+    else if (ch === ")" || ch === "]" || ch === "}") { depth--; buf += ch; }
+    else if (ch === "/" && depth === 0) { alts.push(buf); buf = ""; }
+    else buf += ch;
+  }
+  if (buf) alts.push(buf);
+  return alts.map(a => a.trim()).filter(a => a.length);
+}
+
+export function productionAlternatives(name: string, abnfText: string): string[] | null {
+  const out: string[] = [];
+  let inBlock = false;
+  for (const raw of abnfText.split(/\r?\n/)) {
+    const m = raw.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(.*)$/);
+    if (m) {
+      if (m[1] === name) { inBlock = true; out.push(stripComment(m[2])); }
+      else if (inBlock) break;
+      continue;
+    }
+    if (inBlock) {
+      const s = raw.trim();
+      if (s === "") break;
+      out.push(stripComment(s));
+    }
+  }
+  if (!inBlock) return null;
+  return splitTopAlts(out.filter(x => x).join(" "));
+}
+
+export const normalizeAlt = (s: string): string => stripComment(s).replace(/\bS\b/g, "").replace(/\s/g, "");
+
+export const ALT_PRODUCTIONS = ["type2", "value", "rangeop", "occur", "memberkey", "group", "grpchoice",
+  "grpent", "type", "type1", "assignt", "assigng", "rule", "genericparm", "genericarg", "head-number"] as const;
+
+export const ALT_MIN_ALTERNATIVES: Record<typeof ALT_PRODUCTIONS[number], number> = {
+  type2: 12,
+  value: 3,
+  rangeop: 2,
+  occur: 3,
+  memberkey: 3,
+  group: 1,
+  grpchoice: 1,
+  grpent: 3,
+  type: 1,
+  type1: 1,
+  assignt: 2,
+  assigng: 2,
+  rule: 2,
+  genericparm: 1,
+  genericarg: 1,
+  "head-number": 2,
+};
+
+export interface DelegatedAlt { alt: string; reason: string }
+export const DELEGATED_ALTS: Record<string, DelegatedAlt[]> = {
+  assignt: [{ alt: '"="', reason: "ordinary type-rule assignment; every type rule already exercises it" }],
+  assigng: [{ alt: '"="', reason: "ordinary group-rule assignment; every group rule already exercises it" }],
+};
+
+export interface ModelledAlt { alt: string; featureIds: string[] }
+export const MODELED_UNDER: Record<string, ModelledAlt[]> = {
+  "head-number": [
+    { alt: "uint", featureIds: ["type2.tag", "type2.major7"] },
+    { alt: '("<" type ">")', featureIds: ["type2.tag_head_type"] },
+  ],
+};
+
+export interface AltCoverage {
+  production: string;
+  abnf_alternatives: string[];
+  feature_rows: string[];
+  covered: string[];
+  delegated: { alt: string; reason: string }[];
+  modeled_under: { alt: string; featureIds: string[] }[];
+  uncovered: string[];
+  modeled: boolean;
+}
+
+export interface AltCoverageResult {
+  coverage: Record<string, AltCoverage>;
+  problems: string[];
+  vacuityProblems: string[];
+}
+
+interface AltFeatureRow { id: string; production?: string | null; alt?: string | null }
+
+const matchingEntry = <T extends { alt: string }>(entries: T[] | undefined, alt: string): T | undefined =>
+  entries?.find(e => normalizeAlt(e.alt) === normalizeAlt(alt));
+
+export function grammarAltCoverage(features: AltFeatureRow[], abnfText: string): AltCoverageResult {
+  const featureIds = new Set(features.map(f => f.id));
+  const coverage: Record<string, AltCoverage> = {};
+  const problems: string[] = [];
+  const vacuityProblems: string[] = [];
+
+  for (const prod of ALT_PRODUCTIONS) {
+    const alts = productionAlternatives(prod, abnfText) ?? [];
+    const prodFeatures = features.filter(f => f.production === prod);
+    const featNorms = new Set(prodFeatures.filter(f => f.alt).map(f => normalizeAlt(f.alt!)));
+    const covered: string[] = [];
+    const delegated: { alt: string; reason: string }[] = [];
+    const modeled_under: { alt: string; featureIds: string[] }[] = [];
+    const uncovered: string[] = [];
+
+    for (const a of alts) {
+      const delegatedAlt = matchingEntry(DELEGATED_ALTS[prod], a);
+      const modelledAlt = matchingEntry(MODELED_UNDER[prod], a);
+      if (featNorms.has(normalizeAlt(a))) covered.push(a);
+      else if (delegatedAlt) delegated.push({ alt: a, reason: delegatedAlt.reason });
+      else if (modelledAlt) modeled_under.push({ alt: a, featureIds: modelledAlt.featureIds });
+      else uncovered.push(a);
+    }
+
+    coverage[prod] = {
+      production: prod,
+      abnf_alternatives: alts,
+      feature_rows: prodFeatures.map(f => f.id).sort(),
+      covered,
+      delegated,
+      modeled_under,
+      uncovered,
+      modeled: prodFeatures.length > 0 || delegated.length > 0 || modeled_under.length > 0,
+    };
+
+    const floor = ALT_MIN_ALTERNATIVES[prod];
+    if (alts.length < floor)
+      problems.push(`${prod} extraction yielded ${alts.length} alternatives (expected >= ${floor}) — the ABNF block extraction truncated`);
+    if (alts.length !== floor)
+      vacuityProblems.push(`expected exactly ${floor} ${prod} alternatives, saw ${alts.length} — the pinned grammar shape changed (review before re-pinning the floor)`);
+    for (const a of uncovered)
+      problems.push(`${prod} alternative not modelled by any feature: ${JSON.stringify(a)}`);
+  }
+
+  for (const [prod, entries] of Object.entries(DELEGATED_ALTS)) {
+    const alts = coverage[prod]?.abnf_alternatives ?? [];
+    for (const entry of entries) {
+      if (!alts.some(a => normalizeAlt(a) === normalizeAlt(entry.alt)))
+        problems.push(`${prod} delegated alternative ${JSON.stringify(entry.alt)} is stale (not present in pinned grammar)`);
+    }
+  }
+
+  for (const [prod, entries] of Object.entries(MODELED_UNDER)) {
+    const alts = coverage[prod]?.abnf_alternatives ?? [];
+    for (const entry of entries) {
+      if (!alts.some(a => normalizeAlt(a) === normalizeAlt(entry.alt)))
+        problems.push(`${prod} modelled-under alternative ${JSON.stringify(entry.alt)} is stale (not present in pinned grammar)`);
+      for (const id of entry.featureIds)
+        if (!featureIds.has(id))
+          problems.push(`${prod} alternative ${JSON.stringify(entry.alt)} is modelled under missing feature id ${JSON.stringify(id)}`);
+    }
+  }
+
+  return { coverage, problems, vacuityProblems };
+}

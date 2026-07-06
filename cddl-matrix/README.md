@@ -16,8 +16,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 
 > **Entry points (in order):** *this README* (the model + current state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left, the build-order, and the gotchas/findings that bite) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->98 features and 80 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->212 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 80 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->220 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -114,10 +114,9 @@ not" is not a bespoke row; it's `containment(tag-content, type2.tag)` with a cdd
 
 Comprehensiveness is established by a **bidirectional lint** against the first-party sources (the ABNF
 is a lint, not the closed-world spine — see "What is a feature?"):
-- **forward** (source → feature): every **`type2` ABNF alternative** has ≥1 covering feature row —
-  completeness checkable against the ABNF in `sources/`, hard-gated in `verify.ts` (this is the check
-  that caught the missing `#7` alternative; per-alternative coverage for the other productions is
-  computed and logged best-effort);
+- **forward** (source → feature): every enumerated ABNF alternative has ≥1 covering feature row, an
+  explicit delegation reason, or a named "modelled under" feature row — completeness checkable against
+  the ABNF in `sources/` and hard-gated in `verify.ts`/`query_q5_completeness.ts`;
 - **backward** (feature → source): every feature's `production` resolves to a real ABNF production, the
   `prelude` pseudo-production, or the IANA control-op registry — so no feature is invented with no
   source (hard-gated in `verify.ts`);
@@ -146,10 +145,13 @@ per-construct oracle — its independent evidence is corpus-level only (`golden_
 `catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an
 over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value, an out-of-window or
 excluded-endpoint number, NaN against a float window — each a valid instance of its base type),
-certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 17
-rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`),
-and the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
-rows `.int`/`.nint`/`.float`). Two upstream rust-oracle gaps shape what "certified" means per family
+certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 22
+rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
+the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
+rows `.int`/`.nint`/`.float`), and the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
+(out-of-count arrays against the generated `Vec` length check). Upstream rust-oracle gaps shape what
+"certified" means per family
 (`query_q4_directional.ts --check` pins the exact green set so a decay fails loudly rather than
 silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
 non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
@@ -158,7 +160,10 @@ vacuously-bounded forms cannot pass the both-oracles-reject gate; and the non-ui
 rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the rust oracle
 blanket-rejects EVERY instance of a float or negative-int range, valid or not
 (`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
-vector. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
+vector. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance). `ctl.size.uint`
+reads `unverified` deliberately: its boundary violation is NOT durably rejected — the member decode
+silently truncates (`as u16`), a verified cddl-codegen enforcement gap the row's vector attempt
+exposed (`ROADMAP.md` § findings) — so it carries no `class="constraint"` vector until the fix lands.
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.

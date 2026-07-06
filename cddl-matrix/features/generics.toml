@@ -32,7 +32,7 @@
 [[feature]]
 id = "genericparm.type"
 production = "rule"
-alt = "typename [genericparm]"
+alt = "typename [genericparm] S assignt S type"
 rfc = "RFC8610 §3.10; ABNF rule / typename [genericparm]"
 profile = "RFC8610"
 title = "Generic type definition"
@@ -43,7 +43,7 @@ example = "foo<a> = [a]"
 [[feature]]
 id = "genericparm.multiple"
 production = "genericparm"
-alt = 'id *("," id)'
+alt = '"<" S id S *("," S id S ) ">"'
 rfc = "RFC8610 §3.10; ABNF genericparm"
 profile = "RFC8610"
 title = "Multiple generic parameters"
@@ -54,7 +54,7 @@ example = "pair<k, v> = [k, v]"
 [[feature]]
 id = "genericparm.group"
 production = "rule"
-alt = "groupname [genericparm]"
+alt = "groupname [genericparm] S assigng S grpent"
 rfc = "RFC8610 §3.10; ABNF rule / groupname [genericparm]"
 profile = "RFC8610"
 title = "Generic group definition"
@@ -79,7 +79,7 @@ roles = ["role.generic-arg"]
 [[feature]]
 id = "genericarg.multiple"
 production = "genericarg"
-alt = 'type1 *("," type1)'
+alt = '"<" S type1 S *("," S type1 S ) ">"'
 rfc = "RFC8610 §3.10; ABNF genericarg"
 profile = "RFC8610"
 title = "Multiple generic arguments"
@@ -91,7 +91,7 @@ roles = ["role.generic-arg"]
 [[feature]]
 id = "genericarg.type1"
 production = "genericarg"
-alt = "type1"
+alt = '"<" S type1 S *("," S type1 S ) ">"'
 rfc = "RFC8610 §3.10; ABNF genericarg / type1"
 profile = "RFC8610"
 title = "Type-expression argument"
