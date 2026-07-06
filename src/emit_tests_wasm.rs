@@ -33,8 +33,10 @@
 //!
 //! **Loud skips (never silent):** every shape this renderer can't faithfully express emits an
 //! `eprintln!("cddl-codegen --emit-tests: ...")` and is dropped — extern / raw-bytes ctor args
-//! (user-supplied types with no generated conversion), optional-nullable present-null flatten points,
-//! and the macro-API flag configurations (whole module). The hand-written `tests/<dir>/tests_wasm.rs`
+//! (user-supplied types with no generated conversion) and the macro-API flag configurations (whole
+//! module). Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
+//! mint ever constructs a present-null state (the three-state write/read surface is covered by the
+//! hand-written `tests/nullable-wasm/` fixture instead). The hand-written `tests/<dir>/tests_wasm.rs`
 //! covers the collection/wrapper shapes as a plausibility cross-check.
 //!
 //! **Mutation-verified (red-first, per repo idiom — the same discipline as `emit_tests.rs`'s
