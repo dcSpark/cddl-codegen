@@ -27,6 +27,10 @@ pub struct SizedText {
 }
 
 impl SizedText {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 1 || inner.len() > 16 {
             return Err(DeserializeError::new(

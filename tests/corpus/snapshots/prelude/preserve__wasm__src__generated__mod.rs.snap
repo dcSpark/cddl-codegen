@@ -220,6 +220,14 @@ impl PreludeB64legacy {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeB64legacy::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::PreludeB64legacy> for PreludeB64legacy {
@@ -254,6 +262,14 @@ impl PreludeB64url {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeB64url::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 
@@ -418,6 +434,14 @@ impl PreludeBignint {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(cddl_lib::PreludeBignint::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::PreludeBignint> for PreludeBignint {
@@ -452,6 +476,14 @@ impl PreludeBiguint {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(cddl_lib::PreludeBiguint::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
     }
 }
 
@@ -537,6 +569,14 @@ impl PreludeEncodedCbor {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(cddl_lib::PreludeEncodedCbor::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
     }
 }
 
@@ -647,6 +687,14 @@ impl PreludeMimeMessage {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeMimeMessage::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::PreludeMimeMessage> for PreludeMimeMessage {
@@ -682,6 +730,14 @@ impl PreludeRegexp {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeRegexp::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::PreludeRegexp> for PreludeRegexp {
@@ -716,6 +772,14 @@ impl PreludeTdate {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeTdate::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 
@@ -825,6 +889,14 @@ impl PreludeUri {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::PreludeUri::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 

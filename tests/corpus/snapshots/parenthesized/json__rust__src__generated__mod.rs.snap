@@ -65,6 +65,10 @@ impl Nested {
 pub struct NewtypeViaParens(u64);
 
 impl NewtypeViaParens {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }

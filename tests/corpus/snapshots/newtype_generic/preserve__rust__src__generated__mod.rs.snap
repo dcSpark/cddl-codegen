@@ -27,6 +27,10 @@ pub struct WrappedArr {
 }
 
 impl WrappedArr {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.inner
+    }
+
     pub fn new(inner: Vec<u64>) -> Self {
         Self {
             inner,
@@ -54,6 +58,10 @@ pub struct WrappedMap {
 }
 
 impl WrappedMap {
+    pub fn get(&self) -> &OrderedHashMap<u64, String> {
+        &self.inner
+    }
+
     pub fn new(inner: OrderedHashMap<u64, String>) -> Self {
         Self {
             inner,

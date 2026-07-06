@@ -131,6 +131,10 @@ impl Prelude {
 pub struct PreludeB64legacy(String);
 
 impl PreludeB64legacy {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -146,6 +150,10 @@ impl From<String> for PreludeB64legacy {
 pub struct PreludeB64url(String);
 
 impl PreludeB64url {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -189,6 +197,10 @@ impl PreludeBigint {
 pub struct PreludeBignint(Vec<u8>);
 
 impl PreludeBignint {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Self {
         Self(inner)
     }
@@ -210,6 +222,10 @@ impl From<PreludeBignint> for Vec<u8> {
 pub struct PreludeBiguint(Vec<u8>);
 
 impl PreludeBiguint {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Self {
         Self(inner)
     }
@@ -243,6 +259,10 @@ impl PreludeDecfrac {
 pub struct PreludeEncodedCbor(Vec<u8>);
 
 impl PreludeEncodedCbor {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Self {
         Self(inner)
     }
@@ -280,6 +300,10 @@ impl PreludeInteger {
 pub struct PreludeMimeMessage(String);
 
 impl PreludeMimeMessage {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -295,6 +319,10 @@ impl From<String> for PreludeMimeMessage {
 pub struct PreludeRegexp(String);
 
 impl PreludeRegexp {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -310,6 +338,10 @@ impl From<String> for PreludeRegexp {
 pub struct PreludeTdate(String);
 
 impl PreludeTdate {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -341,6 +373,10 @@ impl PreludeUnsigned {
 pub struct PreludeUri(String);
 
 impl PreludeUri {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }

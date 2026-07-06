@@ -41,6 +41,10 @@ pub struct WrappedEnum {
 }
 
 impl WrappedEnum {
+    pub fn get(&self) -> FixedEnum {
+        self.inner
+    }
+
     pub fn new(inner: FixedEnum) -> Self {
         Self {
             inner,

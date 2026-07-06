@@ -202,6 +202,14 @@ impl NewtypeViaParens {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::NewtypeViaParens::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::NewtypeViaParens> for NewtypeViaParens {

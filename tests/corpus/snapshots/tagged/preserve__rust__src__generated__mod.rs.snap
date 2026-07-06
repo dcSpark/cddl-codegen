@@ -54,6 +54,10 @@ pub struct Tagged {
 }
 
 impl Tagged {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Self {
         Self {
             inner,
@@ -75,6 +79,10 @@ pub struct TaggedNewtype {
 }
 
 impl TaggedNewtype {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Self {
         Self {
             inner,

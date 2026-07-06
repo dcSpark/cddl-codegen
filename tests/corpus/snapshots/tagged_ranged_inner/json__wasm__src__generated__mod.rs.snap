@@ -43,6 +43,14 @@ impl TaggedRanged {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: u8) -> Self {
+        Self(cddl_lib::TaggedRanged::new(inner))
+    }
+
+    pub fn get(&self) -> u8 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::TaggedRanged> for TaggedRanged {

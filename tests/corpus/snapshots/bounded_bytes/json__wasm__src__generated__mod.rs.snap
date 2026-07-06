@@ -43,6 +43,16 @@ impl Hash {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: Vec<u8>) -> Result<Hash, JsError> {
+        cddl_lib::Hash::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::Hash> for Hash {

@@ -739,6 +739,16 @@ impl String32 {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: String) -> Result<String32, JsError> {
+        cddl_lib::String32::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::String32> for String32 {
@@ -773,6 +783,16 @@ impl String64 {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Result<String64, JsError> {
+        cddl_lib::String64::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 
@@ -863,6 +883,14 @@ impl TaggedText {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::TaggedText::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 

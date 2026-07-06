@@ -41,6 +41,10 @@ impl From<TaggedNewtype> for String {
 pub struct Tagged(String);
 
 impl Tagged {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -56,6 +60,10 @@ impl From<String> for Tagged {
 pub struct TaggedNewtype(String);
 
 impl TaggedNewtype {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }

@@ -221,6 +221,10 @@ pub struct String32 {
 }
 
 impl String32 {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 16 || inner.len() > 32 {
             return Err(DeserializeError::new(
@@ -254,6 +258,10 @@ pub struct String64 {
 }
 
 impl String64 {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() > 64 {
             return Err(DeserializeError::new(
@@ -306,6 +314,10 @@ pub struct TaggedText {
 }
 
 impl TaggedText {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Self {
         Self {
             inner,

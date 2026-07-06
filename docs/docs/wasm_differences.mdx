@@ -25,14 +25,23 @@ Both type/group choices generate rust-style enums. On the wasm side we can't do 
 ## Tag and `@newtype` wrappers
 
 A CBOR tag over a non-struct type (`t = #6.10(uint)`) and a `; @newtype` rule both generate a wrapper
-struct. On the rust side the wrapper is fully usable — `new(inner)` plus `From` conversions in both
-directions. On the wasm side the wrapper currently exposes **only** `to_cbor_bytes()` /
-`from_cbor_bytes()`: no constructor taking the inner value and no getter reading it back, so from
-JavaScript the wrapped content can only be produced or inspected as CBOR bytes (for a plain `@newtype`
-the wrapper's bytes are exactly the inner value's bytes; for a tag they include the tag header). Two
-shapes avoid the limitation: a wrapper over a named array/map inherits that collection's wasm API
-(`new`/`add`/`insert`/`get`), and a tag over a struct needs no wrapper at all — the tag is folded into
-the struct's own serialization, so the struct keeps its normal constructor and getters.
+struct. Both the rust and wasm bindings expose a full boundary surface: `new(inner)` to construct the
+wrapper from its inner value, and an inner-value getter. The getter is named `get` by default; an
+`@newtype <name>` comment renames it (e.g. `; @newtype get_val` emits `get_val` instead of `get`).
+For a bounded/range wrapper (`h = uint .le 10`) the inner value can fail the bound check, so the wasm
+`new` returns `Result<T, JsError>` rather than `T` (the rust `new` returns `Result<Self, DeserializeError>`).
+The wrapper's CBOR bytes are still available via `to_cbor_bytes()` / `from_cbor_bytes()`: for a plain
+`@newtype` those bytes are exactly the inner value's bytes; for a tag they include the tag header.
+
+Two shapes interact with this surface specially:
+
+- A wrapper over a **named array or map** takes and returns that collection's own wasm class as its
+  inner value — e.g. a `@newtype` over `foos = [* foo]` gets `new(inner: &FooList)` / `get() -> FooList`,
+  and the `FooList` class carries the full `new`/`add`/`get`/`len` collection API. So you build the
+  collection, hand it to `new`, and read it back with `get`.
+- A tag directly over an **inline** struct (`t = #6.20([a: uint, b: text])`) is folded into the struct
+  itself — no wrapper is generated, and the struct keeps its normal per-field constructor and getters.
+  (A tag over a *named* struct rule, `t = #6.14(foo)`, still produces a wrapper with `new`/`get`.)
 
 ## Nullable / nested Options
 

@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct Hash(Vec<u8>);
 
 impl Hash {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 32 {
             return Err(DeserializeError::new(

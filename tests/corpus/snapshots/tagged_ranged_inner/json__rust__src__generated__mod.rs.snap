@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct TaggedRanged(u8);
 
 impl TaggedRanged {
+    pub fn get(&self) -> u8 {
+        self.0
+    }
+
     pub fn new(inner: u8) -> Self {
         Self(inner)
     }
