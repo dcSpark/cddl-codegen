@@ -1967,6 +1967,19 @@ impl Deserialize for TableArrMembers {
                                             }
                                             let (arr_elem, arr_elem_encoding) = raw
                                                 .unsigned_integer_sz()
+                                                .map_err(Into::<DeserializeError>::into)
+                                                .and_then(|(x, enc)| {
+                                                    if x > 4294967295 {
+                                                        Err(DeserializeFailure::RangeCheck {
+                                                            found: x as isize,
+                                                            min: Some(0),
+                                                            max: Some(4294967295),
+                                                        }
+                                                        .into())
+                                                    } else {
+                                                        Ok((x, enc))
+                                                    }
+                                                })
                                                 .map(|(x, enc)| (x as u32, Some(enc)))?;
                                             arr_arr.push(arr_elem);
                                             arr_elem_encodings.push(arr_elem_encoding);

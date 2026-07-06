@@ -145,25 +145,29 @@ per-construct oracle — its independent evidence is corpus-level only (`golden_
 `catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an
 over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value, an out-of-window or
 excluded-endpoint number, NaN against a float window — each a valid instance of its base type),
-certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 22
+certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 24
 rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
+`ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
+the guard that replaced the silent truncation this row's vector exposed, `ROADMAP.md` § findings),
 the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
-rows `.int`/`.nint`/`.float`), and the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
-(out-of-count arrays against the generated `Vec` length check). Upstream rust-oracle gaps shape what
-"certified" means per family
-(`query_q4_directional.ts --check` pins the exact green set so a decay fails loudly rather than
+rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
+(out-of-count arrays against the generated `Vec` length check), and `value.number.hexfloat` (a
+wrong-value instance against the fixed 3.0, rejected as FixedValueMismatch). Upstream rust-oracle
+gaps shape what "certified" means per family
+(`query_q4_directional.ts --check` pins the exact green set — and the now-empty unverified set — so
+a decay fails loudly rather than
 silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
 non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
 over a `uint` target (`draft/rust-cddl-uint-control-op-gap.md`), so `uint`-targeted or
-vacuously-bounded forms cannot pass the both-oracles-reject gate; and the non-uint-endpoint range
+vacuously-bounded forms cannot pass the both-oracles-reject gate; the non-uint-endpoint range
 rows (`.int`/`.nint`/`.float`) lean on RUBY for reject certification because the rust oracle
 blanket-rejects EVERY instance of a float or negative-int range, valid or not
 (`draft/rust-cddl-float-range-gap.md`) — which also leaves those six rows with no certifiable accept
-vector. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance). `ctl.size.uint`
-reads `unverified` deliberately: its boundary violation is NOT durably rejected — the member decode
-silently truncates (`as u16`), a verified cddl-codegen enforcement gap the row's vector attempt
-exposed (`ROADMAP.md` § findings) — so it carries no `class="constraint"` vector until the fix lands.
+vector; and `ctl.size.uint` leans on RUBY too (the rust CLI misvalidates any control-op-carrying
+rule referenced as an array entry — the fourth oracle gap, `ROADMAP.md` § oracle gaps — which also
+keeps its accept side un-mintable), with the bare-form reject verified against the local-fixes
+oracle @ `cdba2b4`. `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.

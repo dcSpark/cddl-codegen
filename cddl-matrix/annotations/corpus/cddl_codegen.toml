@@ -541,12 +541,6 @@ status = "unsupported"
 reason = "binary integer literal (`0b1010`) rejected at parse — the same upstream cddl-crate pest-lexer gap (no `0b` alternative; lexes as uint `0` + identifier `b1010`); cddl-codegen's checked parse entry rejects gracefully, which is safer than the crate CLI's unchecked mis-parse. Flip candidate only on an upstream fix (ROADMAP § findings)."
 
 [[note]]
-id = "value.number.hexfloat"
-status = "unsupported"
-reason = "hexfloat literal member (`m = [v: 0x1.8p+1]` = 3.0) generates but does not compile — whole-valued float fixed values are Display-formatted, dropping the `.0` (E0308 at the Float emission sites); `v: 3.5` compiles, so the gap is the formatting, not float fixed members per se (ROADMAP § findings)."
-code_anchor = "cbor_event::Special::Float("
-
-[[note]]
 id = "value.text"
 status = "unsupported"
 reason = "top-level text-literal type (`marker = \"v1\"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above."

@@ -45,6 +45,19 @@ impl Deserialize for TaggedRanged {
         let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
             (42, tag_enc) => raw
                 .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|(x, enc)| {
+                    if x > 255 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: x as isize,
+                            min: Some(0),
+                            max: Some(255),
+                        }
+                        .into())
+                    } else {
+                        Ok((x, enc))
+                    }
+                })
                 .map(|(x, enc)| (x as u8, Some(tag_enc), Some(enc)))?,
             (tag, _enc) => {
                 return Err(DeserializeFailure::TagMismatch {

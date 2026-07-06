@@ -1435,6 +1435,45 @@ impl AsRef<cddl_lib::FloatBounds> for FloatBounds {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct FloatFixedWhole(cddl_lib::FloatFixedWhole);
+
+#[wasm_bindgen]
+impl FloatFixedWhole {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatFixedWhole, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::FloatFixedWhole::new())
+    }
+}
+
+impl From<cddl_lib::FloatFixedWhole> for FloatFixedWhole {
+    fn from(native: cddl_lib::FloatFixedWhole) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatFixedWhole> for cddl_lib::FloatFixedWhole {
+    fn from(wasm: FloatFixedWhole) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatFixedWhole> for FloatFixedWhole {
+    fn as_ref(&self) -> &cddl_lib::FloatFixedWhole {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct FloatRange(cddl_lib::FloatRange);
 
 #[wasm_bindgen]

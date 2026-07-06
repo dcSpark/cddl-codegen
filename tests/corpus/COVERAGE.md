@@ -227,7 +227,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➖ | Binary integer literal (0b…) | binary integer literal (`0b1010`) rejected at parse — the same upstream cddl-crate pest-lexer gap (no `0b` alternative; lexes as uint `0` + identifier `b1010`); cddl-codegen's checked parse entry rejects gracefully, which is safer than the crate CLI's unchecked mis-parse. Flip candidate only on an upstream fix (ROADMAP § findings). |
 | `value.number.hex` | ➖ | Hexadecimal integer literal (0x…) | hex integer literal (`0x10`) rejected at parse — an UPSTREAM cddl-crate pest-lexer bug (mis-matched as an exponent-optional hexfloat, "Invalid hexfloat"), not codegen logic; both the pinned fork and released 0.10.x reject it. Flip candidate only when the pinned `cddl` dependency picks up an upstream fix (ROADMAP § findings; repro draft/rust-cddl-radix-int-literal-gap.md). |
-| `value.number.hexfloat` | ➖ | Hexadecimal float literal (hexfloat) | hexfloat literal member (`m = [v: 0x1.8p+1]` = 3.0) generates but does not compile — whole-valued float fixed values are Display-formatted, dropping the `.0` (E0308 at the Float emission sites); `v: 3.5` compiles, so the gap is the formatting, not float fixed members per se (ROADMAP § findings).  [`cbor_event::Special::Float(`] |
+| `value.number.hexfloat` | ➕ | Hexadecimal float literal (hexfloat) | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
 
 ## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
@@ -324,7 +324,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **106** — ✅ 54 covered · ➕ 18 supported-untested · ⚠️ 6 partial · ➖ 28 not supported
+- Features: **106** — ✅ 54 covered · ➕ 19 supported-untested · ⚠️ 6 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 50
 

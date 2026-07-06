@@ -560,7 +560,9 @@ impl GenerationScope {
                             FixedValue::Bool(b) => ("bool", b.to_string()),
                             FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
-                            FixedValue::Float(f) => ("f64", f.to_string()),
+                            // float_literal, not Display: a whole-valued f64 would render as an
+                            // integer literal in the f64-returning wasm constant fn (E0308).
+                            FixedValue::Float(f) => ("f64", float_fixed_literal(*f)),
                             FixedValue::Text(s) => {
                                 ("String", format!("\"{}\".to_owned()", escape_rust_str(s)))
                             }
@@ -1884,8 +1886,11 @@ impl GenerationScope {
                         }
                     }
                     FixedValue::Float(f) => {
+                        // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
+                        // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
                         body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Float({f})){line_ender}"
+                            "{serializer_use}.write_special(cbor_event::Special::Float({})){line_ender}",
+                            float_fixed_literal(*f)
                         ));
                     }
                     FixedValue::Text(s) => {
@@ -2592,9 +2597,15 @@ impl GenerationScope {
                                 "let {}_value = {}.float()?;",
                                 config.var_name, deserializer_name
                             ));
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != {}", config.var_name, x));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, x));
+                            // float_literal, not Display: `{}` on a whole-valued f64 drops the
+                            // decimal point (3.0 -> "3"), emitting integer literals in the f64
+                            // compare and Key::Float positions (E0308).
+                            let mut compare_block = Block::new(format!(
+                                "if {}_value != {}",
+                                config.var_name,
+                                float_fixed_literal(*x)
+                            ));
+                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, float_fixed_literal(*x)));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
                                 unimplemented!("preserve_encodings is not implemented for float")
@@ -2631,14 +2642,88 @@ impl GenerationScope {
                             )),
                             None => Cow::Borrowed(""),
                         };
+                    // --- width guards for the narrowing casts below ---------------------------
+                    // Every integer read on this path comes back WIDER than the target type (u64
+                    // from the unsigned readers, i64/i128 from the nint readers), so each `as`
+                    // cast must be preceded by a check that makes it lossless: a bare cast
+                    // silently truncated out-of-width values (`uint .size 2` -> u16 decoded 65536
+                    // "successfully" as 0), and the exact-width collapses (`i8 = -128..127`)
+                    // carry NO residual `bounds`, so nothing else rejected. The guard reuses the
+                    // authored-bounds `.and_then(..)` shape and the existing RangeCheck failure
+                    // (reporting the full type window), and is SKIPPED when the authored/
+                    // classified check already caps the failing side (subsuming it), so bounded
+                    // emissions stay byte-identical.
+                    let prim_window = |p: Primitive| match p {
+                        Primitive::U8 => (0i128, u8::MAX as i128),
+                        Primitive::U16 => (0i128, u16::MAX as i128),
+                        Primitive::U32 => (0i128, u32::MAX as i128),
+                        Primitive::I8 => (i8::MIN as i128, i8::MAX as i128),
+                        Primitive::I16 => (i16::MIN as i128, i16::MAX as i128),
+                        Primitive::I32 => (i32::MIN as i128, i32::MAX as i128),
+                        Primitive::I64 => (i64::MIN as i128, i64::MAX as i128),
+                        _ => unreachable!("width guard only applies to narrowing-cast primitives"),
+                    };
+                    // `.and_then(..)` rejecting `cond` with the full type window via RangeCheck.
+                    // `pat`/`ok` carry the value-only vs (value, encoding)-tuple shapes.
+                    // `converted`: whether an earlier chain stage (an authored-bounds fn or the
+                    // site's error_convert) already mapped the error to DeserializeError — when
+                    // nothing did, the guard prepends the conversion itself (same "consistent E
+                    // for the and_then" rule as the bounds fns).
+                    let width_reject = |cond: &str,
+                                        wmin: i128,
+                                        wmax: i128,
+                                        pat: &str,
+                                        ok: &str,
+                                        converted: bool| {
+                        format!(
+                            "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as isize, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
+                            if converted { "" } else { convert_err_to_ours },
+                        )
+                    };
+                    // A guard is superfluous when the emitted check already caps the arm's failing
+                    // side: an authored/classified upper bound <= the type max (uint side) or lower
+                    // bound >= the type min (nint side). A min>max pair is the `.ne` EXCLUSION
+                    // encoding — it caps nothing.
+                    let upper_caps = |bounds: &Option<(Option<i128>, Option<i128>)>, wmax: i128| matches!(bounds, Some((mn, Some(mx))) if mn.is_none_or(|mn| mn <= *mx) && *mx <= wmax);
+                    let lower_caps = |bounds: &Option<(Option<i128>, Option<i128>)>, wmin: i128| matches!(bounds, Some((Some(mn), mx)) if mx.is_none_or(|mx| *mn <= mx) && *mn >= wmin);
+                    let uint_arm_needs_width = |arm: &SignArmBounds, wmax: i128| match arm {
+                        // the whole arm rejects unconditionally — no value ever reaches the cast
+                        SignArmBounds::Empty(_) => false,
+                        SignArmBounds::Check(bounds) => !upper_caps(&Some(*bounds), wmax),
+                        SignArmBounds::Unconstrained => true,
+                    };
+                    let nint_arm_needs_width = |arm: &SignArmBounds, wmin: i128| match arm {
+                        SignArmBounds::Empty(_) => false,
+                        SignArmBounds::Check(bounds) => !lower_caps(&Some(*bounds), wmin),
+                        SignArmBounds::Unconstrained => true,
+                    };
+                    // `width`: the optional (wmin, wmax) window for a width guard on the value
+                    // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
+                    // None for every width-safe caller (bytes/text/u64/n64).
                     let mut deser_primitive =
-                        |mut final_exprs: Vec<String>, func: &str, x: &str, x_expr: &str| {
+                        |mut final_exprs: Vec<String>,
+                         func: &str,
+                         x: &str,
+                         x_expr: &str,
+                         width: Option<(i128, i128)>| {
                             if cli.preserve_encodings {
                                 let enc_expr = match func {
                                     "text" | "bytes" => "StringEncoding::from(enc)",
                                     _ => "Some(enc)",
                                 };
                                 final_exprs.push(enc_expr.to_owned());
+                                let width_fn = width
+                                    .map(|(wmin, wmax)| {
+                                        width_reject(
+                                            &format!("x > {wmax}"),
+                                            wmin,
+                                            wmax,
+                                            "(x, enc)",
+                                            "(x, enc)",
+                                            !error_convert.is_empty(),
+                                        )
+                                    })
+                                    .unwrap_or_default();
                                 let enc_map_fn = match &type_cfg.bounds {
                                     // always convert error to have consistent E for the and_then
                                     Some(bounds) => format!(
@@ -2659,21 +2744,36 @@ impl GenerationScope {
                                     ),
                                 };
                                 deser_code.content.line(&format!(
-                                    "{}{}.{}_sz(){}{}{}",
+                                    "{}{}.{}_sz(){}{}{}{}",
                                     before_after.before_str(true),
                                     deserializer_name,
                                     func,
                                     error_convert,
+                                    width_fn,
                                     enc_map_fn,
                                     before_after.after_str(true)
                                 ));
                             } else {
+                                let bounds_fn = non_preserve_bounds_fn(x, &type_cfg.bounds);
+                                let width_fn = width
+                                    .map(|(wmin, wmax)| {
+                                        width_reject(
+                                            &format!("x > {wmax}"),
+                                            wmin,
+                                            wmax,
+                                            "x",
+                                            "x",
+                                            !bounds_fn.is_empty(),
+                                        )
+                                    })
+                                    .unwrap_or_default();
                                 deser_code.content.line(&format!(
-                                    "{}{}.{}(){}? as {}{}",
+                                    "{}{}.{}(){}{}? as {}{}",
                                     before_after.before_str(false),
                                     deserializer_name,
                                     func,
-                                    non_preserve_bounds_fn(x, &type_cfg.bounds),
+                                    bounds_fn,
+                                    width_fn,
                                     p,
                                     before_after.after_str(false)
                                 ));
@@ -2682,16 +2782,24 @@ impl GenerationScope {
                         };
                     match p {
                         Primitive::Bytes => {
-                            deser_primitive(config.final_exprs, "bytes", "bytes", "bytes")
+                            deser_primitive(config.final_exprs, "bytes", "bytes", "bytes", None)
                         }
-                        Primitive::U8 | Primitive::U16 | Primitive::U32 => deser_primitive(
-                            config.final_exprs,
-                            "unsigned_integer",
-                            "x",
-                            &format!("x as {}", p),
-                        ),
+                        Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+                            // The u64 read is wider than the target: width-guard the cast unless
+                            // an authored upper bound already caps it.
+                            let (wmin, wmax) = prim_window(*p);
+                            let width =
+                                (!upper_caps(&type_cfg.bounds, wmax)).then_some((wmin, wmax));
+                            deser_primitive(
+                                config.final_exprs,
+                                "unsigned_integer",
+                                "x",
+                                &format!("x as {}", p),
+                                width,
+                            )
+                        }
                         Primitive::U64 => {
-                            deser_primitive(config.final_exprs, "unsigned_integer", "x", "x")
+                            deser_primitive(config.final_exprs, "unsigned_integer", "x", "x", None)
                         }
                         Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
                             // A signed int splits across two CBOR major types (uint arm / nint arm),
@@ -2702,6 +2810,13 @@ impl GenerationScope {
                             // rather than a raw full-window check.
                             let uint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Uint);
                             let nint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Nint);
+                            // Width guards for the per-arm narrowing casts: the uint arm reads a
+                            // u64 (can exceed the type max — 2^63 would wrap i64 negative) and the
+                            // nint readers return i64/i128 (can fall below the type min). Skipped
+                            // when the arm's classified check already caps that side.
+                            let (wmin, wmax) = prim_window(*p);
+                            let uint_width = uint_arm_needs_width(&uint_arm, wmax);
+                            let nint_width = nint_arm_needs_width(&nint_arm, wmin);
                             let mut type_check = Block::new(format!(
                                 "{}match {}.cbor_type()?",
                                 before_after.before_str(false),
@@ -2718,21 +2833,47 @@ impl GenerationScope {
                                     )),
                                     None => Cow::Borrowed(""),
                                 };
+                                let uint_bounds_fn = bounds_fn(&uint_arm);
                                 let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                                 pos.line(format!(
-                                    "let (x, enc) = {}.unsigned_integer_sz(){}?;",
+                                    "let (x, enc) = {}.unsigned_integer_sz(){}{}?;",
                                     deserializer_name,
-                                    bounds_fn(&uint_arm)
+                                    uint_bounds_fn,
+                                    if uint_width {
+                                        width_reject(
+                                            &format!("x > {wmax}"),
+                                            wmin,
+                                            wmax,
+                                            "(x, enc)",
+                                            "(x, enc)",
+                                            !uint_bounds_fn.is_empty(),
+                                        )
+                                    } else {
+                                        String::new()
+                                    }
                                 ))
                                 .line(format!("(x as {}, Some(enc))", p))
                                 .after(",");
                                 type_check.push_block(pos);
                                 // let this cover both the negative int case + error case
+                                let nint_bounds_fn = bounds_fn(&nint_arm);
                                 let mut neg = Block::new("_ =>");
                                 neg.line(format!(
-                                    "let (x, enc) = {}.negative_integer_sz(){}?;",
+                                    "let (x, enc) = {}.negative_integer_sz(){}{}?;",
                                     deserializer_name,
-                                    bounds_fn(&nint_arm)
+                                    nint_bounds_fn,
+                                    if nint_width {
+                                        width_reject(
+                                            &format!("x < {wmin}"),
+                                            wmin,
+                                            wmax,
+                                            "(x, enc)",
+                                            "(x, enc)",
+                                            !nint_bounds_fn.is_empty(),
+                                        )
+                                    } else {
+                                        String::new()
+                                    }
                                 ))
                                 .line(format!("(x as {}, Some(enc))", p))
                                 .after(",");
@@ -2748,11 +2889,17 @@ impl GenerationScope {
                                         None => Cow::Borrowed(""),
                                     }
                                 };
+                                let uint_arm_fn = non_preserve_arm_fn(&uint_arm, "x");
                                 type_check
                                 .line(format!(
-                                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}? as {},",
+                                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}{}? as {},",
                                     deserializer_name,
-                                    non_preserve_arm_fn(&uint_arm, "x"),
+                                    uint_arm_fn,
+                                    if uint_width {
+                                        width_reject(&format!("x > {wmax}"), wmin, wmax, "x", "x", !uint_arm_fn.is_empty())
+                                    } else {
+                                        String::new()
+                                    },
                                     p));
                                 // https://github.com/primetype/cbor_event/issues/9
                                 // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints.
@@ -2771,14 +2918,33 @@ impl GenerationScope {
                                         None => Cow::Borrowed(""),
                                     };
                                     type_check.line(format!(
-                                    "_ => {}.negative_integer_sz(){}.map(|(x, _enc)| x)? as {},",
-                                    deserializer_name, bounds_fn, p
+                                    "_ => {}.negative_integer_sz(){}{}.map(|(x, _enc)| x)? as {},",
+                                    deserializer_name, bounds_fn,
+                                    if nint_width {
+                                        width_reject(&format!("x < {wmin}"), wmin, wmax, "(x, _enc)", "(x, _enc)", !bounds_fn.is_empty())
+                                    } else {
+                                        String::new()
+                                    },
+                                    p
                                 ));
                                 } else {
+                                    let nint_arm_fn = non_preserve_arm_fn(&nint_arm, "x");
                                     type_check.line(format!(
-                                        "_ => {}.negative_integer(){}? as {},",
+                                        "_ => {}.negative_integer(){}{}? as {},",
                                         deserializer_name,
-                                        non_preserve_arm_fn(&nint_arm, "x"),
+                                        nint_arm_fn,
+                                        if nint_width {
+                                            width_reject(
+                                                &format!("x < {wmin}"),
+                                                wmin,
+                                                wmax,
+                                                "x",
+                                                "x",
+                                                !nint_arm_fn.is_empty(),
+                                            )
+                                        } else {
+                                            String::new()
+                                        },
                                         p
                                     ));
                                 }
@@ -2793,7 +2959,10 @@ impl GenerationScope {
                                     config.final_exprs,
                                     "negative_integer",
                                     "x",
+                                    // width-safe: the nint domain (-2^64..-1) maps onto the u64
+                                    // magnitude exactly, so no guard is needed
                                     "(x + 1).abs() as u64",
+                                    None,
                                 )
                             } else {
                                 // https://github.com/primetype/cbor_event/issues/9
@@ -2819,7 +2988,9 @@ impl GenerationScope {
                                 ));
                             }
                         }
-                        Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s"),
+                        Primitive::Str => {
+                            deser_primitive(config.final_exprs, "text", "s", "s", None)
+                        }
                         Primitive::Bool => {
                             // no encoding differences for bool. Use `bool::deserialize` (like the
                             // float arms below) rather than `raw.bool().map_err(Into::into)`: the
@@ -4070,6 +4241,18 @@ fn range_check_err(e: &str, min: Option<i128>, max: Option<i128>, return_err: bo
 /// `f64` suffix so it types as f64 even when compared against an f32-derived value.
 fn float_literal(v: f64) -> String {
     format!("{v:?}f64")
+}
+
+/// The unsuffixed twin of `float_literal` for the FIXED-VALUE emission sites (serialize write,
+/// deserialize compare, mismatch-error construction, wasm constant): `{:?}` never drops the
+/// decimal point (3.0 -> "3.0", where Display renders "3" — an integer literal in an f64
+/// position, E0308), while non-whole values render byte-identically to Display (3.5 -> "3.5").
+/// Every such site is already f64-typed, so no suffix is needed. NaN/inf cannot reach these
+/// sites: a CDDL fixed float value comes from the grammar's decimal/hexfloat lexemes, which
+/// denote finite values.
+fn float_fixed_literal(v: f64) -> String {
+    debug_assert!(v.is_finite(), "fixed-value float literal must be finite");
+    format!("{v:?}")
 }
 
 /// The ACCEPT-form condition for a float window over `val` (a NaN-safe conjunction of the present

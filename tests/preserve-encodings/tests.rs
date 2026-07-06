@@ -1530,4 +1530,37 @@ mod tests {
             assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
         }
     }
+
+    #[test]
+    fn width_collapse_rejects() {
+        // Exact-width collapses (uint .size 2 -> u16, int .size 1 -> i8, int .size 8 -> i64)
+        // carry no residual bounds; preserve-mode reads come back WIDER (u64 from
+        // unsigned_integer_sz, i128 from negative_integer_sz), so each narrowing cast must be
+        // width-guarded — a bare `x as u16`/`as i8`/`as i64` silently truncated (65536 decoded
+        // "successfully" as 0), invisible to round-trips by construction.
+        let make = |u16v: i128, i8v: i128, i64v: i128| {
+            let cbor = [
+                arr_def(3),
+                cbor_int(u16v, Sz::Eight),
+                cbor_int(i8v, Sz::Eight),
+                cbor_int(i64v, Sz::Eight),
+            ]
+            .concat();
+            WidthCollapse::from_cbor_bytes(&cbor)
+        };
+        // Boundary (exactly-representable) values decode.
+        assert!(make(65535, 0, 0).is_ok());
+        assert!(make(0, 127, 0).is_ok());
+        assert!(make(0, -128, 0).is_ok());
+        assert!(make(0, 0, i64::MAX as i128).is_ok());
+        assert!(make(0, 0, i64::MIN as i128).is_ok());
+        // One-past-width values must REJECT (pre-fix: silently truncate-decoded).
+        assert!(make(65536, 0, 0).is_err());
+        assert!(make(0, 128, 0).is_err());
+        assert!(make(0, -129, 0).is_err());
+        assert!(make(0, 0, (i64::MAX as i128) + 1).is_err());
+        assert!(make(0, 0, (i64::MIN as i128) - 1).is_err());
+        // The guarded path still round-trips (including encoding preservation via deser_test).
+        deser_test(&WidthCollapse::new(65535, -128, i64::MIN));
+    }
 }
