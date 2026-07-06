@@ -8870,6 +8870,12 @@ fn generate_wrapper_struct(
     if min_max.is_some() || float_min_max.is_some() {
         assert!(types.can_new_fail(type_name));
     }
+    // The inner-value getter name: an explicit `@newtype <name>` renames it, otherwise every
+    // wrapper (bare tag, plain `@newtype`, bounded/range) exposes the inner value under `get`.
+    let getter_name = match struct_config.newtype_getter.as_ref() {
+        Some(Some(name)) => name.as_str(),
+        _ => "get",
+    };
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true, cli);
         let mut wasm_new = codegen::Function::new("new");
@@ -8877,28 +8883,32 @@ fn generate_wrapper_struct(
             .arg("inner", field_type.for_wasm_param(types))
             .vis("pub");
 
+        // Delegate to the rust wrapper's `new`, mirroring the enum-variant wasm ctor: convert the
+        // wasm inner to the rust inner (fallibility, if any, lives in the rust `new`, so pass
+        // can_fail = false here), then let the rust ctor produce the native wrapper. Building
+        // `Self(inner.into())` directly would need two chained `.into()`s for a Rust-typed inner
+        // (wasm→native inner, then native inner→native wrapper) with an uninferable middle type.
+        let from_wasm_expr = field_type.from_wasm_boundary_clone(types, "inner", false);
+        let ctor = format!(
+            "{}::new({})",
+            rust_crate_struct_from_wasm(types, type_name, cli),
+            ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
+        );
         if types.can_new_fail(type_name) {
             // you can't use Self in a parameter in wasm_bindgen for some reason
             wasm_new
-                .ret("Result<{}, JsError>")
-                // TODO: test
-                .line("inner.try_into().map(Into::into).map_err(Into::into)");
+                .ret(format!("Result<{type_name}, JsError>"))
+                .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
         } else {
-            let mut ops = field_type.from_wasm_boundary_clone(types, "inner", false);
-            ops.push(ToWasmBoundaryOperations::Into);
-            wasm_new.ret("Self").line(format!(
-                "Self({})",
-                ToWasmBoundaryOperations::format(ops.into_iter())
-            ));
+            wasm_new.ret("Self").line(format!("Self({ctor})"));
         }
-        if let Some(Some(getter)) = struct_config.newtype_getter.as_ref() {
-            let mut get = codegen::Function::new(getter);
-            get.vis("pub")
-                .arg_ref_self()
-                .ret(field_type.for_wasm_return(types))
-                .line(field_type.to_wasm_boundary(types, &format!("self.0.{getter}()"), false));
-            wrapper.s_impl.push_fn(get);
-        }
+        wrapper.s_impl.push_fn(wasm_new);
+        let mut get = codegen::Function::new(getter_name);
+        get.vis("pub")
+            .arg_ref_self()
+            .ret(field_type.for_wasm_return(types))
+            .line(field_type.to_wasm_boundary(types, &format!("self.0.{getter_name}()"), false));
+        wrapper.s_impl.push_fn(get);
         wrapper.push(gen_scope, types);
     }
 
@@ -9089,8 +9099,8 @@ fn generate_wrapper_struct(
     if field_type.is_copy(types) && !cli.preserve_encodings {
         s.derive("Copy");
     }
-    if let Some(Some(getter)) = struct_config.newtype_getter.as_ref() {
-        let mut get = codegen::Function::new(getter);
+    {
+        let mut get = codegen::Function::new(getter_name);
         get.vis("pub").arg_ref_self();
         if field_type.is_copy(types) {
             get.ret(field_type.for_rust_member(types, false, cli))

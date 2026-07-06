@@ -27,6 +27,10 @@ pub struct Hash {
 }
 
 impl Hash {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.inner
+    }
+
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 32 {
             return Err(DeserializeError::new(

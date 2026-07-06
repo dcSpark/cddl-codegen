@@ -9,7 +9,8 @@ use nom::{
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
-    /// None = not newtype, Some(Some) = generate getter, Some(None) = no getter
+    /// None = not newtype, Some(None) = getter under the default name `get`,
+    /// Some(Some(name)) = getter renamed to `name`
     pub newtype: Option<Option<String>>,
     pub no_alias: bool,
     pub used_as_key: bool,

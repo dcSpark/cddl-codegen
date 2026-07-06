@@ -101,6 +101,14 @@ impl Tagged {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::Tagged::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::Tagged> for Tagged {
@@ -150,6 +158,14 @@ impl TaggedNewtype {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::TaggedNewtype::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 

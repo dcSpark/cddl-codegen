@@ -1487,6 +1487,16 @@ impl FloatRange {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: f64) -> Result<FloatRange, JsError> {
+        cddl_lib::FloatRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> f64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::FloatRange> for FloatRange {
@@ -1521,6 +1531,16 @@ impl FloatRangeExcl {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: f64) -> Result<FloatRangeExcl, JsError> {
+        cddl_lib::FloatRangeExcl::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> f64 {
+        self.0.get()
     }
 }
 
@@ -1780,6 +1800,16 @@ impl Hash {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<Hash, JsError> {
+        cddl_lib::Hash::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
     }
 }
 
@@ -2053,6 +2083,16 @@ impl NintGeNewtype {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: u64) -> Result<NintGeNewtype, JsError> {
+        cddl_lib::NintGeNewtype::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::NintGeNewtype> for NintGeNewtype {
@@ -2087,6 +2127,16 @@ impl NintLeNewtype {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<NintLeNewtype, JsError> {
+        cddl_lib::NintLeNewtype::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
     }
 }
 
@@ -3905,6 +3955,16 @@ impl TaggedFloatRange {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: f64) -> Result<TaggedFloatRange, JsError> {
+        cddl_lib::TaggedFloatRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> f64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::TaggedFloatRange> for TaggedFloatRange {
@@ -3940,6 +4000,14 @@ impl TaggedFooBytes {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: &Foo) -> Self {
+        Self(cddl_lib::TaggedFooBytes::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> Foo {
+        self.0.get().clone().into()
+    }
 }
 
 impl From<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
@@ -3974,6 +4042,14 @@ impl TaggedText {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::TaggedText::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
     }
 }
 
@@ -4227,6 +4303,16 @@ impl TopLevelNegRange {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: i64) -> Result<TopLevelNegRange, JsError> {
+        cddl_lib::TopLevelNegRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::TopLevelNegRange> for TopLevelNegRange {
@@ -4261,6 +4347,16 @@ impl TopLevelPosRange {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<TopLevelPosRange, JsError> {
+        cddl_lib::TopLevelPosRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
     }
 }
 
@@ -4339,6 +4435,16 @@ impl TopLevelTaggedRange {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<TopLevelTaggedRange, JsError> {
+        cddl_lib::TopLevelTaggedRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
     }
 }
 
@@ -4535,6 +4641,10 @@ impl WrapperInt {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::WrapperInt::new(inner))
+    }
+
     pub fn custom_getter(&self) -> u64 {
         self.0.custom_getter()
     }
@@ -4573,6 +4683,14 @@ impl WrapperList {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::WrapperList::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::WrapperList> for WrapperList {
@@ -4607,6 +4725,14 @@ impl WrapperTable {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapU64ToU64) -> Self {
+        Self(cddl_lib::WrapperTable::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapU64ToU64 {
+        self.0.get().clone().into()
     }
 }
 

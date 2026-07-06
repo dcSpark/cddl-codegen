@@ -73,6 +73,14 @@ impl WrappedArr {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::WrappedArr::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::WrappedArr> for WrappedArr {
@@ -107,6 +115,14 @@ impl WrappedMap {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapU64ToText) -> Self {
+        Self(cddl_lib::WrappedMap::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapU64ToText {
+        self.0.get().clone().into()
     }
 }
 

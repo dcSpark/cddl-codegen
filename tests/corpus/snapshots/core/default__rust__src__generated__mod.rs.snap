@@ -569,6 +569,10 @@ impl Default for FloatFixedWhole {
 pub struct FloatRange(f64);
 
 impl FloatRange {
+    pub fn get(&self) -> f64 {
+        self.0
+    }
+
     pub fn new(inner: f64) -> Result<Self, DeserializeError> {
         if !(inner >= 0.5f64 && inner <= 10.5f64) {
             return Err(DeserializeError::new(
@@ -598,6 +602,10 @@ impl TryFrom<f64> for FloatRange {
 pub struct FloatRangeExcl(f64);
 
 impl FloatRangeExcl {
+    pub fn get(&self) -> f64 {
+        self.0
+    }
+
     pub fn new(inner: f64) -> Result<Self, DeserializeError> {
         if !(inner >= 0.5f64 && inner < 10.5f64) {
             return Err(DeserializeError::new(
@@ -685,6 +693,10 @@ impl GroupChoice {
 pub struct Hash(Vec<u8>);
 
 impl Hash {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 8 {
             return Err(DeserializeError::new(
@@ -754,6 +766,10 @@ impl Default for MapWithDefaults {
 pub struct NintGeNewtype(u64);
 
 impl NintGeNewtype {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 4 {
             return Err(DeserializeError::new(
@@ -781,6 +797,10 @@ impl TryFrom<u64> for NintGeNewtype {
 pub struct NintLeNewtype(u64);
 
 impl NintLeNewtype {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 4 {
             return Err(DeserializeError::new(
@@ -1378,6 +1398,10 @@ impl TableMapWrapper {
 pub struct TaggedFloatRange(f64);
 
 impl TaggedFloatRange {
+    pub fn get(&self) -> f64 {
+        self.0
+    }
+
     pub fn new(inner: f64) -> Result<Self, DeserializeError> {
         if !(inner >= 0.5f64 && inner <= 10.5f64) {
             return Err(DeserializeError::new(
@@ -1407,6 +1431,10 @@ impl TryFrom<f64> for TaggedFloatRange {
 pub struct TaggedFooBytes(Foo);
 
 impl TaggedFooBytes {
+    pub fn get(&self) -> &Foo {
+        &self.0
+    }
+
     pub fn new(inner: Foo) -> Self {
         Self(inner)
     }
@@ -1422,6 +1450,10 @@ impl From<Foo> for TaggedFooBytes {
 pub struct TaggedText(String);
 
 impl TaggedText {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -1475,6 +1507,10 @@ pub type TopLevelArray = Vec<u64>;
 pub struct TopLevelNegRange(i64);
 
 impl TopLevelNegRange {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
     pub fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > -3 {
             return Err(DeserializeError::new(
@@ -1502,6 +1538,10 @@ impl TryFrom<i64> for TopLevelNegRange {
 pub struct TopLevelPosRange(u64);
 
 impl TopLevelPosRange {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
@@ -1540,6 +1580,10 @@ impl TopLevelSingleElem {
 pub struct TopLevelTaggedRange(u64);
 
 impl TopLevelTaggedRange {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
@@ -1641,6 +1685,10 @@ impl From<u64> for WrapperInt {
 pub struct WrapperList(Vec<u64>);
 
 impl WrapperList {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u64>) -> Self {
         Self(inner)
     }
@@ -1662,6 +1710,10 @@ impl From<WrapperList> for Vec<u64> {
 pub struct WrapperTable(BTreeMap<u64, u64>);
 
 impl WrapperTable {
+    pub fn get(&self) -> &BTreeMap<u64, u64> {
+        &self.0
+    }
+
     pub fn new(inner: BTreeMap<u64, u64>) -> Self {
         Self(inner)
     }

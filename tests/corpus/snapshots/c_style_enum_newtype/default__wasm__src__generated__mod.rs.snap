@@ -29,6 +29,14 @@ impl WrappedEnum {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
+
+    pub fn new(inner: FixedEnum) -> Self {
+        Self(cddl_lib::WrappedEnum::new(inner.into()))
+    }
+
+    pub fn get(&self) -> FixedEnum {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::WrappedEnum> for WrappedEnum {

@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct WrappedArr(Vec<u64>);
 
 impl WrappedArr {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u64>) -> Self {
         Self(inner)
     }
@@ -39,6 +43,10 @@ impl From<WrappedArr> for Vec<u64> {
 pub struct WrappedMap(BTreeMap<u64, String>);
 
 impl WrappedMap {
+    pub fn get(&self) -> &BTreeMap<u64, String> {
+        &self.0
+    }
+
     pub fn new(inner: BTreeMap<u64, String>) -> Self {
         Self(inner)
     }

@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct TaggedDefault(u64);
 
 impl TaggedDefault {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }

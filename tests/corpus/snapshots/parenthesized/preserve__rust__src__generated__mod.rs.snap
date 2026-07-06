@@ -93,6 +93,10 @@ pub struct NewtypeViaParens {
 }
 
 impl NewtypeViaParens {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
     pub fn new(inner: u64) -> Self {
         Self {
             inner,

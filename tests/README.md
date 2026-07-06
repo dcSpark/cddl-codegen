@@ -625,8 +625,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
     (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`, `mstruct`
     (map-representation Record struct — bareword-keyed map), `cborwrap`/`cborwrap2`, `tag` (a CBOR-tag
-    wrapper struct — no wasm `new` and no inner-value accessor, crosses only via `From<cddl_lib::Tg>` /
-    cbor bytes), `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
+    wrapper struct — crosses via a wasm `new(inner)` ctor and an inner-value `get()` accessor, plus
+    `From<cddl_lib::Tg>` / cbor bytes), `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
     `nullable` (`Option<T>`), `generic`, `chain`, `extern`, `rawbytes` (a user-supplied
     `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix

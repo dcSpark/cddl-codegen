@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct BytesWrapper(Vec<u8>);
 
 impl BytesWrapper {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
     pub fn new(inner: Vec<u8>) -> Self {
         Self(inner)
     }
@@ -74,6 +78,10 @@ impl schemars::JsonSchema for BytesWrapper {
 pub struct CustomWrapper(u64);
 
 impl CustomWrapper {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }
@@ -89,6 +97,10 @@ impl From<u64> for CustomWrapper {
 pub struct I16Wrapper(i16);
 
 impl I16Wrapper {
+    pub fn get(&self) -> i16 {
+        self.0
+    }
+
     pub fn new(inner: i16) -> Result<Self, DeserializeError> {
         if inner < -32768 || inner > 32767 {
             return Err(DeserializeError::new(
@@ -154,6 +166,10 @@ impl schemars::JsonSchema for I16Wrapper {
 pub struct I64Wrapper(i64);
 
 impl I64Wrapper {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
     pub fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -9223372036854775808 || inner > 9223372036854775807 {
             return Err(DeserializeError::new(
@@ -313,6 +329,10 @@ pub enum IntError {
 pub struct IntWrapper(Int);
 
 impl IntWrapper {
+    pub fn get(&self) -> &Int {
+        &self.0
+    }
+
     pub fn new(inner: Int) -> Self {
         Self(inner)
     }
@@ -361,6 +381,10 @@ impl schemars::JsonSchema for IntWrapper {
 pub struct NintWrapper(u64);
 
 impl NintWrapper {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }
@@ -409,6 +433,10 @@ impl schemars::JsonSchema for NintWrapper {
 pub struct StrWrapper(String);
 
 impl StrWrapper {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
@@ -463,6 +491,10 @@ impl From<StrWrapper> for String {
 pub struct StructWrapper(U64Wrapper);
 
 impl StructWrapper {
+    pub fn get(&self) -> &U64Wrapper {
+        &self.0
+    }
+
     pub fn new(inner: U64Wrapper) -> Self {
         Self(inner)
     }
@@ -532,6 +564,10 @@ impl From<StructWrapper> for U64Wrapper {
 }
 
 impl U64Wrapper {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }
@@ -580,6 +616,10 @@ impl schemars::JsonSchema for U64Wrapper {
 pub struct U8Wrapper(u8);
 
 impl U8Wrapper {
+    pub fn get(&self) -> u8 {
+        self.0
+    }
+
     pub fn new(inner: u8) -> Result<Self, DeserializeError> {
         if inner > 255 {
             return Err(DeserializeError::new(

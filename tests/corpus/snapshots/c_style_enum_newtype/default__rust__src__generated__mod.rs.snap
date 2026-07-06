@@ -32,6 +32,10 @@ impl From<WrappedEnum> for FixedEnum {
 pub struct WrappedEnum(FixedEnum);
 
 impl WrappedEnum {
+    pub fn get(&self) -> FixedEnum {
+        self.0
+    }
+
     pub fn new(inner: FixedEnum) -> Self {
         Self(inner)
     }

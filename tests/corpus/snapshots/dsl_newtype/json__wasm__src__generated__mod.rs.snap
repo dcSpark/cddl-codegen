@@ -43,6 +43,14 @@ impl ProtocolMagic {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::ProtocolMagic::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::ProtocolMagic> for ProtocolMagic {

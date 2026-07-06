@@ -644,6 +644,10 @@ pub struct Hash {
 }
 
 impl Hash {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.inner
+    }
+
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 8 {
             return Err(DeserializeError::new(
@@ -1329,6 +1333,10 @@ pub struct String1632 {
 }
 
 impl String1632 {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 16 || inner.len() > 32 {
             return Err(DeserializeError::new(
@@ -1362,6 +1370,10 @@ pub struct String64 {
 }
 
 impl String64 {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() > 64 {
             return Err(DeserializeError::new(
@@ -1445,6 +1457,10 @@ pub struct TaggedFooBytes {
 }
 
 impl TaggedFooBytes {
+    pub fn get(&self) -> &Foo {
+        &self.inner
+    }
+
     pub fn new(inner: Foo) -> Self {
         Self {
             inner,
@@ -1466,6 +1482,10 @@ pub struct TaggedText {
 }
 
 impl TaggedText {
+    pub fn get(&self) -> &String {
+        &self.inner
+    }
+
     pub fn new(inner: String) -> Self {
         Self {
             inner,
@@ -1504,6 +1524,10 @@ pub struct TopLevelNegRange {
 }
 
 impl TopLevelNegRange {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
     pub fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > -3 {
             return Err(DeserializeError::new(
@@ -1537,6 +1561,10 @@ pub struct TopLevelPosRange {
 }
 
 impl TopLevelPosRange {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
@@ -1570,6 +1598,10 @@ pub struct TopLevelTaggedRange {
 }
 
 impl TopLevelTaggedRange {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
     pub fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
@@ -1683,6 +1715,10 @@ pub struct WrapperList {
 }
 
 impl WrapperList {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.inner
+    }
+
     pub fn new(inner: Vec<u64>) -> Self {
         Self {
             inner,
@@ -1710,6 +1746,10 @@ pub struct WrapperTable {
 }
 
 impl WrapperTable {
+    pub fn get(&self) -> &OrderedHashMap<u64, u64> {
+        &self.inner
+    }
+
     pub fn new(inner: OrderedHashMap<u64, u64>) -> Self {
         Self {
             inner,

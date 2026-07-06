@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct ProtocolMagic(u64);
 
 impl ProtocolMagic {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
     pub fn new(inner: u64) -> Self {
         Self(inner)
     }

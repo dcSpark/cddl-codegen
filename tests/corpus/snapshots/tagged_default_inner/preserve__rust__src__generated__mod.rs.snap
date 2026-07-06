@@ -27,6 +27,10 @@ pub struct TaggedDefault {
 }
 
 impl TaggedDefault {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
     pub fn new(inner: u64) -> Self {
         Self {
             inner,

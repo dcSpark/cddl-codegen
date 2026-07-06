@@ -43,6 +43,14 @@ impl BytesWrapper {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(cddl_lib::BytesWrapper::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::BytesWrapper> for BytesWrapper {
@@ -92,6 +100,14 @@ impl CustomWrapper {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::CustomWrapper::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
     }
 }
 
@@ -143,6 +159,16 @@ impl I16Wrapper {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: i16) -> Result<I16Wrapper, JsError> {
+        cddl_lib::I16Wrapper::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i16 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::I16Wrapper> for I16Wrapper {
@@ -192,6 +218,16 @@ impl I64Wrapper {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: i64) -> Result<I64Wrapper, JsError> {
+        cddl_lib::I64Wrapper::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
     }
 }
 
@@ -313,6 +349,14 @@ impl IntWrapper {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: &Int) -> Self {
+        Self(cddl_lib::IntWrapper::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> Int {
+        self.0.get().clone().into()
+    }
 }
 
 impl From<cddl_lib::IntWrapper> for IntWrapper {
@@ -362,6 +406,14 @@ impl NintWrapper {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::NintWrapper::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
     }
 }
 
@@ -413,6 +465,14 @@ impl StrWrapper {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::StrWrapper::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
 }
 
 impl From<cddl_lib::StrWrapper> for StrWrapper {
@@ -462,6 +522,14 @@ impl StructWrapper {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &U64Wrapper) -> Self {
+        Self(cddl_lib::StructWrapper::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64Wrapper {
+        self.0.get().clone().into()
     }
 }
 
@@ -657,6 +725,14 @@ impl U64Wrapper {
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::U64Wrapper::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
 }
 
 impl From<cddl_lib::U64Wrapper> for U64Wrapper {
@@ -706,6 +782,16 @@ impl U8Wrapper {
         serde_json::from_str(json)
             .map(Self)
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u8) -> Result<U8Wrapper, JsError> {
+        cddl_lib::U8Wrapper::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u8 {
+        self.0.get()
     }
 }
 

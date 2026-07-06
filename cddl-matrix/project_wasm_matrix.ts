@@ -60,9 +60,10 @@ const SHAPES: Record<string, Shape> = {
   mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst", roles: ["array-element"] },
   // transparent-to-wrapper via `.cbor` (follows the inner wrapper `Foo`)
   cborwrap: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo"], ty: "fb" },
-  // CBOR-tag wrapper struct — a distinct wasm-ABI shape: no wasm `new` and no inner-value accessor (it
-  // crosses only via `From<cddl_lib::Tg>` / cbor bytes), unlike `cborwrap` (transparent-to-wrapper, which
-  // resolves to the inner `Foo` wrapper) and the `coll`/`collmap` wrappers (which expose `new`/`add`/`insert`).
+  // CBOR-tag wrapper struct — a distinct wasm-ABI shape: crosses via a wasm `new(inner)` ctor and an
+  // inner-value `get()` accessor (plus `From<cddl_lib::Tg>` / cbor bytes), unlike `cborwrap`
+  // (transparent-to-wrapper, which resolves to the inner `Foo` wrapper) and the `coll`/`collmap`
+  // wrappers (which expose the richer `new`/`add`/`insert` collection API).
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg" },
   // c-style enum — Copy, re-exported by value (`pub use`)
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
@@ -117,9 +118,9 @@ const ROLES: Record<string, Role> = {
   // struct/optional-field serialization is executed by `tests/core` (its map-rep `Bar` has optional
   // fields) and the `mstruct` representative cell.
   "struct-field-opt": { wrap: (t) => `holder = [pre: uint, ? field0: ${t}]` }, // getter->Option<T>, set_field0
-  // wasm holder surface depends on the inner: cbor-bytes only for scalar/struct inners (no wasm
-  // `new`/getter — see docs/docs/wasm_differences.mdx § "Tag and @newtype wrappers"); a collection
-  // inner inherits the collection wrapper API. The role exercises the wrapper boundary conversions.
+  // the `@newtype` wrapper always exposes a wasm `new(inner)` ctor and an inner-value `get()`
+  // accessor (see docs/docs/wasm_differences.mdx § "Tag and @newtype wrappers"); a collection inner
+  // crosses as its own collection wrapper class. The role exercises the wrapper boundary conversions.
   "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` },
 };
 

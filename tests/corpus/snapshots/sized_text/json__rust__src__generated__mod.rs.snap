@@ -18,6 +18,10 @@ use std::convert::TryFrom;
 pub struct SizedText(String);
 
 impl SizedText {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
     pub fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 1 || inner.len() > 16 {
             return Err(DeserializeError::new(
