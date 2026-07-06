@@ -149,8 +149,8 @@ alt = '"[" group "]"'
 rfc = "RFC8610 §3.4; ABNF type2 / array"
 profile = "RFC8610"
 title = "Array"
-desc = "A CBOR array; fixed (heterogeneous) or variable (homogeneous via occurrence)."
-example = "foo = [uint, tstr, * bytes]"
+desc = "A CBOR array; fixed (heterogeneous) or variable (homogeneous via occurrence). The example isolates the heterogeneous form: an occurrence-bearing entry belongs to the occurrence-target containment cells (`contain.occurrence-target.grpent.member.*_array`) — the generator rejects count-permitting occurrences on heterogeneous array fields, which would misattribute this row's verdict."
+example = "foo = [uint, tstr, bytes]"
 roles = ["role.array-element"]
 encodings = ["enc.major4"]
 

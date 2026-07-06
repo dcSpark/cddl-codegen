@@ -372,6 +372,63 @@ fn zero_permitting_occurrence_on_keyed_map_field_rejects_gracefully() {
         .expect("`+` (lower bound >= 1) must still generate a mandatory field");
 }
 
+/// An occurrence marker on a heterogeneous ARRAY-record field — `[uint, tstr, * bytes]` — was
+/// silently narrowed to a mandatory exactly-once field, generating a decoder that rejects
+/// spec-valid CBOR with any other repetition count (invisible to round-trip tests; surfaced by
+/// spec-derived decode vectors). Unlike the keyed-map case above, `+` does NOT collapse in an
+/// array (repetitions are real items), so EVERY count-permitting marker must reject. This pins
+/// the graceful rejection AND the boundaries the guard must preserve:
+///   - `*` / `+` / `2*3`, in any position → Err (the marker admits repetition counts the
+///     narrowed field cannot decode);
+///   - `1*1` → Ok (exactly-once IS the semantics — same boundary the inline-group guard pins);
+///   - `?` → Ok (the supported optional-field path);
+///   - `[* bytes]` alone → Ok (single-entry groups take the homogeneous Vec path, not the record
+///     path — no narrowing happens there).
+#[test]
+fn occurrence_on_array_record_field_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_array_occur_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "array_occur_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    let msg = run("m = [uint, tstr, * bytes]\n", "star").expect_err(
+        "`*` on an array-record field must be a graceful Err (silent narrowing to one item is wrong)",
+    );
+    assert!(
+        msg.contains("array field") && msg.contains("rule `m`"),
+        "rejection message should be actionable and name the rule, got: {msg}"
+    );
+
+    run("m = [uint, + bytes]\n", "plus")
+        .expect_err("`+` admits >1 repetitions, which a single field cannot decode — must reject");
+    run("m = [uint, 2*3 bytes]\n", "bounded")
+        .expect_err("`2*3` admits 2..=3 repetitions — must reject (a lone item decoded green below the lower bound)");
+    run("m = [* bytes, uint]\n", "leading")
+        .expect_err("position-independent: a leading `*` narrows identically");
+
+    run("m = [uint, 1*1 bytes]\n", "exactly_once")
+        .expect("`1*1` is exactly-once — mandatory IS the honored semantics");
+    run("m = [uint, ? bytes]\n", "optional")
+        .expect("`?` is the supported optional-field path and must keep generating");
+    run("m = [* bytes]\n", "homogeneous").expect(
+        "a single-entry `[* bytes]` takes the homogeneous Vec path — no narrowing to guard",
+    );
+}
+
 /// An occurrence marker on an inline (parenthesized) group — `[* (int, tstr)]`, `{ * (k: int) }` —
 /// used to be silently dropped by `flatten_group_entries`, narrowing the group to exactly-once and
 /// generating a decoder that rejects spec-valid CBOR with any other repetition count (invisible to

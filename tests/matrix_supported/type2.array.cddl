@@ -1,1 +1,1 @@
-foo = [uint, tstr, * bytes]
+foo = [uint, tstr, bytes]

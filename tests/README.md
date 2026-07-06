@@ -322,6 +322,11 @@ exactly-once, rejecting the spec-valid `[]` — is now **fixed** too: an occurre
 group is rejected gracefully at generation time. The projected robustness fixtures
 (`tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`) pin the unsupported cells,
 so they project no decode-conformance obligation (no catalog row) rather than a `class="bug"` reject.
+The bare-TYPE array-field instance of the same class — `[uint, tstr, * bytes]` narrowing `* bytes` to
+one mandatory item, rejecting spec-valid zero- and two-bytes instances — was this sweep's third catch
+(mintable only once the fully-fixed rust oracle stopped contesting the candidates) and is rejected
+gracefully the same way; `occurrence_on_array_record_field_rejects_gracefully` pins the boundaries
+(`+`/bounded/any position reject; `?`, `1*1`, and single-entry homogeneous `[* t]` keep generating).
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 

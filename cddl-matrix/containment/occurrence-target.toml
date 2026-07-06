@@ -101,6 +101,22 @@ note = "A bounded occurrence with lower bound zero on a keyed struct-map field p
 example = "multi = { a: uint, 0*1 b: uint }"
 
 [[contain]]
+id = "contain.occurrence-target.grpent.member.zero_array"
+role = "role.occurrence-target"
+feature = "grpent.member"
+spec = "allowed"
+note = "A zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array admits any repetition count of that item. The generator rejects gracefully rather than silently narrowing it to a single mandatory item (the array analogue of the keyed-map cells above). Single-entry forms (`[* bytes]`) take the homogeneous Vec path and are supported. RFC8610 §3.2, §3.4."
+example = "a = [uint, * bytes]"
+
+[[contain]]
+id = "contain.occurrence-target.grpent.member.plus_array"
+role = "role.occurrence-target"
+feature = "grpent.member"
+spec = "allowed"
+note = "A one-or-more occurrence on a bare-type entry in a heterogeneous array: unlike the keyed-map `+` (which collapses to mandatory under unique keys), array repetitions are real items, so the generator rejects gracefully rather than narrowing to exactly-once. RFC8610 §3.2, §3.4."
+example = "a = [uint, + bytes]"
+
+[[contain]]
 id = "contain.occurrence-target.grpent.groupname"
 role = "role.occurrence-target"
 feature = "grpent.groupname"

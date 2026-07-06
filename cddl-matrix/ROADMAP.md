@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 80 containment cells, and 220 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 82 containment cells, and 222 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -113,21 +113,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   pins (spec-valid, wrongly rejected — pruned when `/=`/`//=` extension is implemented, or rejected
   loudly at generation instead of silently narrowing). A concrete instance of the lesson that an oracle
   bug can hide a codegen gap by rejecting the discriminating vector before our decoder ever sees it.
-- **A non-`?` occurrence on a heterogeneous ARRAY-record field is silently narrowed to a mandatory
-  exactly-once field.** `foo = [uint, tstr, * bytes]` generates `index_2: Vec<u8>` (one bytes item,
-  required) — the generated decoder rejects the spec-valid zero-bytes and two-bytes instances.
-  Probed blast radius: every marker and position — `+`, bounded (`2*3 bytes`, where a single-item
-  instance then decodes green BELOW the lower bound), leading (`[* bytes, uint]`), and middle
-  (`[uint, * bytes, tstr]`) — all narrow identically. The
-  map-record path already guards exactly this (parsing.rs rejects zero-permitting occurrences on
-  keyed map fields gracefully, citing "invisible to round-trip tests; only cross-producer data
-  exposes it"); the array-record path (`Representation::Array => None` in the same field loop) has
-  no analogue. Surfaced by the `2c7548e` bump's full re-mint — the first ever against a fully-fixed
-  rust oracle: every earlier full mint's `type2.array` candidates died on two-oracle disagreement
-  (the row sat on `pinned_reason` with zero vectors), so our decoder never saw a discriminating
-  instance — the `773b723` masking lesson repeating on another row. Committed as
-  `class="limitation"` reject pins on `type2.array`; candidate fix: honor the occurrence as a
-  `Vec`-typed tail field, or extend the map path's graceful rejection to array records.
+- **Honor count-permitting occurrences on heterogeneous ARRAY-record fields as `Vec` fields.**
+  Generation rejects them gracefully (`[uint, tstr, * bytes]`, any marker but `?`/`1*1`, any
+  position — the array analogue of the keyed-map zero-permitting guard, in the same parsing.rs
+  field loop; boundaries pinned by `occurrence_on_array_record_field_rejects_gracefully`), to
+  avoid the silent exactly-once narrowing that generated decoders rejecting spec-valid repetition
+  counts — invisible to round-trip tests, surfaced only by spec-derived decode vectors (the
+  `773b723` oracle-masking lesson: the row's candidates died on two-oracle disagreement until the
+  fully-fixed `2c7548e` oracle). The unsupported surface is enumerated by
+  `contain.occurrence-target.grpent.member.{zero,plus}_array`. Real support needs decode
+  lookahead: a repeated-item run bounded by the following fields' types — middle-position repeats
+  (`[uint, * bytes, tstr]`) need peek-type disambiguation.
 - **cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats — dependency-level, fix deferred
   upstream like the over-allocation entry.** Its Special decoder's `0x19` arm casts the raw 16-bit
   pattern to f64 (`Special::Float(f as f64)` — `f9 4200` = 3.0 decodes as 16896.0) instead of
