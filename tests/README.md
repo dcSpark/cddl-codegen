@@ -755,6 +755,55 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > against the docs' comma rules — ideally beside a control cell using the same placement in a
 > position where the directive works, isolating *position* as the variable.
 
+### rust↔wasm API-surface parity (`wasm_parity_tests::wasm_api_parity`)
+
+The compile gate above proves the emitted wasm bindings *type-check*; it cannot prove they *exist*. A
+member emitted on the rust side of the crate boundary with no wasm counterpart is invisible to every
+oracle here — snapshots pin whatever was emitted, the compile gates compile whatever was emitted, and
+the wasm test mint is *written against* the surface that exists, so it exercises what's there and
+can't demand what's missing. The proven instance is `4e5b837`: wrapper types shipped for years with a
+rust `new`/`From` but no wasm ctor/getter — `generate_wrapper_struct` built a `wasm_new` and never
+pushed it, caught only by reading the generator. `wasm_api_parity` closes that class structurally.
+
+It parses the emitted `rust/src/generated/mod.rs` and `wasm/src/generated/mod.rs` with `syn` (a
+harness-side dev-dep) and asserts a **one-directional rust→wasm** correspondence — only rust members
+impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`insert`/`keys`/
+`to_cbor_bytes`/…) are unchecked by design. Four rules:
+
+1. Every rust `pub struct`/`enum` has a wasm counterpart (same-named wasm struct/enum, `pub use`
+   re-export, or **public** `pub type` alias).
+2. Every rust `pub type` alias has a same-named wasm public alias or wasm type — a **private** wasm
+   `type` alias does *not* count (that is exactly the finding class the generator fix below closed).
+3. Every rust `pub` field on `T` has a wasm getter of the same name (no setter obligation: wasm emits
+   `set_*` only for optional fields).
+4. Every rust inherent `pub fn` on `T` has a wasm inherent fn of the same name **and arity** (`self`
+   excluded; return types unchecked — boundary conversions differ by construction). Rules 3–4 run
+   only when a same-named wasm struct/enum is *defined*; a `pub use`/alias counterpart is full parity
+   under rules 1–2 (a `pub use` *is* the same type; a rust alias has no inherent members).
+
+Legitimate rust→wasm asymmetries are baked into those rules, not ledgered: the "`pub use`d Copy
+enums", "rust-only trait impls" (only inherent impls are walked — `From`/`AsRef`/`Serialize`/… are
+never counted), collection-API-inheritance (a transparent `pub type Nums = Vec<u64>` has no
+enumerable members), and tag-over-struct-folding classes all fall out structurally. What it does **not**
+check: *semantic* wrongness — an identity `.into()` where a transform was needed — stays
+`wasm_matrix_roundtrips`' job; this is a *presence* differential.
+
+Inputs are every `tests/matrix_wasm/*.cddl` cell (even `WASM_MATRIX_SKIP` ones — parity is
+parse-only, and their emitted sources parse even when they don't standalone *compile*) plus the two
+depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-sink shapes the minimal cells
+don't reach). It is **parse-only** (no cargo check/test of the generated crates), so it's ~100 fast
+generations and stays **always-on** (no `#[ignore]`) in the default `cargo test` / check.ts local
+tier. It scopes to `src/generated/mod.rs`; a file-set guard fails loudly if a future multi-file
+emission mode grows the generated dir, so the differential can't silently escape.
+
+Findings reconcile against a `PARITY_EXEMPT` ledger, the same `WASM_MATRIX_SKIP` idiom: a finding
+matching an entry is expected (no failure); an entry matching no live finding fails as "resurfaced" (a
+fix landed — remove it); an unexempted finding fails with the remedy spelled out (fix the emitter, or
+deliberately ledger it with a reason). The ledger currently holds one finding class — the named-table
+wasm alias emitted as a private `type` instead of `pub type` (`generation.rs`'s already-generated-map
+branch omits the `.vis("pub")` its sibling passthrough-alias site carries) — pending the one-line
+emitter fix that will empty it.
+
 ## Coverage
 
 The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure
