@@ -153,9 +153,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   (`collmap__struct-field`), but as `MapU64ToText` when e.g. a `@newtype` holder resolves the same
   shape first (`collmap__newtype-inner`; same for `standalone_text` in `tests/core`) — so adding an
   unrelated same-shape embedded map elsewhere in a spec silently RENAMES the JS class. Deterministic,
-  but consumer-facing and spec-nonlocal. Hand-caught reading generated output during the parity-gate
-  scoping; `wasm_api_parity` deliberately accepts the public alias as rust-source-level parity, so no
-  gate flags it today — the systematic catcher is the JS-name-visibility layer recorded on
+  but consumer-facing and spec-nonlocal (the alias form is pinned by the `core`/`special_map_key`
+  wasm snapshots; the behavior is documented honestly in `docs/docs/wasm_differences.mdx` § Tables).
+  Hand-caught reading generated output during the parity-gate scoping — `wasm_api_parity`
+  deliberately accepts the public alias as rust-source-level parity, so no gate flags it today; the
+  systematic catcher is the JS-name-visibility layer recorded on
   `tests/TESTING_ROADMAP.md` item 8 (distinguish a defined `#[wasm_bindgen]` counterpart from an
   alias-only one). Candidate fix: prefer the rule name for the wrapper when a single named table rule
   owns the shape (the struct-field role's existing behavior), aliasing the structural name to it;
@@ -262,8 +264,12 @@ The system itself (what it is, the axes, how to run/extend it) is documented in 
 "wasm-ABI matrix". Every enumerated cell compiles — `integration_tests::wasm_matrix_compiles`' `SKIP`
 is expected to hold only the permanent `extern__array-element` (it references
 a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
-cell reappearing is a **regression to fix**, not a backlog item. The remaining frontiers are extending the
-grid and the behavioural compile→round-trip upgrade (both below).
+cell reappearing is a **regression to fix**, not a backlog item. A third, always-on axis runs beside
+compile and round-trip: the rust→wasm API-surface parity differential
+(`wasm_parity_tests::wasm_api_parity` over the same cells + two depth fixtures — `tests/README.md` §
+"rust↔wasm API-surface parity"; its remaining sweeps are `tests/TESTING_ROADMAP.md` item 8). The
+remaining frontiers HERE are extending the grid and the behavioural compile→round-trip upgrade (both
+below).
 
 **Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
 in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
