@@ -3082,14 +3082,16 @@ fn ir_conformance_corpus() {
     // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
     // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
     // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
-    //   - sized_int: RUST VALIDATOR GAP. Its spec has `i_64: int .size 8`, and the dcSpark cddl
-    //     validator can't evaluate `.size` on a signed `int` ("target for .size must a string or
-    //     uint data type, got int"). (Its other constraint, the negative-lower-bound range
-    //     `i_8: -128..127`, stopped being a gap at the fork's `885c61c` non-uint-range fix — the
-    //     `.size`-on-int half alone keeps this fixture skipped.) Our minted values are in-spec (all
-    //     zeros) — an oracle constraint-evaluator limitation, not an encoder bug (see
-    //     tests/README.md). The ruby gem is a different parser/evaluator, so it CAN weigh in on
-    //     these bytes.
+    //   - sized_int: SPEC-UNDEFINED CONSTRUCT. Its spec has `i_64: int .size 8`, and the dcSpark
+    //     cddl validator can't evaluate `.size` on a signed `int` ("target for .size must a string
+    //     or uint data type, got int") — defensibly: RFC 8610 §3.8.1 defines `.size` for strings
+    //     and `uint` only, and the ruby gem disagrees with BOTH rust and our i64 reading (it
+    //     applies the unsigned window, rejecting every negative — divergence table in
+    //     draft/cddl-size-on-int-divergence.md). (The fixture's other constraint, the
+    //     negative-lower-bound range `i_8: -128..127`, stopped being a gap at the fork's `885c61c`
+    //     non-uint-range fix — the `.size`-on-int half alone keeps it skipped.) Our minted values
+    //     are in-spec (all zeros) — not an encoder bug (see tests/README.md). The ruby gem is a
+    //     different parser/evaluator, so it CAN weigh in on these bytes.
     //   - nested_group: RUST VALIDATOR STRICTENING (as of the fork's `773b723` array-sequence rewrite).
     //     Its `inner = (a: uint, b: uint)` is a bare GROUP, not a type; cddl-codegen mints it as an
     //     array-serialized struct (`[0, 0]` = 0x82 00 00). The pre-`773b723` validator leniently
