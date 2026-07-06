@@ -519,11 +519,14 @@ target cache is preserved. Two curated lists, each empirically justified:
   cases, where they were once misread as element VALUE bounds).
 - **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile standalone),
-  and `sized_int` (`.size` on a signed `int`, `i_64: int .size 8` — a construct RFC 8610 leaves
-  undefined, which the rust validator refuses to evaluate and the references disagree on
-  (three-way divergence table: `draft/cddl-size-on-int-divergence.md`); its negative-lower-bound
-  range `i_8: -128..127` stopped being a gap at the fork's `885c61c` non-uint-range fix, but the
-  `.size`-on-int half alone keeps it skipped; our minted values are in-spec).
+  and `sized_int` (`.size` on a signed `int`, `i_64: int .size 8` — the rust validator hard-errors
+  on every instance, an over-rejection gap per the RFC author's clarified semantics
+  (cbor-wg/cddl#32: a control distributes over `int = uint / nint` and an undefined application is
+  a per-value non-match, so `int .size 8` matches exactly the `uint .size 8` window — scoreboard in
+  `draft/cddl-size-on-int-divergence.md`, which also records cddl-codegen's own `i{8N}` deviation);
+  its negative-lower-bound range `i_8: -128..127` stopped being a gap at the fork's `885c61c`
+  non-uint-range fix, but the `.size`-on-int half alone keeps it skipped; our minted values are
+  in-spec under every reading).
 
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
