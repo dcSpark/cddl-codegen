@@ -241,6 +241,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
+
 ## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
 
 The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
