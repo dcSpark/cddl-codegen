@@ -212,7 +212,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    (`src/tests/wasm_parity_tests.rs::wasm_api_parity`, documented in `tests/README.md` § "rust↔wasm
    API-surface parity"): it parses the emitted `mod.rs` of both crates over the wasm-matrix cells +
    the two depth fixtures and asserts every rust pub type/field/inherent-fn has a wasm counterpart or
-   a ledgered exemption. Two axes it deliberately does NOT yet sweep:
+   a ledgered exemption. Three axes it deliberately does NOT yet sweep:
    - **Emission-profile axis.** It runs the *default* profile only. `--preserve-encodings` adds
      rust-only `*Encoding` structs (in `cbor_encodings.rs`, itself out of the current file-set scope)
      that have no wasm counterpart by design — sweeping the preserve/json profiles needs a baked-in
@@ -221,6 +221,15 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    - **Corpus-wide input axis.** It covers the matrix cells + two depth fixtures, not the whole
      snapshot corpus (`tests/*/input.cddl` under their per-dir flags). Extending it there should
      reuse each dir's committed flag set so coverage stays mechanically checkable.
+   - **JS-name-visibility axis.** Rules 1–2 accept a *public alias* as the wasm counterpart, which is
+     rust-source-level parity only — wasm_bindgen exports no type aliases, so an alias-only
+     counterpart means the CDDL rule name never reaches JS. The proven (hand-caught) instance: a
+     named table rule's wrapper takes the structural `MapKToV` name when the same shape was already
+     minted for an embedded/resolved use, so the JS class name flips between `Mp` and `MapU64ToText`
+     depending on unrelated spec content (`cddl-matrix/ROADMAP.md` § findings has the ledger entry +
+     candidate emitter fix). The gate extension: classify each rust type's counterpart as
+     defined-`#[wasm_bindgen]`-type vs `pub use` vs alias-only, and require every supported rule name
+     to be JS-visible or ledgered — turning the naming wart from a hand observation into a red cell.
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
