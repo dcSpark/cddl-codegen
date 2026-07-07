@@ -83,11 +83,7 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 /// - `extern__array-element` references a user-supplied type (undefined standalone -> E0425), while
 ///   the extern emit path is integration-tested separately in `tests/extern-deps`. Because the cell
 ///   never compiles here, it never round-trips here either.
-/// - `bwrap__tchoice-variant` is a known emitter bug (E0599): a bounded-wrapper arm of a type-choice
-///   enum emits a *fallible* wasm ctor (`new_bw(..).map(Into::into).map_err(Into::into)`) over an
-///   infallible rust ctor, so `.map` lands on the plain returned enum. Root cause in the ROADMAP
-///   entry (the wasm/rust type-choice ctor fallibility mismatch).
-const WASM_MATRIX_SKIP: &[&str] = &["bwrap__tchoice-variant", "extern__array-element"];
+const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
 /// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
 /// do NOT compile — the known-broken module-placement classes the sweep pins while landing green.
@@ -220,11 +216,36 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
 /// stem, reason)` marks a cell whose emitted wasm round-trip surface is a known structural gap
 /// UNDER THAT PROFILE — a red the sweep tolerates deliberately, distinct from `WASM_MATRIX_SKIP`'s
-/// "red in EVERY profile" (extern). Expected empty: probes show every cell round-trips green across
-/// `super::ALL_PROFILES`. A resurfaced guard fails the gate if a listed cell starts passing, and an
-/// up-front stale-pin guard rejects entries naming a dead profile or cell stem, so the list can't
-/// rot silently.
-const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
+/// "red in EVERY profile" (extern). A resurfaced guard fails the gate if a listed cell starts passing,
+/// and an up-front stale-pin guard rejects entries naming a dead profile or cell stem, so the list
+/// can't rot silently.
+///
+/// `nullable__tchoice-variant` is listed for all three profiles: the cell COMPILES (so it stays on the
+/// `wasm_matrix_compiles` floor) but its emitted round-trip readback is a structural gap independent of
+/// profile. A nullable type-choice arm (`opt = uint / null` as an arm of `holder = opt / nint`) exposes a
+/// lossy `as_opt() -> Option<u64>` getter that returns `None` both when the arm isn't selected AND when
+/// the arm holds `null` (its documented `Option<Option<T>>` wasm_bindgen conflation). The minted arm
+/// carries the `null` inhabitant, so `emit_tests_wasm.rs`'s `assert!(as_opt().is_some())` readback
+/// (taken because the arm's payload resolves to `Optional`, not `Primitive`) can never hold. See the
+/// `cddl-matrix/ROADMAP.md` § findings entry (the emit-test must drop the `is_some`/`is_none` readbacks
+/// for a nullable-payload arm — the getter is lossy there — and keep only `kind()` + the byte round-trip).
+const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[
+    (
+        "default",
+        "nullable__tchoice-variant",
+        "lossy as_opt() getter on a null-holding nullable arm fails the emitted is_some() readback",
+    ),
+    (
+        "preserve",
+        "nullable__tchoice-variant",
+        "lossy as_opt() getter on a null-holding nullable arm fails the emitted is_some() readback",
+    ),
+    (
+        "json",
+        "nullable__tchoice-variant",
+        "lossy as_opt() getter on a null-holding nullable arm fails the emitted is_some() readback",
+    ),
+];
 
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
 /// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second

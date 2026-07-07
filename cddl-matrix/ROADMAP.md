@@ -107,20 +107,18 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **A bounded-wrapper arm of a type-choice enum emits a fallible wasm ctor over an infallible rust
-  ctor (E0599).** `bw = bytes .size (0..32)` placed as a type-choice variant (`holder = bw / nint`)
-  generates a wasm `Holder::new_bw(bw: &Bw) -> Result<Holder, JsError>` whose body calls
-  `cddl_lib::Holder::new_bw(..).map(Into::into).map_err(Into::into)` — but the rust ctor
-  `Holder::new_bw(bw: Bw) -> Self` is INFALLIBLE (it receives an already-constructed value), so `.map`
-  lands on the plain `Holder` enum → E0599 "`cddl_lib::Holder` is not an iterator". The mismatch: the
-  wasm type-choice ctor (`src/generation.rs:3986`) decides fallibility with
-  `RustType::needs_bounds_check_if_inlined()` (= `has_value_bounds() || types.can_new_fail(ident)`, and
-  `can_new_fail` is true for every bounded Wrapper struct — `src/intermediate.rs:627`), while the
-  rust-side type-choice ctor (`src/generation.rs:8430`, the rep=None path) uses only
-  `has_value_bounds()`. Class: type-choice variant = named bounded wrapper. Pinned as
-  `bwrap__tchoice-variant` in `WASM_MATRIX_SKIP`; flip the pin when the wasm ctor aligns its fallibility
-  predicate with the rust ctor (a *named* bounded wrapper arm carries no inlineable value bound, so the
-  wasm ctor should be infallible too). The other 15 shapes in the `tchoice-variant` role compile green.
+- **A nullable arm of a type-choice enum has a lossy wasm getter that fails the emitted round-trip
+  readback.** `opt = uint / null` placed as a type-choice variant (`holder = opt / nint`) exposes
+  `Holder::as_opt(&self) -> Option<u64>`, which returns `None` both when the arm isn't selected AND when
+  the arm holds `null` — a wasm_bindgen `Option<Option<T>>` conflation the getter's own doc comment
+  states. The minted arm carries the `null` inhabitant, so the emitted readback
+  `assert!(wasm_v.as_opt().is_some())` (`src/emit_tests_wasm.rs:611`, taken because the arm's payload
+  resolves to `Optional`, not `Primitive`) can never hold → round-trip red in every profile. Pinned as
+  `nullable__tchoice-variant` (all three profiles) in `WASM_MATRIX_PROFILE_SKIP`; the cell still compiles,
+  so it stays on the `wasm_matrix_compiles` floor. Fix: `emit_tests_wasm.rs` must drop the
+  `is_some()`/`is_none()` readbacks for a nullable-payload arm (the getter is lossy there) and keep only
+  the `kind()` assertion plus the byte round-trip, then flip the three pins. Class: type-choice variant =
+  nullable (`Option<T>`).
 - **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
   last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
   generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only
@@ -299,11 +297,16 @@ the multifile placement sweep — is documented in `tests/README.md` (§ "wasm-A
 test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus `README.md` §
 annotations (`verify.ts`'s default-on `--wasm` probe). What remains:
 
-- **Keep the shape axis honest (periodic).** Grid coverage equals the hand-curated `SHAPES` list in
-  `project_wasm_matrix.ts` — a wasm representation not enumerated is a silent hole, not a red cell. A
-  generator change that gives types a NEW way to cross the wasm boundary must add its shape in the
-  same change; the standing question "which representation are we *not* enumerating?" deserves a
-  periodic sweep regardless.
+- **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
+  `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
+  wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types
+  in a boundary position not in `ROLES` is a silent hole (the E0599 bounded-wrapper-arm bug lived
+  exactly there — it needed the per-variant `tchoice-variant` role to surface, while `bwrap` was a
+  `SHAPES` entry all along). A generator change that gives types a NEW way to cross the wasm boundary,
+  or a NEW position to sit in, must add the shape or role in the same change. The known role candidate
+  not yet enumerated is a group-choice-arm role (the `codegen_group_choices` per-variant ctor path,
+  the group-choice sibling of `tchoice-variant`). The standing questions "which representation, and
+  which boundary position, are we *not* enumerating?" deserve a periodic sweep regardless.
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
