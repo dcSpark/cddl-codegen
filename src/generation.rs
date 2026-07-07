@@ -3983,7 +3983,16 @@ impl GenerationScope {
                 if let Some(doc) = &variant.doc {
                     new_func.doc(doc);
                 }
-                let can_fail = variant.rust_type().needs_bounds_check_if_inlined(types);
+                // This wasm ctor must mirror the fallibility of the rust-side type-choice ctor it
+                // calls (generate_enum's rep=None path), which is fallible iff the variant type
+                // carries an inline value bound (`has_value_bounds()`) — that path emits the inline
+                // bounds check and returns `Result`. A *named* type's own fallible `new` is
+                // irrelevant here: both ctors receive an already-constructed value, so the inner
+                // type's construction (and its own bounds) already happened upstream. Using
+                // `needs_bounds_check_if_inlined()` (which also trips on any named `can_new_fail`
+                // type, i.e. every bounded Wrapper) would wrongly make this wasm ctor fallible over
+                // an infallible rust ctor.
+                let can_fail = variant.rust_type().has_value_bounds();
                 if !variant.rust_type().is_fixed_value() {
                     new_func.arg(&variant_arg, variant.rust_type().for_wasm_param(types));
                 }
@@ -3994,9 +4003,8 @@ impl GenerationScope {
                         variant.name_as_var()
                     )
                 } else {
-                    // TODO: see if this is ever needed. we don't pass non-false values in anywher else
-                    // and these checks should only be done in the rust side not wasm but there must have
-                    // been a reson this was here before (checking only types.can_new_fail())
+                    // Never `try_into` at the wasm boundary: the rust ctor takes an already-built
+                    // value, so any inner-type bound was enforced when that value was constructed.
                     let try_into = false;
                     let from_wasm_expr =
                         variant

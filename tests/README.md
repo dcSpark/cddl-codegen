@@ -611,10 +611,14 @@ compile-check by construction: the rust crate can type-check while the generated
 without an enumerated gate that class of bug is only caught by whichever fixtures happen to hit it. Gating
 the whole grid makes the coverage systematic instead of incidental.
 
-Coverage equals the **type-shape axis**, which is hand-curated: a wasm representation not in `SHAPES` is
-not gated. Treat the axis as a living list — when a type reaches the wasm boundary in a representation no
-existing shape captures, add a shape (see "Adding / changing cells"), and periodically ask "which
-representation are we *not* enumerating?", because a missing shape is a silent hole, not a red cell.
+Coverage equals **both** hand-curated axes — the `SHAPES` type-shape list and the `ROLES` boundary-role
+list: a wasm representation not in `SHAPES`, or a boundary position not in `ROLES`, is not gated. Treat
+each as a living list — when a type reaches the wasm boundary in a representation no existing shape
+captures, add a shape; when the emitter places types in a boundary position no existing role captures,
+add a role (see "Adding / changing cells") — and periodically ask "which representation, and which
+boundary position, are we *not* enumerating?", because a missing shape *or* role is a silent hole, not a
+red cell (the E0599 bounded-wrapper-arm bug lived in the un-enumerated `tchoice-variant` role while its
+`bwrap` shape was gated all along).
 
 Pipeline (projection → fixtures → gate), the same shape as the robustness projection:
 
