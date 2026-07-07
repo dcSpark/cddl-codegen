@@ -73,12 +73,21 @@
 //! **Inputs, profiles & cost.** Every `tests/matrix_wasm/*.cddl` cell (the wasm-ABI shape × role
 //! grid — even `WASM_MATRIX_SKIP` ones, whose emitted sources still *parse* even when they don't
 //! standalone *compile*) plus the two depth fixtures `tests/core/input.cddl` and `example/test.cddl`
-//! (kitchen-sink shapes the minimal cells don't reach). Each input is swept across `super::ALL_PROFILES`
-//! (default / preserve / json — `--preserve-encodings` and the json flags substantially change the
-//! rust surface), generating in-process via `api::generated_strings` (`Cli::parse_from`, wrapped in
-//! `catch_unwind`) — no subprocess, no scratch dirs, no cargo check/test of the generated crates, so
-//! the whole 3-profile sweep is cheaper than the old single-profile subprocess run. Always-on (no
-//! `#[ignore]`), so it joins the plain `cargo test` / check.ts local tier.
+//! (kitchen-sink shapes the minimal cells don't reach). Each of those inputs is swept across
+//! `super::ALL_PROFILES` (default / preserve / json — `--preserve-encodings` and the json flags
+//! substantially change the rust surface). A second corpus axis sweeps every committed
+//! `tests/*/input.cddl` fixture directory under that directory's committed generation profile rows
+//! (the `run_test`/pipeline invocations in `integration_tests.rs`), with a completeness guard that
+//! fails when a new fixture dir is not either added to the table or deliberately excluded. Exclusions
+//! are narrow: `tests/core` is already swept as a depth fixture across every profile, and
+//! `tests/wasm-list-macro` emits wasm members as user-macro invocations invisible to a `syn`
+//! presence differential. Directory-input fixtures (`tests/multifile/inputs`,
+//! `tests/extern-deps*/inputs`) are out of this axis by design: multifile emission writes per-module
+//! files under `src/generated/`, outside this differential's `mod.rs`-only parse scope; that surface
+//! is owned by the separate multifile placement sweep. Generation is in-process via
+//! `api::generated_strings` (`Cli::parse_from`, wrapped in `catch_unwind`) — no subprocess, no
+//! scratch dirs, no cargo check/test of the generated crates. Always-on (no `#[ignore]`), so it joins
+//! the plain `cargo test` / check.ts local tier.
 //!
 //! **Generation-fail pin (the `WASM_MATRIX_SKIP` idiom).** One `(profile, input)` pair aborts
 //! generation — a float member under `--preserve-encodings` (the `unimplemented!` class, issue #205).
@@ -114,6 +123,118 @@ const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
     "float member aborts generation under --preserve-encodings (issue #205; see the \
      preserve_encodings_supports_floats stub)",
 )];
+
+/// `tests/<dir>` fixture dirs swept by the corpus axis: (dir, per-dir committed profile rows).
+/// Each row is (profile label, flags) — the flag set the dir's integration gate commits to
+/// (run_test invocations in integration_tests.rs, or package_json_pipeline for package-json), minus
+/// flags irrelevant to the emitted `src/generated` surface (see per-entry comments). `--wasm=true`
+/// is always forced by the harness.
+type CorpusParityProfile = (&'static str, &'static [&'static str]);
+type CorpusParityInput = (&'static str, &'static [CorpusParityProfile]);
+
+const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
+    (
+        "canonical",
+        &[(
+            "canonical",
+            &[
+                "--preserve-encodings=true",
+                "--canonical-form=true",
+                // Drop `--emit-tests=true`: generated test-module emission is not boundary API.
+            ],
+        )],
+    ),
+    (
+        "comment-dsl",
+        &[("preserve", &["--preserve-encodings=true"])],
+    ),
+    (
+        "golden_hex",
+        &[(
+            "default",
+            &[
+                // Its integration gate passes `--wasm=false` because it needs no wasm build; this
+                // parity question forces wasm on.
+            ],
+        )],
+    ),
+    (
+        "golden_hex_preserve",
+        &[("preserve", &["--preserve-encodings=true"])],
+    ),
+    (
+        "golden_hex_canonical",
+        &[(
+            "canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"],
+        )],
+    ),
+    (
+        "json",
+        &[
+            (
+                "json",
+                &["--json-serde-derives=true", "--json-schema-export=true"],
+            ),
+            (
+                "json_preserve",
+                &[
+                    "--preserve-encodings=true",
+                    "--json-serde-derives=true",
+                    "--json-schema-export=true",
+                ],
+            ),
+        ],
+    ),
+    (
+        "json-float",
+        &[(
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        )],
+    ),
+    ("nullable-wasm", &[("default", &[])]),
+    (
+        "package-json",
+        &[(
+            "json",
+            &[
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                // Drop `--package-json=true`: it is a packaging/layout flag. Keeping it moves the
+                // generated crates under `rust/{rust,wasm}` and changes generated-file keys, while
+                // the per-type `src/generated` surface is identical under the json flags above.
+            ],
+        )],
+    ),
+    (
+        "preserve-encodings",
+        &[("preserve", &["--preserve-encodings=true"])],
+    ),
+    ("raw-bytes", &[("default", &[])]),
+    (
+        "raw-bytes-preserve",
+        &[("preserve", &["--preserve-encodings=true"])],
+    ),
+    ("rust-wasm-split", &[("default", &[])]),
+    (
+        "wasm_json",
+        &[("json_serde", &["--json-serde-derives=true"])],
+    ),
+];
+
+const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
+    (
+        "core",
+        "already swept as a depth fixture across ALL_PROFILES",
+    ),
+    (
+        "wasm-list-macro",
+        "committed flags are --wasm-list-macro/--wasm-conversions-macro: the wasm members are \
+         emitted as user-macro invocations, invisible to a syn presence differential (same class \
+         as the wasm-mint macro loud-skip)",
+    ),
+];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
 /// `mod.rs` under `wasm/src/generated/`. A file outside these sets means a new emission surface the
@@ -524,19 +645,99 @@ fn parity_inputs() -> Vec<(String, PathBuf)> {
     inputs
 }
 
+fn corpus_input_dirs_on_disk() -> BTreeSet<String> {
+    std::fs::read_dir("tests")
+        .unwrap()
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if path.join("input.cddl").is_file() {
+                Some(e.file_name().to_str().unwrap().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn assert_corpus_axis_complete() {
+    let disk = corpus_input_dirs_on_disk();
+    let included: BTreeSet<&str> = CORPUS_PARITY_INPUTS.iter().map(|(dir, _)| *dir).collect();
+    let excluded: BTreeSet<&str> = CORPUS_PARITY_EXCLUDED.iter().map(|(dir, _)| *dir).collect();
+
+    let overlap: Vec<&str> = included.intersection(&excluded).copied().collect();
+    assert!(
+        overlap.is_empty(),
+        "corpus parity dirs cannot be both included and excluded: {overlap:?}"
+    );
+
+    let missing_exclusions: Vec<&str> = excluded
+        .iter()
+        .copied()
+        .filter(|dir| !disk.contains(*dir))
+        .collect();
+    assert!(
+        missing_exclusions.is_empty(),
+        "CORPUS_PARITY_EXCLUDED names dir(s) with no tests/<dir>/input.cddl: {missing_exclusions:?}"
+    );
+
+    let expected: BTreeSet<String> = included
+        .iter()
+        .chain(excluded.iter())
+        .map(|dir| (*dir).to_string())
+        .collect();
+    assert_eq!(
+        disk, expected,
+        "tests/*/input.cddl corpus parity coverage changed — add the new dir to \
+         CORPUS_PARITY_INPUTS with its committed flags, or exclude it with a reason"
+    );
+}
+
+fn total_corpus_profile_rows() -> usize {
+    CORPUS_PARITY_INPUTS
+        .iter()
+        .map(|(_, rows)| rows.len())
+        .sum()
+}
+
+fn flags_enable_preserve(flags: &[&str]) -> bool {
+    flags.contains(&"--preserve-encodings=true")
+}
+
 #[test]
 fn wasm_api_parity() {
     let inputs = parity_inputs();
+    assert_corpus_axis_complete();
+
+    let mut sweep_cases: Vec<(String, PathBuf, &'static str, &'static [&'static str])> = vec![];
+    for (label, input) in &inputs {
+        for (profile, extra) in super::ALL_PROFILES {
+            sweep_cases.push((label.clone(), input.clone(), *profile, *extra));
+        }
+    }
+    for (dir, rows) in CORPUS_PARITY_INPUTS {
+        for (profile, extra) in *rows {
+            sweep_cases.push((
+                format!("tests/{dir}"),
+                PathBuf::from(format!("tests/{dir}/input.cddl")),
+                *profile,
+                *extra,
+            ));
+        }
+    }
 
     // A pin naming a (profile, input) pair the sweep never visits would rot silently (its two-way
     // guard only fires on visited pairs) — validate every pin against the live axes up front.
+    let swept_profile_labels: BTreeSet<&str> = sweep_cases.iter().map(|(_, _, p, _)| *p).collect();
+    let swept_input_labels: BTreeSet<&str> =
+        sweep_cases.iter().map(|(l, _, _, _)| l.as_str()).collect();
     for (p, l, _) in EXPECTED_GENERATION_FAIL {
         assert!(
-            super::ALL_PROFILES.iter().any(|(name, _)| name == p),
+            swept_profile_labels.contains(p),
             "EXPECTED_GENERATION_FAIL pin names unknown profile `{p}` — stale pin, remove or fix it"
         );
         assert!(
-            inputs.iter().any(|(label, _)| label == l),
+            swept_input_labels.contains(l),
             "EXPECTED_GENERATION_FAIL pin names input `{l}` that is no longer swept — stale pin, \
              remove or fix it"
         );
@@ -548,95 +749,93 @@ fn wasm_api_parity() {
     let mut gap_closed: Vec<String> = vec![]; // EXPECTED_GENERATION_FAIL that now generates
     let mut swept = 0usize;
 
-    for (label, input) in &inputs {
+    for (label, input, profile, extra) in &sweep_cases {
         let input_str = input.to_str().unwrap();
-        for (profile, extra) in super::ALL_PROFILES {
-            swept += 1;
-            let expected_fail = EXPECTED_GENERATION_FAIL
+        swept += 1;
+        let expected_fail = EXPECTED_GENERATION_FAIL
+            .iter()
+            .any(|(p, l, _)| p == profile && l == label);
+
+        // In-process generation: build the Cli via clap and run the `#[cfg(test)]`
+        // `generated_strings` producer, guarded against the float `unimplemented!` panic.
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            input_str,
+            "--output",
+            "wasm_api_parity_unused",
+            "--wasm=true",
+        ];
+        args.extend(extra.iter().copied());
+        let cli = Cli::parse_from(args);
+        // Keep the abort detail (error string / panic payload) so an unexpected generation failure
+        // reports its cause, not just its coordinates.
+        let generated = match std::panic::catch_unwind(AssertUnwindSafe(|| {
+            crate::api::generated_strings(&cli)
+        })) {
+            Ok(Ok(files)) => Ok(files),
+            Ok(Err(e)) => Err(format!("error: {e}")),
+            Err(payload) => Err(format!(
+                "PANIC: {}",
+                payload
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| payload.downcast_ref::<&str>().copied())
+                    .unwrap_or("<non-string payload>")
+            )),
+        };
+
+        let files = match (expected_fail, generated) {
+            (true, Err(_)) => continue, // expected abort — nothing to diff
+            (true, Ok(_)) => {
+                gap_closed.push(format!("({profile}, {label})"));
+                continue;
+            }
+            (false, Err(detail)) => {
+                gen_failures.push(format!("{profile}/{label} ({input:?}): {detail}"));
+                continue;
+            }
+            (false, Ok(files)) => files,
+        };
+
+        // Key-set guard: preserve additionally emits cbor_encodings.rs / ordered_hash_map.rs.
+        let allowed_rust: Vec<&str> = if flags_enable_preserve(extra) {
+            ALLOWED_RUST_GENERATED
                 .iter()
-                .any(|(p, l, _)| p == profile && l == label);
-
-            // In-process generation: build the Cli via clap and run the `#[cfg(test)]`
-            // `generated_strings` producer, guarded against the float `unimplemented!` panic.
-            let mut args = vec![
-                "cddl-codegen",
-                "--input",
-                input_str,
-                "--output",
-                "wasm_api_parity_unused",
-                "--wasm=true",
-            ];
-            args.extend(extra.iter().copied());
-            let cli = Cli::parse_from(args);
-            // Keep the abort detail (error string / panic payload) so an unexpected generation
-            // failure reports its cause, not just its coordinates.
-            let generated = match std::panic::catch_unwind(AssertUnwindSafe(|| {
-                crate::api::generated_strings(&cli)
-            })) {
-                Ok(Ok(files)) => Ok(files),
-                Ok(Err(e)) => Err(format!("error: {e}")),
-                Err(payload) => Err(format!(
-                    "PANIC: {}",
-                    payload
-                        .downcast_ref::<String>()
-                        .map(String::as_str)
-                        .or_else(|| payload.downcast_ref::<&str>().copied())
-                        .unwrap_or("<non-string payload>")
-                )),
-            };
-
-            let files = match (expected_fail, generated) {
-                (true, Err(_)) => continue, // expected abort — nothing to diff
-                (true, Ok(_)) => {
-                    gap_closed.push(format!("({profile}, {label})"));
-                    continue;
-                }
-                (false, Err(detail)) => {
-                    gen_failures.push(format!("{profile}/{label} ({input:?}): {detail}"));
-                    continue;
-                }
-                (false, Ok(files)) => files,
-            };
-
-            // Key-set guard: preserve additionally emits cbor_encodings.rs / ordered_hash_map.rs.
-            let allowed_rust: Vec<&str> = if *profile == "preserve" {
-                ALLOWED_RUST_GENERATED
-                    .iter()
-                    .copied()
-                    .chain(["cbor_encodings.rs", "ordered_hash_map.rs"])
-                    .collect()
-            } else {
-                ALLOWED_RUST_GENERATED.to_vec()
-            };
-            for base in stray_keys(&files, "rust/src/generated/", &allowed_rust) {
-                strays.push(format!("{profile}/{label} rust: {base}"));
-            }
-            for base in stray_keys(&files, "wasm/src/generated/", ALLOWED_WASM_GENERATED) {
-                strays.push(format!("{profile}/{label} wasm: {base}"));
-            }
-
-            let rust_src = files
-                .get("rust/src/generated/mod.rs")
-                .unwrap_or_else(|| panic!("{profile}/{label}: no rust/src/generated/mod.rs"));
-            let wasm_src = files.get("wasm/src/generated/mod.rs").unwrap_or_else(|| {
-                panic!("{profile}/{label}: no wasm/src/generated/mod.rs (expected a wasm crate)")
-            });
-            let encoding_structs = files
-                .get("rust/src/generated/cbor_encodings.rs")
-                .map(|s| parse_encoding_structs(s))
-                .unwrap_or_default();
-
-            let rust = parse_rust_surface(rust_src);
-            let wasm = parse_wasm_surface(wasm_src);
-            diff_surfaces(
-                profile,
-                label,
-                &rust,
-                &wasm,
-                &encoding_structs,
-                &mut findings,
-            );
+                .copied()
+                .chain(["cbor_encodings.rs", "ordered_hash_map.rs"])
+                .collect()
+        } else {
+            ALLOWED_RUST_GENERATED.to_vec()
+        };
+        for base in stray_keys(&files, "rust/src/generated/", &allowed_rust) {
+            strays.push(format!("{profile}/{label} rust: {base}"));
         }
+        for base in stray_keys(&files, "wasm/src/generated/", ALLOWED_WASM_GENERATED) {
+            strays.push(format!("{profile}/{label} wasm: {base}"));
+        }
+
+        let rust_src = files
+            .get("rust/src/generated/mod.rs")
+            .unwrap_or_else(|| panic!("{profile}/{label}: no rust/src/generated/mod.rs"));
+        let wasm_src = files.get("wasm/src/generated/mod.rs").unwrap_or_else(|| {
+            panic!("{profile}/{label}: no wasm/src/generated/mod.rs (expected a wasm crate)")
+        });
+        let encoding_structs = files
+            .get("rust/src/generated/cbor_encodings.rs")
+            .map(|s| parse_encoding_structs(s))
+            .unwrap_or_default();
+
+        let rust = parse_rust_surface(rust_src);
+        let wasm = parse_wasm_surface(wasm_src);
+        diff_surfaces(
+            profile,
+            label,
+            &rust,
+            &wasm,
+            &encoding_structs,
+            &mut findings,
+        );
     }
 
     // Vacuity guard: every (input, profile) pair must have been visited. A filter bug that shrinks
@@ -653,7 +852,7 @@ fn wasm_api_parity() {
     );
     assert_eq!(
         swept,
-        inputs.len() * super::ALL_PROFILES.len(),
+        (cell_count + 2) * super::ALL_PROFILES.len() + total_corpus_profile_rows(),
         "sweep shrank: expected every (input, profile) pair to be visited"
     );
 

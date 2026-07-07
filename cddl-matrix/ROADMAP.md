@@ -273,10 +273,11 @@ is expected to hold only the permanent `extern__array-element` (it references
 a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
 cell reappearing is a **regression to fix**, not a backlog item. A third axis runs beside compile and
 round-trip: the rust→wasm API-surface parity differential (`wasm_parity_tests::wasm_api_parity` over
-the same cells + two depth fixtures — `tests/README.md` § "rust↔wasm API-surface parity"; its
-remaining sweeps are `tests/TESTING_ROADMAP.md` item 8). The round-trip and parity axes both sweep the
-emission profiles (default / preserve / json via `ALL_PROFILES`), so `--preserve-encodings` and the
-json flags are exercised behaviourally and at the ABI surface — the compile floor stays
+the same cells + two depth fixtures, plus the committed `tests/*/input.cddl` corpus axis —
+`tests/README.md` § "rust↔wasm API-surface parity"). The round-trip and parity axes both sweep the
+emission profiles (default / preserve / json via `ALL_PROFILES`, with the corpus axis using each
+fixture dir's committed profile rows), so `--preserve-encodings` and the json flags are exercised
+behaviourally and at the ABI surface — the compile floor stays
 default-profile only by cost policy. The remaining frontiers HERE are extending the grid and the
 behavioural compile→round-trip upgrade (both below).
 

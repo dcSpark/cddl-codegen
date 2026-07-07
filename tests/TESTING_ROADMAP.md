@@ -207,19 +207,6 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-8. **Widen the rust↔wasm API-surface parity differential (low).** The one-directional rust→wasm
-   presence differential now exists and runs always-on
-   (`src/tests/wasm_parity_tests.rs::wasm_api_parity`, documented in `tests/README.md` § "rust↔wasm
-   API-surface parity"): it parses the emitted `mod.rs` of both crates over the wasm-matrix cells +
-   the two depth fixtures, swept across all three emission profiles, and asserts every rust pub
-   type/field/inherent-fn has a wasm counterpart or a ledgered exemption. It also enforces
-   JS-name visibility (rule 5): an alias-only wasm counterpart pointing at a generator-invented
-   `#[wasm_bindgen]` class is a finding, not silent parity. One axis it deliberately does NOT yet
-   sweep:
-   - **Corpus-wide input axis.** It covers the matrix cells + two depth fixtures, not the whole
-     snapshot corpus (`tests/*/input.cddl` under their per-dir flags). Extending it there should
-     reuse each dir's committed flag set so coverage stays mechanically checkable.
-
 9. **Multifile placement sweep (low; the class is proven by probe, not gate).** Every construct
    gate — the corpus compile/round-trip gates, the wasm-ABI matrix, the parity differential —
    feeds the generator SINGLE-file specs, so every construct is only ever verified in root-scope

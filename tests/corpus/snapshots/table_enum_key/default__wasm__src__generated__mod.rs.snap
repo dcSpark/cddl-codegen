@@ -243,6 +243,15 @@ impl Int {
         }
     }
 
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
     pub fn to_str(&self) -> String {
         self.0.to_string()
     }
@@ -273,6 +282,8 @@ impl AsRef<cddl_lib::Int> for Int {
         &self.0
     }
 }
+
+pub type IntError = JsError;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

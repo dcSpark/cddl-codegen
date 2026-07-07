@@ -9628,6 +9628,24 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
             .push_block(new_if)
             .push_block(new_else);
 
+        let mut wasm_new_uint = codegen::Function::new("new_uint");
+        wasm_new_uint
+            .ret("Self")
+            .vis("pub")
+            .arg("value", "u64")
+            .line(format!(
+                "Self({}::Int::new_uint(value))",
+                cli.lib_name_code()
+            ));
+
+        let mut wasm_new_nint = codegen::Function::new("new_nint");
+        wasm_new_nint
+            .ret("Self")
+            .vis("pub")
+            .doc("* `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.")
+            .arg("value", "u64")
+            .line(format!("Self({}::Int::new_nint(value))", cli.lib_name_code()));
+
         let mut to_str = codegen::Function::new("to_str");
         to_str
             .vis("pub")
@@ -9647,9 +9665,17 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
         wrapper
             .s_impl
             .push_fn(wasm_new)
+            .push_fn(wasm_new_uint)
+            .push_fn(wasm_new_nint)
             .push_fn(to_str)
             .push_fn(from_str);
         wrapper.push(gen_scope, types);
+
+        // Rust exposes `IntError` as the `FromStr` associated error. The wasm constructor maps that
+        // to `JsError`, so keep source-level parity without claiming wasm exports a data-bearing enum.
+        gen_scope
+            .wasm(types, &ident)
+            .push_type_alias(TypeAlias::new("IntError", "JsError").vis("pub").clone());
     }
 
     let mut native_struct = codegen::Enum::new("Int");

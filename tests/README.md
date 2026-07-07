@@ -816,18 +816,30 @@ Inputs are every `tests/matrix_wasm/*.cddl` cell (even `WASM_MATRIX_SKIP` ones �
 parse-only, and their emitted sources parse even when they don't standalone *compile*) plus the two
 depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-sink shapes the minimal cells
 don't reach), each swept across `ALL_PROFILES` (default / preserve / json — the flags substantially
-change the rust surface; a vacuity guard pins the swept (input, profile) pair count so the sweep
-can't silently shrink). Generation is **in-process** (`api::generated_strings` via `Cli::parse_from`,
-wrapped in `catch_unwind` — no subprocess, no scratch dirs) and **parse-only** (no cargo check/test
-of the generated crates), so the whole ~300-generation sweep stays ~30 s and **always-on** (no
-`#[ignore]`) in the default `cargo test` / check.ts local tier. It scopes to `src/generated/mod.rs`;
-a key-set guard over the returned file map fails loudly on any `.rs` name outside the per-profile
-allowlist (preserve additionally allows `cbor_encodings.rs`/`ordered_hash_map.rs`, both optional;
-the wasm side is `mod.rs`-only in every profile), so a future emission surface can't silently escape
-the differential. One (profile, input) pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve,
-tests/core) — a float member aborts generation under `--preserve-encodings` (issue #205, the
-`preserve_encodings_supports_floats` stub) — with a resurfaced guard both directions (a listed pair
-that generates fails as "gap closed — remove the pin"; an unlisted abort fails normally).
+change the rust surface). A second corpus axis sweeps every committed `tests/*/input.cddl` fixture
+dir under that dir's committed generation profile rows from `integration_tests.rs` (dropping only
+flags irrelevant to the emitted `src/generated` API surface, such as `--emit-tests`,
+`--wasm=false`, and `--package-json`). A completeness guard enumerates `tests/*/input.cddl` at
+runtime and requires every dir to be either in the corpus table or in the exclusion table; the two
+excluded dirs are `core` (already swept as a depth fixture across all profiles) and
+`wasm-list-macro` (its committed wasm members are emitted as user-macro invocations, invisible to a
+`syn` presence differential). Directory-input fixtures such as `tests/multifile/inputs` and
+`tests/extern-deps*/inputs` are out of scope for this axis: multifile emission writes per-module
+files under `src/generated/`, outside this differential's `mod.rs`-only parse scope, and is covered
+by the separate multifile placement sweep. Vacuity guards pin the matrix/depth count plus total
+corpus profile rows so the sweep can't silently shrink.
+
+Generation is **in-process** (`api::generated_strings` via `Cli::parse_from`, wrapped in
+`catch_unwind` — no subprocess, no scratch dirs) and **parse-only** (no cargo check/test of the
+generated crates), so the sweep stays always-on (no `#[ignore]`) in the default `cargo test` /
+check.ts local tier. It scopes to `src/generated/mod.rs`; a key-set guard over the returned file map
+fails loudly on any `.rs` name outside the per-profile allowlist (preserve additionally allows
+`cbor_encodings.rs`/`ordered_hash_map.rs`, both optional; the wasm side is `mod.rs`-only in every
+profile), so a future emission surface can't silently escape the differential. One (profile, input)
+pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — a float member aborts
+generation under `--preserve-encodings` (issue #205, the `preserve_encodings_supports_floats` stub)
+— with a resurfaced guard both directions (a listed pair that generates fails as "gap closed —
+remove the pin"; an unlisted abort fails normally).
 
 Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
 `WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no
@@ -845,7 +857,10 @@ rule name never reached JS and the shape's class name flipped with unrelated spe
 (`generation.rs`'s up-front table-shape ownership pass): a shape owned by a SINGLE named rule now
 surfaces its class under the CDDL rule name, with the structural `MapKToV` name a `pub type` alias to
 it; same-shape rule PAIRS keep the structural fallback for embedded uses while each named rule still
-gets its own class.
+gets its own class. The corpus-axis landing also surfaced the built-in `int` prelude wrapper gap:
+rust exposed `Int::new_uint`, `Int::new_nint`, and `IntError` for `int` map keys, while wasm exposed
+only the signed `Int::new(i64)` constructor and mapped parse failures to `JsError`; wasm now emits
+the two raw-CBOR-argument constructors and a source-level `pub type IntError = JsError` counterpart.
 
 ## Coverage
 
