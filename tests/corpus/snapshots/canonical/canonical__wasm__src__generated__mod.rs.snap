@@ -489,6 +489,8 @@ pub enum GroupChoiceKind {
     Plain,
 }
 
+pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapU64ToArrArrText(OrderedHashMap<u64, Vec<Vec<String>>>);

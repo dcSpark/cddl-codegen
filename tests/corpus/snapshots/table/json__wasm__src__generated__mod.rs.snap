@@ -13,6 +13,8 @@ expression: content
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
+pub type MapU64ToText = Table;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct Table(cddl_lib::Table);

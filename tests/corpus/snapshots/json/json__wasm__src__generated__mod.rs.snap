@@ -377,6 +377,8 @@ impl AsRef<cddl_lib::IntWrapper> for IntWrapper {
     }
 }
 
+pub type MapTextToU64 = Table;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NintWrapper(cddl_lib::NintWrapper);

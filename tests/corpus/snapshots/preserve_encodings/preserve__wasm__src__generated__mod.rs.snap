@@ -1476,6 +1476,8 @@ impl AsRef<cddl_lib::Hash> for Hash {
     }
 }
 
+pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapTextToU64(OrderedHashMap<String, u64>);
@@ -1616,6 +1618,8 @@ impl AsRef<OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>>
         &self.0
     }
 }
+
+pub type MapU64ToText = Table;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

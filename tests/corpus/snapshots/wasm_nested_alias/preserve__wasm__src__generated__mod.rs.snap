@@ -13,6 +13,14 @@ expression: content
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
+pub type MapU64ToNums = ValueMap;
+
+pub type MapU64ToPassthru = PassthruMap;
+
+pub type MapU64ToPassthruTags = PassthruTagsMap;
+
+pub type MapU64ToText = Tags;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NestedArr(Vec<cddl_lib::Nums>);

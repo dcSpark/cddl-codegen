@@ -99,94 +99,11 @@ use std::path::PathBuf;
 use crate::cli::Cli;
 use clap::Parser;
 
-/// Rust→wasm asymmetries reconciled here: `(profile, input label, "Type" | "Type::member", reason)`.
-/// The *legitimate* asymmetry classes are baked into the correspondence rules above, NOT listed here
-/// (see the module header). The entries below are the opposite: pinned KNOWN-BUG findings awaiting an
-/// emitter fix, not accepted asymmetries — every one is a rule-5 JS-name-visibility finding where a
-/// named table rule's wrapper degraded to a `pub type` alias pointing at the generator-invented
-/// structural map class (`MapU64ToText`/`MapTextToText`), so the CDDL rule name is JS-invisible and
-/// the shape's JS class name is usage-dependent (`cddl-matrix/ROADMAP.md` § findings, "A named table
-/// rule's JS class name is usage-dependent"). The emitter fix (prefer the rule name for the wrapper
-/// when a single named table rule owns the shape) will retire these entries — the resurfaced guard
-/// forces their removal when it lands. A live finding not covered by an entry fails the gate; an entry
-/// with no matching live finding fails as "resurfaced".
-const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
-    // `mp = { * uint => text }` used through a `@newtype` holder: the map shape is minted for the
-    // resolved/embedded use, so the named rule `Mp` degrades to `pub type Mp = MapU64ToText;` on wasm
-    // (rust keeps `pub type Mp = BTreeMap<u64, String>;`) — `Mp` reaches JS only as the structural
-    // `MapU64ToText` class. Same across all three profiles.
-    (
-        "default",
-        "collmap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    (
-        "preserve",
-        "collmap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    (
-        "json",
-        "collmap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    // As above, with an intermediate passthrough `ptm = mp` before the `@newtype` holder — same
-    // degradation of `Mp` to `pub type Mp = MapU64ToText;` (the passthrough `Ptm` aliases `Mp`, which
-    // is not wasm-defined, so `Ptm` is correctly not flagged).
-    (
-        "default",
-        "passthrumap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    (
-        "preserve",
-        "passthrumap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    (
-        "json",
-        "passthrumap__newtype-inner",
-        "Mp",
-        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    // `standalone_text = { * text => text }` in tests/core, resolved for an embedded use elsewhere in
-    // the kitchen-sink spec: `StandaloneText` degrades to `pub type StandaloneText = MapTextToText;`
-    // on wasm. No preserve entry — (preserve, tests/core) is an EXPECTED_GENERATION_FAIL pin (float
-    // member aborts generation under --preserve-encodings), so it never reaches the diff.
-    (
-        "default",
-        "tests/core",
-        "StandaloneText",
-        "named table rule surfaces to JS only as the structural MapTextToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-    (
-        "json",
-        "tests/core",
-        "StandaloneText",
-        "named table rule surfaces to JS only as the structural MapTextToText class — the \
-         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
-         will retire this entry",
-    ),
-];
+/// Deliberately-accepted rust→wasm asymmetries: `(profile, input label, "Type" | "Type::member",
+/// reason)`. Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules
+/// above, not listed here (see the module header). A live finding not covered by an entry fails the
+/// gate; an entry with no matching live finding fails as "resurfaced".
+const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
 /// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");
