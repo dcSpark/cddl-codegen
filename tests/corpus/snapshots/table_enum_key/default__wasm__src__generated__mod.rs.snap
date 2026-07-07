@@ -359,3 +359,7 @@ impl AsRef<Vec<cddl_lib::Int>> for IntList {
         &self.0
     }
 }
+
+pub type MapIkeyToText = EnumKeyed;
+
+pub type MapIntToText = IntKeyed;

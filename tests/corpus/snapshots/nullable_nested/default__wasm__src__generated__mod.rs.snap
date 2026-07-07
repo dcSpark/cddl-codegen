@@ -83,6 +83,10 @@ pub enum DataEnumKind {
     Text,
 }
 
+pub type MapU64ToMaybeColl = NullableCollMap;
+
+pub type MapU64ToMaybeUint = NullableMapValue;
+
 pub type MaybeColl = Option<NumsArr>;
 
 pub type MaybeDenum = Option<DataEnum>;

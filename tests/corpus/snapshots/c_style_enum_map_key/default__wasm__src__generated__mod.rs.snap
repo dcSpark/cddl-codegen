@@ -58,3 +58,5 @@ impl AsRef<cddl_lib::EnumKeyedMap> for EnumKeyedMap {
         &self.0
     }
 }
+
+pub type MapFixedEnumToU64 = EnumKeyedMap;

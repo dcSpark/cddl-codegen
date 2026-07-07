@@ -13,6 +13,8 @@ expression: content
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
+pub type MapU64ToText = Table;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct Table(cddl_lib::Table);

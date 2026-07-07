@@ -618,6 +618,34 @@ impl GenerationScope {
                 },
             );
 
+            // Which named table rule(s) declare each structural wasm-map shape. Keyed by the
+            // structural name string (`name_for_wasm_map`) — that string IS the shape identity the
+            // JS-class-name collision is about. Built up front over ALL table rules so the result is
+            // iteration-order-independent: it depends only on the SET of table rules, never on which
+            // struct the emit loop visits first.
+            let mut table_shape_owners: BTreeMap<String, Vec<RustIdent>> = BTreeMap::new();
+            for (owner_ident, owner_struct) in types.rust_structs() {
+                if let RustStructType::Table { domain, range } = owner_struct.variant() {
+                    let structural =
+                        ConceptualRustType::name_for_wasm_map(domain, range).to_string();
+                    table_shape_owners
+                        .entry(structural)
+                        .or_default()
+                        .push(owner_ident.clone());
+                }
+            }
+            // Shapes owned by EXACTLY ONE named rule: their embedded/resolved uses share the
+            // rule-named class (a real `#[wasm_bindgen]` class under the CDDL identifier), and the
+            // structural `MapKToV` name becomes a `pub type` alias to it. Same-shape rule PAIRS (2+
+            // owners) are absent here — they keep the structural fallback for embedded uses while
+            // each named rule still gets its own class.
+            let table_shape_sole_owner: BTreeMap<String, RustIdent> = table_shape_owners
+                .into_iter()
+                .filter_map(|(structural, mut owners)| {
+                    (owners.len() == 1).then(|| (structural, owners.pop().unwrap()))
+                })
+                .collect();
+
             let mut wasm_wrappers_generated = BTreeSet::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 assert_eq!(rust_ident, rust_struct.ident());
@@ -640,17 +668,34 @@ impl GenerationScope {
                             }
                             ConceptualRustType::Map(k, v) => {
                                 let map_ident = ConceptualRustType::name_for_wasm_map(k, v);
-                                if wasm_wrappers_generated.insert(map_ident.to_string()) {
-                                    codegen_table_type(
+                                match table_shape_sole_owner.get(&map_ident.to_string()) {
+                                    // A single named rule owns this shape: this embedded/resolved use
+                                    // shares that rule-named class (JS-visible under the CDDL
+                                    // identifier) rather than minting an anonymous structural class.
+                                    Some(owner) => mint_sole_owner_table(
                                         self,
                                         types,
+                                        owner,
                                         &map_ident,
-                                        *k.clone(),
-                                        *v.clone(),
-                                        None,
-                                        false,
+                                        &mut wasm_wrappers_generated,
                                         cli,
-                                    );
+                                    ),
+                                    // Anonymous-only shape (or a same-shape rule pair): mint the
+                                    // structural class, whose inner is the raw map (not a rust rule).
+                                    None => {
+                                        if wasm_wrappers_generated.insert(map_ident.to_string()) {
+                                            codegen_table_type(
+                                                self,
+                                                types,
+                                                &map_ident,
+                                                *k.clone(),
+                                                *v.clone(),
+                                                None,
+                                                false,
+                                                cli,
+                                            );
+                                        }
+                                    }
                                 }
                                 if !ConceptualRustType::Array(Box::new(*k.clone()))
                                     .directly_wasm_exposable(types)
@@ -686,10 +731,27 @@ impl GenerationScope {
                     RustStructType::Table { domain, range } => {
                         if cli.wasm {
                             let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
-                            // want to use `contains` instead of insert
-                            // since although map_ident may not be required for this struct
-                            // we may still have to generate it later if a table of the same shape is embedded inside different struct
-                            if !wasm_wrappers_generated.contains(&map_ident.to_string()) {
+                            if table_shape_sole_owner.get(&map_ident.to_string())
+                                == Some(rust_ident)
+                            {
+                                // Sole owner of this shape: emit the real JS class under the rule name
+                                // plus the structural alias. Idempotent — the visit arm may have
+                                // minted it already for an embedded/resolved use; either order
+                                // converges to identical output.
+                                mint_sole_owner_table(
+                                    self,
+                                    types,
+                                    rust_ident,
+                                    &map_ident,
+                                    &mut wasm_wrappers_generated,
+                                    cli,
+                                );
+                            } else if wasm_wrappers_generated.insert(rust_ident.to_string()) {
+                                // Shared shape: a same-shape rule PAIR, or a shape also reached by
+                                // anonymous/embedded uses. Every named rule STILL surfaces as its own
+                                // real JS class under its identifier (unconditionally, independent of
+                                // whether a structural twin was minted first); the structural `MapKToV`
+                                // class, where referenced, is minted by the visit arm above.
                                 codegen_table_type(
                                     self,
                                     types,
@@ -699,15 +761,6 @@ impl GenerationScope {
                                     rust_struct.tag(),
                                     true,
                                     cli,
-                                );
-                            } else {
-                                // Emit the named-table alias `pub` (like the passthrough-alias site
-                                // above): a wasm-crate rust consumer sees a private `type Mp = …;` as
-                                // an inaccessible boundary type, which the rust side exposes as
-                                // `pub type Mp = …;`. wasm_bindgen exports no type aliases either way,
-                                // so this only affects the rust-source-level parity contract.
-                                self.wasm(types, rust_ident).push_type_alias(
-                                    TypeAlias::new(rust_ident, map_ident).vis("pub").clone(),
                                 );
                             }
                         }
@@ -5217,6 +5270,48 @@ pub fn table_type(cli: &Cli) -> &'static str {
         "OrderedHashMap"
     } else {
         "BTreeMap"
+    }
+}
+
+/// Mint the JS-visible class for a table shape whose SOLE owner is the named rule `owner`, plus a
+/// `pub type <structural> = <owner>;` alias so structural-name reference sites (an anonymous `Map`'s
+/// `for_wasm_member`, `@newtype` inner getters, cross-module `mark_refs` imports) still resolve —
+/// wasm_bindgen exports no type aliases, so it folds the alias onto the `owner` class in the JS ABI.
+/// Idempotent via `generated` (which records BOTH the rule name and the structural name), so the
+/// visit arm and the Table arm converge to identical output regardless of which reaches the shape
+/// first. The class body always derives from the OWNER's declared `(domain, range)`, keeping the
+/// output iteration-order-independent.
+fn mint_sole_owner_table(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    owner: &RustIdent,
+    structural_ident: &RustIdent,
+    generated: &mut BTreeSet<String>,
+    cli: &Cli,
+) {
+    if generated.insert(owner.to_string()) {
+        let (domain, range, tag) = {
+            let owner_struct = types
+                .rust_structs()
+                .get(owner)
+                .expect("sole owner of a table shape must be a rust struct");
+            match owner_struct.variant() {
+                RustStructType::Table { domain, range } => {
+                    (domain.clone(), range.clone(), owner_struct.tag())
+                }
+                _ => unreachable!("sole owner of a table shape must be a Table rust struct"),
+            }
+        };
+        // `exists_in_rust = true`: the inner is the rust crate's `pub type <owner>` alias (exactly the
+        // struct-field role's inner), not the raw inline map.
+        codegen_table_type(gen_scope, types, owner, domain, range, tag, true, cli);
+    }
+    // Structural alias in the SAME module as the class (`owner`'s scope). Skip a self-alias when the
+    // rule ident already equals the structural name.
+    if *structural_ident != *owner && generated.insert(structural_ident.to_string()) {
+        gen_scope
+            .wasm(types, owner)
+            .push_type_alias(TypeAlias::new(structural_ident, owner).vis("pub").clone());
     }
 }
 

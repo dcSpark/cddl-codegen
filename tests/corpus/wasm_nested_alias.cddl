@@ -7,8 +7,10 @@ opt_holder = [ x: uint, ? f: nums ]
 passthru = nums
 passthru_map = { * uint => passthru }
 ; passthrough alias to a named MAP: transparent `pub type` in rust, but the wasm alias must point at
-; the map's wrapper struct (`pub type PassthruTags = Tags`), not `for_wasm_member`'s inline-only
-; `MapU64ToText` (which only exists for anonymous inline maps -> E0425). Contrast `passthru` above (a
-; directly-exposable array) which stays transparent (`Vec<u64>`).
+; the map's wrapper struct (`pub type PassthruTags = Tags`), not `for_wasm_member`'s structural
+; `MapU64ToText` name. For a sole-owner shape like `tags` that structural name is itself only a
+; `pub type MapU64ToText = Tags;` alias (wasm_bindgen exports no aliases), and for an anonymous-only
+; shape it may not exist at all (E0425) — pointing straight at the rule wrapper is correct either way.
+; Contrast `passthru` above (a directly-exposable array) which stays transparent (`Vec<u64>`).
 passthru_tags = tags
 passthru_tags_map = { * uint => passthru_tags }

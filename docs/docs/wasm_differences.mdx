@@ -16,7 +16,7 @@ This array wrapper implements `len() -> usize`, `get(usize) -> T` and `add(T)`.
 
 ## Tables
 
-Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. The table type will have a `MapKeyToValue` name for whichever `Key` and `Value` types it's exposed as if it's anonymously inlined as a member. A named table rule takes on its identifier — unless a `MapKeyToValue` wrapper for the same map shape was already emitted for an anonymously-inlined or resolved-inline use (e.g. as the inner of a `@newtype` wrapper), in which case the named rule reuses that shared wrapper and its identifier survives only as a rust-level `pub type` alias in the wasm crate (`wasm_bindgen` does not export type aliases, so the JS class is the `MapKeyToValue` name in that case).
+Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from its `Key` and `Value` types. A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
 
 ## Enums
 
