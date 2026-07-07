@@ -599,7 +599,22 @@ fn wasm_choice_roundtrip(
                 EnumVariantData::RustType(vty)
                     if matches!(vty.resolve_alias_shallow(), ConceptualRustType::Primitive(_))
             );
-            if primitive_payload
+            // A nullable payload (`opt = uint / null` used as an arm) exposes a *lossy* getter:
+            // wasm_bindgen can't return `Option<Option<T>>`, so `as_<var>()` returns `None` both
+            // when the arm isn't selected AND when it holds `null` (the getter's own doc states this
+            // `Option<Option<T>>` conflation). The minter carries the `null` inhabitant, so an
+            // `is_some()` readback here is provably unsatisfiable — it asserts nothing, so emit NO
+            // self-readback for a nullable arm. `kind()` + the byte round-trip still prove the right
+            // variant was selected and survived the boundary; the sibling arm's `is_none()` readback
+            // below stays valid (a lossy getter returns `None` when unselected regardless).
+            let nullable_payload = matches!(
+                &variant.data,
+                EnumVariantData::RustType(vty)
+                    if matches!(vty.resolve_alias_shallow(), ConceptualRustType::Optional(_))
+            );
+            if nullable_payload {
+                // no self-readback: the getter is lossy for this arm (see above).
+            } else if primitive_payload
                 && let [(ty, _)] = arg_fields.as_slice()
                 && let Some(expected) = scalar_readback(ty, &choice_variant_first_arg(&choice_mv)?)
             {

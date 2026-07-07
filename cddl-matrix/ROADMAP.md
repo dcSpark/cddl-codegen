@@ -107,18 +107,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **A nullable arm of a type-choice enum has a lossy wasm getter that fails the emitted round-trip
-  readback.** `opt = uint / null` placed as a type-choice variant (`holder = opt / nint`) exposes
-  `Holder::as_opt(&self) -> Option<u64>`, which returns `None` both when the arm isn't selected AND when
-  the arm holds `null` — a wasm_bindgen `Option<Option<T>>` conflation the getter's own doc comment
-  states. The minted arm carries the `null` inhabitant, so the emitted readback
-  `assert!(wasm_v.as_opt().is_some())` (`src/emit_tests_wasm.rs:611`, taken because the arm's payload
-  resolves to `Optional`, not `Primitive`) can never hold → round-trip red in every profile. Pinned as
-  `nullable__tchoice-variant` (all three profiles) in `WASM_MATRIX_PROFILE_SKIP`; the cell still compiles,
-  so it stays on the `wasm_matrix_compiles` floor. Fix: `emit_tests_wasm.rs` must drop the
-  `is_some()`/`is_none()` readbacks for a nullable-payload arm (the getter is lossy there) and keep only
-  the `kind()` assertion plus the byte round-trip, then flip the three pins. Class: type-choice variant =
-  nullable (`Option<T>`).
 - **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
   last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
   generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only
