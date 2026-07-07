@@ -38,6 +38,31 @@
 //!   collection-API-inheritance class (a transparent `pub type Nums = Vec<u64>` has no enumerable
 //!   members), and the tag-over-struct-folding class all fall out structurally.
 //!
+//! **Rule 5 — JS-name visibility (an ADDITIONAL finding class layered on rules 1–2).** Rules 1–2
+//! accept a *public* `pub type` alias as a rust type's wasm counterpart, but that is rust-source-level
+//! parity only: wasm_bindgen exports NO type aliases, so an alias-only counterpart means the CDDL rule
+//! name never reaches JS. For every rust-surface name (rust pub struct/enum ∪ rust `pub type` alias)
+//! whose ONLY wasm counterpart is a `pub type` alias, rule 5 resolves the alias's TARGET (last path
+//! segment ident) and emits a finding iff (a) the target is a struct/enum DEFINED in the wasm mod (a
+//! real `#[wasm_bindgen]` class) AND (b) that target name is NOT itself on the rust surface. Both
+//! carve-outs are structural, not ledgered:
+//! - *Transparent alias to a non-wasm-defined target* (primitive/std/`Option`/…, e.g.
+//!   `pub type U8 = u8;`, `pub type OptText = Option<TaggedText>;`, `pub type ParenCbor = String;`):
+//!   JS represents the value natively — no class exists for the shape (`docs/docs/wasm_differences.mdx`).
+//!   Not a finding. (The target-leaf resolution does NOT unwrap `Option`, so `OptText`'s target is the
+//!   std `Option`, not the wasm-defined inner.)
+//! - *Alias to a wasm-defined target that IS on the rust surface* (`pub type FooBytes = Foo;`, `Foo` a
+//!   rust pub struct): a pure CDDL-level alias present identically on both sides — the JS class carries
+//!   a genuine CDDL rule name. Not a finding.
+//!
+//! What remains — alias to a wasm-defined target whose name is generator-invented (`MapU64ToText`, not
+//! on the rust surface) — is exactly the usage-dependent-JS-class-name bug: the CDDL rule name is
+//! JS-invisible and the shape's JS class name flips with unrelated spec content
+//! (`cddl-matrix/ROADMAP.md` § findings). `pub use` counterparts stay JS-visible by design (Copy
+//! c-enums carry `#[wasm_bindgen]` at their rust-crate definition and are re-exported — extern
+//! re-exports are the user's contract); defined wasm structs/enums are themselves `#[wasm_bindgen]`
+//! classes. So rule 5 only ever fires on the alias-to-invented-name class.
+//!
 //! **What it does NOT check.** Semantic wrongness — an identity `.into()` where a transform was
 //! needed — stays `wasm_matrix_roundtrips`' job (this gate is a *presence* differential, parse-only).
 //! It also scopes to `src/generated/mod.rs`: `serialization.rs`/`error.rs`/`cbor_encodings.rs`/
@@ -74,11 +99,94 @@ use std::path::PathBuf;
 use crate::cli::Cli;
 use clap::Parser;
 
-/// Deliberately-accepted rust→wasm asymmetries: `(profile, input label, "Type" | "Type::member",
-/// reason)`. Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules
-/// above, not listed here (see the module header). A live finding not covered by an entry fails the
-/// gate; an entry with no matching live finding fails as "resurfaced".
-const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[];
+/// Rust→wasm asymmetries reconciled here: `(profile, input label, "Type" | "Type::member", reason)`.
+/// The *legitimate* asymmetry classes are baked into the correspondence rules above, NOT listed here
+/// (see the module header). The entries below are the opposite: pinned KNOWN-BUG findings awaiting an
+/// emitter fix, not accepted asymmetries — every one is a rule-5 JS-name-visibility finding where a
+/// named table rule's wrapper degraded to a `pub type` alias pointing at the generator-invented
+/// structural map class (`MapU64ToText`/`MapTextToText`), so the CDDL rule name is JS-invisible and
+/// the shape's JS class name is usage-dependent (`cddl-matrix/ROADMAP.md` § findings, "A named table
+/// rule's JS class name is usage-dependent"). The emitter fix (prefer the rule name for the wrapper
+/// when a single named table rule owns the shape) will retire these entries — the resurfaced guard
+/// forces their removal when it lands. A live finding not covered by an entry fails the gate; an entry
+/// with no matching live finding fails as "resurfaced".
+const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
+    // `mp = { * uint => text }` used through a `@newtype` holder: the map shape is minted for the
+    // resolved/embedded use, so the named rule `Mp` degrades to `pub type Mp = MapU64ToText;` on wasm
+    // (rust keeps `pub type Mp = BTreeMap<u64, String>;`) — `Mp` reaches JS only as the structural
+    // `MapU64ToText` class. Same across all three profiles.
+    (
+        "default",
+        "collmap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    (
+        "preserve",
+        "collmap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    (
+        "json",
+        "collmap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    // As above, with an intermediate passthrough `ptm = mp` before the `@newtype` holder — same
+    // degradation of `Mp` to `pub type Mp = MapU64ToText;` (the passthrough `Ptm` aliases `Mp`, which
+    // is not wasm-defined, so `Ptm` is correctly not flagged).
+    (
+        "default",
+        "passthrumap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    (
+        "preserve",
+        "passthrumap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    (
+        "json",
+        "passthrumap__newtype-inner",
+        "Mp",
+        "named table rule surfaces to JS only as the structural MapU64ToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    // `standalone_text = { * text => text }` in tests/core, resolved for an embedded use elsewhere in
+    // the kitchen-sink spec: `StandaloneText` degrades to `pub type StandaloneText = MapTextToText;`
+    // on wasm. No preserve entry — (preserve, tests/core) is an EXPECTED_GENERATION_FAIL pin (float
+    // member aborts generation under --preserve-encodings), so it never reaches the diff.
+    (
+        "default",
+        "tests/core",
+        "StandaloneText",
+        "named table rule surfaces to JS only as the structural MapTextToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+    (
+        "json",
+        "tests/core",
+        "StandaloneText",
+        "named table rule surfaces to JS only as the structural MapTextToText class — the \
+         usage-dependent JS-class-name finding, cddl-matrix/ROADMAP.md § findings; the emitter fix \
+         will retire this entry",
+    ),
+];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
 /// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");
@@ -120,8 +228,11 @@ struct WasmSurface {
     defined_types: BTreeSet<String>,
     /// `pub use` re-export leaf idents.
     reexports: BTreeSet<String>,
-    /// `pub type` alias names (public visibility only — a PRIVATE alias does not satisfy rule 2).
-    pub_type_aliases: BTreeSet<String>,
+    /// `pub type` alias name -> its TARGET's leaf ident (last path segment, `None` for non-path
+    /// targets like tuples). Public visibility only — a PRIVATE alias does not satisfy rule 2. The
+    /// target drives rule 5 (JS-name visibility): an alias-only counterpart whose target is a
+    /// wasm-defined struct/enum with a generator-invented name is JS-invisible.
+    pub_type_aliases: BTreeMap<String, Option<String>>,
     /// type -> inherent `pub fn`s as (name, self-excluded arity).
     members: BTreeMap<String, BTreeSet<(String, usize)>>,
 }
@@ -130,8 +241,12 @@ fn is_pub(vis: &syn::Visibility) -> bool {
     matches!(vis, syn::Visibility::Public(_))
 }
 
-/// Last path segment of a `Type::Path` (the type an `impl` block is *for*), if any.
-fn impl_self_ident(ty: &syn::Type) -> Option<String> {
+/// Last path segment ident of a `Type::Path`, if any (`None` for tuples, references, …). Used both
+/// for the type an `impl` block is *for* and for a `pub type` alias's TARGET. Unlike
+/// `type_inner_ident`, this does NOT unwrap `Option<..>`: `Option<TaggedText>` reports `Option`, so a
+/// transparent-alias target (`pub type OptText = Option<TaggedText>;`) resolves to the std `Option`,
+/// not the wasm-defined inner — exactly what rule 5's "target not wasm-defined" carve-out needs.
+fn type_leaf_ident(ty: &syn::Type) -> Option<String> {
     match ty {
         syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
         _ => None,
@@ -209,7 +324,7 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                 s.type_aliases.insert(ty.ident.to_string());
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
-                if let Some(ty) = impl_self_ident(&im.self_ty) {
+                if let Some(ty) = type_leaf_ident(&im.self_ty) {
                     let entry = s.inherent_fns.entry(ty).or_default();
                     for it in &im.items {
                         if let syn::ImplItem::Fn(f) = it
@@ -239,14 +354,15 @@ fn parse_wasm_surface(src: &str) -> WasmSurface {
             }
             syn::Item::Type(ty) => {
                 if is_pub(&ty.vis) {
-                    s.pub_type_aliases.insert(ty.ident.to_string());
+                    s.pub_type_aliases
+                        .insert(ty.ident.to_string(), type_leaf_ident(&ty.ty));
                 }
             }
             syn::Item::Use(u) if is_pub(&u.vis) => {
                 collect_use_leaves(&u.tree, &mut s.reexports);
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
-                if let Some(ty) = impl_self_ident(&im.self_ty) {
+                if let Some(ty) = type_leaf_ident(&im.self_ty) {
                     let entry = s.members.entry(ty).or_default();
                     for it in &im.items {
                         if let syn::ImplItem::Fn(f) = it
@@ -302,7 +418,7 @@ fn diff_surfaces(
     let wasm_has_type = |name: &str| {
         wasm.defined_types.contains(name)
             || wasm.reexports.contains(name)
-            || wasm.pub_type_aliases.contains(name)
+            || wasm.pub_type_aliases.contains_key(name)
     };
 
     // Rule 1: every rust pub struct/enum has a wasm counterpart.
@@ -386,6 +502,65 @@ fn diff_surfaces(
                 }
             }
         }
+    }
+
+    // Rule 5 (JS-name visibility): rules 1–2 accept a PUBLIC `pub type` alias as a rust type's wasm
+    // counterpart, but that is rust-source-level parity only — wasm_bindgen exports NO type aliases,
+    // so an alias-only counterpart means the CDDL rule name never reaches JS. For every rust-surface
+    // name (rust pub struct/enum ∪ rust `pub type` alias) whose ONLY wasm counterpart is a `pub type`
+    // alias (not a defined struct/enum, not a `pub use` re-export), resolve the alias's target leaf
+    // ident and flag iff (a) the target is a struct/enum DEFINED in the wasm mod (a real
+    // `#[wasm_bindgen]` class) AND (b) that target name is NOT itself on the rust surface. The
+    // carve-outs (both "not a finding") are structural:
+    //   - target NOT wasm-defined (primitive/std/`Option`/…, e.g. `pub type U8 = u8;`,
+    //     `pub type OptText = Option<TaggedText>;`, `pub type ParenCbor = String;`): the
+    //     transparent-alias design — JS represents the value natively, no class exists for the shape;
+    //     documented in `docs/docs/wasm_differences.mdx`.
+    //   - target wasm-defined AND on the rust surface (e.g. `pub type FooBytes = Foo;`, `Foo` a rust
+    //     pub struct): a pure CDDL-level alias present identically on both sides — the JS class carries
+    //     a genuine CDDL rule name.
+    // What remains — alias to a wasm-defined type whose name is generator-invented (`MapU64ToText`,
+    // not on the rust surface) — is the usage-dependent-JS-class-name bug: the CDDL rule name is
+    // JS-invisible and the shape's JS class name flips with unrelated spec content
+    // (`cddl-matrix/ROADMAP.md` § findings). `pub use` counterparts stay JS-visible by design
+    // (c-style enums carry `#[wasm_bindgen]` at their definition and are re-exported — the user's
+    // contract), and defined wasm structs/enums are themselves `#[wasm_bindgen]` classes.
+    let rust_surface: BTreeSet<&str> = rust
+        .types
+        .iter()
+        .chain(rust.type_aliases.iter())
+        .map(String::as_str)
+        .collect();
+    for name in rust_surface.iter().copied() {
+        // Alias-only counterpart: satisfied by a wasm `pub type` alias, and NOT by a defined
+        // struct/enum or a `pub use` re-export (those are JS-visible classes / the user's contract).
+        if wasm.defined_types.contains(name) || wasm.reexports.contains(name) {
+            continue;
+        }
+        let Some(target) = wasm.pub_type_aliases.get(name) else {
+            continue; // no wasm counterpart at all — rule 1/2 already flagged it
+        };
+        let Some(target_ident) = target else {
+            continue; // (a) non-path target (tuple, reference, …): no wasm-defined class
+        };
+        if !wasm.defined_types.contains(target_ident) {
+            continue; // (a) transparent alias to a primitive/std/Option type — native in JS
+        }
+        if rust_surface.contains(target_ident.as_str()) {
+            continue; // (b) target is itself a rust-surface CDDL rule name — JS class is genuine
+        }
+        out.push(Finding {
+            profile: profile.to_string(),
+            label: label.to_string(),
+            item: name.to_string(),
+            msg: format!(
+                "rust surface name reaches JS only as the generator-invented `{target_ident}` \
+                 class: its wasm counterpart is an alias-only `pub type {name} = {target_ident};` \
+                 (wasm_bindgen exports no type aliases), so the CDDL rule name is JS-invisible and \
+                 the shape's JS class name is usage-dependent — emit the wrapper under the rule \
+                 name, or ledger it"
+            ),
+        });
     }
 }
 
