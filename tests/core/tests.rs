@@ -1223,4 +1223,117 @@ mod tests {
         assert!(lib_rs.contains("comments about second"));
         assert!(lib_rs.contains("type-level comment"));
     }
+
+    // Deserialize errors from a record's container header / length parsing must name the type that
+    // failed, the same way field-level failures already do. Today the header reads
+    // (`raw.map()?`/`raw.array()?`) and the `read_elems`/`finish` length checks sit OUTSIDE the
+    // `.annotate("TypeName")` closure, so a wrong container major type or a wrong entry count yields
+    // an error whose Display carries no type-name location (`Deserialize::from_cbor_bytes` does not
+    // re-annotate). Each case below pins `err.to_string().contains("<TypeName>")`. Split into one
+    // test per case so each red/green outcome is observed independently rather than the first assert
+    // masking the rest. The `_control` cases are GREEN today (their failures arise INSIDE the
+    // annotate closure) and anchor that any fix must not drop the annotation that already works.
+    // See static/error.rs: a `Some(location)` prints "Deserialization failed in {location} because:",
+    // a `None` prints "Deserialization:".
+    //
+    // map-rep struct exercised: TableArrMembers = { tab, arr, arr2 } (3 mandatory keys).
+    // array-rep struct exercised: Foo = [uint, text, bytes] (read via read_elems(3) + finish()).
+
+    // (a) Wrong major type at the map header: a bare uint (0x00) where a map is required. `raw.map()?`
+    // runs before the annotate closure, so the CBOR type error has no type-name location.
+    #[test]
+    fn error_annotation_map_wrong_major_type() {
+        let err = TableArrMembers::from_cbor_bytes(&[0x00u8])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("TableArrMembers"),
+            "map-rep wrong-major-type error must name the type, got: {err}"
+        );
+    }
+
+    // (b) Right major type, wrong length: a definite map with 1 entry ({"tab": {}}) against the 3
+    // mandatory fields. `read_len.read_elems(3)?` (3 > 1) trips DefiniteLenMismatch before the
+    // annotate closure, so again no type-name location.
+    #[test]
+    fn error_annotation_map_wrong_length() {
+        let bytes = [
+            map_def(1), // definite map, 1 entry
+            cbor_string("tab"),
+            map_def(0), // "tab" => {}
+        ]
+        .concat();
+        let err = TableArrMembers::from_cbor_bytes(&bytes)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("TableArrMembers"),
+            "map-rep wrong-length error must name the type, got: {err}"
+        );
+    }
+
+    // (c1) Wrong major type at the array header: a bare uint (0x00) where an array is required.
+    // `raw.array()?` runs before the annotate closure.
+    #[test]
+    fn error_annotation_array_wrong_major_type() {
+        let err = Foo::from_cbor_bytes(&[0x00u8]).unwrap_err().to_string();
+        assert!(
+            err.contains("Foo"),
+            "array-rep wrong-major-type error must name the type, got: {err}"
+        );
+    }
+
+    // (c2) Right major type, wrong length: a definite array declaring 2 elements against 3 fields.
+    // `read_elems(3)?` (3 > 2) trips DefiniteLenMismatch before the annotate closure.
+    #[test]
+    fn error_annotation_array_wrong_length() {
+        let err = Foo::from_cbor_bytes(&arr_def(2)).unwrap_err().to_string();
+        assert!(
+            err.contains("Foo"),
+            "array-rep wrong-length error must name the type, got: {err}"
+        );
+    }
+
+    // (d1) CONTROL (green today): a field-level decode failure inside the value-decode path. An
+    // indefinite map (so the header length checks are no-ops) whose "tab" value is a uint instead of
+    // the required inner map — the inner `raw.map()?` error is annotated "tab" then "TableArrMembers".
+    #[test]
+    fn error_annotation_field_level_control() {
+        let bytes = [
+            vec![MAP_INDEF],
+            cbor_string("tab"),
+            cbor_int(5, cbor_event::Sz::Inline), // tab => 5 (not a map)
+            vec![BREAK],
+        ]
+        .concat();
+        let err = TableArrMembers::from_cbor_bytes(&bytes)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("TableArrMembers"),
+            "field-level failure must (still) name the type, got: {err}"
+        );
+    }
+
+    // (d2) CONTROL (green today): a missing mandatory field. An indefinite map dropping the required
+    // "arr2" — the MandatoryFieldMissing is raised INSIDE the annotate closure, so it is annotated.
+    #[test]
+    fn error_annotation_missing_field_control() {
+        let bytes = [
+            vec![MAP_INDEF],
+            cbor_string("tab"),
+            map_def(0),
+            cbor_string("arr"),
+            arr_def(0),
+            vec![BREAK], // no "arr2"
+        ]
+        .concat();
+        let err = TableArrMembers::from_cbor_bytes(&bytes)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("TableArrMembers"),
+            "missing-mandatory-field failure must name the type, got: {err}"
+        );
+    }
 }

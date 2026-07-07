@@ -1934,6 +1934,80 @@ fn flag_value_smoke() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
+/// Clippy over generated crates: the emitted deserialize/serialize source must be `clippy::all`-clean
+/// (no `clippy::no_effect` degenerate `();` statements, no other default clippy lints), per emission
+/// profile. Snapshots pin that the emitted bytes don't *change*, not that they're *idiomatic* — a
+/// generator regression that mints lint-worthy code (a standalone `();`, a needless clone, a
+/// pointless match) is invisible to them and to the round-trip suites (the code still compiles and
+/// works), but it degrades every consumer's `cargo clippy`. This runs `cargo clippy -- -D
+/// clippy::all` over a rich, extern-free fixture (`tests/canonical/input.cddl`, which
+/// `flag_value_smoke` already relies on for exactly its extern-freedom + breadth) under two
+/// representative profiles: default flags, and `--preserve-encodings=true --canonical-form=true`.
+///
+/// Deny only `clippy::all`, NOT `-D warnings`: generated code legitimately over-imports and rustc's
+/// `unused_imports` must stay a warning here (see `tool_cmd`'s doc comment; `tool_cmd` also strips the
+/// CI-injected `RUSTFLAGS=-D warnings`). Generate-into-own-temp-dir shape mirrors `flag_value_smoke`
+/// so this gate can't race the fixtures' own `tests/<dir>/export` outputs. `--wasm=false`: the rust
+/// crate carries the deserialize source this gate is about (extending clippy to wasm is a ledgered
+/// TESTING_ROADMAP follow-up). Tier: check.ts `local` (a plain non-ignored test) — measured warm
+/// wall-clock stays under the ~90s plain-`#[test]` threshold. NEVER promote to `fast`/CI.
+#[test]
+fn generated_code_clippy_clean() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
+    let cases: &[(&str, &[&str])] = &[
+        ("default", &[][..]),
+        (
+            "preserve_canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"][..],
+        ),
+    ];
+    // shared scratch + target under temp_dir (per-checkout), like `flag_value_smoke` and the other
+    // generate+check gates — never the committed `tests/<dir>/export` dirs the fixtures reuse.
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_clippy_gate_{:016x}", checkout_hash()));
+    let target_dir = scratch.join("target");
+    let mut failures = Vec::new();
+    for (label, options) in cases {
+        let out = scratch.join(label);
+        let _ = std::fs::remove_dir_all(&out);
+        let gen_out = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .args(*options)
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            failures.push(format!(
+                "{label}: generation failed\n{}",
+                String::from_utf8_lossy(&gen_out.stderr)
+            ));
+            continue;
+        }
+        let clippy = tool_cmd("cargo")
+            .arg("clippy")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .args(["--", "-D", "clippy::all"])
+            .output()
+            .unwrap();
+        if !clippy.status.success() {
+            failures.push(format!(
+                "{label}: `cargo clippy -- -D clippy::all` failed on the generated rust crate\n\
+                 --- stdout ---\n{}\n--- stderr ---\n{}",
+                String::from_utf8_lossy(&clippy.stdout),
+                String::from_utf8_lossy(&clippy.stderr)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
 /// `--canonical-form=true` without `--preserve-encodings` must be rejected (it otherwise emits a
 /// non-compiling crate — see `api::with_types`). Pins the rejection *and* its message so the guard
 /// can't silently become a no-op, and confirms the same input with both flags is accepted — so the
