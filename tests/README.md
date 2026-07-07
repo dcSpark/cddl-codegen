@@ -336,7 +336,14 @@ and asserts they are accepted.
     Each constraint vector also carries `expect_err`: a substring the generated decoder's error
     Display must contain when it rejects the vector. The replay gate asserts it, pinning the
     rejection REASON — a decoder that rejects for a subtly WRONG reason (a stray length check, an
-    unrelated error path) no longer passes as it would under a bare `is_err` check.
+    unrelated error path) no longer passes as it would under a bare `is_err` check. Like
+    `class`/`reason`, it is hand-authored when the vector is authored (the drift gate REQUIRES it
+    on `class="constraint"` and forbids it elsewhere; a mint round-trips it verbatim): pick a
+    generous discriminating fragment of the generator-emitted Display including the bound and the
+    vector's own found value (both deterministic — same bytes, same decoder), e.g.
+    `11 not at most 10`, `not in float range (>=0.5, <=10.5)` — see `static/error.rs` for the
+    formats. If the captured Display does NOT name the violated constraint, that is a wrong-reason
+    rejection to investigate, never a string to pin.
     **Authoring rule — vector SHAPE is load-bearing:** a constraint vector for a `standalone` row is
     a BARE in-type instance of the row's type (`0b`, `fb…`), decodable up to the constraint itself so
     the emitted range/size check is the only possible rejection. A holder-wrapped scalar
@@ -371,7 +378,7 @@ and asserts they are accepted.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
-  reject-pin class/reason shape, and the hard-coded **seeded regression controls** — the
+  reject-pin class/reason/`expect_err` shape, and the hard-coded **seeded regression controls** — the
   absent-instance vectors (`occur.optional` holder `[0, []]`, `type2.map` holder `[0, {}]`,
   `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style.
 - **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors
