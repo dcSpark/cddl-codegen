@@ -44,10 +44,6 @@ changing the *runtime behaviour* of generated code usually means editing `static
   - *Reproducibility* (same input → byte-identical output): always `BTreeMap`/`BTreeSet`, never
     `HashMap` — hash iteration order breaks it.
   - *Canonical layout*: stable item ordering via `codegen`'s sort + `rustfmt` post-processing.
-    Gotcha: `Scope::raw` does NOT participate in the sort — raws hoist to the top of the file in
-    insertion order. Text that must sort as an item (e.g. a macro invocation defining a type) goes
-    through `Scope::raw_sorted`; the provenance header is stamped file-level in `generated_files`
-    (gated by `generated_files_start_with_header`), never as a scope raw.
   - *No prior-output dependence* — generation must not read the prior contents of the output
     directory. Two bounded exceptions, both existence-only and neither feeding back into *what* is
     generated: (1) the generated `Cargo.toml`s — `export()` merges a declarative changeset
