@@ -4,7 +4,6 @@ expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
-
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 

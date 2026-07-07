@@ -2,6 +2,8 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
 #![allow(
     clippy::len_without_is_empty,
     clippy::too_many_arguments,
@@ -10,8 +12,6 @@ expression: content
 pub mod a;
 pub mod b;
 pub mod qux;
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
 
 use a::c::foo::Foo;
 use a::Baz;

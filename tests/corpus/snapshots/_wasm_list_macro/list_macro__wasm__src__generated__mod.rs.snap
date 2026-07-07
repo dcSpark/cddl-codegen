@@ -2,23 +2,20 @@
 source: src/tests/snapshot_tests.rs
 expression: lib
 ---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
 #![allow(
     clippy::len_without_is_empty,
     clippy::too_many_arguments,
     clippy::new_without_default
 )]
-impl_wasm_list!(Color, Color, Colors, false, true);
-impl_wasm_list!(cddl_lib::Foo, Foo, Foos, true, false);
-impl_wasm_list!(cddl_lib::Texts, Texts, Nested, true, false);
-impl_wasm_list!(u64, u64, Nums, false, true);
-impl_wasm_list!(String, String, Texts, false, false);
-// This file was code-generated using an experimental CDDL to rust tool:
-// https://github.com/dcSpark/cddl-codegen
 
 pub use cddl_lib::Color;
 use my_crate::impl_wasm_list;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+impl_wasm_list!(Color, Color, Colors, false, true);
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -63,6 +60,8 @@ impl AsRef<cddl_lib::Foo> for Foo {
     }
 }
 
+impl_wasm_list!(cddl_lib::Foo, Foo, Foos, true, false);
+
 pub type Maybe = Option<String>;
 
 #[derive(Clone, Debug)]
@@ -105,3 +104,9 @@ impl AsRef<Vec<cddl_lib::Maybe>> for Maybes {
         &self.0
     }
 }
+
+impl_wasm_list!(cddl_lib::Texts, Texts, Nested, true, false);
+
+impl_wasm_list!(u64, u64, Nums, false, true);
+
+impl_wasm_list!(String, String, Texts, false, false);

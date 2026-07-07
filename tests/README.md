@@ -109,6 +109,17 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
 - **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
   combination (it ships verbatim into every crate but is assembled differently per flag).
 
+The module also carries a non-snapshot invariant gate, `generated_files_start_with_header`: every
+generated `.rs` in the tool-owned trees (`rust/src/generated/**`, `wasm/src/generated/**`) must
+LEAD with the codegen provenance banner — only blank lines, `//` comments, and crate `#![…]`
+attributes may precede it. It asserts with the same banner constant and path predicate the stamper
+uses (`generation::CODEGEN_HEADER` / `is_header_stamped_path` — the stamping is file-level in
+`generated_files`, so scope-internal ordering can't outrank it), over the `whole_program` inputs
+plus the wasm-list-macro fixture under both its profiles. It exists because `codegen`'s
+`Scope::raw` hoists raw text above everything in insertion order: any raw pushed during generation
+(the class that put `impl_wasm_list!` invocations and merged-root module declarations above the
+header) beats an end-of-run banner raw, and snapshots just bless whatever order results.
+
 `canonical` is a serialization sub-mode of `preserve` (differs only where maps/sets exist), so it's
 covered at whole-program scale rather than duplicated per feature.
 
