@@ -111,6 +111,17 @@ For workflows:
 - Never fan out multiple Fable agents without explicit user permission. A single Fable workflow agent also needs separate permission. If Fable is really needed, prefer using it inline.
 - Generally avoid running tests in parallel agents unless explicitly intended, since this can happen accidentally when using multiple parallel high-capability agents for implementation.
 
+For sessions that spawn their own sub-agents (an orchestrating session, or a subagent delegating to
+codex/Opus):
+- **Never end your turn to "stand by" for a sub-agent's completion** — a stopped agent is only
+  resumed by an explicit message from its spawner, so "armed watchers"/"completion callbacks" never
+  fire and the session stalls until a human (or the coordinator) manually nudges it. Poll the
+  sub-agent's transcript/output with bounded foreground waits (extended tool timeouts) and end the
+  turn only when reporting completed, reviewed results. Same rationale as the foreground rule for
+  multi-minute gates above.
+- The codex background runner can die silently mid-task (log stalls, pid dead, status stuck
+  `running`) — detection signal + recovery procedure: `draft/codex-background-runner-silent-death.md`.
+
 
 ## Markdown formatting
 
@@ -119,6 +130,11 @@ A lot of components of this library have markdown files following two different 
 2. `ROADMAP.md` which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
 
 Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
+
+Amending a ROADMAP/README section sentence-by-sentence across sessions preserves its stale skeleton
+even when every individual sentence is kept true — after a multi-session push over one area, re-read
+the touched sections whole, as if new, and re-derive what is current state (README) vs a clearly
+phrased remaining action item (ROADMAP). Per-session diffs structurally cannot catch this class.
 
 Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped.
 
