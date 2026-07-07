@@ -892,18 +892,24 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   types, can't compile standalone) are excluded with header comments.
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
   (`bholder = [field0: <ty>]`); `anon` — `b` embeds the shape's inline anonymous same-shape spelling
-  (the `mark_refs` structural class); `unref` — `b` references nothing (`[field0: uint]`), so an
-  alias/table-only module `a` still gets emitted. `named`/`unref` apply to every shape; `anon` exists
-  ONLY for a shape whose anon holder `holder = [field0: <anonForm>]` compiles GREEN as a **single-file
-  control** — otherwise the red would be a single-file limitation, not a placement finding, and the
-  shape carries no `anonForm` (the controls are throwaway, not committed). All 6 candidates
-  (`coll`/`collmap`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green.
+  (the `mark_refs` structural class); `anonb` — `anon` plus a ballast record rule in `a`
+  (`ballast = [bal0: uint]`), so `a` emits `serialization.rs` and the alias-only-module E0583 can't
+  mask the b-side import verdict — the mode that surfaces the CORE `mark_refs` E0432; `unref` — `b`
+  references nothing (`[field0: uint]`), so an alias/table-only module `a` still gets emitted.
+  `named`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
+  `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
+  would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
+  (the controls are throwaway, not committed). All 6 candidates
+  (`coll`/`collmap`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green. `anonb` applies to exactly the
+  anon shapes whose plain `anon` cell is E0583-masked (`coll`/`collmap`/`nullable`); the other three
+  are green in plain `anon` (module `a` already emits serialization), so a ballast variant adds no
+  discrimination.
 - **The gate** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs, generates each
   with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which path-depends on
   the rust crate, so rust-side breakage — E0583 — surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
-  default `cargo test` / check.ts local tier. Wall-clock ~30 s (first cold run, shared target warms
-  once) / ~27 s warm.
+  default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
+  once) / ~30 s warm for the 43 cells.
 - **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &str)]` (cell stem, reason) holds the
   deliberately-red cells, four-state like `WASM_MATRIX_SKIP`: red+listed = expected; red+unlisted =
   a new placement finding to fix or (deliberately, with a ROADMAP entry) pin; green+listed =
@@ -914,13 +920,18 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   resurfaced), watch it fail, revert.
 
 **What it pins today** (the known-broken module-placement classes; the `mark_refs`/E0583 FIX flips
-these): 23 of 40 cells are red. **E0583** (21 cells) — a non-root module whose rules emit NO
+these): 24 of 43 cells are red. **E0583** (21 cells) — a non-root module whose rules emit NO
 `serialization.rs` (any transparent `pub type` alias — scalar/collection/table — or a c-style enum
 whose serialization lives elsewhere) still unconditionally declares `pub mod serialization;` in its
 `mod.rs`. Broader than the table-only probe in the ROADMAP finding: it is the alias-only-module class
 in general. For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower **E0432**
 anonymous-same-shape import the finding named (cargo aborts on the missing module file first), so
-fixing `mark_refs` alone won't flip them — the alias-only-module stub must go too. **E0433** (2 cells,
+fixing `mark_refs` alone won't flip them — the alias-only-module stub must go too. **E0432** (1 cell,
+`collmap__anonb`) — that core `mark_refs` class pinned LIVE via the ballast mode: module `b`'s
+anonymous same-shape table use imports the structural name from root scope (`unresolved import
+crate::generated::MapU64ToText`) while it lives in module `a`; `coll__anonb`/`nullable__anonb` are
+green (transparent `Vec<T>` / `Option<u64>` need no generated wrapper import), so the table
+structural wrapper is the discriminating cell. **E0433** (2 cells,
 `cborwrap{,2}__named`) — a NEW finding: a cross-module *named* reference to a `.cbor` wrapper emits
 `Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from the
 owner scope; the anon `.cbor` form imports it fine, so it is a named-ref emission gap. The gate is a
@@ -929,8 +940,8 @@ owner scope; the anon `.cbor` form imports it fine, so it is a named-ref emissio
 **Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
 project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never
 hand-edit `tests/matrix_multifile/`**; `--check` is the drift gate (stale/missing/orphaned dir or
-file). `EXPECTED_CELLS` and `EXPECTED_ANON_SHAPES` guard the grid, so a shrink/growth is an explicit
-reviewed edit.
+file). `EXPECTED_CELLS`, `EXPECTED_ANON_SHAPES`, and `EXPECTED_ANONB_SHAPES` guard the grid, so a
+shrink/growth is an explicit reviewed edit.
 
 ## Coverage
 

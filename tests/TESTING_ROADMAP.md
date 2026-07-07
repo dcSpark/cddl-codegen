@@ -140,7 +140,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
      `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
      (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
-     (`multifile_matrix_compiles` measured ~30 s cold / ~27 s warm for its 40 cells). If wall-time
+     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm for its 43 cells). If wall-time
      bites: batch cells into fewer crates, adopt `cargo-nextest` as the suite runner, or gate only
      changed cells.
    - **One unattributed full-suite flake (2026-07-06) — capture before rerunning.** The `test` gate

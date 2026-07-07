@@ -150,11 +150,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   `issue #138` TODOs at the `mark_refs` map/array arms in intermediate.rs are this exact placement
   question. The systematic catcher now EXISTS: the multifile placement sweep
   (`cddl-matrix/project_multifile_matrix.ts` → `tests/matrix_multifile/<shape>__<mode>/` →
-  `integration_tests::multifile_matrix_compiles`, shape × {named, anon, unref} cross-module
+  `integration_tests::multifile_matrix_compiles`, shape × {named, anon, anonb, unref} cross-module
   reference, compile-floored — `tests/README.md` § "multifile placement matrix"), whose
   `MULTIFILE_MATRIX_SKIP` ledger pins the known-broken cells so the gate is green while a fix
-  flips them. 23 of 40 cells are red, in two error classes; ALL fail loudly at `cargo check` of the
-  generated crate (never a silent miscompile):
+  flips them. 24 of 43 cells are red, in three error classes; ALL fail loudly at `cargo check` of
+  the generated crate (never a silent miscompile):
   - **E0583 (21 cells)** — a non-root module whose rules emit NO `serialization.rs` (any transparent
     `pub type` alias — scalar/collection/table — or a c-style enum whose serialization lives
     elsewhere) still unconditionally declares `pub mod serialization;` in its `mod.rs`. Broader than
@@ -162,14 +162,18 @@ are ledgered here (that's what the probe/gate error messages point at).
     Candidate fix: skip (or emit) the per-module serialization stub for a module that owns no
     serialization impl. Pins to flip: `{palias,talias,coll,collmap,passthru,passthrumap,chain,
     nullable,cenum}__{named,unref}` plus `{coll,collmap,nullable}__anon`.
-  - **E0432 (masked)** — the narrower anonymous-same-shape import the earlier probe named (an OTHER
-    module's anonymous same-shape use imports the structural name from the root scope via `mark_refs`'
-    hard-coded `ROOT_SCOPE`, while the shape lives in the owner's module). The template puts the shape
-    ALONE in module `a`, so `a` is alias/table-only and its E0583 fires first — the E0432 in module
-    `b` never surfaces at `cargo check`. Consequence for the fix: making `mark_refs` resolve the
-    anonymous-map import from the sole owner's scope (the ownership map generation.rs now computes) is
-    necessary but NOT sufficient to flip `collmap__anon`/`coll__anon` green — the alias-only-module
-    E0583 stub must go too.
+  - **E0432 (1 cell, `collmap__anonb`)** — the CORE anonymous-same-shape import the original probe
+    named: an OTHER module's anonymous same-shape use imports the structural name from the root scope
+    via `mark_refs`' hard-coded `ROOT_SCOPE` (`unresolved import crate::generated::MapU64ToText`)
+    while the shape lives in the owner's module. Pinned live by the `anonb` mode (anon + a ballast
+    record rule in module `a`, so `a` emits `serialization.rs` and E0583 can't fire first).
+    `coll__anonb` / `nullable__anonb` are GREEN — an exposable array is a transparent `Vec<T>` and
+    `uint / null` an `Option<u64>`, neither needing a generated wrapper import — so the table
+    structural wrapper is the discriminating cell. Candidate fix: make `mark_refs` resolve the
+    anonymous-map import from the sole owner's scope (the ownership map generation.rs now computes).
+    In the plain-`anon` cells (shape alone in `a`) this class stays MASKED: `a` is alias/table-only
+    and its E0583 fires first, so the `mark_refs` fix alone is necessary but NOT sufficient to flip
+    `collmap__anon`/`coll__anon` green — the alias-only-module E0583 stub must go too.
   - **E0433 (2 cells, `cborwrap__named` / `cborwrap2__named`)** — a cross-module NAMED reference to a
     `.cbor` wrapper (`fb = bytes .cbor foo` in module `a`, referenced by name from `b`) emits
     `Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from

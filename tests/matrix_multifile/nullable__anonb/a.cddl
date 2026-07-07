@@ -1,0 +1,3 @@
+; cell: nullable x anonb (shape defs, module a)
+opt = uint / null
+ballast = [bal0: uint]
