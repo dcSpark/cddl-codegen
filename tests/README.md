@@ -678,9 +678,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   `cargo test` at full tier). It has its own scratch dir (`cddl_codegen_wasm_matrix_rt`) with one
   shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
   verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
-  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`; at HEAD it pins
-  `nullable__tchoice-variant` under all three profiles — the lossy `as_opt()` readback on a
-  null-holding nullable arm, ledgered in `cddl-matrix/ROADMAP.md` § findings), each with
+  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`; expected empty at HEAD, as
+  every cell round-trips green across all three profiles), each with
   the four-state resurfaced-guard verdict. Every skip/pin ledger validates its keys up front against
   its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work (when adding a
   guard, verify it the way these were: temporarily poison a key and watch the gate fail fast, then
