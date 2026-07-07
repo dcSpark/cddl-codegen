@@ -100,6 +100,26 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
+   - **Annotate embedded/plain-group `deserialize()` header scaffolding (and newtype wrappers'
+     container reads).** Non-embedded records annotate ALL fallible header/len/tag parsing with the
+     type name (pinned by the `error_annotation_*` tests in `tests/core/tests.rs`), but a plain
+     group's `deserialize()` keeps its header scaffolding outside any closure: the delegated
+     `deserialize_as_embedded_group` body is already annotated (wrapping the delegation would
+     double-annotate field errors as "Type.Type.field"), and the shared
+     `add_deserialize_initial_len_check`/`add_deserialize_final_len_check` helpers also serve the
+     enum paths — see the scaffolding comment in `codegen_struct`. Close it without touching the
+     enum paths by wrapping only the pre-delegation scaffolding in its own annotate closure that
+     returns the bindings later code needs (or by annotating its individual fallible calls, which
+     cannot double-annotate). Newtype wrappers' container reads are the same class — their errors
+     carry no location at all, pinned indirectly by `error_display_formatting`'s `WrapperList`
+     no-location case (re-anchor that case when this closes, since it *relies* on the gap to reach
+     the location-less Display branch).
+   - **A tagged top-level type-choice fixture.** `generate_tag_check`'s enum-direct output — the
+     tag check a type choice deserializing *directly* (no container rep) emits — is exercised by
+     ZERO fixtures: no snapshot or export crate contains it, so its emission contract (locationless
+     tag-mismatch inside the annotate closure, name-carrying form when `--annotate-fields=false`)
+     has no pin. A `#6.n(a / b)`-shaped corpus fixture plus a wrong-tag assertion in the
+     error-annotation family closes it.
    - **`bool_wrapper` JSON newtype** — blocked on generator bug #223 (bool newtype does not
      compile); the commented-out rule in `tests/json/input.cddl` carries the issue link. Unblocks
      only by fixing the generator.
@@ -183,6 +203,13 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      vector's bytes (re-encode container headers indefinite, widen int/len sizes) inside the
      replay gate and assert they decode to the same value — deterministic, pure-byte transforms,
      `full` tier alongside the existing replay.
+   - **Header-mutation reject vectors (low).** Derive wrong-major-type and truncated-header
+     variants mechanically from each committed accept vector's bytes (flip the container's major
+     type, cut the header short) and assert the decode fails AND the error's location names the
+     rule — the annotation analogue of item 5's rejection-reason assert, using the same
+     derive-from-accept-vector shape as the encoding-variants bullet above (pure-byte transforms,
+     no oracle). The per-type annotation contract is pinned today only at fixture granularity
+     (the `error_annotation_*` tests); this puts it at catalog breadth.
    - **Composition depth (low).** The shipped decode-direction harness (`tests/README.md`
      § "Decode-direction conformance") keys its obligation set on the matrix's minimal
      per-construct examples — breadth, not depth. The corpus fixtures (`tests/corpus/*.cddl`) add
@@ -257,7 +284,9 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    Removing an entry from the gate's `-A` list is the pin: it flips red until the generator stops
    minting that shape, then stays green. The gate already holds `clippy::no_effect` (the retired
    `();` shape) and every unlisted lint hard-red, so a NEW emission-quality regression fails
-   immediately.
+   immediately. Second axis once the list shrinks: extend the gate to the generated *wasm* crate —
+   it currently generates with `--wasm=false`, so the wasm-binding emission path has no lint gate
+   at all (the same "compiles green but lint-worthy" class the rust half existed to catch).
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated

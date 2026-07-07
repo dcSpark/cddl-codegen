@@ -168,6 +168,33 @@ path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emi
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
 
+`generated_code_clippy_clean` runs `cargo clippy -- -D clippy::all` over the generated *rust* crate
+for two representative profiles (default flags, and `--preserve-encodings --canonical-form`),
+generated from the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it
+can't race the fixtures' reused `tests/<dir>/export` outputs). What it proves: the emitted source is
+clippy-clean per profile, modulo the commented `-A` allow-list in the gate — the emission-quality
+class that snapshots and round-trip suites are blind to (they pin bytes and behavior, not
+idiomatic-ness; a degenerate `();` statement compiles and round-trips green but degrades every
+consumer's `cargo clippy`). What it can't prove: semantic correctness — a wrong-but-idiomatic
+deserializer passes. One allow is permanent and input-dependent: `clippy::disallowed_names` (the
+fixture's own `foo`/`bar` rule names become generated parameter names — not a generator defect).
+The rest are a burn-down list of shapes the generator still mints, ledgered per-lint in
+`tests/TESTING_ROADMAP.md`'s clippy allow-list burn-down item; removing an `-A` is the pin that the
+fix landed generator-wide. The deny is `clippy::all` only, never `-D warnings` — generated code
+legitimately over-imports (see `tool_cmd`'s doc comment). Rust crate only (`--wasm=false`);
+extending to the wasm crate is a ledgered roadmap follow-up.
+
+Deserialize-error annotation contract (the `error_annotation_*` tests in `tests/core/tests.rs`,
+plus `error_annotation_tag_mismatch_single_name` in `tests/preserve-encodings/tests.rs`): every
+fallible part of a record's header parsing — container major type, definite-length checks, tag
+reads — errors with the type name as the location (`Deserialization failed in Foo because: …`),
+the same way field-level failures always have, and a tag mismatch carries the name exactly *once*
+(inside the `.annotate(name)` closure the tag check is emitted locationless; a name-carrying form
+there would read "Foo.Foo"). The two `_control` cases anchor that field-level and
+missing-mandatory-field annotation is not lost when the header code is restructured. Outside the
+contract: embedded plain-group scaffolding and newtype wrappers' container reads (both ledgered in
+`tests/TESTING_ROADMAP.md`).
+
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
 `cargo_manifest.rs` and AGENTS.md's determinism note): user edits outside tool-owned keys survive a
