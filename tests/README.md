@@ -862,6 +862,76 @@ rust exposed `Int::new_uint`, `Int::new_nint`, and `IntError` for `int` map keys
 only the signed `Int::new(i64)` constructor and mapped parse failures to `JsError`; wasm now emits
 the two raw-CBOR-argument constructors and a source-level `pub type IntError = JsError` counterpart.
 
+## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_compiles`)
+
+A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
+placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
+generator SINGLE-file specs, so every construct is only ever verified in root scope. Multifile
+emission branches on scope — `mark_refs` (`intermediate.rs`, the `issue #138` TODOs) hard-codes
+`ROOT_SCOPE` as the import source for the generator-invented structural wrappers (`XList`/`MapKToV`),
+while the wrapper/alias definitions land wherever `types.scope(ident)` puts them — and that region
+had exactly one hand fixture (`tests/multifile`, which covers NAMED cross-module refs but no
+structural-wrapper-ownership cells). This sweep enumerates the placement grid and compile-floors it.
+
+Pipeline (projection → fixtures → gate), the same shape as the wasm-ABI matrix:
+
+```
+cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>__<mode>/{lib,a,b}.cddl  ─►  integration_tests::multifile_matrix_compiles
+     enumerate {shape × ref-mode}             two-module DIRECTORY fixture per cell                     generate --wasm=true (dir input), cargo check the wasm crate
+```
+
+- **The two-module template.** Each cell is a DIRECTORY fixture. `lib.cddl` (file stem `lib` ==
+  `ROOT_SCOPE`) is the root — one trivial rule (`rt = [uint]`), constant across cells; `a.cddl` (scope
+  `a`) holds the shape's defs; `b.cddl` (scope `b`) holds the reference. Root-owner direction (shape
+  in root, referenced from a module) is deliberately NOT enumerated — it probed fine in both
+  directions (`cddl-matrix/ROADMAP.md` § findings), so the non-root-owner cells are the discriminating
+  ones.
+- **Axis 1 — type-shape** (`SHAPES`, copied verbatim from `project_wasm_matrix.ts` with a provenance
+  comment; NOT imported — that module projects on import). Every self-contained shape that HAS defs is
+  included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
+  types, can't compile standalone) are excluded with header comments.
+- **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
+  (`bholder = [field0: <ty>]`); `anon` — `b` embeds the shape's inline anonymous same-shape spelling
+  (the `mark_refs` structural class); `unref` — `b` references nothing (`[field0: uint]`), so an
+  alias/table-only module `a` still gets emitted. `named`/`unref` apply to every shape; `anon` exists
+  ONLY for a shape whose anon holder `holder = [field0: <anonForm>]` compiles GREEN as a **single-file
+  control** — otherwise the red would be a single-file limitation, not a placement finding, and the
+  shape carries no `anonForm` (the controls are throwaway, not committed). All 6 candidates
+  (`coll`/`collmap`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green.
+- **The gate** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs, generates each
+  with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which path-depends on
+  the rust crate, so rust-side breakage — E0583 — surfaces transitively). Own scratch +
+  `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
+  default `cargo test` / check.ts local tier. Wall-clock ~30 s (first cold run, shared target warms
+  once) / ~27 s warm.
+- **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &str)]` (cell stem, reason) holds the
+  deliberately-red cells, four-state like `WASM_MATRIX_SKIP`: red+listed = expected; red+unlisted =
+  a new placement finding to fix or (deliberately, with a ROADMAP entry) pin; green+listed =
+  "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An up-front stale-key guard
+  rejects a listed stem absent from the projected set, and a missing wasm crate is handled
+  symmetrically. Verify a new guard the way these were: temporarily poison a key (bogus stem →
+  stale-key fail; drop a real pin → the red cell fails with the remedy; pin a green cell →
+  resurfaced), watch it fail, revert.
+
+**What it pins today** (the known-broken module-placement classes; the `mark_refs`/E0583 FIX flips
+these): 23 of 40 cells are red. **E0583** (21 cells) — a non-root module whose rules emit NO
+`serialization.rs` (any transparent `pub type` alias — scalar/collection/table — or a c-style enum
+whose serialization lives elsewhere) still unconditionally declares `pub mod serialization;` in its
+`mod.rs`. Broader than the table-only probe in the ROADMAP finding: it is the alias-only-module class
+in general. For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower **E0432**
+anonymous-same-shape import the finding named (cargo aborts on the missing module file first), so
+fixing `mark_refs` alone won't flip them — the alias-only-module stub must go too. **E0433** (2 cells,
+`cborwrap{,2}__named`) — a NEW finding: a cross-module *named* reference to a `.cbor` wrapper emits
+`Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from the
+owner scope; the anon `.cbor` form imports it fine, so it is a named-ref emission gap. The gate is a
+**compile floor**: a green cell is not semantically verified (that's follow-on work).
+
+**Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
+project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never
+hand-edit `tests/matrix_multifile/`**; `--check` is the drift gate (stale/missing/orphaned dir or
+file). `EXPECTED_CELLS` and `EXPECTED_ANON_SHAPES` guard the grid, so a shrink/growth is an explicit
+reviewed edit.
+
 ## Coverage
 
 The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure

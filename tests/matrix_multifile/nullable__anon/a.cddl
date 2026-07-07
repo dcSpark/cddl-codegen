@@ -1,0 +1,2 @@
+; cell: nullable x anon (shape defs, module a)
+opt = uint / null

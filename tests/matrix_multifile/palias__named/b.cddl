@@ -1,0 +1,2 @@
+; cell: palias x named (reference from module b)
+bholder = [field0: pa]

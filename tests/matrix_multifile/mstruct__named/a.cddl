@@ -1,0 +1,2 @@
+; cell: mstruct x named (shape defs, module a)
+mst = { a: uint, b: text }

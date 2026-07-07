@@ -1,0 +1,2 @@
+; cell: struct x named (shape defs, module a)
+st = [a: uint, b: text]

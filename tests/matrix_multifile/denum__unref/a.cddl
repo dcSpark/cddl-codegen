@@ -1,0 +1,2 @@
+; cell: denum x unref (shape defs, module a)
+denum = uint / text

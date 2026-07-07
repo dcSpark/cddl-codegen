@@ -1,0 +1,2 @@
+; cell: passthru x unref (reference from module b)
+bholder = [field0: uint]

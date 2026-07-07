@@ -1,0 +1,2 @@
+; cell: collmap x unref (shape defs, module a)
+mp = { * uint => text }

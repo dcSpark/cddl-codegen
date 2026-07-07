@@ -1,0 +1,3 @@
+; cell: cborwrap x anon (shape defs, module a)
+foo = [a: uint]
+fb = bytes .cbor foo

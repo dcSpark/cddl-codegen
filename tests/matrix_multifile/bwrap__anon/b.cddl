@@ -1,0 +1,2 @@
+; cell: bwrap x anon (reference from module b)
+bholder = [field0: bytes .size (0..32)]

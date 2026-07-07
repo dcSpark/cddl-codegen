@@ -146,29 +146,37 @@ are ledgered here (that's what the probe/gate error messages point at).
   written — the stable-severable decode fix to propose there, plus the standalone repro and the
   prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
   note) — bundle it with the over-allocation report in one upstream conversation.
-- **A named table rule declared in a non-root MODULE breaks multifile wasm compilation when its map
-  shape is shared** — pre-existing (the `issue #138` TODOs at the `mark_refs` map/array arms in
-  intermediate.rs are this exact placement question), surfaced by in-session probing during the
-  JS-class-name fix review, and NO gate covers the class: `tests/multifile`'s fixtures embed
-  anonymous map members but contain no NAMED table rule, so the compile gate never visits it. Probe
-  (module `a`: `mp = { * uint => text }` + a struct; module `b`: an anonymous `{ * uint => text }`
-  field): before the fix the OWNING module was broken (its `pub type Mp = MapU64ToText;` referenced
-  the root-scope structural class with no import — E0425); after it the owner's module is
-  self-contained (real class + local structural alias) and the breakage is strictly narrower — an
-  OTHER module's anonymous same-shape use still imports the structural name from the root scope
-  (`mark_refs`' hard-coded `ROOT_SCOPE` for the anonymous-`Map` arm) while it now lives in the
-  owner's module (E0432). Root-module owners are fine in both directions. Same multifile-emission
-  family, rust-side sibling: a module containing ONLY table rules declares `pub mod serialization;`
-  without emitting the file (E0583). All shapes fail loudly at `cargo check` of the generated crate
-  (never a silent miscompile). Candidate fix: make `mark_refs` resolve the anonymous-map import from
-  the sole owner's scope (the same ownership map generation.rs now computes), and skip/emit the
-  per-module serialization stub for alias-only modules. This is an instance of a CLASS, not a
-  one-off fixture gap: every construct gate feeds the generator single-file specs, so constructs
-  are only ever verified in root-scope placement, and `tests/multifile` (the one multifile
-  fixture) covers named cross-module references but no structural-wrapper-ownership cells — the
-  systematic catcher is the multifile placement sweep on `tests/TESTING_ROADMAP.md` item 9
-  (shape × module-placement × reference-direction, compile-floored), whose skip ledger would pin
-  these known-broken cells until the `mark_refs` fix flips them.
+- **Non-root MODULE placement breaks multifile compilation across a whole class of shapes** — the
+  `issue #138` TODOs at the `mark_refs` map/array arms in intermediate.rs are this exact placement
+  question. The systematic catcher now EXISTS: the multifile placement sweep
+  (`cddl-matrix/project_multifile_matrix.ts` → `tests/matrix_multifile/<shape>__<mode>/` →
+  `integration_tests::multifile_matrix_compiles`, shape × {named, anon, unref} cross-module
+  reference, compile-floored — `tests/README.md` § "multifile placement matrix"), whose
+  `MULTIFILE_MATRIX_SKIP` ledger pins the known-broken cells so the gate is green while a fix
+  flips them. 23 of 40 cells are red, in two error classes; ALL fail loudly at `cargo check` of the
+  generated crate (never a silent miscompile):
+  - **E0583 (21 cells)** — a non-root module whose rules emit NO `serialization.rs` (any transparent
+    `pub type` alias — scalar/collection/table — or a c-style enum whose serialization lives
+    elsewhere) still unconditionally declares `pub mod serialization;` in its `mod.rs`. Broader than
+    the single named-table probe first suggested: it is the alias-only-module class in general.
+    Candidate fix: skip (or emit) the per-module serialization stub for a module that owns no
+    serialization impl. Pins to flip: `{palias,talias,coll,collmap,passthru,passthrumap,chain,
+    nullable,cenum}__{named,unref}` plus `{coll,collmap,nullable}__anon`.
+  - **E0432 (masked)** — the narrower anonymous-same-shape import the earlier probe named (an OTHER
+    module's anonymous same-shape use imports the structural name from the root scope via `mark_refs`'
+    hard-coded `ROOT_SCOPE`, while the shape lives in the owner's module). The template puts the shape
+    ALONE in module `a`, so `a` is alias/table-only and its E0583 fires first — the E0432 in module
+    `b` never surfaces at `cargo check`. Consequence for the fix: making `mark_refs` resolve the
+    anonymous-map import from the sole owner's scope (the ownership map generation.rs now computes) is
+    necessary but NOT sufficient to flip `collmap__anon`/`coll__anon` green — the alias-only-module
+    E0583 stub must go too.
+  - **E0433 (2 cells, `cborwrap__named` / `cborwrap2__named`)** — a cross-module NAMED reference to a
+    `.cbor` wrapper (`fb = bytes .cbor foo` in module `a`, referenced by name from `b`) emits
+    `Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from
+    the owner scope (`cannot find type Foo`). The anon `.cbor` form (`cborwrap__anon`) imports it
+    correctly, so this is a named-ref emission gap the fix should close by importing the inner type
+    into the referencing module's serialization scope.
+  Root-module owners are fine in both directions, so the sweep does not enumerate that direction.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected

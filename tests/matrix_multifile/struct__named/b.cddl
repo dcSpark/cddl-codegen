@@ -1,0 +1,2 @@
+; cell: struct x named (reference from module b)
+bholder = [field0: st]
