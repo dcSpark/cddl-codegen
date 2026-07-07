@@ -131,11 +131,6 @@ A lot of components of this library have markdown files following two different 
 
 Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
 
-Amending a ROADMAP/README section sentence-by-sentence across sessions preserves its stale skeleton
-even when every individual sentence is kept true — after a multi-session push over one area, re-read
-the touched sections whole, as if new, and re-derive what is current state (README) vs a clearly
-phrased remaining action item (ROADMAP). Per-session diffs structurally cannot catch this class.
-
 Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped.
 
 Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
