@@ -257,9 +257,9 @@ export const REGISTRY: Gate[] = [
   { id: "project_decode_conformance", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "project_decode_conformance.ts"], cwd: MATRIX,
     script: "project_decode_conformance.ts", desc: "decode-conformance catalog drift gate (matrix.json + catalog.toml, no cargo)" },
-  // Sub-second file-scanner like the sibling `project_wasm_matrix_check` fast drift gate — kept in
-  // `local` by the new-gate default (a fast-tier promotion beside its sibling is a maintainer call).
-  { id: "project_multifile_matrix_check", tier: "local", kind: "cmd",
+  // Sub-second file-scanner promoted to `fast` beside its sibling `project_wasm_matrix_check`
+  // (maintainer call, 2026-07: measured ~0.04s wall).
+  { id: "project_multifile_matrix_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_multifile_matrix.ts", "--check"], cwd: MATRIX,
     script: "project_multifile_matrix.ts", desc: "multifile placement matrix fixtures drift gate" },
   { id: "query_q4_directional", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q4_directional.ts", "--check"], cwd: MATRIX,
