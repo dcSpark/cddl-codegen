@@ -1,0 +1,2 @@
+; cell: passthru x named (reference from module b)
+bholder = [field0: pt]

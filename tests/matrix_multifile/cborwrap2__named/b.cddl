@@ -1,0 +1,2 @@
+; cell: cborwrap2 x named (reference from module b)
+bholder = [field0: fb2]

@@ -1,0 +1,2 @@
+; cell: mstruct x named (reference from module b)
+bholder = [field0: mst]

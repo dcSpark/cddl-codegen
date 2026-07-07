@@ -1,0 +1,4 @@
+; cell: chain x unref (shape defs, module a)
+ca = [* uint]
+cb = ca
+cc = cb

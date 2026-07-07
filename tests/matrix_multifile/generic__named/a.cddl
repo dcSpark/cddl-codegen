@@ -1,0 +1,3 @@
+; cell: generic x named (shape defs, module a)
+cont<T0> = [value: T0]
+uc = cont<uint>

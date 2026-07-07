@@ -1,0 +1,2 @@
+; cell: coll x anon (shape defs, module a)
+nums = [* uint]

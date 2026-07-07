@@ -1,0 +1,3 @@
+; cell: passthru x unref (shape defs, module a)
+nums = [* uint]
+pt = nums

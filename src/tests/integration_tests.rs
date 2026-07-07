@@ -83,6 +83,122 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 /// never round-trips here either.
 const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
+/// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
+/// do NOT compile — the known-broken module-placement classes the sweep pins while landing green.
+/// Each `(cell stem, reason)` names the error class and the `cddl-matrix/ROADMAP.md` § findings entry
+/// the future `mark_refs`/E0583 fix must flip. Four-state verdict in `multifile_matrix_compiles`:
+/// red+listed = expected (held here); red+unlisted = failure (fix the emitter or, deliberately, pin +
+/// ledger); green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An
+/// up-front stale-key guard rejects a listed stem absent from the projected fixture set, so the list
+/// can't rot silently.
+const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
+    // --- E0583: a non-root MODULE that emits NO `serialization.rs` (all its rules compile to a
+    // transparent `pub type` alias — scalar/collection/table alias — or a c-style enum whose
+    // serialization is emitted elsewhere) still unconditionally declares `pub mod serialization;` in
+    // its `mod.rs`. The rust-side sibling of the ROADMAP § findings "named table rule declared in a
+    // non-root MODULE" class; broader than the table-only probe (any alias-only non-root module).
+    // For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower E0432
+    // anonymous-same-shape import (module `b`) the finding named — cargo aborts on the missing module
+    // file first — so fixing `mark_refs` alone will not flip these; the alias-only-module stub must go too.
+    (
+        "cenum__named",
+        "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "cenum__unref",
+        "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "chain__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "chain__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "coll__anon",
+        "E0583: alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
+    ),
+    (
+        "coll__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "coll__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "collmap__anon",
+        "E0583: table-alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
+    ),
+    (
+        "collmap__named",
+        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "collmap__unref",
+        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "nullable__anon",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "nullable__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "nullable__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "palias__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "palias__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "passthru__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "passthru__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "passthrumap__named",
+        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "passthrumap__unref",
+        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "talias__named",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    (
+        "talias__unref",
+        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
+    ),
+    // --- E0433: a cross-module NAMED reference to a `.cbor` wrapper (`fb = bytes .cbor foo` in module
+    // `a`, referenced by name from module `b`) emits `Foo::deserialize(...)` in `b`'s serialization
+    // without importing the inner named type `Foo` from the owner scope (`cannot find type Foo`). The
+    // anon `.cbor` form (`cborwrap__anon`) imports it correctly, so this is a named-ref emission gap.
+    // New multifile-placement finding, ledgered in cddl-matrix/ROADMAP.md § findings.
+    (
+        "cborwrap__named",
+        "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
+    ),
+    (
+        "cborwrap2__named",
+        "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
+    ),
+];
+
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
 /// stem, reason)` marks a cell whose emitted wasm round-trip surface is a known structural gap
@@ -1324,6 +1440,132 @@ fn wasm_matrix_compiles() {
     assert!(
         failures.is_empty(),
         "wasm-matrix cells failed to compile:\n\n{}",
+        failures.join("\n\n")
+    );
+}
+
+/// The multifile-placement matrix compile-gate. `cddl-matrix/project_multifile_matrix.ts` enumerates
+/// {type-shape} × {cross-module reference mode} into two-module DIRECTORY fixtures
+/// `tests/matrix_multifile/<shape>__<mode>/` (`lib.cddl` = root scope, `a.cddl` = the shape's defs,
+/// `b.cddl` = the reference). It's the *placement* counterpart to the construct gates, which all feed
+/// the generator SINGLE-file specs and so only ever verify root-scope placement: multifile emission
+/// branches on scope (`mark_refs`' hard-coded ROOT_SCOPE for the generator-invented structural
+/// wrappers), and that region has no other coverage.
+///
+/// Each cell is generated with DIRECTORY input (`--input=tests/matrix_multifile/<cell>`) `--wasm=true`,
+/// then only the WASM crate is `cargo check`ed — like `wasm_matrix_compiles`, the wasm crate pulls the
+/// rust crate in as a path dep, so rust-side breakage (E0583: an alias/table-only module declaring
+/// `pub mod serialization;` without emitting the file) surfaces transitively through the wasm check;
+/// one crate keeps the wall-clock bounded.
+///
+/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells (the known-broken module-placement classes
+/// tracked in `cddl-matrix/ROADMAP.md` § findings — E0432 anonymous-same-shape import from root scope,
+/// E0583 alias/table-only serialization stub). Four-state verdict per cell: red+listed = expected;
+/// red+unlisted = a new placement finding to fix or (deliberately, with a ledger entry) pin;
+/// green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An up-front
+/// stale-key guard rejects a listed stem absent from the projected set, and a missing wasm crate is
+/// handled symmetrically (a red for a non-skip cell, a resurface for a skip cell), so the ledger can't
+/// silently rot. Always-on (no `#[ignore]`): it joins the default `cargo test` / check.ts local tier.
+#[test]
+fn multifile_matrix_compiles() {
+    use std::str::FromStr;
+
+    let dir = std::path::PathBuf::from_str("tests/matrix_multifile").unwrap();
+    let mut cell_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    cell_dirs.sort();
+    assert!(
+        !cell_dirs.is_empty(),
+        "no multifile-matrix fixtures in {dir:?} (run `bun run project_multifile_matrix.ts`)"
+    );
+
+    let cell_stems: std::collections::BTreeSet<&str> = cell_dirs
+        .iter()
+        .map(|p| p.file_name().unwrap().to_str().unwrap())
+        .collect();
+    for (stem, _reason) in MULTIFILE_MATRIX_SKIP {
+        assert!(
+            cell_stems.contains(stem),
+            "MULTIFILE_MATRIX_SKIP names cell `{stem}` that no longer exists in tests/matrix_multifile \
+             — stale pin, remove or fix it"
+        );
+    }
+
+    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_multifile_matrix_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![]; // red cells NOT on MULTIFILE_MATRIX_SKIP — real bugs
+    let mut resurfaced = vec![]; // MULTIFILE_MATRIX_SKIP cells that now compile — remove them
+    for input in &cell_dirs {
+        let stem = input.file_name().unwrap().to_str().unwrap();
+        let skipped = MULTIFILE_MATRIX_SKIP.iter().any(|(s, _)| *s == stem);
+        let out = root.join(stem);
+        let gen_out = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=true")
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            // A generation failure is also "red". Only a NON-skipped one is a test failure.
+            if !skipped {
+                failures.push(format!(
+                    "{stem}: generation failed\n{}",
+                    String::from_utf8_lossy(&gen_out.stderr)
+                ));
+            }
+            continue;
+        }
+        let wasm_dir = out.join("wasm");
+        if !wasm_dir.exists() {
+            // Every cell's module `b` is a composite record, so a wasm crate is always expected. Treat a
+            // missing one symmetrically (like `wasm_matrix_compiles`): a skip cell's red is gone
+            // ("resurfaced"); a non-skip cell silently stops being gated — a coverage regression, not a pass.
+            if skipped {
+                resurfaced.push(format!("{stem} (emits no wasm crate)"));
+            } else {
+                failures.push(format!(
+                    "{stem}: generated no wasm crate (expected a wasm wrapper for every cell — the cell \
+                     is no longer being compile-gated)"
+                ));
+            }
+            continue;
+        }
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(&wasm_dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        match (skipped, check.status.success()) {
+            (false, false) => failures.push(format!(
+                "{stem}: cargo check failed (new multifile-placement red cell — fix the emitter or, \
+                 deliberately, add to MULTIFILE_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            )),
+            (true, true) => resurfaced.push(stem.to_string()),
+            _ => {} // (false,true)=green as expected; (true,false)=red as expected
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        resurfaced.is_empty(),
+        "these MULTIFILE_MATRIX_SKIP-listed cells now compile — remove them from MULTIFILE_MATRIX_SKIP \
+         (a fix landed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "multifile-matrix cells failed to compile:\n\n{}",
         failures.join("\n\n")
     );
 }

@@ -1,0 +1,2 @@
+; cell: collmap x anon (reference from module b)
+bholder = [field0: { * uint => text }]
