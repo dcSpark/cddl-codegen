@@ -696,6 +696,9 @@ stays a transparent `Vec`).
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
 [`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
+At HEAD the list holds a single permanent resident — `extern__array-element` (references a
+user-supplied type, so the cell can't compile standalone; the construct is integration-tested in
+`tests/extern-deps`) — so any other red appearing is a regression to fix, not a backlog item.
 To close one:
 
 1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.
