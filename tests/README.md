@@ -675,7 +675,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
   `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`, expected empty), each with
   the four-state resurfaced-guard verdict. Every skip/pin ledger validates its keys up front against
-  its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work. Run it with
+  its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work (when adding a
+  guard, verify it the way these were: temporarily poison a key and watch the gate fail fast, then
+  revert). Run it with
   `cargo test --bin cddl-codegen wasm_matrix_roundtrips --
   --ignored` (~6 min warm); a cell whose shape mints no wasm surface (loud emitter skip) passes with
   zero emitted tests, which is a legitimate green (the compile gate already pins its ABI compiles).
@@ -795,9 +797,10 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
 5. **JS-name visibility.** wasm_bindgen exports no type aliases, so a rust type whose ONLY wasm
    counterpart is a `pub type` alias never reaches JS under its CDDL rule name. Rule 5 resolves the
    alias's target and flags iff the target is a struct/enum *defined* in the wasm mod (a real
-   `#[wasm_bindgen]` class) whose name is NOT itself on the rust surface — the usage-dependent
-   JS-class-name bug, where a named table rule's wrapper degrades to `pub type Mp = MapU64ToText;`
-   pointing at the generator-invented structural class. Carved out (not findings): a target that is
+   `#[wasm_bindgen]` class) whose name is NOT itself on the rust surface — the (since-fixed)
+   usage-dependent JS-class-name class, where a named table rule's wrapper degraded to
+   `pub type Mp = MapU64ToText;` pointing at the generator-invented structural class (rule 5 stays
+   the live catcher for any recurrence). Carved out (not findings): a target that is
    not wasm-defined (transparent alias to a primitive/std/`Option` type — native in JS) and a
    wasm-defined target that IS a rust-surface rule name (a genuine CDDL-level alias on both sides).
    `pub use` counterparts stay JS-visible by design (`#[wasm_bindgen]` c-enums re-exported).
