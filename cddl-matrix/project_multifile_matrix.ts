@@ -48,13 +48,21 @@ const CHECK = process.argv.includes("--check");
 interface Shape {
   defs: string[]; // named-type definitions -> module `a` (authored dependency order; CDDL is order-free)
   ty: string; // the shape's named rule, referenced cross-module by the `named` mode
-  anonForm?: string; // inline anonymous same-shape spelling -> the `anon` mode's `b.cddl` field type
+  anonForm?: string; // inline anonymous same-shape spelling -> the `anon`/`anonb` modes' `b.cddl` field type
+  // `anonb` (anon + ballast) participation: the plain `anon` cell of an alias/table-only module `a`
+  // reds on E0583 FIRST (module `a` emits no serialization.rs), masking the b-side E0432
+  // anonymous-same-shape import — the CORE `mark_refs` finding. `anonb` adds a ballast record rule to
+  // `a` so it emits serialization and the b-side reference verdict surfaces. Set ONLY on the shapes
+  // whose plain `anon` cell is E0583-masked (coll, collmap, nullable); the other anon shapes
+  // (tag, bwrap, cborwrap) are GREEN in plain `anon` — module `a` already emits serialization, so a
+  // ballast variant adds no discrimination and they are excluded from `anonb`.
+  anonBallast?: boolean;
 }
 const SHAPES: Record<string, Shape> = {
   palias: { defs: ["pa = uint"], ty: "pa" },
   talias: { defs: ["ta = text"], ty: "ta" },
-  coll: { defs: ["nums = [* uint]"], ty: "nums", anonForm: "[* uint]" },
-  collmap: { defs: ["mp = { * uint => text }"], ty: "mp", anonForm: "{ * uint => text }" },
+  coll: { defs: ["nums = [* uint]"], ty: "nums", anonForm: "[* uint]", anonBallast: true },
+  collmap: { defs: ["mp = { * uint => text }"], ty: "mp", anonForm: "{ * uint => text }", anonBallast: true },
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
@@ -67,7 +75,7 @@ const SHAPES: Record<string, Shape> = {
   bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw", anonForm: "bytes .size (0..32)" },
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
   denum: { defs: ["denum = uint / text"], ty: "denum" },
-  nullable: { defs: ["opt = uint / null"], ty: "opt", anonForm: "uint / null" },
+  nullable: { defs: ["opt = uint / null"], ty: "opt", anonForm: "uint / null", anonBallast: true },
   generic: { defs: ["cont<T0> = [value: T0]", "uc = cont<uint>"], ty: "uc" },
   chain: { defs: ["ca = [* uint]", "cb = ca", "cc = cb"], ty: "cc" },
   cborwrap2: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo", "fb2 = fb"], ty: "fb2" },
@@ -75,18 +83,25 @@ const SHAPES: Record<string, Shape> = {
 
 // --- Axis 2: cross-module reference mode. The shape's defs go in module `a`; module `b` holds one
 // `bholder = [field0: <...>]` record. `named` references the shape's named rule cross-module; `anon`
-// embeds the shape's inline anonymous same-shape spelling (the `mark_refs` structural class); `unref`
-// references nothing (module `a` still declares the shape — this is where an alias/table-only module
-// mis-declares `pub mod serialization;`, E0583). Root-owner direction (shape in root, referenced from
-// a module) is deliberately NOT enumerated: it probed fine in BOTH directions per the ROADMAP findings
-// entry ("Root-module owners are fine in both directions"), so the non-root-owner cells above are the
-// discriminating ones. `bholder`/`field0` dodge the `R`/`W`/`T` reader/writer/generic single letters.
+// embeds the shape's inline anonymous same-shape spelling (the `mark_refs` structural class); `anonb`
+// is `anon` with a ballast record rule added to module `a` (so `a` emits serialization and E0583 can't
+// mask the b-side E0432 import verdict — see `anonBallast` above); `unref` references nothing (module
+// `a` still declares the shape — this is where an alias/table-only module mis-declares
+// `pub mod serialization;`, E0583). Root-owner direction (shape in root, referenced from a module) is
+// deliberately NOT enumerated: it probed fine in BOTH directions per the ROADMAP findings entry
+// ("Root-module owners are fine in both directions"), so the non-root-owner cells above are the
+// discriminating ones. `bholder`/`field0`/`bal0` dodge the `R`/`W`/`T` reader/writer/generic letters.
 interface Mode {
   // returns module `b`'s content, or null if the shape does not participate in this mode
   b: (s: Shape) => string | null;
+  aExtra?: (s: Shape) => string[]; // extra rules appended to module `a`'s defs for this mode
 }
 const MODES: Record<string, Mode> = {
   anon: { b: (s) => (s.anonForm ? `bholder = [field0: ${s.anonForm}]` : null) },
+  anonb: {
+    b: (s) => (s.anonBallast && s.anonForm ? `bholder = [field0: ${s.anonForm}]` : null),
+    aExtra: () => ["ballast = [bal0: uint]"],
+  },
   named: { b: (s) => `bholder = [field0: ${s.ty}]` },
   unref: { b: () => `bholder = [field0: uint]` },
 };
@@ -105,6 +120,20 @@ if (JSON.stringify(anonShapes) !== JSON.stringify(EXPECTED_ANON_SHAPES))
       `if the change is deliberate (a probe outcome changed), update EXPECTED_ANON_SHAPES in the same commit`,
   );
 
+// Same idiom for the `anonb` subset (exactly the E0583-masked plain-`anon` shapes).
+const EXPECTED_ANONB_SHAPES = ["coll", "collmap", "nullable"];
+const anonbShapes = Object.keys(SHAPES)
+  .filter((k) => SHAPES[k].anonBallast)
+  .sort();
+if (JSON.stringify(anonbShapes) !== JSON.stringify(EXPECTED_ANONB_SHAPES))
+  throw new Error(
+    `anonb shape set is [${anonbShapes.join(", ")}], expected [${EXPECTED_ANONB_SHAPES.join(", ")}] — ` +
+      `if the change is deliberate (a masking outcome changed), update EXPECTED_ANONB_SHAPES in the same commit`,
+  );
+for (const k of anonbShapes)
+  if (!SHAPES[k].anonForm)
+    throw new Error(`SHAPES.${k}: anonBallast without anonForm — anonb reuses the anon spelling, so it needs one`);
+
 // lib.cddl is the root scope (file stem `lib` == ROOT_SCOPE); one trivial rule, constant across cells.
 const LIB_CDDL = "rt = [uint]\n";
 
@@ -118,11 +147,12 @@ for (const shape of Object.keys(SHAPES).sort()) {
   for (const mode of Object.keys(MODES).sort()) {
     const b = MODES[mode].b(s);
     if (b === null) continue; // shape does not participate in this mode (anon without a green form)
+    const aRules = [...s.defs, ...(MODES[mode].aExtra?.(s) ?? [])];
     cells.push({
       dir: `${shape}__${mode}`,
       files: {
         "lib.cddl": LIB_CDDL,
-        "a.cddl": `; cell: ${shape} x ${mode} (shape defs, module a)\n${s.defs.join("\n")}\n`,
+        "a.cddl": `; cell: ${shape} x ${mode} (shape defs, module a)\n${aRules.join("\n")}\n`,
         "b.cddl": `; cell: ${shape} x ${mode} (reference from module b)\n${b}\n`,
       },
     });
@@ -131,7 +161,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 40; // 17 shapes × {named, unref} = 34 + 6 anon-form shapes × {anon} = 6 -> 40
+const EXPECTED_CELLS = 43; // 17 shapes × {named, unref} = 34 + 6 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 43
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

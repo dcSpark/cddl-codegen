@@ -184,6 +184,17 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
         "talias__unref",
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
+    // --- E0432: the CORE `mark_refs` finding, unmasked by the `anonb` mode (anon + a ballast record
+    // rule in module `a`, so `a` emits serialization.rs and E0583 can't fire first): module `b`'s
+    // anonymous same-shape table use imports the structural name from the root scope (`mark_refs`'
+    // hard-coded ROOT_SCOPE — `unresolved import crate::generated::MapU64ToText`) while the shape
+    // lives in the owner module `a`. `coll__anonb`/`nullable__anonb` are GREEN (an exposable array is
+    // a transparent `Vec<T>` and `uint / null` an `Option<u64>` — neither needs a generated wrapper
+    // import), so the table structural wrapper is the discriminating cell.
+    (
+        "collmap__anonb",
+        "E0432: anon same-shape table in `b` imports the structural name from root scope (mark_refs)",
+    ),
     // --- E0433: a cross-module NAMED reference to a `.cbor` wrapper (`fb = bytes .cbor foo` in module
     // `a`, referenced by name from module `b`) emits `Foo::deserialize(...)` in `b`'s serialization
     // without importing the inner named type `Foo` from the owner scope (`cannot find type Foo`). The
