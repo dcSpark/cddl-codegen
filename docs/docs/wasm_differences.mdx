@@ -9,10 +9,24 @@ In the wasm crate we can't always go one to one with the rust crate. Here are so
 
 ## Heterogeneous Arrays
 
-`wasm_bindgen` cannot expose doubly-nested types like `Vec<Vec<T>` which can be a limitation if `T` was a non-byte primitive.
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.
-This lets us get around the `wasm_bindgen` limitation (without implementing cross-boundary traits which could be inefficient/tedious/complicated).
 This array wrapper implements `len() -> usize`, `get(usize) -> T` and `add(T)`.
+
+The wrapper exists primarily for **ownership safety**, not just type-support gaps. In `wasm_bindgen`,
+passing an exported class to a function **by value** transfers ownership: the JavaScript object's
+internal pointer is nulled, and any later use of that object throws (`null pointer passed to rust`) —
+a very subtle bug class, since the object *looks* intact from JS. A bare `Vec<Foo>` parameter does
+this to **every element** of the caller's array, and `wasm_bindgen` does not support `Vec<&Foo>`
+(`&Foo` doesn't implement `JsObject`), so a bare-vector API has no by-reference form — the caller
+would have to manually `.clone()` each element to keep their objects alive. A `FooList` instead
+crosses the boundary as a single class passed by reference (`&FooList`), cloning internally, so the
+caller's objects are never consumed. This is why the generated API prefers references over values
+everywhere a class type crosses the boundary, and why collection parameters are `*List` classes
+rather than bare vectors.
+
+Secondarily, the wrapper also covers element types `wasm_bindgen` can't put in a bare `Vec` at all:
+`Vec<bool>`, `Vec<String>`, and doubly-nested types like `Vec<Vec<T>>` (which includes any array of
+byte strings, since `bytes` is already `Vec<u8>`).
 
 ## Tables
 

@@ -220,6 +220,8 @@ cddl-codegen --input=example --output=export --wasm-conversions-macro=cml_core_w
 :::info `--wasm-list-macro`
 If it is passed in, it will call the supplied externally defined macro on each generated WASM **list** wrapper (`Vec<T>`-backed), instead of emitting the inline struct + accessor block (`new`/`len`/`get`/`add`) + conversion traits. Map wrappers are unaffected.
 
+(The list wrapper types themselves exist for ownership safety at the wasm boundary — see [Wasm Differences](wasm_differences) § Heterogeneous Arrays; this flag only changes how their boilerplate is emitted.)
+
 The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
 
 The macro must take five parameters:
