@@ -348,13 +348,20 @@ and asserts they are accepted.
     (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
     accept-less standalone rows).
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
-  `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
+  `full` tier, ~3 min: per-row crate builds under two profiles, the default build now also compiling
+  the encoding-variant tests). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
   every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
   can't silently launder a bug), and for each `class="constraint"` vector asserts the error Display
   CONTAINS the catalog's `expect_err` — pinning the rejection REASON, so a wrong-reason rejection
   fails the gate with the captured Display (a vacuity floor keeps ≥ 40 such reason asserts live).
-  It then regenerates under `--preserve-encodings=true` and asserts
+  Each accept vector is ALSO replayed through mechanically-derived **encoding variants** (the shipped
+  `cddl_encoding_fidelity::variants` mutator, reused harness-side: indefinite framing, non-minimal
+  int/len widths, chunked strings, reversed maps) — a spec-EQUAL re-encoding the default decoder
+  REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
+  `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
+  legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
+  the leg live. It then regenerates under `--preserve-encodings=true` and asserts
   accept vectors decode AND re-encode **byte-identically** (the preserve contract is itself
   decode-direction evidence). `PRESERVE_SKIP` (stale-guarded) carries the
   float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It

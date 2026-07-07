@@ -176,26 +176,19 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      integration gates above (shared `CARGO_TARGET_DIR`; a racing cargo lock/link step). A second
      sighting with a captured name turns this bullet into a real fix item.
 
-5. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
-   depth.**
-   - **Encoding variants (medium — cheap and self-contained).** Every committed accept vector is
-     definite-length, minimal-width CBOR by mint construction (ruby `generate` → `diag2cbor.rb`),
-     so spec-EQUAL re-encodings of accepted instances — indefinite container lengths, non-minimal
-     int/len widths — are systematically unsampled in the decode direction. The gap is proven: the
-     keyed map-rep group-choice deserializer rejected indefinite-length maps (`bf 6161 05 ff`) and
-     only a manual review caught it, because no gate feeds encoding-variant bytes to the decoders.
-     The remedy needs no oracle: derive the variants mechanically from each committed accept
-     vector's bytes (re-encode container headers indefinite, widen int/len sizes) inside the
-     replay gate and assert they decode to the same value — deterministic, pure-byte transforms,
-     `full` tier alongside the existing replay.
+5. **Extend the decode-conformance corpus along two more axes: header-mutation reject vectors, then
+   composition depth.** (The encoding-variant axis — spec-EQUAL re-encodings of each accept vector,
+   indefinite framing / non-minimal widths / chunked strings / reversed maps — is delivered by the
+   replay gate's encoding-variant leg, which reuses the shipped `cddl_encoding_fidelity::variants`
+   mutator harness-side; the remaining two axes are below.)
    - **Header-mutation reject vectors (low).** Derive wrong-major-type and truncated-header
      variants mechanically from each committed accept vector's bytes (flip the container's major
      type, cut the header short) and assert the decode fails AND the error's location names the
      rule — the annotation analogue of the replay gate's `class="constraint"` rejection-reason
      assert (its `expect_err` pin), using the same
-     derive-from-accept-vector shape as the encoding-variants bullet above (pure-byte transforms,
-     no oracle). The per-type annotation contract is pinned today only at fixture granularity
-     (the `error_annotation_*` tests); this puts it at catalog breadth.
+     derive-from-accept-vector shape as the replay gate's delivered encoding-variant leg (pure-byte
+     transforms, no oracle). The per-type annotation contract is pinned today only at fixture
+     granularity (the `error_annotation_*` tests); this puts it at catalog breadth.
    - **Composition depth (low).** The shipped decode-direction harness (`tests/README.md`
      § "Decode-direction conformance") keys its obligation set on the matrix's minimal
      per-construct examples — breadth, not depth. The corpus fixtures (`tests/corpus/*.cddl`) add

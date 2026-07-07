@@ -5130,6 +5130,52 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
 
 // ===== decode-conformance replay (D5) ===============================================================
 
+// The encoding-fidelity mutator ships (via `include_str!`) into `--emit-tests --preserve-encodings`
+// crates; here we `include!` the SAME source harness-side so the D5 replay can precompute spec-equal
+// re-encodings of each accept vector (indefinite framing, non-minimal int/len widths, chunked strings,
+// reversed maps) and feed them to the DEFAULT decoder — the "foreign-vector × default-decode" gap the
+// preserve-side emit-tests loop does not cover. Precomputing (rather than splicing the mutator into
+// every generated crate) keeps emitted code simple and puts the variant label in the test name. The
+// file's `encoding_mutator_self_check` `#[test]` runs as part of our own suite, and `variants()` is
+// exercised on a float head by `encoding_variants_copy_float_heads_verbatim` below.
+include!("../../static/emit_tests_encoding_fidelity.rs");
+
+/// Harness-side companion to the shipped mutator's `encoding_mutator_self_check`: confirm a major-7
+/// FLOAT head (`fa`/`fb` — absent from minted-under-preserve inputs, but present in this gate's foreign
+/// accept vectors) rides through `variants()` byte-for-byte. The `Item::Other` arm copies the whole
+/// head+argument verbatim (`read_arg` sizes info 26/27 = 4/8 bytes), so surrounding structure mutates
+/// while the float bytes stay untouched. Kept here, not in the shipped file, so no generated-crate
+/// snapshot moves (the file ships verbatim via `include_str!`).
+#[test]
+fn encoding_variants_copy_float_heads_verbatim() {
+    // [ fa 3f800000 ] (array(1) holding f32 1.0): widen_step widens the array head 0x81 -> 0x98 0x01
+    // and copies the 5-byte float head verbatim.
+    let input = vec![0x81, 0xfa, 0x3f, 0x80, 0x00, 0x00];
+    let vs = cddl_encoding_fidelity::variants(&input);
+    let widen = vs
+        .iter()
+        .find(|(l, _)| *l == "widen_step")
+        .expect("widen_step is non-identity for an array head");
+    assert_eq!(widen.1, vec![0x98, 0x01, 0xfa, 0x3f, 0x80, 0x00, 0x00]);
+    let indef = vs
+        .iter()
+        .find(|(l, _)| *l == "indef_containers")
+        .expect("indef_containers is non-identity for an array");
+    assert_eq!(indef.1, vec![0x9f, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xff]);
+    // an 8-byte f64 head (fb, info 27) is copied verbatim too.
+    let f64_input = vec![0x81, 0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let f64_indef = cddl_encoding_fidelity::variants(&f64_input)
+        .into_iter()
+        .find(|(l, _)| *l == "indef_containers")
+        .expect("indef_containers is non-identity for an array");
+    assert_eq!(
+        f64_indef.1,
+        vec![
+            0x9f, 0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff
+        ]
+    );
+}
+
 /// One catalog `[[row]]` vector, distilled to what the replay needs: the `hex` bytes, whether it must
 /// decode (`accept`), and — for `class="constraint"` reject vectors — the `expect_err` substring the
 /// generated decoder's error Display must contain when it rejects. `expect_err` is `None` for accept
@@ -5158,6 +5204,25 @@ fn hex_to_byte_literals(hex: &str) -> String {
     hex.as_bytes()
         .chunks(2)
         .map(|pair| format!("0x{}", std::str::from_utf8(pair).unwrap()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Decode `"820080"` to the raw bytes `[0x82, 0x00, 0x80]` — the harness-side form the encoding
+/// mutator (`cddl_encoding_fidelity::variants`) consumes to derive spec-equal re-encodings.
+fn hex_to_bytes(hex: &str) -> Vec<u8> {
+    hex.as_bytes()
+        .chunks(2)
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .collect()
+}
+
+/// Format raw bytes as the `0x82, 0x00, 0x80` a Rust byte-array literal wants (sibling to
+/// `hex_to_byte_literals`, for mutator-produced variant bytes that never existed as a hex string).
+fn bytes_to_byte_literals(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|b| format!("0x{b:02x}"))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -5212,12 +5277,22 @@ fn rust_str_literal(s: &str) -> String {
 /// wrong-reason panic embeds the captured Display so the failure is actionable from gate output. The
 /// preserve-failure panic markers stay distinct for the same reason (`PRESERVE_BYTE_MISMATCH` vs
 /// `PRESERVE_DECODE_FAILED`).
+///
+/// `variant_specs` (DEFAULT leg only; the caller passes `&[]` under preserve) carries precomputed
+/// spec-equal re-encodings of the accept vectors as `(accept_vector_index, label, bytes)`. Each becomes
+/// an `accept_{i}_var_{label}` `#[test]` that decodes the ORIGINAL (must be Ok) and the VARIANT: an
+/// `Err` panics with `VARIANT_REJECTED` (an over-strict decoder rejecting a spec-equal re-encoding — the
+/// motivating class), and an `Ok` asserts `to_cbor_bytes()` equals the original's re-encoding with
+/// `VARIANT_VALUE_MISMATCH` (a same-value proxy: default-profile re-encoding is a deterministic function
+/// of the decoded value, and generated types don't uniformly derive PartialEq). The completeness check
+/// counts these against `vectors.len() + variant_specs.len()`.
 fn decode_replay_run(
     out: &std::path::Path,
     type_name: &str,
     vectors: &[ReplayVector],
     preserve: bool,
     target_dir: &std::path::Path,
+    variant_specs: &[(usize, String, Vec<u8>)],
 ) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
     let mut fns = String::new();
     for (i, vector) in vectors.iter().enumerate() {
@@ -5260,6 +5335,24 @@ fn decode_replay_run(
         };
         fns.push_str(&format!(
             "\n    #[test]\n    fn {name}() {{\n        const BYTES: &[u8] = &[{bytes}];\n        {body}\n    }}\n"
+        ));
+    }
+    // DEFAULT-leg encoding-variant tests: for each precomputed spec-equal re-encoding, decode ORIG
+    // (must stay Ok) and the VARIANT, with grep-stable markers separating an over-strict rejection
+    // from a same-value re-encode mismatch.
+    for (i, label, var_bytes) in variant_specs {
+        let name = format!("accept_{i}_var_{label}");
+        let orig = hex_to_byte_literals(&vectors[*i].hex);
+        let var = bytes_to_byte_literals(var_bytes);
+        let body = format!(
+            "let orig_val = {type_name}::from_cbor_bytes(ORIG).expect(\"VAR_ORIG_DECODE_FAILED {name}\");\n\
+             \x20       match {type_name}::from_cbor_bytes(VAR) {{\n\
+             \x20           Err(e) => panic!(\"VARIANT_REJECTED {name}: a spec-equal re-encoding was rejected by the default decoder (over-strict) — err: {{}}\", e),\n\
+             \x20           Ok(var_val) => assert_eq!(var_val.to_cbor_bytes(), orig_val.to_cbor_bytes(), \"VARIANT_VALUE_MISMATCH {name}: variant decoded to a DIFFERENT value than the original\"),\n\
+             \x20       }}"
+        );
+        fns.push_str(&format!(
+            "\n    #[test]\n    fn {name}() {{\n        const ORIG: &[u8] = &[{orig}];\n        const VAR: &[u8] = &[{var}];\n        {body}\n    }}\n"
         ));
     }
     let module = format!(
@@ -5305,7 +5398,7 @@ fn decode_replay_run(
             }
         }
     }
-    if results.len() != vectors.len() {
+    if results.len() != vectors.len() + variant_specs.len() {
         // No/partial result lines => the crate did not compile (or libtest output drifted).
         return (None, combined);
     }
@@ -5326,8 +5419,16 @@ fn decode_replay_run(
 /// `is_err` assert would pass. A wrong-reason rejection fails the gate with the captured Display in the
 /// output; a constraint vector that decodes Ok fails it as an enforcement gap.
 ///
-/// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~108s warm (~112s cold), well past the ~90s
-/// plain-`#[test]` threshold (77 rows × up to two full generate+`cargo test` crate builds), so it is
+/// The default leg also feeds each accept vector's mechanically-derived ENCODING VARIANTS
+/// (`cddl_encoding_fidelity::variants` — indefinite framing, non-minimal widths, chunked strings,
+/// reversed maps) to the decoder: a spec-EQUAL re-encoding that the decoder REJECTS (over-strict — the
+/// motivating class) or mis-decodes to a different value fails the gate. `ENCODING_VARIANT_SKIP`
+/// (stale-guarded) ledgers any (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md`
+/// finding; it is EMPTY at HEAD (every variant decodes cleanly).
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~180s warm (104 active rows × up to two full
+/// generate+`cargo test` crate builds, the default build now also compiling ~4500 encoding-variant
+/// tests), well past the ~90s plain-`#[test]` threshold, so it is
 /// a `full`-tier check.ts gate rather than riding the always-on `test` gate. Its own scratch dir +
 /// `cddl_codegen_decode_conformance` target so it never collides with the corpus/wasm gates when
 /// `cargo test` runs tests in parallel; `acquire_scratch_lock` serializes same-checkout runs.
@@ -5414,6 +5515,14 @@ fn decode_conformance_replay() {
     // needs a reason, and a listed row that starts round-tripping byte-identically fails the gate.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
 
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails
+    // — a spec-equal re-encoding (indefinite framing, non-minimal width, chunked string, reversed map)
+    // the generated decoder is over-strict about, or mis-decodes. Each entry is an HONEST finding
+    // ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed here). Stale-
+    // guarded: a listed (row, label) whose variant now decodes+re-encodes cleanly fails the gate, so a
+    // closed gap can't rot into a silent skip.
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
+
     let catalog_path = std::path::Path::new("tests/decode_conformance/catalog.toml");
     let catalog_src = std::fs::read_to_string(catalog_path)
         .unwrap_or_else(|e| panic!("cannot read {catalog_path:?}: {e}"));
@@ -5488,6 +5597,13 @@ fn decode_conformance_replay() {
              stale pin, remove or fix it"
         );
     }
+    for (id, _, _) in ENCODING_VARIANT_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "ENCODING_VARIANT_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
 
     let scratch_name = format!("cddl_codegen_decode_conformance_{:016x}", checkout_hash());
     // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
@@ -5501,10 +5617,22 @@ fn decode_conformance_replay() {
         PRESERVE_SKIP.iter().copied().collect();
     let expected_mismatch: std::collections::BTreeMap<&str, &str> =
         EXPECTED_MISMATCH.iter().copied().collect();
+    let encoding_variant_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        ENCODING_VARIANT_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    // (row, label) pairs whose variant test failed AND was suppressed by an ENCODING_VARIANT_SKIP
+    // entry; the stale guard flags any listed entry that is NOT here (the gap closed).
+    let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
 
     let mut failures: Vec<String> = Vec::new();
     let mut rows_replayed = 0usize;
     let mut vectors_replayed = 0usize;
+    // How many DEFAULT-leg encoding-variant tests were emitted (a vacuity floor guards against the
+    // variant leg silently emitting nothing — a mutator that returned empty, or a broken loop).
+    let mut variant_tests_total = 0usize;
     // How many `class="constraint"` vectors actually had their rejection REASON asserted (Err whose
     // Display contained the pinned `expect_err`). A vacuity floor below guards against this collapsing
     // to near-zero (a broken match body, or the corpus losing its constraint vectors).
@@ -5512,6 +5640,33 @@ fn decode_conformance_replay() {
 
     for row in &rows {
         // ---- default profile: accept => Ok, reject pin => Err ----
+        // Precompute the encoding-variant re-encodings of every accept vector (mint guarantees
+        // definite-length minimal input, so `variants()` never panics — but wrap it in `catch_unwind`
+        // and turn a panic into a loud gate failure naming row+hex rather than aborting the whole run).
+        let mut variant_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
+        for (i, vector) in row.vectors.iter().enumerate() {
+            if !vector.accept {
+                continue;
+            }
+            let bytes = hex_to_bytes(&vector.hex);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cddl_encoding_fidelity::variants(&bytes)
+            })) {
+                Ok(list) => {
+                    for (label, var_bytes) in list {
+                        variant_specs.push((i, label.to_string(), var_bytes));
+                    }
+                }
+                Err(_) => failures.push(format!(
+                    "{}: encoding-fidelity variants() PANICKED on accept vector {} — mint guarantees \
+                     definite-length minimal CBOR, so this is a harness/mutator bug, not a decoder \
+                     finding",
+                    row.id, vector.hex
+                )),
+            }
+        }
+        variant_tests_total += variant_specs.len();
+
         let out = root.join(format!("{}__default", foreign_scratch_ident(&row.id)));
         let dgen = decode_replay_generate(&row.spec, &out, &[]);
         if !dgen.status.success() {
@@ -5523,7 +5678,14 @@ fn decode_conformance_replay() {
             let _ = std::fs::remove_dir_all(&out);
             continue;
         }
-        match decode_replay_run(&out, &row.type_name, &row.vectors, false, &target_dir) {
+        match decode_replay_run(
+            &out,
+            &row.type_name,
+            &row.vectors,
+            false,
+            &target_dir,
+            &variant_specs,
+        ) {
             (Some(results), combined) => {
                 rows_replayed += 1;
                 vectors_replayed += row.vectors.len();
@@ -5586,6 +5748,55 @@ fn decode_conformance_replay() {
                         ));
                     }
                 }
+                // ---- encoding-variant results (default leg only) ----
+                for (i, label, _) in &variant_specs {
+                    let name = format!("accept_{i}_var_{label}");
+                    let orig_hex = &row.vectors[*i].hex;
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    let skipped =
+                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str()));
+                    if passed {
+                        // A passing skip-listed variant is a closed gap — the stale guard (below) fires
+                        // because this (row, label) never lands in `variant_skip_still_failing`.
+                        continue;
+                    }
+                    if skipped {
+                        variant_skip_still_failing.insert((row.id.clone(), label.clone()));
+                        continue;
+                    }
+                    // NB the trailing ':' — see the constraint-marker comment above (same substring-
+                    // collision guard for accept_1 vs accept_10).
+                    if combined.contains(&format!("VARIANT_REJECTED {name}:")) {
+                        failures.push(format!(
+                            "{}: encoding variant `{label}` of accept vector {orig_hex} was REJECTED by \
+                             the default decoder — a spec-EQUAL re-encoding (indefinite framing / \
+                             non-minimal width / chunked string / reversed map) the decoder is \
+                             over-strict about (the motivating class). If it is a known decoder gap, \
+                             ledger it in cddl-matrix/ROADMAP.md § findings and add ({}, {label}) to \
+                             ENCODING_VARIANT_SKIP. Captured output:\n{combined}",
+                            row.id, row.id
+                        ));
+                    } else if combined.contains(&format!("VARIANT_VALUE_MISMATCH {name}:")) {
+                        failures.push(format!(
+                            "{}: encoding variant `{label}` of accept vector {orig_hex} decoded to a \
+                             DIFFERENT value than the original (its default re-encoding differs) — a \
+                             mis-decode of a spec-equal re-encoding. Captured output:\n{combined}",
+                            row.id
+                        ));
+                    } else if combined.contains(&format!("VAR_ORIG_DECODE_FAILED {name}:")) {
+                        failures.push(format!(
+                            "{}: the ORIGINAL accept vector {orig_hex} failed to decode inside variant \
+                             test `{name}` — unexpected (it is an accept vector). Captured output:\n{combined}",
+                            row.id
+                        ));
+                    } else {
+                        failures.push(format!(
+                            "{}: encoding variant test `{name}` failed but emitted no known marker — \
+                             unexpected. Captured output:\n{combined}",
+                            row.id
+                        ));
+                    }
+                }
             }
             (None, combined) => {
                 failures.push(format!(
@@ -5617,7 +5828,7 @@ fn decode_conformance_replay() {
                 ));
             }
         } else {
-            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir) {
+            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir, &[]) {
                 (Some(results), combined) => {
                     let all_pass = results.values().all(|&p| p);
                     preserve_ok = all_pass;
@@ -5677,6 +5888,19 @@ fn decode_conformance_replay() {
 
     let _ = std::fs::remove_dir_all(&root);
 
+    // Stale-entry guard for ENCODING_VARIANT_SKIP: a listed (row, label) whose variant test no longer
+    // fails (it now decodes+re-encodes cleanly, or the row/label stopped emitting that variant) must be
+    // removed — the gap it documents has closed. Mirrors the PRESERVE_SKIP stale guard.
+    for (id, label, _reason) in ENCODING_VARIANT_SKIP {
+        if !variant_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS — the \
+                 gap closed (or the row/label no longer emits a variant test); remove the entry \
+                 (stale pin)"
+            ));
+        }
+    }
+
     // Vacuity floors from the real minted corpus (104 active rows, 915 vectors at HEAD; floors set
     // just under so ordinary corpus churn doesn't false-fail, while a collapsed parse or a
     // silently-degraded generation loop that replays almost nothing still fails the gate).
@@ -5699,6 +5923,15 @@ fn decode_conformance_replay() {
         "only {constraint_reason_asserts} constraint vectors had their rejection REASON asserted \
          (expected >= 40) — the `expect_err` reason pin looks disabled or the corpus lost its \
          constraint vectors"
+    );
+    // Variant-test floor: the DEFAULT-leg encoding-variant leg must actually emit its tests (4487 from
+    // the 1052 accept vectors at HEAD). Floor set just under the measured count so ordinary corpus
+    // churn doesn't false-fail, while a mutator that returned empty (or a broken variant loop) that
+    // emits almost nothing still trips the gate.
+    assert!(
+        variant_tests_total >= 4200,
+        "only {variant_tests_total} encoding-variant tests were emitted (expected >= 4200) — the \
+         variant leg looks disabled or the corpus lost its accept vectors"
     );
     assert!(
         failures.is_empty(),
