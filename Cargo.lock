@@ -359,7 +359,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "codegen"
 version = "0.3.0"
-source = "git+https://github.com/dcSpark/codegen?branch=master#88c3ed5fe26f7c986e604e3c23b439436b97ee95"
+source = "git+https://github.com/dcSpark/codegen?branch=master#e78848935d8511b9f4960f2b119601c92fc39063"
 dependencies = [
  "indexmap 2.14.0",
 ]

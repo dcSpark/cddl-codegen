@@ -4,7 +4,6 @@ expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
-
 use crate::generated::a::Baz;
 use crate::generated::{FooList, MapFooToFoo};
 use std::collections::BTreeMap;

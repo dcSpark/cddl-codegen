@@ -27,6 +27,27 @@ mod generated;
 pub use generated::*;
 ";
 
+/// The code-generation provenance banner stamped at the top of every generated `.rs` file in the
+/// tool-owned generated trees. Ends with a newline so it prepends cleanly onto rustfmt'd content.
+/// `pub(crate)` so the `generated_files_start_with_header` gate asserts against the same banner
+/// and path family the stamper uses (a private copy in the test would drift silently).
+pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
+
+/// True for the header-stamped scope families: the tool-owned generated trees under
+/// `rust/src/generated/` and `wasm/src/generated/`. The seed-once crate roots (`*/src/lib.rs`),
+/// the json-gen crate, and every `Cargo.toml` are deliberately left unstamped.
+pub(crate) fn is_header_stamped_path(path: &str) -> bool {
+    path.ends_with(".rs")
+        && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
+}
+
+/// Prepend the codegen header onto a (already rustfmt'd) generated file's content. The header is
+/// pure `//` comments, so it leads the file verbatim regardless of whether the body opens with an
+/// inner `#![…]` attribute (both orderings are valid Rust; a comment may precede an inner attr).
+fn stamp_codegen_header(content: &str) -> String {
+    format!("{CODEGEN_HEADER}{content}")
+}
+
 #[derive(Debug, Clone)]
 struct SerializeConfig<'a> {
     /// the name of the variable where this is accessed, e.g. "self.foo" or "field" (e.g. for if let Some(field) = self.foo)
@@ -890,22 +911,11 @@ impl GenerationScope {
         // imports / module declarations
         // this is done at the end so we already know all information about output code
 
-        // rust
+        // rust. The codegen provenance header is stamped once per emitted FILE (see
+        // `generated_files` / `export`), not per scope — a scope-level raw would hoist above the
+        // module-linking raws that `merge_scopes_to_strings` prepends into a merged root file.
         self.rust_lib()
             .raw("#![allow(clippy::too_many_arguments)]\n");
-        let codegen_comment = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
-        for content in self.rust_scopes.values_mut() {
-            content.raw(codegen_comment);
-        }
-        for content in self.cbor_encodings_scopes.values_mut() {
-            content.raw(codegen_comment);
-        }
-        for content in self.serialize_scopes.values_mut() {
-            content.raw(codegen_comment);
-        }
-        for content in self.wasm_scopes.values_mut() {
-            content.raw(codegen_comment);
-        }
 
         // declare modules (root lib specific)
         if cli.export_static_files() {
@@ -1374,9 +1384,12 @@ impl GenerationScope {
                     merged.append(&content.clone());
                 }
             }
+            // Restamp: `generated_files` already stamped its generated-only serialization.rs, but
+            // this rebuilt version (static prelude + merged ROOT serialize scope) replaces it, so it
+            // needs the header applied here too (this is a header-stamped path).
             files.insert(
                 "rust/src/generated/serialization.rs".to_owned(),
-                rustfmt_generated_string(&merged.to_string())?.into_owned(),
+                stamp_codegen_header(&rustfmt_generated_string(&merged.to_string())?),
             );
         }
 
@@ -1706,6 +1719,17 @@ impl GenerationScope {
                 "wasm/json-gen/src/main.rs".to_owned(),
                 rustfmt_generated_string(&main_scope.to_string())?.into_owned(),
             );
+        }
+
+        // Stamp the codegen header once per emitted file, for the tool-owned generated trees only.
+        // File-level (not scope-level) stamping guarantees the banner leads even in merged root
+        // files, where the module-linking declarations from the lib scope would otherwise precede a
+        // scope-level header raw. `export` restamps the one file it rebuilds after us (the root
+        // serialization.rs, which it re-merges with the static prelude).
+        for (path, content) in out.iter_mut() {
+            if is_header_stamped_path(path) {
+                *content = stamp_codegen_header(content);
+            }
         }
 
         Ok(out)
@@ -4056,11 +4080,13 @@ impl GenerationScope {
                     needs_into.to_string(),
                     element_type.is_copy(types).to_string(),
                 ];
-                self.wasm(types, array_type_ident).raw(format!(
-                    "{}!({});",
-                    macro_name,
-                    args.join(", ")
-                ));
+                // Emit the invocation as a sort-participating item keyed under the wrapper type it
+                // defines, so it lands where the equivalent inline struct would (not hoisted to the
+                // top above the file header) — see `Scope::raw_sorted`.
+                self.wasm(types, array_type_ident).raw_sorted(
+                    array_type_ident.as_ref(),
+                    &format!("{}!({});", macro_name, args.join(", ")),
+                );
                 return;
             }
             let inner_type = element_type.name_as_rust_array(types, true, cli);
@@ -4729,8 +4755,10 @@ struct WasmWrapper<'a> {
 
 impl<'a> WasmWrapper<'a> {
     fn push(mut self, gen_scope: &mut GenerationScope, types: &IntermediateTypes) {
-        // using Scope::raw() for the macro calls would result in them all being include at the top of the file
-        // so we instead use the impl's macro spot to put them before the impl where we want them
+        // using Scope::raw() for the macro calls would result in them all being included at the top of the
+        // file, so we instead use the impl's macro spot to put them before the impl where we want them.
+        // (For a standalone invocation with no impl to attach to — the --wasm-list-macro case — the
+        // equivalent is Scope::raw_sorted, which sorts the text where a struct of that name would.)
         for (full_name, params) in self.macros {
             let macro_name = full_name.split("::").last().unwrap();
             self.s_impl

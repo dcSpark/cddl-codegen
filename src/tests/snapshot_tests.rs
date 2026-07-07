@@ -430,30 +430,22 @@ fn wasm_list_macro() {
     });
 }
 
-/// The two lines of the code-generation header stamped onto every file in a header-stamped scope
-/// family (see `generation.rs`, where `rust_scopes` / `cbor_encodings_scopes` / `serialize_scopes` /
-/// `wasm_scopes` each get this comment `.raw`-appended).
-const CODEGEN_HEADER_1: &str =
-    "// This file was code-generated using an experimental CDDL to rust tool:";
-const CODEGEN_HEADER_2: &str = "// https://github.com/dcSpark/cddl-codegen";
-
-/// True for paths in the header-stamped scope families: the tool-owned generated trees under
-/// `rust/src/generated/` and `wasm/src/generated/`. Everything else `generated_strings` returns is
-/// legitimately unstamped and excluded here:
-/// * `wasm/json-gen/**` (json-gen output: `macro_rules!` + `main.rs`, no header),
-/// * the thin seed-once crate roots `*/src/lib.rs` (only `mod generated; pub use generated::*;`),
-/// * `*/Cargo.toml`.
-fn is_header_stamped_path(path: &str) -> bool {
-    path.ends_with(".rs")
-        && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
+/// The two banner lines, derived from the SAME constant the stamper prepends
+/// (`generation::CODEGEN_HEADER`) so the gate can't drift from what generation actually emits.
+/// Likewise the path family below reuses `generation::is_header_stamped_path` — the stamping is
+/// file-level in `generated_files`, and this gate asserts over the identical file set.
+fn codegen_header_lines() -> (&'static str, &'static str) {
+    let mut lines = crate::generation::CODEGEN_HEADER.lines();
+    (lines.next().unwrap(), lines.next().unwrap())
 }
+use crate::generation::is_header_stamped_path;
 
-/// Intermediate parent-module files (e.g. `a/c/mod.rs` → `pub mod foo;`) are synthesized AFTER the
-/// header is stamped (by `declare_modules`, into freshly `or_default()`-created scopes), so they
-/// carry only `pub mod` declarations and no header — they are not part of a stamped scope. Exclude
-/// them structurally: every non-blank line is a `pub mod ...;`. This can never exclude a file that
-/// SHOULD carry the header, because any stamped file contains the header comment (not a `pub mod`),
-/// so the ordering bug this test guards stays detectable.
+/// Intermediate parent-module link files (e.g. `a/c/mod.rs` containing only `pub mod foo;`) may or
+/// may not carry the header depending on how they are produced; a file consisting SOLELY of
+/// `pub mod` declarations has no orderable content for this gate to judge, so exclude it
+/// structurally: every non-blank line is a `pub mod ...;`. This can never exclude a file where the
+/// ordering bug could hide, because any file that contains the header (or any other item) fails
+/// the all-`pub mod` predicate and is checked.
 fn is_module_link_stub(content: &str) -> bool {
     let mut non_blank = content.lines().filter(|l| !l.trim().is_empty()).peekable();
     non_blank.peek().is_some() && non_blank.all(|l| l.trim_start().starts_with("pub mod "))
@@ -465,16 +457,17 @@ fn is_module_link_stub(content: &str) -> bool {
 /// consumed through its `]` closer). Any other content before the header (a macro invocation, an
 /// item, an import) is the failure this test exists to catch.
 fn check_header_leads(content: &str) -> Result<(), String> {
+    let (header_1, header_2) = codegen_header_lines();
     let lines: Vec<&str> = content.lines().collect();
     let header_idx = lines
         .iter()
-        .position(|l| l.trim() == CODEGEN_HEADER_1)
-        .ok_or_else(|| format!("header line 1 missing entirely ({CODEGEN_HEADER_1:?})"))?;
+        .position(|l| l.trim() == header_1)
+        .ok_or_else(|| format!("header line 1 missing entirely ({header_1:?})"))?;
     match lines.get(header_idx + 1) {
-        Some(l) if l.trim() == CODEGEN_HEADER_2 => {}
+        Some(l) if l.trim() == header_2 => {}
         other => {
             return Err(format!(
-                "header line 2 ({CODEGEN_HEADER_2:?}) does not immediately follow line 1; got {other:?}"
+                "header line 2 ({header_2:?}) does not immediately follow line 1; got {other:?}"
             ));
         }
     }
@@ -507,24 +500,17 @@ fn check_header_leads(content: &str) -> Result<(), String> {
 /// codegen provenance banner is the first substantive line a reader (or a downstream license/attrib
 /// scanner) sees.
 ///
-/// Currently RED — two manifestations of the same root cause (the header is a raw pushed at the END,
-/// and the codegen fork hoists all raws to the top in insertion order, so raws inserted earlier land
-/// above it):
-/// 1. The originally-targeted `--wasm-list-macro` bug: the `impl_wasm_list!` invocations are emitted
-///    as ROOT-scope raws during generation, so they precede the header in `wasm/src/generated/mod.rs`.
-/// 2. A broader, pre-existing case this test surfaced: EVERY root `generated/mod.rs` emits its
-///    module-linking declarations (`pub mod error;`, `extern crate derivative;`, `pub mod <child>;`)
-///    above the header, because those live in `*_lib_scope`, which `merge_scopes_to_strings` prepends
-///    ahead of the ROOT-scope content that actually carries the header. (Declarations pushed into the
-///    ROOT scope itself, e.g. `pub mod serialization;`, correctly land *below* the header.)
-///
-/// Both must be addressed for this to go green; a fix that only reorders the list-macro raws leaves
-/// manifestation (2) red. `#[ignore]` because the fast tier's `snapshot_quick` gate substring-selects
-/// the whole `snapshot_tests` module (`cargo test --bin cddl-codegen snapshot_tests`), and a red test
-/// there would break CI-equivalent fast. Un-ignore once the header-ordering fix lands; run explicitly
-/// with `cargo test generated_files_start_with_header -- --ignored`.
+/// The header is stamped once per emitted FILE (`generation::stamp_codegen_header`), not per scope,
+/// so it leads regardless of what a scope contributes. Two failure classes this guards against, both
+/// of which a scope-level header raw would reintroduce (raws hoist to the top of a scope in insertion
+/// order):
+/// 1. `--wasm-list-macro`: each `impl_wasm_list!` invocation defines a wrapper type and is emitted
+///    via `Scope::raw_sorted` so it sorts into its item position, not hoisted above the header.
+/// 2. Merged root `generated/mod.rs` files: the module-linking declarations (`pub mod error;`,
+///    `extern crate derivative;`, `pub mod <child>;`) come from the lib scope, which
+///    `merge_scopes_to_strings` prepends ahead of the ROOT-scope content — file-level stamping puts
+///    the header above all of it.
 #[test]
-#[ignore = "red pending the sorted-macro-item fix; run explicitly with --ignored"]
 fn generated_files_start_with_header() {
     // Representative (label, input, flags) set — reuses the existing whole-program table and the
     // wasm-list-macro fixture + both its profiles (the known-red case).
