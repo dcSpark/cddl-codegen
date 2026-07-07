@@ -2326,11 +2326,10 @@ impl ConceptualRustType {
             Self::Alias(ident, ty) => match ident {
                 AliasIdent::Reserved(_) => ty.wasm_list_macro_needs_into(types),
                 AliasIdent::Rust(rust_ident) => {
-                    match types.rust_struct(rust_ident).map(|rs| rs.variant()) {
-                        Some(RustStructType::CStyleEnum { .. }) | None => {
-                            ty.wasm_list_macro_needs_into(types)
-                        }
-                        Some(_) => Some(true),
+                    if types.has_wasm_wrapper(rust_ident) {
+                        Some(true)
+                    } else {
+                        ty.wasm_list_macro_needs_into(types)
                     }
                 }
             },
