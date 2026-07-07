@@ -612,7 +612,6 @@ fn deserialize_converts_error_at_most_once() {
 /// 8879) shows the correct pattern — wrap only for >1 names, empty case emitted separately as
 /// `Ok(())`; every pattern-emitting site owes the same length check.
 #[test]
-#[ignore = "red pending fix: value-enum dispatch hardcodes the tuple wrapper in its Ok pattern"]
 fn ok_pattern_parenthesizes_only_tuples() {
     // Hand-rolled scan (no regex dep): find `Ok((`, then a nonempty run of identifier chars
     // immediately followed by `))` — i.e. `Ok((ident))`. `Ok(())` (empty) and `Ok((a, b))`

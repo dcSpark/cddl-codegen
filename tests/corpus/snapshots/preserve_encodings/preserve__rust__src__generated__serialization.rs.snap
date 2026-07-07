@@ -2973,7 +2973,7 @@ impl Deserialize for Enums {
                     Ok(Some(i3_encoding))
                 })(raw);
                 match deser_variant {
-                    Ok((c_enum_encoding)) => return Ok((CEnum::I3, c_enum_encoding)),
+                    Ok(c_enum_encoding) => return Ok((CEnum::I3, c_enum_encoding)),
                     Err(_) => raw
                         .as_mut_ref()
                         .seek(SeekFrom::Start(initial_position))
@@ -2991,7 +2991,7 @@ impl Deserialize for Enums {
                     Ok(Some(i1_encoding))
                 })(raw);
                 match deser_variant {
-                    Ok((c_enum_encoding)) => return Ok((CEnum::I1, c_enum_encoding)),
+                    Ok(c_enum_encoding) => return Ok((CEnum::I1, c_enum_encoding)),
                     Err(_) => raw
                         .as_mut_ref()
                         .seek(SeekFrom::Start(initial_position))
@@ -3009,7 +3009,7 @@ impl Deserialize for Enums {
                     Ok(Some(i4_encoding))
                 })(raw);
                 match deser_variant {
-                    Ok((c_enum_encoding)) => return Ok((CEnum::I4, c_enum_encoding)),
+                    Ok(c_enum_encoding) => return Ok((CEnum::I4, c_enum_encoding)),
                     Err(_) => raw
                         .as_mut_ref()
                         .seek(SeekFrom::Start(initial_position))

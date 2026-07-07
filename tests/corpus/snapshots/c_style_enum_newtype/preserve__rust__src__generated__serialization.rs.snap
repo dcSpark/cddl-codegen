@@ -67,7 +67,7 @@ impl Deserialize for WrappedEnum {
                 Ok(Some(i0_encoding))
             })(raw);
             match deser_variant {
-                Ok((inner_encoding)) => return Ok((FixedEnum::I0, inner_encoding)),
+                Ok(inner_encoding) => return Ok((FixedEnum::I0, inner_encoding)),
                 Err(_) => raw
                     .as_mut_ref()
                     .seek(SeekFrom::Start(initial_position))
@@ -85,7 +85,7 @@ impl Deserialize for WrappedEnum {
                 Ok(Some(i1_encoding))
             })(raw);
             match deser_variant {
-                Ok((inner_encoding)) => return Ok((FixedEnum::I1, inner_encoding)),
+                Ok(inner_encoding) => return Ok((FixedEnum::I1, inner_encoding)),
                 Err(_) => raw
                     .as_mut_ref()
                     .seek(SeekFrom::Start(initial_position))
@@ -103,7 +103,7 @@ impl Deserialize for WrappedEnum {
                 Ok(Some(i2_encoding))
             })(raw);
             match deser_variant {
-                Ok((inner_encoding)) => return Ok((FixedEnum::I2, inner_encoding)),
+                Ok(inner_encoding) => return Ok((FixedEnum::I2, inner_encoding)),
                 Err(_) => raw
                     .as_mut_ref()
                     .seek(SeekFrom::Start(initial_position))

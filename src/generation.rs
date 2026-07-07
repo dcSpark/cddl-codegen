@@ -3225,9 +3225,17 @@ impl GenerationScope {
                                                 target,
                                                 cli,
                                             );
+                                        // pattern parens only for a real tuple (>1), mirroring the
+                                        // expression side's final_expr and the non-value enum
+                                        // dispatch's names_without_outer.len() > 1 check
+                                        let ok_pattern = if variant_final_exprs.len() == 1 {
+                                            variant_final_exprs[0].clone()
+                                        } else {
+                                            format!("({})", variant_final_exprs.join(", "))
+                                        };
                                         return_if_deserialized
-                            .line(format!("Ok(({})) => return Ok({}),",
-                            variant_final_exprs.join(", "),
+                            .line(format!("Ok({}) => return Ok({}),",
+                            ok_pattern,
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
                             .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
                             .after(";");
