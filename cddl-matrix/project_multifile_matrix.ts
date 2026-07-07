@@ -10,7 +10,7 @@
  * branches on scope — notably `mark_refs` (intermediate.rs, the `issue #138` TODOs) hard-codes
  * ROOT_SCOPE as the import source for the generator-invented structural wrappers (`XList`/`MapKToV`),
  * while the wrapper/alias definitions land wherever `types.scope(ident)` puts them. The proven break
- * (cddl-matrix/ROADMAP.md § findings, "named table rule declared in a non-root MODULE"): a shape
+ * (cddl-matrix/ROADMAP.md § findings, "Non-root MODULE placement breaks multifile compilation"): a shape
  * declared in a non-root module and used anonymously in ANOTHER module imports the structural name
  * from root scope though it now lives in the owner's module (E0432); the rust-side sibling is a module
  * of only table/alias rules declaring `pub mod serialization;` without emitting the file (E0583).

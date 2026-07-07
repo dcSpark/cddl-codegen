@@ -301,7 +301,7 @@ fn checkout_hash() -> u64 {
 /// license to fix the generator here.
 ///
 /// EMPTY: the `r`/`w` reader/writer-generic collisions that formerly lived here are FIXED by
-/// collision-proof generic names (ROADMAP § 1 / Item C — `generic_names_are_collision_proofed_against_
+/// collision-proof generic names (`generic_names_are_collision_proofed_against_
 /// rw_idents` pins the string-level guard, and the emitted `serialize`/`deserialize` fn generics now
 /// rename off any user type named `R`/`W`, so all four cells `cargo check` clean and ride the position
 /// bundles below). The pinning machinery stays wired: a NEW hazard that generates but does not compile

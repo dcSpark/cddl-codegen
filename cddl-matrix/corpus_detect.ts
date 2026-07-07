@@ -248,7 +248,7 @@ export function featuresIn(cddl: string): Detected {
 }
 
 // ============================================================================================
-// ROLE-AWARE detection (ROADMAP item 6). featuresIn (above) is a text scan: it sees THAT a construct
+// ROLE-AWARE detection (the per-cell role × feature layer). featuresIn (above) is a text scan: it sees THAT a construct
 // appears, not in WHICH container role. A regex can't track the enclosing role across nesting, so this
 // shells out to a real parse — examples/ast_roles.rs walks the `cddl` crate AST (=0.9.1, the exact one
 // cddl-codegen builds with) and emits (role, node-kind) records. Here we map those node-kinds onto

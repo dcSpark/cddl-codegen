@@ -328,7 +328,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 50
 
-**Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,
+**Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
 (`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's per-cell support verdict — so a
 ➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level

@@ -9,7 +9,7 @@
  * model: the ruby `cddl` reference decides example validity; the rust `cddl` crate only corroborates
  * (ruby-accepts-but-rust-rejects is a recorded parser limitation).
  *
- * The cddl-codegen probe is EXECUTION-GATED (TESTING_ROADMAP item 1 / c6): generation runs with
+ * The cddl-codegen probe is EXECUTION-GATED: generation runs with
  * `--emit-tests=true` and "supported" requires `cargo test` of the generated crate to PASS — the
  * IR-minted round-trip/reject tests must execute green, not merely compile. So the matrix's
  * "supported" verdict means "round-trips" wherever the type mints a test surface (recorded per probe

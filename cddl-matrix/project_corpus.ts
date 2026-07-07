@@ -109,7 +109,7 @@ for (const c of featureCovers) {
   if (st && st !== "supported") seamC.push({ id: c.id, status: st });
 }
 
-// --- per-cell (role × feature) covers — ROADMAP item 6. A cell cover legitimately coexists with an
+// --- per-cell (role × feature) covers. A cell cover legitimately coexists with an
 //     unsupported per-feature note (the note = top-level gap; the cover = a supported role), because
 //     `coverIds` above is feature-axis only, so the driftE "cover + unsupported note" rule doesn't fire. ---
 // The rolesIn batch is built ONLY from fixtures that exist in the corpus glob: ast_roles panics on
@@ -393,7 +393,7 @@ o(`- Features: **${matrix.features.length}** — ✅ ${feC} covered · ➕ ${feP
 o(`- Control operators: **${matrix.control_operators.length}** — ✅ ${ctC} covered · ➕ ${ctP} supported-untested${ctW ? ` · ⚠️ ${ctW} partial` : ""} · ➖ ${ctN} not supported (cddl-codegen implements ${ctC + ctP} of ${matrix.control_operators.length})`);
 o(`- Corpus fixtures: ${files.length}`);
 o();
-o(`**Per-cell coverage (role × feature) — ROADMAP item 6.** Where a construct's support *differs by role*,`);
+o(`**Per-cell coverage (role × feature).** Where a construct's support *differs by role*,`);
 o("coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk");
 o("(`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's per-cell support verdict — so a");
 o("➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level");
