@@ -563,6 +563,45 @@ fn generated_files_start_with_header() {
     );
 }
 
+/// A generated error-conversion chain converts a single CBOR read to `DeserializeError` AT MOST
+/// ONCE. cbor_event's readers return their own error type; a deserialize path maps it to our
+/// `DeserializeError` (`.map_err(Into::<DeserializeError>::into)`) so a downstream `.and_then`
+/// closure can return `DeserializeFailure::…into()` with a consistent `E`. Because the conversion is
+/// the identity `impl From<T> for T` once `E` is already `DeserializeError`, a second `.map_err` on
+/// the same read is a redundant no-op — correct output, but dead code that a reader must puzzle over.
+///
+/// The failure class this guards: an emission site prepending `convert_err_to_ours` before its
+/// `.and_then` WITHOUT checking whether an earlier stage of the same chain (the site's own
+/// `error_convert`, or a width guard) already converted the error type. `width_reject` shows the
+/// correct pattern — it threads a `converted` flag and emits the conversion only when nothing
+/// upstream did; every conversion site owes the same check.
+#[test]
+#[ignore = "red pending fix: preserve-encodings bounds emission doubles the error conversion"]
+fn deserialize_converts_error_at_most_once() {
+    // Reuse the whole-program representative set (same table the header gate walks).
+    const DOUBLED: &str =
+        ".map_err(Into::<DeserializeError>::into).map_err(Into::<DeserializeError>::into)";
+    let mut failures = Vec::new();
+    for (label, input, (profile, extra)) in WHOLE_PROGRAM_CASES {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for {label}/{profile}: {e}"));
+        for (path, content) in &files {
+            // rustfmt splits the chain across lines; compare with all whitespace stripped.
+            let flat: String = content.chars().filter(|c| !c.is_whitespace()).collect();
+            if flat.contains(DOUBLED) {
+                failures.push(format!("[{label}/{profile}] {path}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "generated file(s) convert a read's error to DeserializeError more than once (redundant \
+         .map_err doubling):\n{}",
+        failures.join("\n")
+    );
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
