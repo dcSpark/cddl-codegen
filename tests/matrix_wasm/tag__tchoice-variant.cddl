@@ -1,0 +1,3 @@
+; cell: tag x tchoice-variant
+tg = #6.10(uint)
+holder = tg / nint

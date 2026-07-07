@@ -1,0 +1,3 @@
+; cell: nullable x tchoice-variant
+opt = uint / null
+holder = opt / nint

@@ -1,0 +1,3 @@
+; cell: collmap x tchoice-variant
+mp = { * uint => text }
+holder = mp / nint

@@ -77,11 +77,17 @@ pub(crate) fn checkout_hash() -> u64 {
 /// source snapshots.
 const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 
-/// Wasm-matrix cells that deliberately never compile standalone in this harness: `extern` references
-/// a user-supplied type (undefined standalone -> E0425), while the extern emit path is
-/// integration-tested separately in `tests/extern-deps`. Because the cell never compiles here, it
-/// never round-trips here either.
-const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
+/// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
+/// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
+/// root cause):
+/// - `extern__array-element` references a user-supplied type (undefined standalone -> E0425), while
+///   the extern emit path is integration-tested separately in `tests/extern-deps`. Because the cell
+///   never compiles here, it never round-trips here either.
+/// - `bwrap__tchoice-variant` is a known emitter bug (E0599): a bounded-wrapper arm of a type-choice
+///   enum emits a *fallible* wasm ctor (`new_bw(..).map(Into::into).map_err(Into::into)`) over an
+///   infallible rust ctor, so `.map` lands on the plain returned enum. Root cause in the ROADMAP
+///   entry (the wasm/rust type-choice ctor fallibility mismatch).
+const WASM_MATRIX_SKIP: &[&str] = &["bwrap__tchoice-variant", "extern__array-element"];
 
 /// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
 /// do NOT compile — the known-broken module-placement classes the sweep pins while landing green.

@@ -1,0 +1,4 @@
+; cell: passthru x tchoice-variant
+nums = [* uint]
+pt = nums
+holder = pt / nint

@@ -1,0 +1,3 @@
+; cell: struct x tchoice-variant
+st = [a: uint, b: text]
+holder = st / nint

@@ -126,6 +126,14 @@ const ROLES: Record<string, Role> = {
   // accessor (see docs/docs/wasm_differences.mdx § "Tag and @newtype wrappers"); a collection inner
   // crosses as its own collection wrapper class. The role exercises the wrapper boundary conversions.
   "newtype-inner": { wrap: (t) => `holder = ${t} ; @newtype` },
+  // type-choice per-variant wasm ctor emission (`generate_type_choices_from_variants`) — a distinct
+  // emission path from every container role above: the shape is placed as ONE arm of a type-choice
+  // enum, so each shape mints a `Holder::new_<shape>` wasm ctor whose fallibility must match the rust
+  // ctor's. The partner arm is `nint` because it is CBOR-disjoint from every shape's type (uint/text/
+  // bytes/array/map/tag/null), so a decoder can discriminate the arms — needed by the round-trip gate.
+  // A fixed-value partner (e.g. `false`) instead PANICS generation (`prelude.false` is in the panic
+  // catalog), so it can't stand in as the disjoint arm.
+  "tchoice-variant": { wrap: (t) => `holder = ${t} / nint` },
 };
 
 // A typo'd role name in `roles`/`skipRoles` would be a silent no-op that shrinks the projected grid
@@ -148,7 +156,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 98; // 16 full shapes × 6 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 114; // 16 full shapes × 7 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

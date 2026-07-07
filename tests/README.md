@@ -465,7 +465,7 @@ Two consumers run it:
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~6 min (98 cells x 3 profiles)
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~6 min (114 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -641,8 +641,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
     — see the docstrings in `src/intermediate.rs`).
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
-    `struct-field-opt`, `newtype-inner`. Each drives distinct accessor emission (`get`/`add`/`insert`/
-    `keys`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
+    `struct-field-opt`, `newtype-inner`, `tchoice-variant` (the shape placed as one arm of a
+    type-choice enum — the per-variant wasm ctor emission path). Each drives distinct accessor emission
+    (`get`/`add`/`insert`/`keys`/`new_<arm>`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
     `[pre: uint, ? field0: T]`); the map representation is covered on the shape axis instead by the
     `mstruct` representative cell. Map-rep field holders (a bareword-keyed map with a mandatory or
     `?`-optional field) are deliberately not enumerated as separate roles because their wasm emission is
