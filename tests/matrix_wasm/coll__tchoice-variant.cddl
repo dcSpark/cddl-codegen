@@ -1,0 +1,3 @@
+; cell: coll x tchoice-variant
+nums = [* uint]
+holder = nums / nint

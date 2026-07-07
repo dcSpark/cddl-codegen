@@ -1,0 +1,3 @@
+; cell: talias x tchoice-variant
+ta = text
+holder = ta / nint

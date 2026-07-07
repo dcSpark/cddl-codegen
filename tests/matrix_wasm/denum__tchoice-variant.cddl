@@ -1,0 +1,3 @@
+; cell: denum x tchoice-variant
+denum = uint / text
+holder = denum / nint

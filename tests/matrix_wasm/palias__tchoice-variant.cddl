@@ -1,0 +1,3 @@
+; cell: palias x tchoice-variant
+pa = uint
+holder = pa / nint

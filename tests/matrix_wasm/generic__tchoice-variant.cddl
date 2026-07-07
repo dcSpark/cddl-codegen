@@ -1,0 +1,4 @@
+; cell: generic x tchoice-variant
+cont<T0> = [value: T0]
+uc = cont<uint>
+holder = uc / nint

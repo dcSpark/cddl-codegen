@@ -1,0 +1,4 @@
+; cell: cborwrap x tchoice-variant
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = fb / nint

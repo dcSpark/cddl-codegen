@@ -107,6 +107,20 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
+- **A bounded-wrapper arm of a type-choice enum emits a fallible wasm ctor over an infallible rust
+  ctor (E0599).** `bw = bytes .size (0..32)` placed as a type-choice variant (`holder = bw / nint`)
+  generates a wasm `Holder::new_bw(bw: &Bw) -> Result<Holder, JsError>` whose body calls
+  `cddl_lib::Holder::new_bw(..).map(Into::into).map_err(Into::into)` — but the rust ctor
+  `Holder::new_bw(bw: Bw) -> Self` is INFALLIBLE (it receives an already-constructed value), so `.map`
+  lands on the plain `Holder` enum → E0599 "`cddl_lib::Holder` is not an iterator". The mismatch: the
+  wasm type-choice ctor (`src/generation.rs:3986`) decides fallibility with
+  `RustType::needs_bounds_check_if_inlined()` (= `has_value_bounds() || types.can_new_fail(ident)`, and
+  `can_new_fail` is true for every bounded Wrapper struct — `src/intermediate.rs:627`), while the
+  rust-side type-choice ctor (`src/generation.rs:8430`, the rep=None path) uses only
+  `has_value_bounds()`. Class: type-choice variant = named bounded wrapper. Pinned as
+  `bwrap__tchoice-variant` in `WASM_MATRIX_SKIP`; flip the pin when the wasm ctor aligns its fallibility
+  predicate with the rust ctor (a *named* bounded wrapper arm carries no inlineable value bound, so the
+  wasm ctor should be infallible too). The other 15 shapes in the `tchoice-variant` role compile green.
 - **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
   last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
   generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only
