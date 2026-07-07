@@ -86,6 +86,11 @@ Rules:
   the appropriate tier yourself; CI won't catch what fast doesn't cover.
 - **Run multi-minute gates in the foreground** with an extended tool timeout (up to 10 min), never
   detached into background monitors — detached runs strand their results when the agent stops.
+- **A gate too long for a foreground timeout (e.g. `check.ts full`) may run as a harness-tracked
+  background task, but redirect its FULL output to a file** — piping through `tail` both truncates
+  the failure detail (check.ts gates inherit stdout, so the detail exists nowhere else) and masks
+  the exit code (the pipeline reports `tail`'s). A one-line summary of a failed run is unactionable;
+  you end up re-running the gate blind.
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
