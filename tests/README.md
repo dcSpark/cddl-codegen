@@ -425,8 +425,13 @@ rust-API strings vs wasm-wrapper-API strings — read from it). The teeth, per m
 2. **Wire round-trip** — `from_cbor_bytes(bytes)` then `to_cbor_bytes()` byte-identical.
 3. **Accessor read-back against emit-time literals** — primitive getters compared to the exact minted
    literal (not original-vs-back, which lets a wrong getter conversion cancel); enum `kind()`/`as_<var>()`
-   pinned to the minted variant. Read on the freshly-*built* wasm value, not the post-wire one, so a
-   wire-ambiguous choice (core's uint-`0` vs a fixed `i0` variant) can't false-fail.
+   pinned to the minted variant. One arm class reads back via `kind()` only: a nullable-payload arm
+   (`opt = uint / null` as an arm) gets no `as_<var>()` self-readback, because that getter flattens
+   `Option<Option<T>>` and reads `None` for the minted inner-null — the assertion would be
+   unsatisfiable, not informative (read protocol: `docs/docs/wasm_differences.mdx` § nullable values;
+   skip site: `emit_tests_wasm.rs`'s `nullable_payload`). Read on the freshly-*built* wasm value, not
+   the post-wire one, so a wire-ambiguous choice (core's uint-`0` vs a fixed `i0` variant) can't
+   false-fail.
 4. **Boundary acceptance only** (`wasm_bounds_<type>`) — the accepted boundary value constructs
    (`.ok().is_some()`). The beyond-boundary REJECT direction is deliberately **not** emitted: a wasm
    ctor's error path builds a `JsError` through a wasm-bindgen import that panics under host `cargo
