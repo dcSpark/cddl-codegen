@@ -37,7 +37,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
 
 ## Recommended next steps, in priority order
 
-1. **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
+1. (pending maintainer action) **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
    invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
    scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
    "kills" measure text-sensitivity, not whether wrong emission is caught behaviorally), but only a
@@ -53,7 +53,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
    baseline survivor map.
 
-2. **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
+2. (pending maintainer decision) **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
    churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
@@ -299,7 +299,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    keeps the needle gates load-bearing even after the lint axis lands: no rustc/clippy lint flags
    a repeated identity error-conversion, so that one stays needle-only.)
 
-- MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
+- (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer
   reports an MSRV or platform break (dep-driven MSRV creep is the one real vector).
