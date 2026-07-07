@@ -653,6 +653,55 @@ fn ok_pattern_parenthesizes_only_tuples() {
     );
 }
 
+/// Text arrays cross the wasm boundary as bare `Vec<String>` — wasm-bindgen supports
+/// `Vec<String>` in both parameter and return position (a JS string array), and strings are
+/// COPIED at the boundary, so the by-value ownership hazard that justifies struct `*List`
+/// wrappers does not apply. Therefore no anonymous text-list wrapper (`TextList`) may be
+/// emitted anywhere: not the wasm wrapper class, not the rust-side `pub type` alias that rode
+/// along with its registration (e.g. for a text-keyed table's keys type).
+///
+/// Whole-word scan: `TextList` with no identifier char on either side, so the nested-array
+/// wrapper `ArrTextList` (an array of arrays stays non-exposable and KEEPS its wrapper) and
+/// user-named idents don't false-positive. NAMED text-array rules (`texts = [* text]`) still
+/// generate a wrapper under their own rule-derived ident — governed by the Alias arm's
+/// RustStruct check in `directly_wasm_exposable`, not the anonymous Str arm this gate pins.
+#[test]
+#[ignore = "red pending fix: directly_wasm_exposable still treats text arrays as needing a wrapper"]
+fn no_anonymous_text_list_wrapper() {
+    fn contains_word(content: &str, word: &str) -> bool {
+        let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+        let bytes = content.as_bytes();
+        let mut from = 0;
+        while let Some(pos) = content[from..].find(word).map(|i| from + i) {
+            let before_ok = pos == 0 || !is_ident(bytes[pos - 1]);
+            let end = pos + word.len();
+            let after_ok = end == bytes.len() || !is_ident(bytes[end]);
+            if before_ok && after_ok {
+                return true;
+            }
+            from = pos + 1;
+        }
+        false
+    }
+    let mut failures = Vec::new();
+    for (label, input, (profile, extra)) in WHOLE_PROGRAM_CASES {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for {label}/{profile}: {e}"));
+        for (path, content) in &files {
+            if contains_word(content, "TextList") {
+                failures.push(format!("[{label}/{profile}] {path}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "generated file(s) emit the anonymous TextList wrapper — text arrays must cross the \
+         wasm boundary as bare Vec<String>:\n{}",
+        failures.join("\n")
+    );
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
