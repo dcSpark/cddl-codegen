@@ -576,7 +576,6 @@ fn generated_files_start_with_header() {
 /// correct pattern — it threads a `converted` flag and emits the conversion only when nothing
 /// upstream did; every conversion site owes the same check.
 #[test]
-#[ignore = "red pending fix: preserve-encodings bounds emission doubles the error conversion"]
 fn deserialize_converts_error_at_most_once() {
     // Reuse the whole-program representative set (same table the header gate walks).
     const DOUBLED: &str =

@@ -2808,10 +2808,20 @@ impl GenerationScope {
                                     })
                                     .unwrap_or_default();
                                 let enc_map_fn = match &type_cfg.bounds {
-                                    // always convert error to have consistent E for the and_then
+                                    // Convert the error to DeserializeError so the `.and_then`
+                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent
+                                    // E — but ONLY when no earlier stage of this chain already did.
+                                    // The site's `error_convert` and any `width_fn` both leave the
+                                    // error type as DeserializeError, so re-converting is a redundant
+                                    // identity `From<T> for T`. Same `converted`-flag rule as
+                                    // `width_reject`.
                                     Some(bounds) => format!(
                                         "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
-                                        convert_err_to_ours,
+                                        if error_convert.is_empty() && width_fn.is_empty() {
+                                            convert_err_to_ours
+                                        } else {
+                                            ""
+                                        },
                                         x,
                                         bounds_check_if_block(
                                             bounds,

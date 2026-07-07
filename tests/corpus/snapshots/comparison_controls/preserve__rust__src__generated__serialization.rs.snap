@@ -92,7 +92,6 @@ impl Deserialize for ComparisonControls {
             let (a, a_encoding) = raw
                 .unsigned_integer_sz()
                 .map_err(Into::<DeserializeError>::into)
-                .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
                     if x < 5 || x > 5 {
                         Err(DeserializeFailure::RangeCheck {
@@ -108,7 +107,6 @@ impl Deserialize for ComparisonControls {
                 .map_err(|e: DeserializeError| e.annotate("a"))?;
             let (b, b_encoding) = raw
                 .unsigned_integer_sz()
-                .map_err(Into::<DeserializeError>::into)
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
                     if x == 5 {
@@ -126,7 +124,6 @@ impl Deserialize for ComparisonControls {
             let (c, c_encoding) = raw
                 .unsigned_integer_sz()
                 .map_err(Into::<DeserializeError>::into)
-                .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
                     if x > 9 {
                         Err(DeserializeFailure::RangeCheck {
@@ -142,7 +139,6 @@ impl Deserialize for ComparisonControls {
                 .map_err(|e: DeserializeError| e.annotate("c"))?;
             let (d, d_encoding) = raw
                 .unsigned_integer_sz()
-                .map_err(Into::<DeserializeError>::into)
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
                     if x < 1 {

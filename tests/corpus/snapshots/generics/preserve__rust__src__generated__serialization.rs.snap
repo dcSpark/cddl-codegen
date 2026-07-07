@@ -129,7 +129,6 @@ impl Deserialize for RangedContainer {
             let (value, value_encoding) = raw
                 .unsigned_integer_sz()
                 .map_err(Into::<DeserializeError>::into)
-                .map_err(Into::<DeserializeError>::into)
                 .and_then(|(x, enc)| {
                     if x < 1 || x > 10 {
                         Err(DeserializeFailure::RangeCheck {
