@@ -1045,8 +1045,8 @@ impl EmbeddedText {
         self.0.get(&key).map(|v| v.clone())
     }
 
-    pub fn keys(&self) -> TextList {
-        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
     }
 }
 
@@ -1899,8 +1899,8 @@ impl MapTextToText {
         self.0.get(&key).map(|v| v.clone())
     }
 
-    pub fn keys(&self) -> TextList {
-        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
     }
 }
 
@@ -1944,8 +1944,8 @@ impl MapTextToU64 {
         self.0.get(&key).copied()
     }
 
-    pub fn keys(&self) -> TextList {
-        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
     }
 }
 
@@ -3700,8 +3700,8 @@ impl StandaloneText {
         self.0.get(&key).map(|v| v.clone())
     }
 
-    pub fn keys(&self) -> TextList {
-        TextList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
     }
 }
 
@@ -4154,47 +4154,6 @@ impl From<TextArrayWrapper> for cddl_lib::TextArrayWrapper {
 
 impl AsRef<cddl_lib::TextArrayWrapper> for TextArrayWrapper {
     fn as_ref(&self) -> &cddl_lib::TextArrayWrapper {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct TextList(Vec<String>);
-
-#[wasm_bindgen]
-impl TextList {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> String {
-        self.0[index].clone()
-    }
-
-    pub fn add(&mut self, elem: String) {
-        self.0.push(elem);
-    }
-}
-
-impl From<Vec<String>> for TextList {
-    fn from(native: Vec<String>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<TextList> for Vec<String> {
-    fn from(wasm: TextList) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<String>> for TextList {
-    fn as_ref(&self) -> &Vec<String> {
         &self.0
     }
 }

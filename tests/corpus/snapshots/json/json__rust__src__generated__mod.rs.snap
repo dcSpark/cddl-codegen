@@ -551,8 +551,6 @@ impl TableHolder {
     }
 }
 
-pub type TextList = Vec<String>;
-
 #[derive(Clone, Debug, Copy)]
 pub struct U64Wrapper(u64);
 

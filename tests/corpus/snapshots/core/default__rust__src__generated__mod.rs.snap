@@ -1475,8 +1475,6 @@ impl TextArrayWrapper {
     }
 }
 
-pub type TextList = Vec<String>;
-
 #[derive(Clone, Debug)]
 pub struct TextMapWrapper {
     pub key_721: EmbeddedText,

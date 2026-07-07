@@ -99,10 +99,9 @@ fn wasm_list_and_map_wrappers() {
     assert_eq!(tab.get(String::from("k1")), Some(String::from("v1")));
     assert_eq!(tab.get(String::from("k2")), Some(String::from("v2b")));
     assert_eq!(tab.get(String::from("nope")), None);
+    // string-keyed `keys()` returns a bare Vec<String> (text arrays are directly wasm-exposable)
     let keys = tab.keys();
-    assert_eq!(keys.len(), 2);
-    assert_eq!(keys.get(0), "k1");
-    assert_eq!(keys.get(1), "k2");
+    assert_eq!(keys, vec!["k1", "k2"]);
 }
 
 // shape: cenum — a Copy c-style enum crosses the boundary by value as the re-exported
