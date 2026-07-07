@@ -7032,7 +7032,6 @@ impl Deserialize for TableArrMembers {
                     )
                 }
             };
-            ();
             Ok(Self {
                 arr,
                 arr2,

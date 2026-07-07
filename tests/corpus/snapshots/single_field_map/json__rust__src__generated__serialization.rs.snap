@@ -86,7 +86,6 @@ impl Deserialize for SingleFieldMap {
                     )
                 }
             };
-            ();
             Ok(Self { t })
         })()
         .map_err(|e| e.annotate("SingleFieldMap"))

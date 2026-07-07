@@ -40,7 +40,6 @@ impl Deserialize for FixedValueArm {
                 read_len.read_elems(2)?;
                 read_len.finish()?;
                 let ret = FixedValueArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
-                ();
                 ret
             })(raw);
             match deser_variant {
@@ -122,7 +121,6 @@ impl Deserialize for FixedValueArm0 {
         read_len.read_elems(2)?;
         read_len.finish()?;
         let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
-        ();
         ret
     }
 }
@@ -314,7 +312,6 @@ impl Deserialize for MultiFieldArm {
                 read_len.read_elems(2)?;
                 read_len.finish()?;
                 let ret = MultiFieldArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
-                ();
                 ret
             })(raw);
             match deser_variant {
@@ -396,7 +393,6 @@ impl Deserialize for MultiFieldArm0 {
         read_len.read_elems(2)?;
         read_len.finish()?;
         let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
-        ();
         ret
     }
 }

@@ -357,7 +357,6 @@ impl Deserialize for ValueKeys {
                 Some(x) => x,
                 None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(2)).into()),
             };
-            ();
             Ok(Self {
                 key_1,
                 key_2,
