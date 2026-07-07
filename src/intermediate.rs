@@ -1796,7 +1796,9 @@ impl ConceptualRustType {
                         Primitive::Bool => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
-                        // Vec<String> is not supported by wasm-bindgen
+                        // modern wasm-bindgen CAN expose Vec<String> directly (strings are copied
+                        // at the boundary, so no ownership hazard either) — kept as a *List
+                        // wrapper for API uniformity and downstream signature stability
                         Primitive::Str => false,
                     },
                     Self::Array(_) => false,
