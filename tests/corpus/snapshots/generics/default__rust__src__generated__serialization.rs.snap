@@ -25,11 +25,11 @@ impl cbor_event::se::Serialize for PairUse {
 
 impl Deserialize for PairUse {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let k = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("k"))?;
             let v = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("v"))?;
@@ -59,11 +59,11 @@ impl cbor_event::se::Serialize for RangedContainer {
 
 impl Deserialize for RangedContainer {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let value = Ok(raw
                 .unsigned_integer()
                 .map_err(Into::<DeserializeError>::into)
@@ -106,11 +106,11 @@ impl cbor_event::se::Serialize for UintContainer {
 
 impl Deserialize for UintContainer {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let value = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("value"))?;
             match len {

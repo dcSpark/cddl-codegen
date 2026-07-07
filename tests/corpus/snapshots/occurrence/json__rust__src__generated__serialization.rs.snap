@@ -35,11 +35,11 @@ impl cbor_event::se::Serialize for OccurrenceHolder {
 
 impl Deserialize for OccurrenceHolder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             let o = (|| -> Result<_, DeserializeError> {
                 let mut o_arr = Vec::new();
                 let len = raw.array()?;

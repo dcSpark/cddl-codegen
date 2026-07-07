@@ -122,10 +122,10 @@ impl cbor_event::se::Serialize for ArrayOptFields {
 
 impl Deserialize for ArrayOptFields {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
             if raw.cbor_type()? == cbor_event::Type::Special {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
@@ -297,10 +297,10 @@ impl cbor_event::se::Serialize for Bar {
 
 impl Deserialize for Bar {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(4)?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
             let mut one = None;
             let mut key_5 = None;
             let mut foo = None;
@@ -552,11 +552,11 @@ impl cbor_event::se::Serialize for BasicArr {
 
 impl Deserialize for BasicArr {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let basic = Basic::deserialize_as_embedded_group(raw, &mut read_len, len)
                 .map_err(|e: DeserializeError| e.annotate("basic"))?;
             match len {
@@ -605,11 +605,11 @@ impl cbor_event::se::Serialize for Bounds {
 
 impl Deserialize for Bounds {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(6)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(6)?;
+            read_len.finish()?;
             let w = (|| -> Result<_, DeserializeError> {
                 Ok(match raw.cbor_type()? {
                     cbor_event::Type::UnsignedInteger => raw
@@ -1226,11 +1226,11 @@ impl cbor_event::se::Serialize for CborInCbor {
 
 impl Deserialize for CborInCbor {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             let foo_bytes = (|| -> Result<_, DeserializeError> {
                 let foo_bytes_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(std::io::Cursor::new(foo_bytes_bytes));
@@ -1276,11 +1276,11 @@ impl cbor_event::se::Serialize for Docs {
 
 impl Deserialize for Docs {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let foo = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("foo"))?;
             let bar = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("bar"))?;
@@ -1978,11 +1978,11 @@ impl cbor_event::se::Serialize for Enums {
 
 impl Deserialize for Enums {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let c_enum = (|| -> Result<_, DeserializeError> {
                 let initial_position = raw.as_mut_ref().stream_position().unwrap();
                 let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
@@ -2086,10 +2086,10 @@ impl cbor_event::se::Serialize for Externs {
 
 impl Deserialize for Externs {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
             let mut opt = None;
             let mut req = None;
             let mut read = 0;
@@ -2244,11 +2244,11 @@ impl cbor_event::se::Serialize for FloatBounds {
 
 impl Deserialize for FloatBounds {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(6)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(6)?;
+            read_len.finish()?;
             let incl = f64::deserialize(raw)
                 .and_then(|x| {
                     if !(x >= 0.5f64 && x <= 10.5f64) {
@@ -2380,11 +2380,11 @@ impl cbor_event::se::Serialize for FloatFixedWhole {
 
 impl Deserialize for FloatFixedWhole {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let w_value = raw.float()?;
                 if w_value != 3.0 {
@@ -2505,11 +2505,11 @@ impl cbor_event::se::Serialize for Foo {
 
 impl Deserialize for Foo {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             let index_0 = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("index_0"))?;
             let index_1 =
@@ -2555,21 +2555,19 @@ impl cbor_event::se::Serialize for Foo2 {
 
 impl Deserialize for Foo2 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let tag = raw.tag()?;
-        if tag != 23 {
-            return Err(DeserializeError::new(
-                "Foo2",
-                DeserializeFailure::TagMismatch {
+        (|| -> Result<_, DeserializeError> {
+            let tag = raw.tag()?;
+            if tag != 23 {
+                return Err(DeserializeFailure::TagMismatch {
                     found: tag,
                     expected: 23,
-                },
-            ));
-        }
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
-        (|| -> Result<_, DeserializeError> {
+                }
+                .into());
+            }
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let index_0 = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("index_0"))?;
             let opt_text = (|| -> Result<_, DeserializeError> {
@@ -2758,11 +2756,11 @@ impl cbor_event::se::Serialize for InlineWrapper {
 
 impl Deserialize for InlineWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let index_0 = (|| -> Result<_, DeserializeError> {
                 let mut index_0_table = BTreeMap::new();
                 let index_0_len = raw.map()?;
@@ -2822,9 +2820,9 @@ impl cbor_event::se::Serialize for MapWithDefaults {
 
 impl Deserialize for MapWithDefaults {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
             let mut key_1 = None;
             let mut key_2 = None;
             let mut read = 0;
@@ -2963,11 +2961,11 @@ impl cbor_event::se::Serialize for NoAlias {
 
 impl Deserialize for NoAlias {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let no_alias_u32 = Ok(raw
                 .unsigned_integer()
                 .map_err(Into::<DeserializeError>::into)
@@ -3603,11 +3601,11 @@ impl cbor_event::se::Serialize for Outer {
 
 impl Deserialize for Outer {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(4)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
             let a = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("a"))?;
             let b = Plain::deserialize_as_embedded_group(raw, &mut read_len, len)
@@ -3822,11 +3820,11 @@ impl cbor_event::se::Serialize for Overlapping0 {
 
 impl Deserialize for Overlapping0 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let index_0_value = raw.unsigned_integer()?;
                 if index_0_value != 0 {
@@ -3866,11 +3864,11 @@ impl cbor_event::se::Serialize for Overlapping1 {
 
 impl Deserialize for Overlapping1 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let index_0_value = raw.unsigned_integer()?;
                 if index_0_value != 0 {
@@ -3913,11 +3911,11 @@ impl cbor_event::se::Serialize for Overlapping2 {
 
 impl Deserialize for Overlapping2 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let index_0_value = raw.unsigned_integer()?;
                 if index_0_value != 0 {
@@ -4155,11 +4153,11 @@ impl cbor_event::se::Serialize for PlainArrays {
 
 impl Deserialize for PlainArrays {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(4)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
             let embedded = Plain::deserialize_as_embedded_group(raw, &mut read_len, len)
                 .map_err(|e: DeserializeError| e.annotate("embedded"))?;
             let single =
@@ -4351,11 +4349,11 @@ impl cbor_event::se::Serialize for SignBounds {
 
 impl Deserialize for SignBounds {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(10)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(10)?;
+            read_len.finish()?;
             let all_neg = (|| -> Result<_, DeserializeError> {
                 Ok(match raw.cbor_type()? {
                     cbor_event::Type::UnsignedInteger => raw
@@ -4905,11 +4903,11 @@ impl cbor_event::se::Serialize for SignedInts {
 
 impl Deserialize for SignedInts {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(11)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(11)?;
+            read_len.finish()?;
             let u_8 = Ok(raw
                 .unsigned_integer()
                 .map_err(Into::<DeserializeError>::into)
@@ -5171,11 +5169,11 @@ impl cbor_event::se::Serialize for StructWithCustomSerialization {
 
 impl Deserialize for StructWithCustomSerialization {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(5)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(5)?;
+            read_len.finish()?;
             let custom_bytes = custom_deserialize_bytes(raw)
                 .map_err(|e: DeserializeError| e.annotate("custom_bytes"))?;
             let field =
@@ -5242,11 +5240,11 @@ impl cbor_event::se::Serialize for TableArrMembers {
 
 impl Deserialize for TableArrMembers {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(3)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
             let mut arr = None;
             let mut tab = None;
             let mut arr2 = None;
@@ -5429,11 +5427,11 @@ impl cbor_event::se::Serialize for TableArrayWrapper {
 
 impl Deserialize for TableArrayWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let embedded_table = (|| -> Result<_, DeserializeError> {
                 let mut embedded_table_table = BTreeMap::new();
                 let embedded_table_len = raw.map()?;
@@ -5492,11 +5490,11 @@ impl cbor_event::se::Serialize for TableMapWrapper {
 
 impl Deserialize for TableMapWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let mut key_721 = None;
             let mut read = 0;
             while match len {
@@ -5689,11 +5687,11 @@ impl cbor_event::se::Serialize for TextArrayWrapper {
 
 impl Deserialize for TextArrayWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let embedded_text = (|| -> Result<_, DeserializeError> {
                 let mut embedded_text_table = BTreeMap::new();
                 let embedded_text_len = raw.map()?;
@@ -5751,11 +5749,11 @@ impl cbor_event::se::Serialize for TextMapWrapper {
 
 impl Deserialize for TextMapWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let mut key_721 = None;
             let mut read = 0;
             while match len {
@@ -6009,11 +6007,11 @@ impl cbor_event::se::Serialize for TopLevelSingleElem {
 
 impl Deserialize for TopLevelSingleElem {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let index_0 = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("index_0"))?;
             match len {
@@ -6227,11 +6225,11 @@ impl cbor_event::se::Serialize for UsingExternGeneric {
 
 impl Deserialize for UsingExternGeneric {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let foo = ExternGenericExternalFoo::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("foo"))?;
             match len {

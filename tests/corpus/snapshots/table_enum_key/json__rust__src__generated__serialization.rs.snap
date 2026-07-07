@@ -33,11 +33,11 @@ impl cbor_event::se::Serialize for EnumKeyHolder {
 
 impl Deserialize for EnumKeyHolder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let choice_keyed = (|| -> Result<_, DeserializeError> {
                 let mut choice_keyed_table = BTreeMap::new();
                 let choice_keyed_len = raw.map()?;

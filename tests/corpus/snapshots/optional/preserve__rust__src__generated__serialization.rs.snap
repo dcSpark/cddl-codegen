@@ -96,11 +96,11 @@ impl cbor_event::se::Serialize for OptionalFields {
 
 impl Deserialize for OptionalFields {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(1)?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
             let mut orig_deser_order = Vec::new();
             let mut a_encoding = None;
             let mut a_key_encoding = StringEncoding::default();

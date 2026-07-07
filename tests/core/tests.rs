@@ -255,9 +255,10 @@ mod tests {
             "{foo2_inner_err}"
         );
 
-        // DefiniteLenMismatch from finish() carries no location (From<DeserializeFailure>), so Display
-        // takes the None branch ("Deserialization: ") and the Some(expected) sub-branch (", expected:").
-        // Foo = [uint, text, bytes] declared as a 4-element array reads 3 then trips finish().
+        // DefiniteLenMismatch from finish() with a location: Foo = [uint, text, bytes] declared as
+        // a 4-element array reads 3 then trips finish(). The record's header/length reads sit inside
+        // the annotate closure, so this carries the "Foo" location (the Some(loc) Display branch);
+        // the DefiniteLenMismatch still prints its ", expected:" sub-branch.
         let foo_too_long = [
             arr_def(4),
             cbor_int(1, cbor_event::Sz::Inline),
@@ -267,12 +268,20 @@ mod tests {
         ]
         .concat();
         let foo_len_err = Foo::from_cbor_bytes(&foo_too_long).unwrap_err().to_string();
-        assert!(
-            foo_len_err.starts_with("Deserialization: "),
-            "{foo_len_err}"
-        );
+        assert!(foo_len_err.contains("Foo"), "{foo_len_err}");
         assert!(foo_len_err.contains("found 4"), "{foo_len_err}");
         assert!(foo_len_err.contains("expected: 3"), "{foo_len_err}");
+
+        // None branch ("Deserialization: " — no location): WrapperList is a newtype wrapper whose
+        // deserialize reads its container directly (no annotate closure), so its errors carry no
+        // location and Display takes the None branch. Feed a bare uint where the array is required.
+        let wrapper_no_loc_err = WrapperList::from_cbor_bytes(&[0x00u8])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            wrapper_no_loc_err.starts_with("Deserialization: "),
+            "{wrapper_no_loc_err}"
+        );
 
         // MandatoryFieldMissing with a Key::Str: an empty indefinite Bar map drops every key; "foo"
         // is the first required field checked, so Key::Display wraps it in quotes ("\"foo\"") and the

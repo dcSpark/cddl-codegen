@@ -24,11 +24,11 @@ impl cbor_event::se::Serialize for Holder {
 
 impl Deserialize for Holder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let payload = TaggedNewtype::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("payload"))?;
             match len {

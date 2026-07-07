@@ -1563,4 +1563,27 @@ mod tests {
         // The guarded path still round-trips (including encoding preservation via deser_test).
         deser_test(&WidthCollapse::new(65535, -128, i64::MIN));
     }
+
+    // A tag mismatch on a tagged record must name the type EXACTLY ONCE. The record's header
+    // parsing (including the tag check) sits inside the `.annotate("Foo")` closure; if the tag
+    // check built its error via the location-carrying form (`DeserializeError::new("Foo", ..)`),
+    // the closure's map_err would PREPEND "Foo" again (static/error.rs annotate concatenates
+    // "location.loc"), reading "Foo.Foo". Inside an annotated closure the emitted tag-check error
+    // must therefore be the locationless form, while the named form is kept when no closure exists
+    // (annotate_fields=false / embedded plain-group scaffolding) so the name is never lost.
+    //
+    // foo = #6.11([uint, text, bytes]); 0xcc is tag 12 (major 6, value 12) — wrong tag, so
+    // `raw.tag_sz()?` succeeds and the `tag != 11` check raises TagMismatch.
+    #[test]
+    fn error_annotation_tag_mismatch_single_name() {
+        let err = Foo::from_cbor_bytes(&[0xccu8]).unwrap_err().to_string();
+        assert!(
+            err.contains("Foo"),
+            "tag-mismatch error must name the type, got: {err}"
+        );
+        assert!(
+            !err.contains("Foo.Foo"),
+            "tag-mismatch error must not double-annotate, got: {err}"
+        );
+    }
 }

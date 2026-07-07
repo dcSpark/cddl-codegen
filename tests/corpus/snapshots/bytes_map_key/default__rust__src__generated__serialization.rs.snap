@@ -33,11 +33,11 @@ impl cbor_event::se::Serialize for BytesKeyHolder {
 
 impl Deserialize for BytesKeyHolder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let named = (|| -> Result<_, DeserializeError> {
                 let mut named_table = BTreeMap::new();
                 let named_len = raw.map()?;
