@@ -666,7 +666,6 @@ fn ok_pattern_parenthesizes_only_tuples() {
 /// generate a wrapper under their own rule-derived ident — governed by the Alias arm's
 /// RustStruct check in `directly_wasm_exposable`, not the anonymous Str arm this gate pins.
 #[test]
-#[ignore = "red pending fix: directly_wasm_exposable still treats text arrays as needing a wrapper"]
 fn no_anonymous_text_list_wrapper() {
     fn contains_word(content: &str, word: &str) -> bool {
         let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';

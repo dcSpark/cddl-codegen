@@ -1796,10 +1796,11 @@ impl ConceptualRustType {
                         Primitive::Bool => false,
                         // Bytes is already implemented as Vec<u8> so we can't nest it
                         Primitive::Bytes => false,
-                        // modern wasm-bindgen CAN expose Vec<String> directly (strings are copied
-                        // at the boundary, so no ownership hazard either) — kept as a *List
-                        // wrapper for API uniformity and downstream signature stability
-                        Primitive::Str => false,
+                        // directly exposable: wasm-bindgen supports Vec<String> in parameter and
+                        // return position (a JS string array), and strings are copied at the
+                        // boundary, so the ownership hazard justifying struct *List wrappers
+                        // does not apply
+                        Primitive::Str => true,
                     },
                     Self::Array(_) => false,
                     _ => ty.conceptual_type.directly_wasm_exposable(types),
@@ -2316,7 +2317,23 @@ impl ConceptualRustType {
             Self::Rust(ident) => Some(!types.is_enum(ident)),
             Self::Array(_) => Some(!self.directly_wasm_exposable(types)),
             Self::Map(_k, _v) => Some(true),
-            Self::Alias(_ident, ty) => ty.wasm_list_macro_needs_into(types),
+            // A named alias is exposed AS its wrapper struct when one exists (see the Alias arm of
+            // `directly_wasm_exposable`), so conversions go through From/Into regardless of the
+            // aliased SHAPE's own exposability — recursing shape-transparently mislabels an alias
+            // to an exposable array (`nested = [* texts]` stores `Vec<rust::Texts>` but exposes the
+            // `Texts` wrapper class, so it still needs `.into()`). Only a transparent alias (no
+            // generated struct, or a re-exported c-style enum) follows what it aliases.
+            Self::Alias(ident, ty) => match ident {
+                AliasIdent::Reserved(_) => ty.wasm_list_macro_needs_into(types),
+                AliasIdent::Rust(rust_ident) => {
+                    match types.rust_struct(rust_ident).map(|rs| rs.variant()) {
+                        Some(RustStructType::CStyleEnum { .. }) | None => {
+                            ty.wasm_list_macro_needs_into(types)
+                        }
+                        Some(_) => Some(true),
+                    }
+                }
+            },
             // serialization-only / can't reduce to the two-bit form
             Self::Optional(_) | Self::Fixed(_) => None,
         }

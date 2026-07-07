@@ -28,11 +28,14 @@ Secondarily, the wrapper also covers element types `wasm_bindgen` can't put in a
 `Vec<bool>` (no `VectorIntoWasmAbi` for bool) and doubly-nested types like `Vec<Vec<T>>` (which
 includes any array of byte strings, since `bytes` is already `Vec<u8>`).
 
-Text arrays also get a list wrapper, but on different grounds: `wasm_bindgen` can expose
-`Vec<String>` directly (strings are **copied** at the boundary, so the ownership hazard above
-doesn't apply to them). The wrapper is kept there for API uniformity — every non-number-array
-collection is a `*List` class — and because switching a generated signature from a class to a bare
-JS array is a breaking change for downstream consumers.
+Text arrays do **not** get a list wrapper: `wasm_bindgen` exposes `Vec<String>` directly (a JS
+string array, in both parameter and return position), and strings are **copied** at the boundary,
+so the ownership hazard above doesn't apply to them. Anonymous `[* text]` positions therefore
+surface as bare `Vec<String>` — including text-keyed tables' `keys()` returns. (This changed
+generated signatures for consumers that previously saw a `TextList` class, but it is the correct
+API — a copied-at-the-boundary element type has nothing for a wrapper to protect.) Named text-array
+rules like `texts = [* text]` still surface as a class under their own identifier, like any other
+named rule.
 
 ## Tables
 
