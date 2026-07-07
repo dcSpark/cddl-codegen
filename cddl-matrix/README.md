@@ -146,7 +146,9 @@ per-construct oracle — its independent evidence is corpus-level only (`golden_
 `catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an
 over/under-`.size` string, a non-uint `.cbor` payload, a cut-violating map value, an out-of-window or
 excluded-endpoint number, NaN against a float window — each a valid instance of its base type),
-certified spec-invalid at mint and durably rejected by the generated decoder. The green set is 24
+certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
+REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
+replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is 24
 rows: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
