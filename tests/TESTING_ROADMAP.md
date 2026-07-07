@@ -33,7 +33,10 @@ generated wasm crate is compiled AND round-tripped by the same systematic gates;
 emission is a hard generator error. Their living documentation is `tests/README.md` (suite-side)
 and `cddl-matrix/README.md` (probe-side). The verdict is no longer a default-profile-only claim:
 every default-`supported` row is also probed per non-default emission profile (`preserve`, `json`)
-and against foreign spec-derived decode vectors, both recorded in the committed annotations.
+and against foreign spec-derived decode vectors, both recorded in the committed annotations — and
+the decode-direction evidence is itself identity-carrying, not a bare Ok/Err count: constraint
+rejections are reason-asserted (the catalog's `expect_err` pins) and every accept vector also
+replays under mechanically-derived spec-equal re-encodings.
 
 ## Recommended next steps, in priority order
 
@@ -161,35 +164,6 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      (structure, not referents). An MD022-class check (blank line before headings) over
      `*ROADMAP*.md` / `tests/README.md` / `cddl-matrix/README.md` is a one-liner in the drift
      gates; worth wiring only if hand-doc surgery keeps being a per-feature step (it currently is).
-   - **Unit-pin the replay gate's failure-marker attribution against prefix-colliding test names
-     (low).** The replay gate explains a failed emitted test by substring-searching the captured
-     cargo output for that test's grep-stable marker (`CONSTRAINT_DECODED_OK reject_{i}:`,
-     `VARIANT_REJECTED accept_{i}_var_{label}:`). Verdicts are exact-keyed off libtest result
-     lines, so only the failure EXPLANATION can misattribute — but libtest names end in decimal
-     indices, where `…_1` is a prefix of `…_10`, so a marker needle is unambiguous only with its
-     trailing delimiter included; that delimiter is held today by a comment at each match site,
-     not by any test. Extract the marker classification into a pure function over (captured
-     output, test name) and pin it with a synthetic output in which `…_1` and `…_10` fail in
-     opposite ways — the ambiguity is a property of the name grammar alone, so the pin needs no
-     crate build. Same assert-the-failure's-identity family as the compile-sweep skip-ledger item
-     below, one level up: the attribution code itself needs a pin, not only the pins it manages.
-     (Out of every other gate's reach: mutation testing scopes emit-core production code, and the
-     gate's own vacuity floors count verdicts, not explanation quality.)
-   - **Deny `clippy::assertions_on_result_states` over this repo's own tests (low).** An
-     `assert!(r.is_ok())` / `assert!(r.is_err())` discards the payload that would attribute the
-     failure, so a red run — above all a transient one that resists reproduction — is
-     unactionable from its first (and possibly only) capture. The fix shape is
-     `.unwrap()`/`.expect()` (payload lands in the panic) or a `match` whose panic text carries
-     the error, as `acquire_scratch_lock_serializes`'s release-assert does (see the flake bullet
-     above — two full-suite reds were burned before that assert carried its errno). The clippy
-     restriction lint `assertions_on_result_states` flags exactly this shape; the workspace fast
-     gate denies only `clippy::all`, so this is one added per-lint deny on that invocation. Cost
-     is near-zero: the repo's own tests hold about one remaining site (`snapshot_tests`' rustfmt
-     smoke assert); the `is_ok`/`is_err` fragments in `emit_tests.rs` and the replay harness are
-     EMITTED text compiled in generated crates, outside this lint's scope (and the generated-code
-     clippy gate leaves restriction lints alone — its burn-down item below is a separate axis). A
-     genuine can't-Debug case (an `is_err` whose Ok payload has no Debug impl) takes a site-local
-     `#[allow]` with a reason — the visible, reviewable form of the tradeoff.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
      `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
      (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
@@ -210,6 +184,48 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
      rerun); once a recurrence lands with an errno, either harden the test against that transient
      (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding.
+   - **Deny `clippy::assertions_on_result_states` over this repo's own tests (low).** An
+     `assert!(r.is_ok())` / `assert!(r.is_err())` discards the payload that would attribute the
+     failure, so a red run — above all a transient one that resists reproduction — is
+     unactionable from its first (and possibly only) capture. The fix shape is
+     `.unwrap()`/`.expect()` (payload lands in the panic) or a `match` whose panic text carries
+     the error, as `acquire_scratch_lock_serializes`'s release-assert does (see the flake bullet
+     above — two full-suite reds were burned before that assert carried its errno). The clippy
+     restriction lint `assertions_on_result_states` flags exactly this shape; the workspace fast
+     gate denies only `clippy::all`, so this is one added per-lint deny on that invocation. Cost
+     is near-zero: the repo's own tests hold about one remaining site (`snapshot_tests`' rustfmt
+     smoke assert); the `is_ok`/`is_err` fragments in `emit_tests.rs` and the replay harness are
+     EMITTED text compiled in generated crates, outside this lint's scope (and the generated-code
+     clippy gate leaves restriction lints alone — its burn-down item below is a separate axis). A
+     genuine can't-Debug case (an `is_err` whose Ok payload has no Debug impl) takes a site-local
+     `#[allow]` with a reason — the visible, reviewable form of the tradeoff.
+   - **Unit-pin the replay gate's failure-marker attribution against prefix-colliding test names
+     (low).** The replay gate explains a failed emitted test by substring-searching the captured
+     cargo output for that test's grep-stable marker (`CONSTRAINT_DECODED_OK reject_{i}:`,
+     `VARIANT_REJECTED accept_{i}_var_{label}:`). Verdicts are exact-keyed off libtest result
+     lines, so only the failure EXPLANATION can misattribute — but libtest names end in decimal
+     indices, where `…_1` is a prefix of `…_10`, so a marker needle is unambiguous only with its
+     trailing delimiter included; that delimiter is held today by a comment at each match site,
+     not by any test. Extract the marker classification into a pure function over (captured
+     output, test name) and pin it with a synthetic output in which `…_1` and `…_10` fail in
+     opposite ways — the ambiguity is a property of the name grammar alone, so the pin needs no
+     crate build. Same assert-the-failure's-identity family as the compile-sweep skip-ledger item
+     below, one level up: the attribution code itself needs a pin, not only the pins it manages.
+     (Out of every other gate's reach: mutation testing scopes emit-core production code, and the
+     gate's own vacuity floors count verdicts, not explanation quality.)
+   - **Vacuity floors must witness the guarded artifact, not a proxy for it (design rule; mechanical
+     layer only if the class recurs).** A floor whose count derives from an INPUT correlated with the
+     guarded behavior — rather than from the behavior's own artifact — is satisfied by any regression
+     that preserves the input: the replay gate's reason-assert floor counted catalog `expect_err`
+     presence while the assert was emitted by an uncoupled match arm, so the arm regressing to the
+     plain-`is_err` body would have left the floor green and the pin vacuous. The rule: derive the
+     floor's count from the emitted/executed artifact, or place an assert at the emission site itself,
+     outside the branch being guarded (the shipped exemplar: `decode_replay_run`'s
+     CONSTRAINT_WRONG_REASON body assert). The mechanical detector for the class, if hand application
+     of the rule proves unreliable, is a scoped mutation sweep over the harness's emission helpers —
+     a surviving mutant in an emission arm IS the vacuity made visible — but each such mutant needs
+     the full-tier gate to kill it, so that layer stays manual-only and unbuilt until a second
+     instance justifies it.
 
 5. **Extend the decode-conformance corpus along two more axes: header-mutation reject vectors, then
    composition depth.** (The encoding-variant axis — spec-EQUAL re-encodings of each accept vector,

@@ -321,7 +321,17 @@ and asserts they are accepted.
     enforces (an over/under-`.size` string, a numeric-op boundary violation like `11` against
     `int .le 10`, a non-uint `.cbor` payload, a cut-violating map value) and that the generated
     decoder must **durably reject**. Re-validated **spec-INVALID** (both oracles reject — the
-    inverse gate) at each mint; NEVER pruned; `reason` names the violated constraint. This is Q4's
+    inverse gate) at each mint; NEVER pruned. Two hand-authored fields pin the rejection's identity:
+    `reason` names the violated constraint (prose, for humans), and `expect_err` is a substring the
+    generated decoder's error Display must contain — the replay gate asserts it, so a decoder that
+    rejects for a subtly WRONG reason (a stray length check, an unrelated error path) fails the gate
+    instead of passing as it would under a bare `is_err` check. The drift gate REQUIRES `expect_err`
+    on `class="constraint"` and forbids it elsewhere; a mint round-trips both fields verbatim.
+    Authoring `expect_err`: pick a generous discriminating fragment of the generator-emitted Display
+    including the bound and the vector's own found value (both deterministic — same bytes, same
+    decoder), e.g. `11 not at most 10`, `not in float range (>=0.5, <=10.5)` — formats in
+    `static/error.rs`; if the captured Display does NOT name the violated constraint, that is a
+    wrong-reason rejection to investigate, never a string to pin. This class is Q4's
     `enforce = yes (bounded-reject)` evidence (`query_q4_directional.ts` counts `class="constraint"`
     only). NOTE: the numeric range/eq rows carry these vectors only because their probe examples
     target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)
@@ -333,17 +343,6 @@ and asserts they are accepted.
     of a float or negative-int range); the fork's `885c61c` fix closed it, so those rows carry real
     accept vectors and discriminating rust reject corroboration (the float vectors' `reason` records
     the provenance).
-    Each constraint vector also carries `expect_err`: a substring the generated decoder's error
-    Display must contain when it rejects the vector. The replay gate asserts it, pinning the
-    rejection REASON — a decoder that rejects for a subtly WRONG reason (a stray length check, an
-    unrelated error path) no longer passes as it would under a bare `is_err` check. Like
-    `class`/`reason`, it is hand-authored when the vector is authored (the drift gate REQUIRES it
-    on `class="constraint"` and forbids it elsewhere; a mint round-trips it verbatim): pick a
-    generous discriminating fragment of the generator-emitted Display including the bound and the
-    vector's own found value (both deterministic — same bytes, same decoder), e.g.
-    `11 not at most 10`, `not in float range (>=0.5, <=10.5)` — see `static/error.rs` for the
-    formats. If the captured Display does NOT name the violated constraint, that is a wrong-reason
-    rejection to investigate, never a string to pin.
     **Authoring rule — vector SHAPE is load-bearing:** a constraint vector for a `standalone` row is
     a BARE in-type instance of the row's type (`0b`, `fb…`), decodable up to the constraint itself so
     the emitted range/size check is the only possible rejection. A holder-wrapped scalar
@@ -355,8 +354,8 @@ and asserts they are accepted.
     (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
     accept-less standalone rows).
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
-  `full` tier, ~3 min: per-row crate builds under two profiles, the default build now also compiling
-  the encoding-variant tests). Oracle-free and deterministic:
+  `full` tier, ~3 min: per-row crate builds under two profiles, the default build including the
+  encoding-variant tests). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
   every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
   can't silently launder a bug), and for each `class="constraint"` vector asserts the error Display
@@ -368,9 +367,9 @@ and asserts they are accepted.
   REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
   `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
   legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
-  the leg live. It then regenerates under `--preserve-encodings=true` and asserts
-  accept vectors decode AND re-encode **byte-identically** (the preserve contract is itself
-  decode-direction evidence). `PRESERVE_SKIP` (stale-guarded) carries the
+  the leg live. Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors
+  decode AND re-encode **byte-identically** (the preserve contract is itself decode-direction
+  evidence). `PRESERVE_SKIP` (stale-guarded) carries the
   float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It
   stays a hand list on purpose — it is NOT the matrix emission axis: the replay specs embed rows as
   members, so e.g. `prelude.float` skips here while its `emission.preserve` verdict (a bare-alias
