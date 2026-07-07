@@ -5113,9 +5113,12 @@ fn add_deserialize_final_len_check(
             end_len_check.push_block(indefinite_check);
             deser_body.push_block(end_len_check);
         }
-        Some(Representation::Map) => {
+        // For Fixed, ending_check is the "()" placeholder (length already fully checked at the
+        // start); emitting it as a statement would produce a standalone `();` (clippy::no_effect).
+        Some(Representation::Map) if !matches!(len_info, RustStructCBORLen::Fixed(_)) => {
             deser_body.line(&format!("{ending_check};"));
         }
+        Some(Representation::Map) => {}
         None =>
             /* this should just be for type choices */
             {}

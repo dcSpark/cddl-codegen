@@ -186,7 +186,6 @@ impl Deserialize for QuotedMapKey {
                     )
                 }
             };
-            ();
             Ok(Self {
                 a,
                 b,

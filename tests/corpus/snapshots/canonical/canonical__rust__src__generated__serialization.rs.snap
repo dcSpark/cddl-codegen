@@ -1522,7 +1522,6 @@ impl Deserialize for MixedLenKeys {
                     )
                 }
             };
-            ();
             Ok(Self {
                 key_256,
                 a,
@@ -2140,7 +2139,6 @@ impl Deserialize for TableArrMembers {
                     )
                 }
             };
-            ();
             Ok(Self {
                 arr,
                 arr2,

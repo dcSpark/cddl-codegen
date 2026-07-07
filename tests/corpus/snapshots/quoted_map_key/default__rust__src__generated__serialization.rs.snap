@@ -109,7 +109,6 @@ impl Deserialize for QuotedMapKey {
                     )
                 }
             };
-            ();
             Ok(Self { a, b })
         })()
         .map_err(|e| e.annotate("QuotedMapKey"))

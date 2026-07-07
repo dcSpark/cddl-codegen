@@ -5406,7 +5406,6 @@ impl Deserialize for TableArrMembers {
                     )
                 }
             };
-            ();
             Ok(Self { tab, arr, arr2 })
         })()
         .map_err(|e| e.annotate("TableArrMembers"))
@@ -5572,7 +5571,6 @@ impl Deserialize for TableMapWrapper {
                     return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into())
                 }
             };
-            ();
             Ok(Self { key_721 })
         })()
         .map_err(|e| e.annotate("TableMapWrapper"))
@@ -5832,7 +5830,6 @@ impl Deserialize for TextMapWrapper {
                     return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into())
                 }
             };
-            ();
             Ok(Self { key_721 })
         })()
         .map_err(|e| e.annotate("TextMapWrapper"))

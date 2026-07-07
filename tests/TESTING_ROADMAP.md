@@ -234,6 +234,31 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    error class today), then `WASM_MATRIX_SKIP`/`COMPILE_SKIP` entries that claim more than
    "references a user-supplied type".
 
+9. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
+   denies `clippy::all` on the generated rust crate but carries eight `-A` escapes so the generator's
+   current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
+   proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).
+   `clippy::disallowed_names` is NOT in this list — it is a permanent input-dependent allow (the
+   fixture's own `foo`/`bar` rule names become generated parameter names). The eight to retire, each
+   fixed by adjusting the emitted shape rather than the lint config, with approximate default-profile
+   counts:
+   - `unnecessary_cast` (13×) — same-type `as` casts on the deserialize path (`… as u64` where the
+     source is already `u64`); emit the cast only when the source and target types differ.
+   - `collapsible_if` (9×) — nested `if { if … }` in emitted length/optional-field guards that
+     clippy wants joined with `&&`.
+   - `needless_borrows_for_generic_args` (5×) — a `&expr` passed where the callee takes the value by
+     a generic bound (drop the borrow).
+   - `useless_conversion` (3×) — `.into()` / `From` to the same type (`u64` → `u64`).
+   - `write_with_newline` (2×) — `write!(… "\n")` that should be `writeln!`.
+   - `derivable_impls` (2×, preserve profile) — a hand-emitted `impl Default` clippy can derive.
+   - `type_complexity` (1×, preserve profile) — a very complex inline type worth a `type` alias.
+   - `unnecessary_lazy_evaluations` (1×, preserve profile) — `.unwrap_or_else(|| None)`-style closures
+     that should be the eager form.
+   Removing an entry from the gate's `-A` list is the pin: it flips red until the generator stops
+   minting that shape, then stays green. The gate already holds `clippy::no_effect` (the retired
+   `();` shape) and every unlisted lint hard-red, so a NEW emission-quality regression fails
+   immediately.
+
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer
