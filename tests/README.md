@@ -109,16 +109,32 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
 - **`serialization_prelude`** — the static serialization runtime, snapshotted once per flag
   combination (it ships verbatim into every crate but is assembled differently per flag).
 
-The module also carries a non-snapshot invariant gate, `generated_files_start_with_header`: every
-generated `.rs` in the tool-owned trees (`rust/src/generated/**`, `wasm/src/generated/**`) must
-LEAD with the codegen provenance banner — only blank lines, `//` comments, and crate `#![…]`
-attributes may precede it. It asserts with the same banner constant and path predicate the stamper
-uses (`generation::CODEGEN_HEADER` / `is_header_stamped_path` — the stamping is file-level in
-`generated_files`, so scope-internal ordering can't outrank it), over the `whole_program` inputs
-plus the wasm-list-macro fixture under both its profiles. It exists because `codegen`'s
-`Scope::raw` hoists raw text above everything in insertion order: any raw pushed during generation
-(the class that put `impl_wasm_list!` invocations and merged-root module declarations above the
-header) beats an end-of-run banner raw, and snapshots just bless whatever order results.
+The module also carries non-snapshot **invariant gates** — each sweeps every file the
+`whole_program` inputs generate and asserts a property snapshots can't judge (snapshots pin that
+emitted bytes don't *change*, not that they satisfy an invariant; a violation just gets blessed):
+
+- `generated_files_start_with_header` — every generated `.rs` in the tool-owned trees
+  (`rust/src/generated/**`, `wasm/src/generated/**`) must LEAD with the codegen provenance banner;
+  only blank lines, `//` comments, and crate `#![…]` attributes may precede it. It asserts with the
+  same banner constant and path predicate the stamper uses (`generation::CODEGEN_HEADER` /
+  `is_header_stamped_path` — the stamping is file-level in `generated_files`, so scope-internal
+  ordering can't outrank it), over the `whole_program` inputs plus the wasm-list-macro fixture under
+  both its profiles. It exists because `codegen`'s `Scope::raw` hoists raw text above everything in
+  insertion order: any raw pushed during generation (the class that put `impl_wasm_list!`
+  invocations and merged-root module declarations above the header) beats an end-of-run banner raw.
+- `deserialize_converts_error_at_most_once` — a generated error-conversion chain maps to
+  `DeserializeError` at most once per read (an emission site prepending the conversion without
+  checking whether an earlier chain stage already converted emits a redundant identity `map_err`).
+- `ok_pattern_parenthesizes_only_tuples` — a generated `Ok` match pattern parenthesizes its payload
+  only when it is a real tuple, matching the `final_expr` shaping on the expression side
+  (`Ok((x))` on a single binding is redundant grouping parens).
+- `no_anonymous_text_list_wrapper` — text arrays cross the wasm boundary as bare `Vec<String>`
+  (supported by wasm-bindgen; strings are copied at the boundary, so the by-value ownership hazard
+  that justifies struct `*List` wrappers doesn't apply), so no anonymous `TextList` wrapper may be
+  emitted.
+
+The emission-hygiene gates pin specific shapes found by review; the systematic axis (denying a
+curated rustc style-lint set on generated code) is a `TESTING_ROADMAP` item.
 
 `canonical` is a serialization sub-mode of `preserve` (differs only where maps/sets exist), so it's
 covered at whole-program scale rather than duplicated per feature.
