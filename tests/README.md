@@ -792,6 +792,15 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
    excluded; return types unchecked — boundary conversions differ by construction). Rules 3–4 run
    only when a same-named wasm struct/enum is *defined*; a `pub use`/alias counterpart is full parity
    under rules 1–2 (a `pub use` *is* the same type; a rust alias has no inherent members).
+5. **JS-name visibility.** wasm_bindgen exports no type aliases, so a rust type whose ONLY wasm
+   counterpart is a `pub type` alias never reaches JS under its CDDL rule name. Rule 5 resolves the
+   alias's target and flags iff the target is a struct/enum *defined* in the wasm mod (a real
+   `#[wasm_bindgen]` class) whose name is NOT itself on the rust surface — the usage-dependent
+   JS-class-name bug, where a named table rule's wrapper degrades to `pub type Mp = MapU64ToText;`
+   pointing at the generator-invented structural class. Carved out (not findings): a target that is
+   not wasm-defined (transparent alias to a primitive/std/`Option` type — native in JS) and a
+   wasm-defined target that IS a rust-surface rule name (a genuine CDDL-level alias on both sides).
+   `pub use` counterparts stay JS-visible by design (`#[wasm_bindgen]` c-enums re-exported).
 
 Legitimate rust→wasm asymmetries are baked into those rules, not ledgered: the "`pub use`d Copy
 enums", "rust-only trait impls" (only inherent impls are walked — `From`/`AsRef`/`Serialize`/… are
@@ -820,14 +829,20 @@ that generates fails as "gap closed — remove the pin"; an unlisted abort fails
 Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
 `WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no
 live finding fails as "resurfaced" (a fix landed — remove it); an unexempted finding fails with the
-remedy spelled out (fix the emitter, or deliberately ledger it with a reason). The ledger is
-**empty** — both finding classes the gate has surfaced were fixed at the emitter rather than
-ledgered: the named-table wasm alias emitted as a private `type` instead of `pub type`
-(`generation.rs`'s already-generated-map branch now carries `.vis("pub")`, matching its sibling
-passthrough-alias site), and the preserve-profile wrapper `inner` field emitted `pub` (caught by the
-profile sweep's first run; now private like the default profile's tuple field, so downstream code
-can't literal-construct or mutate a wrapper past the bound check `new()` enforces — access goes
-through the getter in every profile).
+remedy spelled out (fix the emitter, or deliberately ledger it with a reason). Two earlier finding
+classes were fixed at the emitter rather than ledgered: the named-table wasm alias emitted as a
+private `type` instead of `pub type` (`generation.rs`'s already-generated-map branch now carries
+`.vis("pub")`, matching its sibling passthrough-alias site), and the preserve-profile wrapper `inner`
+field emitted `pub` (caught by the profile sweep's first run; now private like the default profile's
+tuple field, so downstream code can't literal-construct or mutate a wrapper past the bound check
+`new()` enforces — access goes through the getter in every profile). The ledger currently holds the
+rule-5 findings, which are pinned KNOWN-BUG entries awaiting an emitter fix (NOT accepted
+asymmetries): the named table rule `mp = { * uint => text }` used through a `@newtype` holder
+(`collmap__newtype-inner` / `passthrumap__newtype-inner`, all three profiles) and `StandaloneText` in
+`tests/core` (default / json — preserve is the generation-fail pin) each surface to JS only as the
+structural `MapU64ToText`/`MapTextToText` class. The emitter fix (prefer the rule name for the
+wrapper when a single named table rule owns the shape; `cddl-matrix/ROADMAP.md` § findings) will
+retire these entries, and the resurfaced guard forces their removal when it lands.
 
 ## Coverage
 
