@@ -167,14 +167,20 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm for its 43 cells). If wall-time
      bites: batch cells into fewer crates, adopt `cargo-nextest` as the suite runner, or gate only
      changed cells.
-   - **One unattributed full-suite flake (2026-07-06) — capture before rerunning.** The `test` gate
-     (`cargo test --all-features --all-targets`) failed once with exit 101 on a doc/TS-only change,
-     then passed on an immediate identical rerun and a second full run; the failing test's name was
-     lost (the output was truncated before the `failures:` list, and reruns were green). Nothing can
-     attribute a transient failure after the fact, so the discipline on recurrence is: save the full
-     output (`2>&1 | tee`) BEFORE any rerun, then triage. Likeliest transient class: the nested-cargo
-     integration gates above (shared `CARGO_TARGET_DIR`; a racing cargo lock/link step). A second
-     sighting with a captured name turns this bullet into a real fix item.
+   - **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
+     errno.** The `test` gate failed with exit 101 twice (2026-07-06 unattributed — output truncated
+     before the `failures:` list; 2026-07-08 captured in full): the second sighting names
+     `integration_tests::acquire_scratch_lock_serializes`, panicking on its release-assert ("the
+     lock should be acquirable once the first handle is dropped"). No repro in 60 isolated
+     single-test runs, so it is load/parallelism-dependent (the failing run had
+     `feature_corpus_compiles`/`wasm_matrix_compiles` shelling parallel nested cargo, whose own
+     target-dir flocks pressure the kernel lock accounting). The old assert was `.is_ok()`, which
+     conflates the two very different failures — `WouldBlock` (lock outlived its handle = a real
+     advisory-flock semantics break) vs a syscall `Error` (e.g. ENOLCK under load = transient
+     environment); the assert now `match`es and panics with the concrete error + raw os errno, so
+     the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
+     rerun); once a recurrence lands with an errno, either harden the test against that transient
+     (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding.
 
 5. **Extend the decode-conformance corpus along two more axes: header-mutation reject vectors, then
    composition depth.** (The encoding-variant axis — spec-EQUAL re-encodings of each accept vector,

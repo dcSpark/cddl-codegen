@@ -287,12 +287,29 @@ fn acquire_scratch_lock_serializes() {
         "a second handle should observe the lock as held while the first is alive"
     );
 
-    // Release the first lock; the contender can now take it.
+    // Release the first lock; the contender can now take it. Match rather than `.is_ok()` so a
+    // failure names WHICH way it failed: `WouldBlock` (the lock outlived its handle — a real
+    // semantics break) vs a syscall error (e.g. ENOLCK under kernel lock-table pressure from the
+    // suite's parallel cargo children — a transient environment condition, not a semantics break).
+    // This test failed ONCE undiagnosably through the old `.is_ok()` assert (full-suite flake,
+    // 2026-07-08, no repro in 60 isolated runs — ledgered in tests/TESTING_ROADMAP.md); the split
+    // makes any recurrence attributable.
     std::mem::drop(held);
-    assert!(
-        contender.try_lock().is_ok(),
-        "the lock should be acquirable once the first handle is dropped"
-    );
+    match contender.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => panic!(
+            "the lock should be acquirable once the first handle is dropped, but try_lock \
+             reported it still HELD (WouldBlock) — the advisory-flock release-on-drop semantics \
+             the gates rely on are broken"
+        ),
+        Err(std::fs::TryLockError::Error(e)) => panic!(
+            "the lock should be acquirable once the first handle is dropped, but try_lock \
+             errored: {e} (raw_os_error {:?}) — a syscall failure, not a lock-semantics break; \
+             if transient (e.g. ENOLCK under load), see the flake ledger in \
+             tests/TESTING_ROADMAP.md",
+            e.raw_os_error()
+        ),
+    }
     std::mem::drop(contender);
     let _ = std::fs::remove_file(&lock_path);
 }
