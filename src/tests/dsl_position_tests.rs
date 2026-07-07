@@ -490,6 +490,15 @@ fn describe(outcome: &Outcome) -> String {
 /// its own failure kind (never a graceful rejection, never a test abort).
 #[test]
 fn dsl_directive_position_sweep() {
+    for (directive, position, _) in KNOWN_SILENT_DROP {
+        assert!(
+            GRID.iter()
+                .any(|cell| cell.directive == *directive && cell.position == *position),
+            "KNOWN_SILENT_DROP names cell `{directive}` at `{position}` that is no longer swept — \
+             stale pin, remove or fix it"
+        );
+    }
+
     let mut failures: Vec<String> = Vec::new();
 
     with_thread_silenced_panics(|| {

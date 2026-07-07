@@ -227,25 +227,6 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      defined-`#[wasm_bindgen]`-type vs `pub use` vs alias-only, and require every supported rule name
      to be JS-visible or ledgered — turning the naming wart from a hand observation into a red cell.
 
-9. **Stale-key guards for every skip/pin ledger (low; the class is proven, two gates already
-   guard it).** The resurfaced-guard idiom has a blind spot: it only fires on `(key, verdict)`
-   pairs the sweep actually VISITS, so a ledger entry whose key leaves the swept universe — a
-   deleted corpus fixture, a pruned matrix cell, a renamed profile — is simply never consulted
-   again and rots silently (the entry survives as false documentation; worse, re-adding the key
-   later silently re-arms a stale expectation). Hand-caught in review, not gate-caught, while
-   extending the wasm profile sweeps; those two gates now validate their pins up front
-   (`EXPECTED_GENERATION_FAIL` in `wasm_parity_tests.rs`, `WASM_MATRIX_PROFILE_SKIP` in
-   `integration_tests.rs`: every entry must name a live profile and a live input/cell, else the
-   gate fails with "stale pin"). The systematic catcher is the same up-front validation applied to
-   the remaining ledgers, each against its own swept universe: `WASM_MATRIX_SKIP` / `COMPILE_SKIP`
-   / the corpus-roundtrip `SKIP` (fixture stems), `EXPECTED_FAIL` / `GEN_SKIP` /
-   `RUST_ORACLE_SKIP` / `RUBY_EXPECTED_FAIL` / `DUMP_EXEMPT` (conformance-gate fixtures/rules),
-   `PRESERVE_SKIP` (replay rows), `KNOWN_SILENT_DROP` / `EXPECTED_COMPILE_FAIL` (their static
-   grids — lower risk, but a renamed cell id has the same rot shape). Prefer per-gate validation
-   beside each list (a shared helper obscures which universe an entry is checked against); a list
-   whose keys are compile-time-constructed from the same table the sweep iterates needs none —
-   note that instead.
-
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer
