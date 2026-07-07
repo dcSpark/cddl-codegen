@@ -674,8 +674,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
   verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
   `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`, expected empty), each with
-  the four-state resurfaced-guard verdict and an up-front stale-pin guard, so it runs beside this
-  always-on compile floor. Run it with `cargo test --bin cddl-codegen wasm_matrix_roundtrips --
+  the four-state resurfaced-guard verdict. Every skip/pin ledger validates its keys up front against
+  its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work. Run it with
+  `cargo test --bin cddl-codegen wasm_matrix_roundtrips --
   --ignored` (~6 min warm); a cell whose shape mints no wasm surface (loud emitter skip) passes with
   zero emitted tests, which is a legitimate green (the compile gate already pins its ABI compiles).
 

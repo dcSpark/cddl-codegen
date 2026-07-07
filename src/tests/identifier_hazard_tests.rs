@@ -367,6 +367,19 @@ fn gen_and_check(
 #[ignore]
 fn identifier_hazard_crates_compile() {
     let hz = hazards();
+    for (position, hazard, _) in EXPECTED_COMPILE_FAIL {
+        assert!(
+            POSITIONS.iter().any(|pos| pos.name == *position),
+            "EXPECTED_COMPILE_FAIL names position `{position}` that is no longer swept — stale pin, \
+             remove or fix it"
+        );
+        assert!(
+            hz.iter().any(|h| h == hazard),
+            "EXPECTED_COMPILE_FAIL names hazard `{hazard}` that is no longer swept — stale pin, \
+             remove or fix it"
+        );
+    }
+
     let root = std::env::temp_dir().join(format!("cddl_codegen_idhazard_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");

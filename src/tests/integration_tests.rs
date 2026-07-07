@@ -1007,6 +1007,18 @@ fn feature_corpus_compiles() {
     entries.sort();
     assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
 
+    let corpus_stems: std::collections::BTreeSet<&str> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap())
+        .collect();
+    for stem in COMPILE_SKIP {
+        assert!(
+            corpus_stems.contains(stem),
+            "COMPILE_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it"
+        );
+    }
+
     // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3).
     let root = std::env::temp_dir().join(format!(
         "cddl_codegen_corpus_compile_{:016x}",
@@ -1223,6 +1235,18 @@ fn wasm_matrix_compiles() {
         "no wasm-matrix fixtures in {dir:?} (run `bun run project_wasm_matrix.ts`)"
     );
 
+    let cell_stems: std::collections::BTreeSet<&str> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap())
+        .collect();
+    for stem in WASM_MATRIX_SKIP {
+        assert!(
+            cell_stems.contains(stem),
+            "WASM_MATRIX_SKIP names cell `{stem}` that no longer exists in tests/matrix_wasm — \
+             stale pin, remove or fix it"
+        );
+    }
+
     // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
     let root =
         std::env::temp_dir().join(format!("cddl_codegen_wasm_matrix_{:016x}", checkout_hash()));
@@ -1370,6 +1394,13 @@ fn wasm_matrix_roundtrips() {
         .iter()
         .map(|p| p.file_stem().unwrap().to_str().unwrap())
         .collect();
+    for stem in WASM_MATRIX_SKIP {
+        assert!(
+            cell_stems.contains(stem),
+            "WASM_MATRIX_SKIP names cell `{stem}` that no longer exists in tests/matrix_wasm — \
+             stale pin, remove or fix it"
+        );
+    }
     for (profile, stem, _) in WASM_MATRIX_PROFILE_SKIP {
         assert!(
             super::ALL_PROFILES.iter().any(|(name, _)| name == profile),
@@ -3188,20 +3219,6 @@ fn ir_conformance_corpus() {
     entries.sort();
     assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
 
-    let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
-
-    let scratch_name = format!("cddl_codegen_ir_conformance_{:016x}", checkout_hash());
-    // Hold this for the whole gate: same-checkout concurrent runs serialize on it instead of
-    // deleting each other's crates via the `remove_dir_all` below.
-    let _scratch_lock = acquire_scratch_lock(&scratch_name);
-    let root = std::env::temp_dir().join(&scratch_name);
-    let _ = std::fs::remove_dir_all(&root);
-    let target_dir = root.join("target");
-
-    // The oracle's distinctive panic message (assert_cddl_conforms) — proves an expected-fail
-    // fixture failed *for the right reason*, not via some unrelated compile/test break.
-    const ORACLE_MSG: &str = "cddl conformance failed for rule";
-
     // ===== DECORRELATED (ruby `cddl` gem) conformance oracle ==========================================
     // The rust oracle above shares the dcSpark `cddl` FORK's parser with the generator, so a fork-level
     // grammar/AST MISPARSE corrupts generator IR and oracle spec-interpretation identically and passes
@@ -3267,6 +3284,85 @@ fn ir_conformance_corpus() {
     // corpus-wide RUBY_CASE_FLOOR. Empty at HEAD: source rule names are always recoverable, so every
     // dumping test dumps.
     const DUMP_EXEMPT: &[(&str, &str, &str)] = &[];
+
+    let corpus_stems: std::collections::BTreeSet<&str> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap())
+        .collect();
+    for stem in EXPECTED_FAIL {
+        assert!(
+            corpus_stems.contains(stem),
+            "EXPECTED_FAIL names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it"
+        );
+    }
+    for stem in GEN_SKIP {
+        assert!(
+            corpus_stems.contains(stem),
+            "GEN_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — stale pin, \
+             remove or fix it"
+        );
+    }
+    for stem in RUST_ORACLE_SKIP {
+        assert!(
+            corpus_stems.contains(stem),
+            "RUST_ORACLE_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it"
+        );
+    }
+
+    let rule_defined = |stem: &str, rule: &str| {
+        let path = corpus_dir.join(format!("{stem}.cddl"));
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read corpus fixture {path:?}: {e}"));
+        src.lines().any(|line| {
+            let Some(rest) = line.trim_start().strip_prefix(rule) else {
+                return false;
+            };
+            let rest = rest.trim_start();
+            // Ledger semantics name plain rule definitions; allow the CDDL extension forms too so
+            // a split rule remains a live target.
+            rest.starts_with('=') || rest.starts_with("/=") || rest.starts_with("//=")
+        })
+    };
+    for (stem, rule, _) in RUBY_EXPECTED_FAIL {
+        assert!(
+            corpus_stems.contains(stem),
+            "RUBY_EXPECTED_FAIL names corpus fixture `{stem}` that no longer exists in tests/corpus \
+             — stale pin, remove or fix it"
+        );
+        assert!(
+            rule_defined(stem, rule),
+            "RUBY_EXPECTED_FAIL names rule `{rule}` in `{stem}` but that rule is no longer defined \
+             there — stale pin, remove or fix it"
+        );
+    }
+    for (stem, rule, _) in DUMP_EXEMPT {
+        assert!(
+            corpus_stems.contains(stem),
+            "DUMP_EXEMPT names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it"
+        );
+        assert!(
+            rule_defined(stem, rule),
+            "DUMP_EXEMPT names rule `{rule}` in `{stem}` but that rule is no longer defined there — \
+             stale pin, remove or fix it"
+        );
+    }
+
+    let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
+
+    let scratch_name = format!("cddl_codegen_ir_conformance_{:016x}", checkout_hash());
+    // Hold this for the whole gate: same-checkout concurrent runs serialize on it instead of
+    // deleting each other's crates via the `remove_dir_all` below.
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    // The oracle's distinctive panic message (assert_cddl_conforms) — proves an expected-fail
+    // fixture failed *for the right reason*, not via some unrelated compile/test break.
+    const ORACLE_MSG: &str = "cddl conformance failed for rule";
 
     let ruby_gem = resolve_ruby_cddl();
     // F7 posture: the decorrelated oracle must not silently, permanently degrade to a no-op just
@@ -4543,6 +4639,29 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
         .filter(|(p, _)| *p != "default")
         .collect();
 
+    let corpus_stems: std::collections::BTreeSet<&str> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap())
+        .collect();
+    for stem in COMPILE_SKIP {
+        assert!(
+            corpus_stems.contains(stem),
+            "COMPILE_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (profile, stem, _) in SKIP {
+        assert!(
+            profiles.iter().any(|(name, _)| name == profile),
+            "SKIP names unknown non-default profile `{profile}` — stale pin, remove or fix it"
+        );
+        assert!(
+            corpus_stems.contains(stem),
+            "SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — stale pin, \
+             remove or fix it"
+        );
+    }
+
     // Own scratch dir + one shared target so cbor_event/wasm-bindgen/the libtest harness build once.
     let scratch_name = format!(
         "cddl_codegen_corpus_roundtrip_profiles_{:016x}",
@@ -4937,6 +5056,23 @@ fn decode_conformance_replay() {
         });
     }
 
+    let active_row_ids: std::collections::BTreeSet<&str> =
+        rows.iter().map(|row| row.id.as_str()).collect();
+    for (id, _) in PRESERVE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "PRESERVE_SKIP names active catalog row `{id}` that is no longer replayed — stale pin, \
+             remove or fix it"
+        );
+    }
+    for (id, _) in EXPECTED_MISMATCH {
+        assert!(
+            active_row_ids.contains(id),
+            "EXPECTED_MISMATCH names active catalog row `{id}` that is no longer replayed — \
+             stale pin, remove or fix it"
+        );
+    }
+
     let scratch_name = format!("cddl_codegen_decode_conformance_{:016x}", checkout_hash());
     // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
     // other's crates via the `remove_dir_all` below (the `ir_conformance_corpus` pattern).
@@ -4951,9 +5087,6 @@ fn decode_conformance_replay() {
         EXPECTED_MISMATCH.iter().copied().collect();
 
     let mut failures: Vec<String> = Vec::new();
-    let mut preserve_skip_used: std::collections::BTreeSet<&str> =
-        std::collections::BTreeSet::new();
-    let mut mismatch_used: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     let mut rows_replayed = 0usize;
     let mut vectors_replayed = 0usize;
 
@@ -5020,9 +5153,7 @@ fn decode_conformance_replay() {
         if !pgen.status.success() {
             // Generation aborted (the float class). A finding unless allowlisted.
             preserve_ok = false;
-            if let Some(_reason) = skip_reason {
-                preserve_skip_used.insert(row.id.as_str());
-            } else {
+            if skip_reason.is_none() {
                 failures.push(format!(
                     "{}: preserve-profile generation failed and the row is NOT on PRESERVE_SKIP — a \
                      finding: either a real preserve generation regression, or add it to \
@@ -5039,13 +5170,7 @@ fn decode_conformance_replay() {
                     if !all_pass {
                         let byte_mismatch = combined.contains("PRESERVE_BYTE_MISMATCH");
                         let decode_failed = combined.contains("PRESERVE_DECODE_FAILED");
-                        if mismatch_reason.is_some() {
-                            mismatch_used.insert(row.id.as_str());
-                        } else if skip_reason.is_some() {
-                            // A PRESERVE_SKIP row that compiles but still can't replay counts as
-                            // "used" (its preserve leg legitimately fails).
-                            preserve_skip_used.insert(row.id.as_str());
-                        } else {
+                        if mismatch_reason.is_none() && skip_reason.is_none() {
                             let kind = if byte_mismatch {
                                 "re-encodes to DIFFERENT bytes (decodes Ok but `to_cbor_bytes()` != \
                                  input — the preserve byte-identity contract is broken)"
@@ -5066,9 +5191,7 @@ fn decode_conformance_replay() {
                 (None, combined) => {
                     // Compiled-away: no result lines => the preserve crate did not build.
                     preserve_ok = false;
-                    if skip_reason.is_some() {
-                        preserve_skip_used.insert(row.id.as_str());
-                    } else {
+                    if skip_reason.is_none() {
                         failures.push(format!(
                             "{}: preserve-profile crate did not compile and the row is NOT on \
                              PRESERVE_SKIP — a finding: fix it or add it to PRESERVE_SKIP with an \
@@ -5096,23 +5219,6 @@ fn decode_conformance_replay() {
             ));
         }
         let _ = std::fs::remove_dir_all(&pout);
-    }
-
-    // Stale-list guards for allowlist entries whose row never appeared (renamed/dropped from the
-    // corpus): every PRESERVE_SKIP / EXPECTED_MISMATCH id must have been exercised.
-    for (id, _) in PRESERVE_SKIP {
-        if !preserve_skip_used.contains(id) {
-            failures.push(format!(
-                "PRESERVE_SKIP lists '{id}' but no active catalog row exercised it — stale entry, remove it"
-            ));
-        }
-    }
-    for (id, _) in EXPECTED_MISMATCH {
-        if !mismatch_used.contains(id) {
-            failures.push(format!(
-                "EXPECTED_MISMATCH lists '{id}' but no active catalog row exercised it — stale entry, remove it"
-            ));
-        }
     }
 
     let _ = std::fs::remove_dir_all(&root);
