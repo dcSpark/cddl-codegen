@@ -601,6 +601,59 @@ fn deserialize_converts_error_at_most_once() {
     );
 }
 
+/// A generated `Ok` pattern parenthesizes its payload only when it is a real tuple, matching the
+/// `final_expr` shaping on the expression side (0 exprs → `Ok(())`, 1 → `Ok(x)`, N → `Ok((a, b))`).
+/// `Ok((x))` with a single bare identifier is redundant — parens in a pattern are grouping, not a
+/// 1-tuple, so it matches the same values as `Ok(x)` but reads as if the payload were a tuple.
+///
+/// The failure class this guards: an emission site hardcoding the tuple wrapper in the match
+/// pattern (`Ok(({}))` around a joined expr list) without conditioning on the list's length. The
+/// non-value enum dispatch site (src/generation.rs, `names_without_outer.len() > 1` around line
+/// 8879) shows the correct pattern — wrap only for >1 names, empty case emitted separately as
+/// `Ok(())`; every pattern-emitting site owes the same length check.
+#[test]
+#[ignore = "red pending fix: value-enum dispatch hardcodes the tuple wrapper in its Ok pattern"]
+fn ok_pattern_parenthesizes_only_tuples() {
+    // Hand-rolled scan (no regex dep): find `Ok((`, then a nonempty run of identifier chars
+    // immediately followed by `))` — i.e. `Ok((ident))`. `Ok(())` (empty) and `Ok((a, b))`
+    // (comma before the close) don't match.
+    fn find_redundant_ok_parens(flat: &str) -> Option<&str> {
+        const NEEDLE: &str = "Ok((";
+        let bytes = flat.as_bytes();
+        let mut from = 0;
+        while let Some(pos) = flat[from..].find(NEEDLE).map(|i| from + i) {
+            let inner = pos + NEEDLE.len();
+            let ident_len = bytes[inner..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphanumeric() || **c == b'_')
+                .count();
+            if ident_len > 0 && flat[inner + ident_len..].starts_with("))") {
+                return Some(&flat[pos..inner + ident_len + 2]);
+            }
+            from = inner;
+        }
+        None
+    }
+    let mut failures = Vec::new();
+    for (label, input, (profile, extra)) in WHOLE_PROGRAM_CASES {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for {label}/{profile}: {e}"));
+        for (path, content) in &files {
+            // rustfmt may split across lines; compare with all whitespace stripped.
+            let flat: String = content.chars().filter(|c| !c.is_whitespace()).collect();
+            if let Some(found) = find_redundant_ok_parens(&flat) {
+                failures.push(format!("[{label}/{profile}] {path}: {found}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "generated file(s) wrap a single-identifier Ok pattern in redundant tuple parens:\n{}",
+        failures.join("\n")
+    );
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
