@@ -5348,6 +5348,19 @@ fn decode_replay_run(
                     "assert!({type_name}::from_cbor_bytes(BYTES).is_err(), \"reject vector must NOT decode\");"
                 ),
             };
+            // Guard the reason-assert against a silent arm regression: the caller's vacuity floor
+            // counts vectors whose CATALOG carries `expect_err`, not what this function emitted, so
+            // a drifted match pattern above (constraint vectors falling into the plain-`is_err`
+            // fallback) would keep that floor green while the reason pin went vacuous. Assert here —
+            // OUTSIDE the match — that a default-leg constraint vector's body really is the
+            // reason-asserting form.
+            if !preserve && vector.expect_err.is_some() {
+                assert!(
+                    body.contains("CONSTRAINT_WRONG_REASON"),
+                    "decode_replay_run built a non-reason-asserting body for a default-leg vector \
+                     with expect_err ({name}) — the constraint match arm regressed"
+                );
+            }
             (name, body)
         };
         fns.push_str(&format!(
@@ -5933,8 +5946,10 @@ fn decode_conformance_replay() {
     );
     // Reason-assert floor: the corpus holds 44 `class="constraint"` vectors at HEAD, each asserting its
     // rejection REASON (not just is_err). Floor set just under so ordinary churn doesn't false-fail,
-    // while a match body that silently stopped asserting (or a corpus that lost its constraint vectors)
-    // still trips the gate — otherwise the reason pin would rot into a vacuous is_err check.
+    // while a corpus (or a catalog parse) that lost its constraint vectors still trips the gate. The
+    // OTHER vacuity channel — decode_replay_run's constraint arm regressing to the plain-is_err body
+    // while the catalog field stays present — is guarded at the emission site itself (the
+    // CONSTRAINT_WRONG_REASON body assert in decode_replay_run), which this count cannot see.
     assert!(
         constraint_reason_asserts >= 40,
         "only {constraint_reason_asserts} constraint vectors had their rejection REASON asserted \
