@@ -220,6 +220,31 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      snapshot corpus (`tests/*/input.cddl` under their per-dir flags). Extending it there should
      reuse each dir's committed flag set so coverage stays mechanically checkable.
 
+9. **Multifile placement sweep (low; the class is proven by probe, not gate).** Every construct
+   gate — the corpus compile/round-trip gates, the wasm-ABI matrix, the parity differential —
+   feeds the generator SINGLE-file specs, so every construct is only ever verified in root-scope
+   placement. Multifile emission is covered by exactly one hand-built fixture (`tests/multifile`),
+   which exercises NAMED cross-module references well (a record in scope `b` referencing a struct
+   from `a::c::foo` directly, in arrays, and as map key+value) but has zero cells for structural
+   (generator-invented) wrapper types under module placement — and that region is where the
+   emission logic actually branches on scope: both `mark_refs` arms (array + map,
+   `intermediate.rs`, the `issue #138` TODOs) hard-code ROOT_SCOPE as the import source for
+   `XList`/`MapKToV` wrappers, while the wrapper/alias definitions land wherever
+   `types.scope(ident)` puts them. The proven instance (in-session probe, both directions broken
+   pre- AND post- the JS-class-name fix — the `cddl-matrix/ROADMAP.md` findings entry has the
+   errors): a named TABLE rule declared in a non-root module whose shape is also used anonymously
+   in another module (E0425 before / narrower E0432 after), plus the rust-side sibling — a module
+   containing ONLY table rules declares `pub mod serialization;` without emitting the file
+   (E0583). All fail loudly at `cargo check` of the generated crate, so a compile floor is a
+   sufficient oracle. The systematic catcher is a placement SWEEP, not one more hand fixture:
+   project representative shape families (the wasm-matrix `SHAPES` axis is the ready ingredient
+   list) into a two-module template — declared-in-module × {referenced-named, referenced-as-
+   anonymous-same-shape, unreferenced} from the other module — and compile-gate rust+wasm per
+   cell, `project_wasm_matrix.ts`-style (the same shape × role projection pattern, adding a
+   placement dimension). Red cells land as findings; the known-broken cells above go into its
+   skip ledger (with the now-standard up-front stale-key validation) so the sweep lands green
+   while pinning the gaps.
+
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer

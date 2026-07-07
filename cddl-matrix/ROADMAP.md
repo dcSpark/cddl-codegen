@@ -162,9 +162,13 @@ are ledgered here (that's what the probe/gate error messages point at).
   without emitting the file (E0583). All shapes fail loudly at `cargo check` of the generated crate
   (never a silent miscompile). Candidate fix: make `mark_refs` resolve the anonymous-map import from
   the sole owner's scope (the same ownership map generation.rs now computes), and skip/emit the
-  per-module serialization stub for alias-only modules; the systematic catcher FIRST — add a named
-  table rule (plus a cross-module anonymous same-shape use) to `tests/multifile`'s inputs so the
-  class turns red in a gate instead of a probe.
+  per-module serialization stub for alias-only modules. This is an instance of a CLASS, not a
+  one-off fixture gap: every construct gate feeds the generator single-file specs, so constructs
+  are only ever verified in root-scope placement, and `tests/multifile` (the one multifile
+  fixture) covers named cross-module references but no structural-wrapper-ownership cells — the
+  systematic catcher is the multifile placement sweep on `tests/TESTING_ROADMAP.md` item 9
+  (shape × module-placement × reference-direction, compile-floored), whose skip ledger would pin
+  these known-broken cells until the `mark_refs` fix flips them.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
