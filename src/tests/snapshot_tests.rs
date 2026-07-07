@@ -430,6 +430,153 @@ fn wasm_list_macro() {
     });
 }
 
+/// The two lines of the code-generation header stamped onto every file in a header-stamped scope
+/// family (see `generation.rs`, where `rust_scopes` / `cbor_encodings_scopes` / `serialize_scopes` /
+/// `wasm_scopes` each get this comment `.raw`-appended).
+const CODEGEN_HEADER_1: &str =
+    "// This file was code-generated using an experimental CDDL to rust tool:";
+const CODEGEN_HEADER_2: &str = "// https://github.com/dcSpark/cddl-codegen";
+
+/// True for paths in the header-stamped scope families: the tool-owned generated trees under
+/// `rust/src/generated/` and `wasm/src/generated/`. Everything else `generated_strings` returns is
+/// legitimately unstamped and excluded here:
+/// * `wasm/json-gen/**` (json-gen output: `macro_rules!` + `main.rs`, no header),
+/// * the thin seed-once crate roots `*/src/lib.rs` (only `mod generated; pub use generated::*;`),
+/// * `*/Cargo.toml`.
+fn is_header_stamped_path(path: &str) -> bool {
+    path.ends_with(".rs")
+        && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
+}
+
+/// Intermediate parent-module files (e.g. `a/c/mod.rs` → `pub mod foo;`) are synthesized AFTER the
+/// header is stamped (by `declare_modules`, into freshly `or_default()`-created scopes), so they
+/// carry only `pub mod` declarations and no header — they are not part of a stamped scope. Exclude
+/// them structurally: every non-blank line is a `pub mod ...;`. This can never exclude a file that
+/// SHOULD carry the header, because any stamped file contains the header comment (not a `pub mod`),
+/// so the ordering bug this test guards stays detectable.
+fn is_module_link_stub(content: &str) -> bool {
+    let mut non_blank = content.lines().filter(|l| !l.trim().is_empty()).peekable();
+    non_blank.peek().is_some() && non_blank.all(|l| l.trim_start().starts_with("pub mod "))
+}
+
+/// Verify the two header lines are present and contiguous, and that everything before them is
+/// benign preamble: blank lines, `//` comments, or crate-level `#![...]` attributes (which rustfmt
+/// splits across multiple lines, e.g. `#![allow(\n    clippy::…,\n)]`, so an opened attribute is
+/// consumed through its `]` closer). Any other content before the header (a macro invocation, an
+/// item, an import) is the failure this test exists to catch.
+fn check_header_leads(content: &str) -> Result<(), String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let header_idx = lines
+        .iter()
+        .position(|l| l.trim() == CODEGEN_HEADER_1)
+        .ok_or_else(|| format!("header line 1 missing entirely ({CODEGEN_HEADER_1:?})"))?;
+    match lines.get(header_idx + 1) {
+        Some(l) if l.trim() == CODEGEN_HEADER_2 => {}
+        other => {
+            return Err(format!(
+                "header line 2 ({CODEGEN_HEADER_2:?}) does not immediately follow line 1; got {other:?}"
+            ));
+        }
+    }
+    let mut i = 0;
+    while i < header_idx {
+        let line = lines[i];
+        let trimmed = line.trim_start();
+        if line.trim().is_empty() || trimmed.starts_with("//") {
+            i += 1;
+        } else if trimmed.starts_with("#![") {
+            // consume the (possibly multi-line) crate attribute through its `]` closer
+            while i < header_idx && !lines[i].trim_end().ends_with(']') {
+                i += 1;
+            }
+            i += 1;
+        } else {
+            return Err(format!(
+                "line {} precedes the header but is not blank / a `//` comment / a crate `#![…]` \
+                 attribute: {line:?}",
+                i + 1
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Every generated `.rs` in a header-stamped scope family (`rust/src/generated/**`,
+/// `wasm/src/generated/**`) must LEAD with the code-generation header — only blank lines, `//`
+/// comments, or crate `#![…]` attributes may precede it. This guards the invariant that the
+/// codegen provenance banner is the first substantive line a reader (or a downstream license/attrib
+/// scanner) sees.
+///
+/// Currently RED — two manifestations of the same root cause (the header is a raw pushed at the END,
+/// and the codegen fork hoists all raws to the top in insertion order, so raws inserted earlier land
+/// above it):
+/// 1. The originally-targeted `--wasm-list-macro` bug: the `impl_wasm_list!` invocations are emitted
+///    as ROOT-scope raws during generation, so they precede the header in `wasm/src/generated/mod.rs`.
+/// 2. A broader, pre-existing case this test surfaced: EVERY root `generated/mod.rs` emits its
+///    module-linking declarations (`pub mod error;`, `extern crate derivative;`, `pub mod <child>;`)
+///    above the header, because those live in `*_lib_scope`, which `merge_scopes_to_strings` prepends
+///    ahead of the ROOT-scope content that actually carries the header. (Declarations pushed into the
+///    ROOT scope itself, e.g. `pub mod serialization;`, correctly land *below* the header.)
+///
+/// Both must be addressed for this to go green; a fix that only reorders the list-macro raws leaves
+/// manifestation (2) red. `#[ignore]` because the fast tier's `snapshot_quick` gate substring-selects
+/// the whole `snapshot_tests` module (`cargo test --bin cddl-codegen snapshot_tests`), and a red test
+/// there would break CI-equivalent fast. Un-ignore once the header-ordering fix lands; run explicitly
+/// with `cargo test generated_files_start_with_header -- --ignored`.
+#[test]
+#[ignore = "red pending the sorted-macro-item fix; run explicitly with --ignored"]
+fn generated_files_start_with_header() {
+    // Representative (label, input, flags) set — reuses the existing whole-program table and the
+    // wasm-list-macro fixture + both its profiles (the known-red case).
+    let mut cases: Vec<(String, String, Vec<&str>)> = Vec::new();
+    for (label, input, (profile, extra)) in WHOLE_PROGRAM_CASES {
+        cases.push((
+            format!("{label}/{profile}"),
+            input.to_string(),
+            extra.to_vec(),
+        ));
+    }
+    for (label, extra) in [
+        (
+            "list_macro",
+            &["--wasm-list-macro=my_crate::impl_wasm_list"][..],
+        ),
+        (
+            "list_and_conversions_macro",
+            &[
+                "--wasm-list-macro=my_crate::impl_wasm_list",
+                "--wasm-conversions-macro=my_crate::impl_wasm_conversions",
+            ][..],
+        ),
+    ] {
+        cases.push((
+            format!("wasm_list_macro/{label}"),
+            "tests/wasm-list-macro/input.cddl".to_owned(),
+            extra.to_vec(),
+        ));
+    }
+
+    let mut failures = Vec::new();
+    for (profile, input, extra) in &cases {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for {profile}: {e}"));
+        for (path, content) in &files {
+            if !is_header_stamped_path(path) || is_module_link_stub(content) {
+                continue;
+            }
+            if let Err(msg) = check_header_leads(content) {
+                failures.push(format!("[{profile}] {path}: {msg}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "generated file(s) in a header-stamped scope family do not lead with the codegen header:\n{}",
+        failures.join("\n")
+    );
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
