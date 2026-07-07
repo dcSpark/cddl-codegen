@@ -277,47 +277,33 @@ are ledgered here (that's what the probe/gate error messages point at).
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
 
-## wasm-ABI matrix — remaining work (`project_wasm_matrix.ts`)
+## wasm-ABI & multifile placement matrices — remaining work
 
-The system itself (what it is, the axes, how to run/extend it) is documented in `tests/README.md` §
-"wasm-ABI matrix". Every enumerated cell compiles — `integration_tests::wasm_matrix_compiles`' `SKIP`
-is expected to hold only the permanent `extern__array-element` (it references
-a user-supplied type, so it can't compile standalone; integration-tested in `tests/extern-deps`). A red
-cell reappearing is a **regression to fix**, not a backlog item. A third axis runs beside compile and
-round-trip: the rust→wasm API-surface parity differential (`wasm_parity_tests::wasm_api_parity` over
-the same cells + two depth fixtures, plus the committed `tests/*/input.cddl` corpus axis —
-`tests/README.md` § "rust↔wasm API-surface parity"). The round-trip and parity axes both sweep the
-emission profiles (default / preserve / json via `ALL_PROFILES`, with the corpus axis using each
-fixture dir's committed profile rows), so `--preserve-encodings` and the json flags are exercised
-behaviourally and at the ABI surface — the compile floor stays
-default-profile only by cost policy. The remaining frontiers HERE are extending the grid and the
-behavioural compile→round-trip upgrade (both below).
+Current state — the grid, the three always-on axes (compile floor, round-trip, rust↔wasm API-surface
+parity) with their emission-profile sweeps, the minted wasm test surface and its loud-skip list, and
+the multifile placement sweep — is documented in `tests/README.md` (§ "wasm-ABI matrix", § "wasm-crate
+test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus `README.md` §
+annotations (`verify.ts`'s default-on `--wasm` probe). What remains:
 
-**Extending the grid.** Coverage equals the hand-curated type-shape axis (`SHAPES`); a representation not
-in it is a silent hole, not a red cell. Periodically ask "which wasm representation are we *not*
-enumerating?" and add a shape.
-
-**Behavioural upgrade — remaining.** The wasm-side minted round-trip surface has landed (the emitted
-`cddl_generated_wasm_tests` module, `integration_tests::wasm_matrix_roundtrips` — now swept across the
-emission profiles — and `verify.ts`'s default-on `--wasm` probe — documented in `README.md` §
-annotations and `tests/README.md` § "wasm-ABI matrix"). Remaining:
-- **Unminted wasm shapes** — a `@newtype`/tag/bounded wrapper ENTRY type builds through its public wasm
-  `new(inner)`; wrapper-collection ctor args build via a block-expr `new`/`add`/`insert`, and
-  `@newtype`/tag/table/array wrapper ctor args via their `From<cddl_lib::Native>` impl. So only extern /
-  raw-bytes ctor args (user-supplied types with no generated conversion) — including a wrapper entry
-  whose inner is that class, which falls back to a `from_cbor_bytes` build with a loud-skipped ctor
-  differential — and the `--wasm-*-macro` modes remain **loud skips** (`eprintln!` — the list in
-  `tests/README.md` § "wasm-crate test module"); a cell built entirely from those mints no wasm surface
-  and falls back to the compile verdict. (Flatten points are not on this list: optional fields are not ctor args, so
-  no mint ever constructs a present-null state — verified against the `nullable__*` cells, which all
-  mint or skip only for the unrelated transparent-alias reason.)
-
-**Oracles (`verify.ts` is manual-only):** ruby `cddl` via `gem install --user-install cddl` (verify.ts
-auto-resolves it at `Gem.user_dir/bin/cddl`), rust `cddl` via `cargo install cddl` (point `RUST_CDDL` at
-`~/.cargo/bin/cddl`), and cddl-codegen builds from this repo. The compile-gate reuses
-`integration_tests::feature_corpus_compiles`' pattern (shared `CARGO_TARGET_DIR`, one-time dep warm-up).
-The default `RUST_CDDL` is the `local-fixes` sibling checkout — pin it to an immutable copy before a
-multi-probe run (`README.md` § "Upstream oracle gaps" has the details and why).
+- **Keep the shape axis honest (periodic).** Grid coverage equals the hand-curated `SHAPES` list in
+  `project_wasm_matrix.ts` — a wasm representation not enumerated is a silent hole, not a red cell. A
+  generator change that gives types a NEW way to cross the wasm boundary must add its shape in the
+  same change; the standing question "which representation are we *not* enumerating?" deserves a
+  periodic sweep regardless.
+- **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
+  raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
+  modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
+  skips today (the list: `tests/README.md` § "wasm-crate test module"). Minting the former means
+  extending the def-splice the compile gate already does for `rawbytes` cells
+  (`append_raw_bytes_defs`) to ctor-arg minting; the latter needs the user macro definitions in scope
+  (the `tests/wasm-macro-crate` pattern). Either close them or record compile-verdict fallback as the
+  permanent posture and prune this item.
+- **Multifile placement: behavioral upgrade after the pin-flipping fixes.** `multifile_matrix_compiles`
+  is a compile floor — a green placement cell is not semantically verified. Once the pinned
+  E0583/E0432/E0433 classes are fixed (the fix queue: § findings, "Non-root MODULE placement breaks
+  multifile compilation"), mirror the wasm-matrix compile→round-trip upgrade: generate the placement
+  cells `--emit-tests` and run the minted module, so cross-module wiring is executed rather than only
+  type-checked.
 
 ## Explicitly out of scope (decided, not overlooked)
 

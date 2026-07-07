@@ -317,6 +317,13 @@ numbers** — same robustness rule as the COVERAGE.md docs.
 - **Verification:** `build_matrix.ts --check` snapshots the synthesis (fails if `matrix.json` is stale
   vs the authored overlay — the editorial join under test, not just the inputs' checksums); `verify.ts`
   is the reproducible gate (reconcile + triangulated probes). Both are Bun/TypeScript (`bun run …`).
+  `verify.ts`'s oracles resolve as: ruby `cddl` (`gem install --user-install cddl`; auto-resolved at
+  `Gem.user_dir/bin/cddl`) and a rust `cddl` CLI via `RUST_CDDL` (defaults to the `local-fixes`
+  sibling checkout — § "Upstream oracle gaps" explains why, and why to pin an immutable copy before a
+  multi-probe run; `cargo install cddl` + pointing `RUST_CDDL` at `~/.cargo/bin/cddl` works on a
+  machine without the checkout, at the cost of the five released-CLI gaps). Its generated-crate
+  compile gate reuses `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time
+  dep warm-up).
 
 ## Scope (v1)
 RFC 8610 backbone in its authoritative current form: 9682 grammar + 8610 prelude + the IANA control-op
