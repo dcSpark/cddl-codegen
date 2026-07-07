@@ -333,21 +333,28 @@ and asserts they are accepted.
     of a float or negative-int range); the fork's `885c61c` fix closed it, so those rows carry real
     accept vectors and discriminating rust reject corroboration (the float vectors' `reason` records
     the provenance).
+    Each constraint vector also carries `expect_err`: a substring the generated decoder's error
+    Display must contain when it rejects the vector. The replay gate asserts it, pinning the
+    rejection REASON — a decoder that rejects for a subtly WRONG reason (a stray length check, an
+    unrelated error path) no longer passes as it would under a bare `is_err` check.
     **Authoring rule — vector SHAPE is load-bearing:** a constraint vector for a `standalone` row is
     a BARE in-type instance of the row's type (`0b`, `fb…`), decodable up to the constraint itself so
     the emitted range/size check is the only possible rejection. A holder-wrapped scalar
     (`8200…` = `[0, x]`) against a standalone row rejects as a TYPE mismatch before any bounds check
-    runs — vacuous evidence the replay gate cannot distinguish (it asserts `Err`, not the reason).
-    The `8200` holder prefix belongs only to `mode = "holder"` rows; a row's accept and reject
-    vectors must share their outer CBOR shape. `project_decode_conformance.ts` § 6 enforces this
-    mechanically (leading major-type class vs the row's accepts, majors 0/1 merged; the holder
-    preamble banned on accept-less standalone rows); the rejection-REASON assert in the replay gate
-    (`tests/TESTING_ROADMAP.md` item 5) remains the deeper behavioral layer.
+    runs — the reason assert would catch that behaviorally (the TYPE-mismatch Display doesn't contain
+    the range/size fragment), but `project_decode_conformance.ts` § 6 also bans it STATICALLY at the
+    cheap drift-gate tier. The `8200` holder prefix belongs only to `mode = "holder"` rows; a row's
+    accept and reject vectors must share their outer CBOR shape. § 6 enforces this mechanically
+    (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
+    accept-less standalone rows).
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~2 min: per-row crate builds under two profiles). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
   every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
-  can't silently launder a bug), then regenerates under `--preserve-encodings=true` and asserts
+  can't silently launder a bug), and for each `class="constraint"` vector asserts the error Display
+  CONTAINS the catalog's `expect_err` — pinning the rejection REASON, so a wrong-reason rejection
+  fails the gate with the captured Display (a vacuity floor keeps ≥ 40 such reason asserts live).
+  It then regenerates under `--preserve-encodings=true` and asserts
   accept vectors decode AND re-encode **byte-identically** (the preserve contract is itself
   decode-direction evidence). `PRESERVE_SKIP` (stale-guarded) carries the
   float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It

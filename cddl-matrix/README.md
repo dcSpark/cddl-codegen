@@ -294,17 +294,17 @@ and the inverse, don't *invent* a gap from a degenerate example.**
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped
-  scalar (`[0, 11]` = `82000b`) against a standalone row still passes every current gate — the
-  decoder rejects it as a TYPE mismatch before any bounds check runs (the replay gate asserts `Err`,
-  not the rejection reason, and the Q4 pin fixes the row *set*, not vector quality) — which is
-  vacuous enforcement evidence indistinguishable from the real thing. This exact decay shipped once
-  and was caught only by review. The structural catch is BUILT: `project_decode_conformance.ts` § 6
-  (local-tier drift gate) fails a constraint vector whose leading CBOR major-type class differs from
-  its row's accepts (majors 0/1 merged — int-family instances span both signs), and bans the `8200`
-  holder preamble on an accept-less standalone row. The behavioral layer — the replay gate asserting
-  the rejection REASON names the violated check — stays `tests/TESTING_ROADMAP.md` item 5; the
-  authoring rule remains: holder shapes belong ONLY to `mode = "holder"` rows, and a row's accept
-  and reject vectors share their outer CBOR shape.
+  scalar (`[0, 11]` = `82000b`) against a standalone row rejects as a TYPE mismatch before any bounds
+  check runs — vacuous enforcement evidence indistinguishable from the real thing (and the Q4 pin
+  fixes the row *set*, not vector quality). This exact decay shipped once and was caught only by
+  review. TWO gates now catch it. Structural: `project_decode_conformance.ts` § 6 (local-tier drift
+  gate) fails a constraint vector whose leading CBOR major-type class differs from its row's accepts
+  (majors 0/1 merged — int-family instances span both signs), and bans the `8200` holder preamble on
+  an accept-less standalone row. Behavioral: each `class="constraint"` vector carries an `expect_err`
+  substring, and the rust replay gate asserts the decoder's error Display CONTAINS it — pinning the
+  rejection REASON, so a TYPE-mismatch (or any wrong-reason) rejection no longer passes as it would
+  under a bare `is_err` check. The authoring rule remains: holder shapes belong ONLY to
+  `mode = "holder"` rows, and a row's accept and reject vectors share their outer CBOR shape.
 
 ## Evidence/id convention
 

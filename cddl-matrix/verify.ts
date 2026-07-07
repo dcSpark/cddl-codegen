@@ -659,7 +659,7 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
 // corroboration. All helpers are hoisted `function`s so the mint (called right after the warm-up) and
 // the probe loops (below) can share them regardless of textual order.
 // ==================================================================================================
-interface CatalogVector { hex: string; source: string; expect: string; class?: string; reason?: string }
+interface CatalogVector { hex: string; source: string; expect: string; class?: string; reason?: string; expect_err?: string }
 interface CatalogRow {
   id: string; axis: string; example: string;
   pinned_reason?: string;                             // set => the row has no vectors (names the cause)
@@ -696,6 +696,7 @@ function parseCatalog(path: string): Map<string, CatalogRow> {
       hex: String(v.hex), source: String(v.source), expect: String(v.expect),
       class: v.class !== undefined ? String(v.class) : undefined,
       reason: v.reason !== undefined ? String(v.reason) : undefined,
+      expect_err: v.expect_err !== undefined ? String(v.expect_err) : undefined,
     }));
     map.set(String(r.id), {
       id: String(r.id), axis: String(r.axis), example: String(r.example),
@@ -734,7 +735,10 @@ function composeCatalog(rows: CatalogRow[]): string {
     "#           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the",
     "#           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)",
     "#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's",
-    "#           `enforce = yes (bounded-reject)` evidence.",
+    "#           `enforce = yes (bounded-reject)` evidence. A constraint vector ALSO carries a required",
+    "#           `expect_err`: a substring the generated decoder's error Display must contain when it",
+    "#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it",
+    "#           rejects (a stray length check / unrelated error path would decode-reject but mis-name).",
     "# pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.",
     "",
   ];
@@ -758,6 +762,7 @@ function composeCatalog(rows: CatalogRow[]): string {
         if (v.expect === "reject") {
           if (v.class !== undefined) L.push(`class = ${foreignTomlStr(v.class)}`);
           if (v.reason !== undefined) L.push(`reason = ${foreignTomlStr(v.reason)}`);
+          if (v.expect_err !== undefined) L.push(`expect_err = ${foreignTomlStr(v.expect_err)}`);
         }
       }
     }
@@ -795,6 +800,9 @@ function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map
   const libPath = join(outDir, "rust", "src", "generated", "mod.rs");
   const fns = vecs.map(v => {
     const bytes = (v.hex.match(/../g) ?? []).map(b => `0x${b}`).join(", ");
+    // is_err-only here (the corroborating D4 oracle only needs "our decoder rejects"); the rejection
+    // REASON assert (catalog `expect_err`) lives in the rust replay gate
+    // (src/tests/integration_tests.rs::decode_conformance_replay), which owns the durable pin.
     const body = v.expectOk
       ? `${decodeType}::from_cbor_bytes(BYTES).expect("accept vector must decode");`
       : `assert!(${decodeType}::from_cbor_bytes(BYTES).is_err(), "reject vector must NOT decode");`;
