@@ -287,6 +287,17 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    immediately. Second axis once the list shrinks: extend the gate to the generated *wasm* crate —
    it currently generates with `--wasm=false`, so the wasm-binding emission path has no lint gate
    at all (the same "compiles green but lint-worthy" class the rust half existed to catch).
+   Third axis: deny a curated **rustc** style-lint set (`-D unused_parens`, candidates from the
+   `unused` group) alongside `clippy::all`. The gate can't use a blanket `-D warnings` (generated
+   code legitimately over-imports, so `unused_imports` must stay a warning), but per-lint denies
+   don't have that problem, and the class is real: a redundant-parens emission (`Ok((x))` on a
+   single-binding match pattern) shipped and was caught by review, not by any gate — rustc's
+   `unused_parens` would have flagged it. The review-found shapes are pinned individually by the
+   `snapshot_tests` emission-hygiene needle gates (`deserialize_converts_error_at_most_once`,
+   `ok_pattern_parenthesizes_only_tuples`); the lint axis is what would catch the *next* shape in
+   the class without a needle per bug. (The doubled-`map_err` shape is the counterexample that
+   keeps the needle gates load-bearing even after the lint axis lands: no rustc/clippy lint flags
+   a repeated identity error-conversion, so that one stays needle-only.)
 
 - MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
