@@ -25,11 +25,11 @@ impl cbor_event::se::Serialize for Foo {
 
 impl Deserialize for Foo {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let index_0_value = raw.unsigned_integer()?;
                 if index_0_value != 0 {

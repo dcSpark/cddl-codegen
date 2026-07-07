@@ -104,12 +104,12 @@ impl cbor_event::se::Serialize for Prelude {
 
 impl Deserialize for Prelude {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(16)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(16)?;
+            read_len.finish()?;
             let big_u = PreludeBiguint::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("big_u"))?;
             let uri =
@@ -317,22 +317,20 @@ impl cbor_event::se::Serialize for PreludeBigfloat {
 
 impl Deserialize for PreludeBigfloat {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (tag, tag_encoding) = raw.tag_sz()?;
-        if tag != 5 {
-            return Err(DeserializeError::new(
-                "PreludeBigfloat",
-                DeserializeFailure::TagMismatch {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 5 {
+                return Err(DeserializeFailure::TagMismatch {
                     found: tag,
                     expected: 5,
-                },
-            ));
-        }
-        let len = raw.array_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
-        (|| -> Result<_, DeserializeError> {
+                }
+                .into());
+            }
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let e2 = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("e2"))?;
             let m =
                 PreludeInteger::deserialize(raw).map_err(|e: DeserializeError| e.annotate("m"))?;
@@ -536,22 +534,20 @@ impl cbor_event::se::Serialize for PreludeDecfrac {
 
 impl Deserialize for PreludeDecfrac {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (tag, tag_encoding) = raw.tag_sz()?;
-        if tag != 4 {
-            return Err(DeserializeError::new(
-                "PreludeDecfrac",
-                DeserializeFailure::TagMismatch {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 4 {
+                return Err(DeserializeFailure::TagMismatch {
                     found: tag,
                     expected: 4,
-                },
-            ));
-        }
-        let len = raw.array_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
-        (|| -> Result<_, DeserializeError> {
+                }
+                .into());
+            }
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let e10 = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("e10"))?;
             let m =
                 PreludeInteger::deserialize(raw).map_err(|e: DeserializeError| e.annotate("m"))?;

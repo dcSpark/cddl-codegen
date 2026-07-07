@@ -25,11 +25,11 @@ impl cbor_event::se::Serialize for Keyed {
 
 impl Deserialize for Keyed {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let a = Ok(raw.unsigned_integer()? as u64)
                 .map_err(|e: DeserializeError| e.annotate("a"))?;
             let b = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("b"))?;

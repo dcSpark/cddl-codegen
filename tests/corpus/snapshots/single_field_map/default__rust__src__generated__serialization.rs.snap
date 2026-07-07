@@ -25,11 +25,11 @@ impl cbor_event::se::Serialize for SingleFieldMap {
 
 impl Deserialize for SingleFieldMap {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let mut t = None;
             let mut read = 0;
             while match len {
@@ -111,9 +111,9 @@ impl cbor_event::se::Serialize for SingleFieldMapOpt {
 
 impl Deserialize for SingleFieldMapOpt {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map()?;
-        let mut read_len = CBORReadLen::from(len);
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
             let mut t = None;
             let mut read = 0;
             while match len {

@@ -5145,6 +5145,12 @@ fn add_deserialize_final_len_check(
 // This (in both options) relies on the use of CBORReadLen at every non-mandatory (if using len_info) element read, or all elements otherwise.
 // * `store_encoding` - If present, creates a variable of the provided name in the deserialization impl as a bool to store if definite was used (true) or indefinite (false)
 // Only generated if generate_deserialize_embedded is false as otherwise we wouldn't have access to it from within the embedded code block as it is declared in the regular Deserialize
+// * `annotated` - true iff deser_body will end up inside an `.annotate(name)` error closure. The
+//   tag-mismatch error must then be the locationless form (`DeserializeFailure::..into()`): the
+//   closure's map_err supplies the type name, and the location-carrying form
+//   (`DeserializeError::new(name, ..)`) would get the name PREPENDED again ("Name.Name"). When no
+//   closure exists (annotate_fields=false, or embedded scaffolding that stays in deserialize()),
+//   the named form is required or the name would be lost entirely.
 #[allow(clippy::too_many_arguments)]
 fn create_deserialize_impls(
     ident: &RustIdent,
@@ -5154,6 +5160,7 @@ fn create_deserialize_impls(
     generate_deserialize_embedded: bool,
     store_encoding: Option<&str>,
     deser_body: &mut dyn CodeBlock,
+    annotated: bool,
     cli: &Cli,
 ) -> (codegen::Impl, Option<codegen::Impl>) {
     let name = &ident.to_string();
@@ -5169,7 +5176,11 @@ fn create_deserialize_impls(
             deser_body.line("let tag = raw.tag()?;");
         }
         let mut tag_check = Block::new(format!("if tag != {tag}"));
-        tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        if annotated {
+            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
+        } else {
+            tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        }
         deser_body.push_block(tag_check);
     }
     if let Some(rep) = rep {
@@ -7277,6 +7288,9 @@ fn codegen_struct(
             }
         };
         let mut deser_scaffolding = BlocksOrLines::default();
+        // the scaffolding lands inside the annotate closure only for non-embedded records (the
+        // embedded/plain-group scaffolding stays in deserialize(), outside any closure)
+        let scaffolding_annotated = cli.annotate_fields && !types.is_plain_group(name);
         let (mut deser_impl, mut deser_embedded_impl) = create_deserialize_impls(
             name,
             Some(record.rep),
@@ -7285,6 +7299,7 @@ fn codegen_struct(
             types.is_plain_group(name),
             len_encoding_var,
             &mut deser_scaffolding,
+            scaffolding_annotated,
             cli,
         );
         if deser_embedded_impl.is_none() {
@@ -7300,6 +7315,22 @@ fn codegen_struct(
             );
         }
         deser_code.content.push_block(ctor_block);
+
+        if deser_embedded_impl.is_none() {
+            // Non-embedded records: the container header + length reads (tag / map / array +
+            // read_elems / finish, built into `deser_scaffolding` by create_deserialize_impls)
+            // must sit INSIDE the annotate closure so wrong-major-type and wrong-length errors
+            // carry the type name exactly like field-level errors already do. Prepend the
+            // scaffolding ahead of the field-read code so the whole body is annotated as one unit.
+            // (The embedded/plain-group case keeps its scaffolding in deserialize() unannotated:
+            // the delegated deserialize_as_embedded_group() body is already annotated, so wrapping
+            // the delegation would double-annotate field errors ("Type.Type.field"). Annotating the
+            // embedded header reads would need annotation threaded through the shared
+            // add_deserialize_{initial,final}_len_check helpers, which also serve the enum paths.)
+            let mut body = std::mem::take(&mut deser_scaffolding);
+            body.push_all(std::mem::take(&mut deser_code.content));
+            deser_code.content = body;
+        }
 
         if cli.annotate_fields {
             deser_code = deser_code.annotate(name.as_ref(), "", "");
@@ -7334,9 +7365,10 @@ fn codegen_struct(
             deser_embed_f.push_all(deser_code.content);
             deser_embedded_impl.push_fn(deser_embed_f);
         } else {
+            // Non-embedded: `deser_scaffolding` was merged into `deser_code.content` above (inside
+            // the annotate closure), so the whole deserialize() body is just the annotated code.
             let mut deser_f =
                 make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
-            deser_f.push_all(deser_scaffolding);
             deser_f.push_all(deser_code.content);
             deser_impl.push_fn(deser_f);
         }
@@ -8287,7 +8319,7 @@ fn generate_enum(
     let mut deser_impl = if generate_deserialize_directly {
         // this is handled in create_deseriaize_impls in the other case, and it MUST be handled there to ensure that
         // the tag check is done BEFORE reading the array/map CBOR
-        generate_tag_check(deser_body, name, tag);
+        generate_tag_check(deser_body, name, tag, cli.annotate_fields);
         let mut deser_impl = codegen::Impl::new(name.to_string());
         deser_impl.impl_trait("Deserialize");
         deser_impl
@@ -8310,6 +8342,7 @@ fn generate_enum(
             false,
             outer_encoding_var,
             deser_body,
+            cli.annotate_fields,
             cli,
         );
         deser_impl
@@ -8956,13 +8989,30 @@ fn make_encoding_struct(encoding_name: &str) -> codegen::Struct {
     encoding_struct
 }
 
-fn generate_tag_check(deser_func: &mut dyn CodeBlock, ident: &RustIdent, tag: Option<usize>) {
+// `annotated` - true iff deser_func is the body of an `.annotate(ident)` error closure: emit
+// locationless errors and let the closure supply the name (the per-error annotate/named forms
+// would get the name prepended AGAIN by the closure, reading "Name.Name"). When false, each error
+// carries the name itself, as no closure will add it.
+fn generate_tag_check(
+    deser_func: &mut dyn CodeBlock,
+    ident: &RustIdent,
+    tag: Option<usize>,
+    annotated: bool,
+) {
     if let Some(tag) = tag {
-        deser_func.line(&format!(
-            "let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{ident}\"))?;"
-        ));
+        if annotated {
+            deser_func.line("let tag = raw.tag()?;");
+        } else {
+            deser_func.line(&format!(
+                "let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{ident}\"))?;"
+            ));
+        }
         let mut tag_check = Block::new(format!("if tag != {tag}"));
-        tag_check.line(format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        if annotated {
+            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
+        } else {
+            tag_check.line(format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+        }
         deser_func.push_block(tag_check);
     }
 }

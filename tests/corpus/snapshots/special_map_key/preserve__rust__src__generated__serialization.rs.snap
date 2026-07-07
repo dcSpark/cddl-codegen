@@ -78,12 +78,12 @@ impl cbor_event::se::Serialize for BkeyHolder {
 
 impl Deserialize for BkeyHolder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let (named, named_encoding, named_value_encodings) =
                 (|| -> Result<_, DeserializeError> {
                     let mut named_table = OrderedHashMap::new();

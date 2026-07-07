@@ -108,10 +108,10 @@ impl cbor_event::se::Serialize for ArrowValueKeys {
 
 impl Deserialize for ArrowValueKeys {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
             let mut orig_deser_order = Vec::new();
             let mut first_encoding = StringEncoding::default();
             let mut first_key_encoding = None;
@@ -277,12 +277,12 @@ impl cbor_event::se::Serialize for ValueKeys {
 
 impl Deserialize for ValueKeys {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.map_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
             let mut orig_deser_order = Vec::new();
             let mut key_1_encoding = StringEncoding::default();
             let mut key_1_key_encoding = None;

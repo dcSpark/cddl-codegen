@@ -39,11 +39,11 @@ impl cbor_event::se::Serialize for Customized {
 
 impl Deserialize for Customized {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array()?;
-        let mut read_len = CBORReadLen::from(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let field = my_deser(raw).map_err(|e: DeserializeError| e.annotate("field"))?;
             match len {
                 cbor_event::Len::Len(_) => (),

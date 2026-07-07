@@ -49,12 +49,12 @@ impl cbor_event::se::Serialize for BoolHolder {
 
 impl Deserialize for BoolHolder {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array_sz()?;
-        let len_encoding: LenEncoding = len.into();
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(1)?;
-        read_len.finish()?;
         (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
             let (b, b_encoding) = (|| -> Result<_, DeserializeError> {
                 let mut b_arr = Vec::new();
                 let len = raw.array_sz()?;
