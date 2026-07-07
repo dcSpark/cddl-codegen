@@ -130,7 +130,11 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      `tests/README.md`, `cddl-matrix/README.md`) and asserts each cited identifier still exists in
      the tree — the same shape as the `cddl-matrix/verify.ts` DSL-name forward lint, and the
      narrow, greppable complement to the declined docs-vs-behavior snippet harness (bottom of this
-     doc): identifier existence, not prose semantics.
+     doc): identifier existence, not prose semantics. Code/script comments citing roadmap items by
+     NUMBER or old TITLE ("ROADMAP item 6", a pruned TESTING_ROADMAP heading) are the same rot class
+     with a stricter rule already in AGENTS.md — cite the delivered system's doc section or pin
+     identifier instead, never the roadmap entry (six such citations rotted across one
+     renumber-heavy stretch and were caught only by a hand audit).
    - **Markdown-structure lint over the hand docs (low).** A ROADMAP findings-bullet prune ate the
      blank line separating the deleted bullet from the next `##` heading — valid-but-mangled
      markdown caught only by in-session review, a class orthogonal to the citation lint above

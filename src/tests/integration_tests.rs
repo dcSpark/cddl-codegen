@@ -95,8 +95,8 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
     // --- E0583: a non-root MODULE that emits NO `serialization.rs` (all its rules compile to a
     // transparent `pub type` alias — scalar/collection/table alias — or a c-style enum whose
     // serialization is emitted elsewhere) still unconditionally declares `pub mod serialization;` in
-    // its `mod.rs`. The rust-side sibling of the ROADMAP § findings "named table rule declared in a
-    // non-root MODULE" class; broader than the table-only probe (any alias-only non-root module).
+    // its `mod.rs`. The rust-side sibling of the ROADMAP § findings "Non-root MODULE placement
+    // breaks multifile compilation" class; broader than the table-only probe (any alias-only non-root module).
     // For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower E0432
     // anonymous-same-shape import (module `b`) the finding named — cargo aborts on the missing module
     // file first — so fixing `mark_refs` alone will not flip these; the alias-only-module stub must go too.
@@ -3382,7 +3382,7 @@ fn emit_wasm_tests_execute() {
     );
 }
 
-/// The IR-bug conformance oracle at breadth (TESTING_ROADMAP "IR-bug oracle at breadth"). The
+/// The IR-bug conformance oracle at breadth (`tests/README.md` § "IR-bug conformance oracle at breadth"). The
 /// `--emit-tests` round-trip harness mints values from the SAME IR as the code under test, so an
 /// IR-level miscompile (a bound/member computed wrong at parse time) mints a spec-violating value
 /// and then asserts it round-trips *green*. This gate closes that residual: it generates every
@@ -4224,7 +4224,7 @@ fn wasm_json_roundtrip() {
 /// (installed via `npm install` of that exact file), then asserts the emitted types. This is the only
 /// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
 /// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
-/// and the `--json-schema-export` item in `tests/TESTING_ROADMAP.md`.
+/// and `tests/README.md` § "JSON-schema → TypeScript JS-side pipeline".
 #[test]
 fn js_schema_to_ts() {
     use std::str::FromStr;
@@ -4309,8 +4309,8 @@ fn js_schema_to_ts() {
     assert!(dts.contains("[k: string]: number"), "{dts}");
 }
 
-/// Covers the shipped `static/json-ts-types.js` (the `--json-schema-export` item in
-/// `tests/TESTING_ROADMAP.md`), which `--package-json`
+/// Covers the shipped `static/json-ts-types.js` (`tests/README.md` § "JSON-schema → TypeScript
+/// JS-side pipeline"), which `--package-json`
 /// runs after `run-json2ts.js` to (a) type each wasm class's `to_json_value()` with its emitted JSON
 /// interface and (b) append those interfaces to the wasm-pack `.d.ts`. It's pure string-munging over
 /// two files, so it's exercised in isolation here (no wasm-pack/json2ts needed) with hand-written
