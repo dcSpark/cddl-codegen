@@ -5130,14 +5130,26 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
 
 // ===== decode-conformance replay (D5) ===============================================================
 
+/// One catalog `[[row]]` vector, distilled to what the replay needs: the `hex` bytes, whether it must
+/// decode (`accept`), and — for `class="constraint"` reject vectors — the `expect_err` substring the
+/// generated decoder's error Display must contain when it rejects. `expect_err` is `None` for accept
+/// vectors and for bug/limitation reject pins (which only assert `is_err`); the drift gate enforces
+/// that it is present exactly on the constraint vectors, so `Some` here IS "constraint vector".
+#[derive(Clone)]
+struct ReplayVector {
+    hex: String,
+    accept: bool,
+    expect_err: Option<String>,
+}
+
 /// One catalog `[[row]]` with vectors, distilled to what the replay needs: `spec` (what codegen
-/// consumed), the rust `type_name` the vectors decode through, and each vector's `(hex, accept?)`.
+/// consumed), the rust `type_name` the vectors decode through, and each vector's replay shape.
 /// Pinned/vectorless rows are skipped by construction (nothing to replay), so they never reach here.
 struct ReplayRow {
     id: String,
     spec: String,
     type_name: String,
-    vectors: Vec<(String, bool)>, // (hex, is_accept)
+    vectors: Vec<ReplayVector>,
 }
 
 /// Turn `"820080"` into the `0x82, 0x00, 0x80` a Rust byte-array literal wants (mirrors verify.ts's
@@ -5175,26 +5187,43 @@ fn decode_replay_generate(
         .unwrap()
 }
 
+/// Escape a catalog `expect_err` substring into a Rust `&str` literal body (only `\` and `"` can
+/// appear troublesome; the corpus values also carry backticks/apostrophes, which are literal). Kept
+/// tiny and local — the values are short assertion fragments, not arbitrary source.
+fn rust_str_literal(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
 /// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
 /// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
 /// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
 /// vector" (a verdict) from "crate didn't build" (a preserve-side generation/compile finding). The
-/// module mirrors verify.ts's `replayInDir`: accept => `from_cbor_bytes` must be Ok; reject =>
-/// must be Err; under preserve each accept ALSO asserts `to_cbor_bytes()` byte-identity (the preserve
-/// contract is itself decode-direction evidence — the decoder captured the exact input encoding).
-/// The two preserve-failure panic messages are distinct so a byte-identity mismatch (decodes Ok,
-/// re-encodes differently) is reported apart from a plain decode failure.
+/// module mirrors verify.ts's `replayInDir`: accept => `from_cbor_bytes` must be Ok; reject => must be
+/// Err; under preserve each accept ALSO asserts `to_cbor_bytes()` byte-identity (the preserve contract
+/// is itself decode-direction evidence — the decoder captured the exact input encoding).
+///
+/// On the DEFAULT leg a reject vector WITH `expect_err` (a `class="constraint"` vector) does more than
+/// assert `is_err`: it `match`es the Result (generated types don't uniformly derive Debug, so
+/// `.expect_err()` on the Result won't compile) and asserts the error Display CONTAINS the pinned
+/// substring — pinning the rejection REASON, not just that it rejects. Two distinct grep-stable panic
+/// markers (`CONSTRAINT_DECODED_OK` vs `CONSTRAINT_WRONG_REASON`, each naming its `reject_{i}`) let the
+/// caller tell a decoder that failed to reject from one that rejected for the WRONG reason; the
+/// wrong-reason panic embeds the captured Display so the failure is actionable from gate output. The
+/// preserve-failure panic markers stay distinct for the same reason (`PRESERVE_BYTE_MISMATCH` vs
+/// `PRESERVE_DECODE_FAILED`).
 fn decode_replay_run(
     out: &std::path::Path,
     type_name: &str,
-    vectors: &[(String, bool)],
+    vectors: &[ReplayVector],
     preserve: bool,
     target_dir: &std::path::Path,
 ) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
     let mut fns = String::new();
-    for (i, (hex, is_accept)) in vectors.iter().enumerate() {
+    for (i, vector) in vectors.iter().enumerate() {
+        let hex = &vector.hex;
         let bytes = hex_to_byte_literals(hex);
-        let (name, body) = if *is_accept {
+        let (name, body) = if vector.accept {
             let name = format!("accept_{i}");
             let body = if preserve {
                 format!(
@@ -5209,9 +5238,24 @@ fn decode_replay_run(
             (name, body)
         } else {
             let name = format!("reject_{i}");
-            let body = format!(
-                "assert!({type_name}::from_cbor_bytes(BYTES).is_err(), \"reject vector must NOT decode\");"
-            );
+            // DEFAULT leg + constraint vector => assert the rejection REASON, not just is_err.
+            let body = match (preserve, &vector.expect_err) {
+                (false, Some(expect_err)) => {
+                    let expect_lit = rust_str_literal(expect_err);
+                    format!(
+                        "match {type_name}::from_cbor_bytes(BYTES) {{\n\
+                         \x20           Ok(_) => panic!(\"CONSTRAINT_DECODED_OK {name}: a class=constraint vector decoded Ok — the generated decoder does NOT enforce the constraint\"),\n\
+                         \x20           Err(e) => {{\n\
+                         \x20               let disp = e.to_string();\n\
+                         \x20               assert!(disp.contains({expect_lit}), \"CONSTRAINT_WRONG_REASON {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
+                         \x20           }}\n\
+                         \x20       }}"
+                    )
+                }
+                _ => format!(
+                    "assert!({type_name}::from_cbor_bytes(BYTES).is_err(), \"reject vector must NOT decode\");"
+                ),
+            };
             (name, body)
         };
         fns.push_str(&format!(
@@ -5275,6 +5319,12 @@ fn decode_replay_run(
 /// asserting decode-Ok AND `to_cbor_bytes()` byte-identity. A reject pin that now decodes Ok fails
 /// the gate (re-bless protection); a `PRESERVE_SKIP` row that starts working fails it (stale-entry
 /// guard, mirroring `all_supported_constructs_generate_all_profiles`'s EXPECTED_FAIL).
+///
+/// A `class="constraint"` reject vector additionally pins its rejection REASON: on the default leg its
+/// error Display must CONTAIN the catalog's `expect_err` substring. This catches a decoder that rejects
+/// the vector for a subtly WRONG reason (a stray length check, an unrelated error path) — which a bare
+/// `is_err` assert would pass. A wrong-reason rejection fails the gate with the captured Display in the
+/// output; a constraint vector that decodes Ok fails it as an enforcement gap.
 ///
 /// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~108s warm (~112s cold), well past the ~90s
 /// plain-`#[test]` threshold (77 rows × up to two full generate+`cargo test` crate builds), so it is
@@ -5403,7 +5453,15 @@ fn decode_conformance_replay() {
             .map(|v| {
                 let hex = v.get("hex").and_then(|x| x.as_str()).unwrap().to_string();
                 let expect = v.get("expect").and_then(|x| x.as_str()).unwrap();
-                (hex, expect == "accept")
+                let expect_err = v
+                    .get("expect_err")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string());
+                ReplayVector {
+                    hex,
+                    accept: expect == "accept",
+                    expect_err,
+                }
             })
             .collect();
         rows.push(ReplayRow {
@@ -5447,6 +5505,10 @@ fn decode_conformance_replay() {
     let mut failures: Vec<String> = Vec::new();
     let mut rows_replayed = 0usize;
     let mut vectors_replayed = 0usize;
+    // How many `class="constraint"` vectors actually had their rejection REASON asserted (Err whose
+    // Display contained the pinned `expect_err`). A vacuity floor below guards against this collapsing
+    // to near-zero (a broken match body, or the corpus losing its constraint vectors).
+    let mut constraint_reason_asserts = 0usize;
 
     for row in &rows {
         // ---- default profile: accept => Ok, reject pin => Err ----
@@ -5462,25 +5524,60 @@ fn decode_conformance_replay() {
             continue;
         }
         match decode_replay_run(&out, &row.type_name, &row.vectors, false, &target_dir) {
-            (Some(results), _) => {
+            (Some(results), combined) => {
                 rows_replayed += 1;
                 vectors_replayed += row.vectors.len();
-                for (i, (hex, is_accept)) in row.vectors.iter().enumerate() {
-                    let name = if *is_accept {
+                for (i, vector) in row.vectors.iter().enumerate() {
+                    let hex = &vector.hex;
+                    let name = if vector.accept {
                         format!("accept_{i}")
                     } else {
                         format!("reject_{i}")
                     };
                     let passed = results.get(&name).copied().unwrap_or(false);
                     if passed {
+                        // A constraint vector that passed did so via the `expect_err` REASON assert
+                        // (its test body is the `contains(..)` match) — count it for the vacuity floor.
+                        if !vector.accept && vector.expect_err.is_some() {
+                            constraint_reason_asserts += 1;
+                        }
                         continue;
                     }
-                    if *is_accept {
+                    if vector.accept {
                         failures.push(format!(
                             "{}: default decode REJECTED a spec-valid accept vector {hex} — the \
                              decoder is over-strict (the exact class this gate exists to catch)",
                             row.id
                         ));
+                    } else if vector.expect_err.is_some() {
+                        // A constraint vector failed: distinguish "decoded Ok" (enforcement gap) from
+                        // "rejected for the WRONG reason" via the grep-stable markers the test emits.
+                        let expect = vector.expect_err.as_deref().unwrap_or("");
+                        // NB the trailing ':' — without it `reject_1`'s marker would substring-match
+                        // `reject_10`'s and misattribute the failure text.
+                        if combined.contains(&format!("CONSTRAINT_DECODED_OK {name}:")) {
+                            failures.push(format!(
+                                "{}: constraint vector {hex} DECODED Ok — the generated decoder does \
+                                 NOT enforce the constraint (enforcement gap); expected rejection \
+                                 whose Display contains {expect:?}",
+                                row.id
+                            ));
+                        } else if combined.contains(&format!("CONSTRAINT_WRONG_REASON {name}:")) {
+                            failures.push(format!(
+                                "{}: constraint vector {hex} was rejected for the WRONG reason — its \
+                                 error Display did NOT contain the pinned {expect:?}; either re-author \
+                                 the catalog `expect_err` (after confirming the message genuinely \
+                                 names the violated constraint) or this is a real wrong-reason \
+                                 rejection to report. Captured Display in the run output below:\n{combined}",
+                                row.id
+                            ));
+                        } else {
+                            failures.push(format!(
+                                "{}: constraint vector {hex} failed its reason assert but emitted \
+                                 neither marker — unexpected; full output:\n{combined}",
+                                row.id
+                            ));
+                        }
                     } else {
                         failures.push(format!(
                             "{}: reject pin {hex} now DECODES Ok — bug apparently fixed or decoder \
@@ -5500,8 +5597,7 @@ fn decode_conformance_replay() {
         let _ = std::fs::remove_dir_all(&out);
 
         // ---- preserve profile: ACCEPT vectors only, decode-Ok AND byte-identity ----
-        let accepts: Vec<(String, bool)> =
-            row.vectors.iter().filter(|(_, a)| *a).cloned().collect();
+        let accepts: Vec<ReplayVector> = row.vectors.iter().filter(|v| v.accept).cloned().collect();
         let skip_reason = preserve_skip.get(row.id.as_str()).copied();
         let mismatch_reason = expected_mismatch.get(row.id.as_str()).copied();
 
@@ -5593,6 +5689,16 @@ fn decode_conformance_replay() {
         vectors_replayed >= 850,
         "only {vectors_replayed} vectors were replayed (expected >= 850) — the corpus or the \
          generation loop shrank"
+    );
+    // Reason-assert floor: the corpus holds 44 `class="constraint"` vectors at HEAD, each asserting its
+    // rejection REASON (not just is_err). Floor set just under so ordinary churn doesn't false-fail,
+    // while a match body that silently stopped asserting (or a corpus that lost its constraint vectors)
+    // still trips the gate — otherwise the reason pin would rot into a vacuous is_err check.
+    assert!(
+        constraint_reason_asserts >= 40,
+        "only {constraint_reason_asserts} constraint vectors had their rejection REASON asserted \
+         (expected >= 40) — the `expect_err` reason pin looks disabled or the corpus lost its \
+         constraint vectors"
     );
     assert!(
         failures.is_empty(),

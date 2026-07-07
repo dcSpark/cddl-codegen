@@ -19,7 +19,10 @@
 #           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the
 #           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)
 #           at each mint — never pruned; `reason` names the violated constraint. This is Q4's
-#           `enforce = yes (bounded-reject)` evidence.
+#           `enforce = yes (bounded-reject)` evidence. A constraint vector ALSO carries a required
+#           `expect_err`: a substring the generated decoder's error Display must contain when it
+#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it
+#           rejects (a stray length check / unrelated error path would decode-reject but mis-name).
 # pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.
 
 [[row]]
@@ -2255,6 +2258,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the .cbor payload h'f6' is CBOR null (major type 7), not a valid uint — violates `bytes .cbor uint`"
+expect_err = "expected `UnsignedInteger' byte received `Special'"
 
 [[row.vector]]
 hex = "82004218ae"
@@ -2383,6 +2387,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 6 is not equal to the `.eq 5` value — violates `int .eq 5`"
+expect_err = "6 not in range 5 - 5"
 
 [[row]]
 id = "ctl.ge"
@@ -2398,6 +2403,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 4 is below the `.ge 5` bound — violates `int .ge 5`"
+expect_err = "4 not at least 5"
 
 [[row.vector]]
 hex = "184d"
@@ -2463,6 +2469,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 5 is not strictly greater than the `.gt 5` bound — violates `int .gt 5`"
+expect_err = "5 not at least 6"
 
 [[row.vector]]
 hex = "1901c9"
@@ -2528,6 +2535,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 exceeds the `.le 10` bound — violates `int .le 10`"
+expect_err = "11 not at most 10"
 
 [[row.vector]]
 hex = "3848"
@@ -2593,6 +2601,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10 is not strictly less than the `.lt 10` bound — violates `int .lt 10`"
+expect_err = "10 not at most 9"
 
 [[row.vector]]
 hex = "23"
@@ -2658,6 +2667,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 5 equals the `.ne 5` excluded value — violates `int .ne 5`"
+expect_err = "5 not in range 6 - 4"
 
 [[row.vector]]
 hex = "190508"
@@ -2723,6 +2733,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 1 equals the `.ne 1` excluded value — violates `int .ne 1` (the degenerate `(2,0)` NE encoding the historical `.ne 1` mis-check hid in; must route whole to the uint arm)"
+expect_err = "1 not in range 2 - 0"
 
 [[row.vector]]
 hex = "18e1"
@@ -2788,6 +2799,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 0 equals the `.ne 0` excluded value — violates `int .ne 0` (the `(1,-1)` sign-boundary NE encoding; must route whole to one CBOR sign arm, never split per side)"
+expect_err = "0 not in range 1 - -1"
 
 [[row.vector]]
 hex = "190507"
@@ -2853,6 +2865,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 3-byte string is under the `.size 4` length — violates `bytes .size 4`"
+expect_err = "3 not in range 4 - 4"
 
 [[row.vector]]
 hex = "443a592d0c"
@@ -2910,6 +2923,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 5-byte string is over the `.size 4` length — violates `bytes .size 4`"
+expect_err = "5 not in range 4 - 4"
 
 [[row]]
 id = "ctl.size.uint"
@@ -2975,6 +2989,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 65536 is above the `.size 2` window (0..65535 — the exact u16 collapse) — violates `uint .size 2`; durably rejected by the generated decoder's width guard (RangeCheck). Certification leans on RUBY plus the local-fixes rust oracle @ 773b723, which rejects this holder-wrapped violation discriminatingly (released 0.10.x both under-enforces `.size` over uint and misvalidates a control-op-carrying rule referenced as an array entry; both are fixed in the fork, which is also what let this row's accept side mint)"
+expect_err = "65536 not in range 0 - 65535"
 
 [[row]]
 id = "dsl.custom_deserialize"
@@ -3790,6 +3805,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value for key \"a\" must be int; text \"x\" is spec-invalid — violates `{ \"a\" ^ => int }`"
+expect_err = "M.a.Int because: No variant matched"
 
 [[row]]
 id = "memberkey.type1"
@@ -3921,6 +3937,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 1-element array is below the `2*5` occurrence lower bound — violates `[2*5 uint]`"
+expect_err = "1 not in range 2 - 5"
 
 [[row.vector]]
 hex = "82008219094c1905f6"
@@ -3978,6 +3995,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 6-element array is above the `2*5` occurrence upper bound — violates `[2*5 uint]`"
+expect_err = "6 not in range 2 - 5"
 
 [[row]]
 id = "occur.bounded.lower"
@@ -3993,6 +4011,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 1-element array is below the `2*` occurrence lower bound (no upper arm) — violates `[2* uint]`"
+expect_err = "1 not at least 2"
 
 [[row.vector]]
 hex = "820082190133190dcd"
@@ -4103,6 +4122,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 6-element array is above the `*5` occurrence upper bound (zero-permitting, no lower arm) — violates `[*5 uint]`"
+expect_err = "6 not at most 5"
 
 [[row]]
 id = "occur.one_or_more"
@@ -5788,6 +5808,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10 is the EXCLUDED upper endpoint of `0...10` (half-open excludes 10) — violates the exclusive range"
+expect_err = "10 not in range 0 - 9"
 
 [[row.vector]]
 hex = "0b"
@@ -5795,6 +5816,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `0...10` window — violates the exclusive range"
+expect_err = "11 not in range 0 - 9"
 
 [[row]]
 id = "rangeop.exclusive.float"
@@ -5810,6 +5832,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "NaN encoded as f16 is not in the `0.5...10.5` float window — the NaN-safe accept-form check must reject NaN at every float width, not just f64"
+expect_err = "not in float range (>=0.5, <10.5)"
 
 [[row.vector]]
 hex = "fb3fe0000000000000"
@@ -5872,6 +5895,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10.5 is the EXCLUDED upper endpoint of `0.5...10.5` (half-open excludes 10.5) — violates the exclusive float range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
+expect_err = "not in float range (>=0.5, <10.5)"
 
 [[row.vector]]
 hex = "fb4025333333333333"
@@ -5879,6 +5903,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10.6 is above the `0.5...10.5` float window — violates the exclusive range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
+expect_err = "not in float range (>=0.5, <10.5)"
 
 [[row.vector]]
 hex = "fb7ff8000000000000"
@@ -5886,6 +5911,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "NaN is not in the `0.5...10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
+expect_err = "not in float range (>=0.5, <10.5)"
 
 [[row.vector]]
 hex = "fbbfe0000000000000"
@@ -5893,6 +5919,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -0.5 is below the `0.5...10.5` float window — violates the exclusive range"
+expect_err = "not in float range (>=0.5, <10.5)"
 
 [[row]]
 id = "rangeop.exclusive.int"
@@ -5923,6 +5950,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10 is the EXCLUDED upper endpoint of `-10...10` (half-open excludes 10) — violates the exclusive range"
+expect_err = "10 not in range -10 - 9"
 
 [[row.vector]]
 hex = "0b"
@@ -5930,6 +5958,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `-10...10` window — violates the exclusive range"
+expect_err = "11 not in range -10 - 9"
 
 [[row.vector]]
 hex = "20"
@@ -5967,6 +5996,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -11 is below the `-10...10` window — violates the exclusive range (nint sign arm)"
+expect_err = "-11 not in range -10 - 9"
 
 [[row]]
 id = "rangeop.exclusive.nint"
@@ -5982,6 +6012,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -2 is above the `-10...-3` window — violates the all-negative exclusive range"
+expect_err = "-2 not in range -10 - -4"
 
 [[row.vector]]
 hex = "22"
@@ -5989,6 +6020,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -3 is the EXCLUDED upper endpoint of `-10...-3` (half-open excludes -3) — violates the all-negative exclusive range"
+expect_err = "-3 not in range -10 - -4"
 
 [[row.vector]]
 hex = "23"
@@ -6021,6 +6053,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -11 is below the `-10...-3` window — violates the all-negative exclusive range"
+expect_err = "-11 not in range -10 - -4"
 
 [[row]]
 id = "rangeop.inclusive"
@@ -6071,6 +6104,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `0..10` window — violates the inclusive range"
+expect_err = "11 not in range 0 - 10"
 
 [[row]]
 id = "rangeop.inclusive.float"
@@ -6086,6 +6120,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "NaN encoded as f16 is not in the `0.5..10.5` float window — the NaN-safe accept-form check must reject NaN at every float width, not just f64"
+expect_err = "not in float range (>=0.5, <=10.5)"
 
 [[row.vector]]
 hex = "fb3fe0000000000000"
@@ -6153,6 +6188,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10.6 is above the `0.5..10.5` float window — violates the inclusive range (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
+expect_err = "not in float range (>=0.5, <=10.5)"
 
 [[row.vector]]
 hex = "fb7ff8000000000000"
@@ -6160,6 +6196,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "NaN is not in the `0.5..10.5` float window — the NaN-safe accept-form check rejects it (reject certified by ruby AND — since the fork's `885c61c` non-uint-range fix — discriminatingly by rust, which now accepts in-window floats)"
+expect_err = "not in float range (>=0.5, <=10.5)"
 
 [[row.vector]]
 hex = "fbbfe0000000000000"
@@ -6167,6 +6204,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -0.5 is below the `0.5..10.5` float window — violates the inclusive range"
+expect_err = "not in float range (>=0.5, <=10.5)"
 
 [[row]]
 id = "rangeop.inclusive.int"
@@ -6207,6 +6245,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `-10..10` window — violates the inclusive range (uint sign arm)"
+expect_err = "11 not in range -10 - 10"
 
 [[row.vector]]
 hex = "22"
@@ -6224,6 +6263,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -11 is below the `-10..10` window — violates the inclusive range (nint sign arm)"
+expect_err = "-11 not in range -10 - 10"
 
 [[row]]
 id = "rangeop.inclusive.nint"
@@ -6239,6 +6279,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -2 is above the `-10..-3` window — violates the all-negative inclusive range"
+expect_err = "-2 not in range -10 - -3"
 
 [[row.vector]]
 hex = "23"
@@ -6276,6 +6317,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value -11 is below the `-10..-3` window — violates the all-negative inclusive range"
+expect_err = "-11 not in range -10 - -3"
 
 [[row]]
 id = "type.choice"
@@ -6715,6 +6757,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 0 is not the fixed value 0b1010 = 10 — violates `m = [v: 0b1010]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0b1010` as 0 flips exactly this vector; cf. the unwrap_or(0) conversion class in draft/rust-cddl-radix-int-literal-gap.md § post-implementation findings)"
+expect_err = "Expected fixed value 10 found 0"
 
 [[row.vector]]
 hex = "8102"
@@ -6722,6 +6765,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 2 is `0b10` — a truncated-digit mis-lex of `0b1010` — and is not the fixed value 10 — violates `m = [v: 0b1010]` (digit-boundary guard: rejects any decode that stops lexing binary digits early)"
+expect_err = "Expected fixed value 10 found 2"
 
 [[row.vector]]
 hex = "810a"
@@ -6742,6 +6786,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 0 is not the fixed value 0x10 = 16 — violates `m = [v: 0x10]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0x10` as 0 flips exactly this vector; cf. the unwrap_or(0) conversion class in draft/rust-cddl-radix-int-literal-gap.md § post-implementation findings)"
+expect_err = "Expected fixed value 16 found 0"
 
 [[row.vector]]
 hex = "8110"
@@ -6754,6 +6799,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 17 is not the fixed value 0x10 = 16 — violates `m = [v: 0x10]` (off-by-one guard: rejects any decode that does not compare against exactly 16)"
+expect_err = "Expected fixed value 16 found 17"
 
 [[row]]
 id = "value.number.hexfloat"
@@ -6781,3 +6827,4 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 3.5 differs from the fixed value 3.0 (0x1.8p+1) — violates the fixed-value member (FixedValueMismatch); both oracles certify the violation (the rust oracle enforces fixed float values at this shape)"
+expect_err = "Expected fixed value 3 found 3.5"

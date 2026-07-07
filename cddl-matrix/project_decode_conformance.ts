@@ -9,8 +9,10 @@
  *      `example` string-equals the matrix row's `example` (a drifted example means the vectors were
  *      validated against a spec the matrix no longer describes — re-mint).
  *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation, constraint} AND a
- *      nonempty `reason` (a class-less pin is the mint's triage-pending state — RED); every hex is well-formed
- *      (nonempty, even length, lowercase); `spec`/`mode`/`type_name` are present together on an active
+ *      nonempty `reason` (a class-less pin is the mint's triage-pending state — RED); a class="constraint"
+ *      vector additionally carries a nonempty `expect_err` (the rejection-reason substring the rust replay
+ *      gate asserts), which is forbidden on every other vector; every hex is well-formed (nonempty, even
+ *      length, lowercase); `spec`/`mode`/`type_name` are present together on an active
  *      row and consistent (mode ∈ {standalone, holder}; holder ⇒ spec starts with the holder prefix and
  *      type_name === "ProbeHolder"; standalone ⇒ spec === example); a pinned row carries none of them.
  *   4. Seeded controls — a hard-coded list of (row id, hex) that MUST exist as accept vectors: the
@@ -84,7 +86,7 @@ const supported = new Set(
 );
 
 // --- catalog.toml ---------------------------------------------------------------------------------
-interface CatVector { hex?: unknown; source?: unknown; expect?: unknown; class?: unknown; reason?: unknown }
+interface CatVector { hex?: unknown; source?: unknown; expect?: unknown; class?: unknown; reason?: unknown; expect_err?: unknown }
 interface CatRow {
   id?: unknown; axis?: unknown; example?: unknown; pinned_reason?: unknown;
   spec?: unknown; mode?: unknown; type_name?: unknown; vector?: CatVector[];
@@ -164,6 +166,15 @@ for (const r of rows) {
       if (typeof v.reason !== "string" || v.reason.length === 0)
         problems.push(`${where}: reject vector needs a nonempty \`reason\` (the ledgered bug / doc citation, or the violated constraint for class="constraint")`);
     }
+    // Shape §3: `expect_err` — the rejection-reason substring the rust replay gate asserts. REQUIRED on
+    // class="constraint" (that gate names the violated constraint, not just that it rejects); FORBIDDEN
+    // everywhere else, so its meaning stays tight to durable-reject enforcement evidence.
+    if (v.class === "constraint" && expect === "reject") {
+      if (typeof v.expect_err !== "string" || v.expect_err.length === 0)
+        problems.push(`${where}: class="constraint" vector needs a nonempty \`expect_err\` (a substring the generated decoder's error Display must contain — pins the rejection reason, asserted by the rust replay gate)`);
+    } else if (v.expect_err !== undefined) {
+      problems.push(`${where}: only class="constraint" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)}) — it pins the constraint-rejection reason and is meaningless elsewhere`);
+    }
   });
 
   // Constraint-vector shape §6: enforcement evidence must be rejectable ONLY by the constraint.
@@ -222,6 +233,7 @@ const rejects = allVectors.filter(v => v.expect === "reject");
 const rejectBug = rejects.filter(v => v.class === "bug").length;
 const rejectLimitation = rejects.filter(v => v.class === "limitation").length;
 const rejectConstraint = rejects.filter(v => v.class === "constraint").length;
+const constraintWithExpectErr = rejects.filter(v => v.class === "constraint" && typeof v.expect_err === "string" && v.expect_err.length > 0).length;
 
 if (problems.length) {
   console.log(`decode-conformance drift gate: ${problems.length} problem(s)`);
@@ -231,6 +243,6 @@ if (problems.length) {
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept, ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
-    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint · ${supported.size} supported matrix rows`,
+    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ${supported.size} supported matrix rows`,
 );
 process.exit(0);

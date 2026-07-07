@@ -176,22 +176,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      integration gates above (shared `CARGO_TARGET_DIR`; a racing cargo lock/link step). A second
      sighting with a captured name turns this bullet into a real fix item.
 
-5. **Assert the rejection REASON for `class="constraint"` replay vectors (behavioral layer over the
-   standing shape lint).** The replay gate asserts only that a reject vector `Err`s — it cannot tell
-   a bounds rejection from a CBOR type mismatch, so a malformed constraint vector passes as vacuous
-   enforcement evidence (the holder-wrapped `8200…` scalars on the first rangeop mint were caught
-   only by review). The STRUCTURAL layer is built: `project_decode_conformance.ts` § 6 (local-tier
-   drift gate; promoting to `fast`/CI is a maintainer call) fails any constraint vector whose
-   leading CBOR major-type class differs from its row's accepts, or a holder-preamble scalar on a
-   standalone row — that alone catches the shipped escape class at drift-gate time. What remains is
-   the behavioral proof the lint can't give: a decoder that rejects for a subtly WRONG reason (a
-   stray length check, an unrelated error path) still satisfies both `Err` and the shape lint. For
-   `class="constraint"` vectors, assert the decoder's error Display names the violated check
-   (`RangeCheck`/`RangeCheckFloat`/`.size`-style text) rather than a type/length mismatch — the
-   replay harness already captures per-vector errors, so this is a match on strings the generator
-   itself emits, oracle-free and deterministic.
-
-6. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
+5. **Extend the decode-conformance corpus along two axes: encoding variants, then composition
    depth.**
    - **Encoding variants (medium — cheap and self-contained).** Every committed accept vector is
      definite-length, minimal-width CBOR by mint construction (ruby `generate` → `diag2cbor.rb`),
@@ -206,7 +191,8 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    - **Header-mutation reject vectors (low).** Derive wrong-major-type and truncated-header
      variants mechanically from each committed accept vector's bytes (flip the container's major
      type, cut the header short) and assert the decode fails AND the error's location names the
-     rule — the annotation analogue of item 5's rejection-reason assert, using the same
+     rule — the annotation analogue of the replay gate's `class="constraint"` rejection-reason
+     assert (its `expect_err` pin), using the same
      derive-from-accept-vector shape as the encoding-variants bullet above (pure-byte transforms,
      no oracle). The per-type annotation contract is pinned today only at fixture granularity
      (the `error_annotation_*` tests); this puts it at catalog breadth.
@@ -221,7 +207,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
      since fixed as a graceful rejection, pinned by projected `tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`
      fixtures and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
-7. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
+6. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
    ACCEPTS (low, but the gap is proven).** The decode-conformance catalog can only express two
    truths — "must accept" and "durably rejects" (`class="constraint"`) — so a known
    silent-acceptance bug has NO standing pin. The motivating instance is since fixed (the
@@ -240,7 +226,7 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-8. **Assert the pinned failure CLASS in compile-sweep skip ledgers (low, but the gap is proven).**
+7. **Assert the pinned failure CLASS in compile-sweep skip ledgers (low, but the gap is proven).**
    A compile-floor sweep's four-state verdict treats a skip-listed cell as satisfied by ANY
    redness, so a pinned cell that is red for the WRONG reason passes silently — the pin's prose
    reason is never checked against the observed error. Proven instance (caught by in-session
@@ -255,13 +241,13 @@ and against foreign spec-derived decode vectors, both recorded in the committed 
    let class-claiming skip ledgers carry the expected rustc error code(s) (`E0432`/`E0583`/
    `E0433`) and have the gate match them against the captured cargo stderr — red-with-wrong-class
    becomes a loud "the cell's failure class changed — re-triage the pin". This is the
-   compile-sweep analogue of item 5 (assert the rejection REASON for `class="constraint"` replay
-   vectors): wherever a pin claims a CLASS, a binary red/`Err` verdict is vacuous-evidence-prone —
+   compile-sweep analogue of the replay gate's `class="constraint"` rejection-REASON assert (its
+   `expect_err` pin): wherever a pin claims a CLASS, a binary red/`Err` verdict is vacuous-evidence-prone —
    assert the failure's identity. Candidates in order: `MULTIFILE_MATRIX_SKIP` (every pin names an
    error class today), then `WASM_MATRIX_SKIP`/`COMPILE_SKIP` entries that claim more than
    "references a user-supplied type".
 
-9. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
+8. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
    denies `clippy::all` on the generated rust crate but carries eight `-A` escapes so the generator's
    current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
    proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).
