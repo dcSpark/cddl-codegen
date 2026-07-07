@@ -131,8 +131,9 @@ const ROLES: Record<string, Role> = {
   // enum, so each shape mints a `Holder::new_<shape>` wasm ctor whose fallibility must match the rust
   // ctor's. The partner arm is `nint` because it is CBOR-disjoint from every shape's type (uint/text/
   // bytes/array/map/tag/null), so a decoder can discriminate the arms — needed by the round-trip gate.
-  // A fixed-value partner (e.g. `false`) instead PANICS generation (`prelude.false` is in the panic
-  // catalog), so it can't stand in as the disjoint arm.
+  // A bool fixed-value partner (`false`) PANICS generation (`prelude.false` is in the panic catalog),
+  // and the supported fixed values (uint/text literals) overlap prim/cenum/talias arms — so neither
+  // can stand in as the disjoint arm.
   "tchoice-variant": { wrap: (t) => `holder = ${t} / nint` },
 };
 
