@@ -129,6 +129,26 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
      rerun); once a recurrence lands with an errno, either harden the test against that transient
      (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding.
+   - **Pipeline-boundary rejection-drain assert.** `record_rejection` surfaces only where a drain
+     point checks — `finalize`'s entry and (since the finalize-time float-table-key rejection, whose
+     pin is `tests/robustness/float_table_key_composite.cddl`) its exit. A record site that runs
+     AFTER the last drain (e.g. during generation.rs emission) is silently swallowed: the tool exits
+     0 having emitted whatever the rejected construct produced. Neither the mutation sweep (absent
+     code mints no mutant) nor the recombination layers (they see only the manifestation, and only
+     if the emitted crate happens to break) owns this class; review found it. The systematic
+     catcher: assert at the api.rs pipeline seam — after generation, before export, OUTSIDE any
+     guarded branch (the same emission-site placement the vacuity-floor rule below prescribes) —
+     that no undrained rejection remains. Every fixture in the snapshot corpus exercises that seam,
+     so any future record point past the drains fails loudly on its first trigger.
+   - **Invariant-softening refactors must keep impossible states loud (design rule; mechanical layer
+     only if the class recurs).** When a panic/assert is converted into a graceful rejection,
+     enumerate the states the assert covered and downgrade ONLY the reachable, user-triggerable
+     ones; states the assert made impossible stay `unreachable!` — a catch-all soft arm silently
+     absorbs the impossible state, and no gate can see that (a mutation sweep would at best surface
+     the arm as a survivor that triage then plausibly waves through as equivalent — it cannot
+     distinguish "kept loud" from "absorbed"). Review is the current owner. The shipped exemplar of
+     the rule: `set_rep_if_plain_group`'s multi-rep match in intermediate.rs (conflicting-rep =
+     graceful rejection; non-Record/non-GroupChoice materialization = still `unreachable!`).
    - **Vacuity floors must witness the guarded artifact, not a proxy for it (design rule; mechanical
      layer only if the class recurs).** A floor whose count derives from an INPUT correlated with the
      guarded behavior — rather than from the behavior's own artifact — is satisfied by any regression

@@ -2388,11 +2388,20 @@ fn parse_record_from_group_choice(
                             .source_rule_name(name)
                             .map(str::to_owned)
                             .unwrap_or_else(|| name.to_string());
+                        // The table remedy must not be advertised for a FLOAT key: a float-family
+                        // table key domain is itself rejected (floats have no total order, so they
+                        // cannot key a BTreeMap) — pointing there would send the user to a second
+                        // rejection instead of a fix.
+                        let remedy = if matches!(other, FixedValue::Float(_)) {
+                            "Floats cannot key a map in either form (a float table key domain is \
+                             rejected too) — use an integer or text key."
+                        } else {
+                            "Use a uint or text key, or a table `{ * k => v }` in its own rule."
+                        };
                         types.record_rejection(format!(
                             "rule `{source_name}`: unsupported fixed map key {other:?} — only uint \
                              and text fixed keys are implemented on the record path (the map-key \
-                             write path and `{{name}}_key_encoding`). Use a uint or text key, or a \
-                             table `{{ * k => v }}` in its own rule."
+                             write path and `{{name}}_key_encoding`). {remedy}"
                         ));
                         return None;
                     }
