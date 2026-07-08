@@ -292,8 +292,9 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   rejection instead of silently mis-decoding it) and the float range/control windows (NaN-safe
   accept-form checks + bounds-enforcing wrapper newtypes for top-level ranges, pinned by the
   `float_bounds` / `top_level_float_ranges` fixtures and the `rangeop.*.float` constraint vectors).
-  The systemic over-acceptance vector class stays an open `tests/TESTING_ROADMAP.md` item (the
-  over-acceptance pins for spec-invalid CBOR the decoder wrongly accepts).
+  The systemic over-acceptance vector class stays an open `tests/TESTING_ROADMAP.md` item, cited by
+  its exact title: "Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder
+  wrongly ACCEPTS".
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped
