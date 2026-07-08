@@ -237,7 +237,8 @@ are ledgered here (that's what the probe/gate error messages point at).
   has its own panic site, tracked as a known PANIC row in `tests/matrix_panic/`.
 - Nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
-  `contain.map-key.memberkey.value.{nint,float}_colon_*` and the matching group-choice-arm rows
+  `contain.map-key.memberkey.value.{nint,float}_colon_single`,
+  `contain.map-key.memberkey.value.{nint,float}_colon_multi`, and the matching group-choice-arm rows
   `contain.group-choice-arm.memberkey.value.{nint,float}_map` in `tests/matrix_reject/`). The
   printed remedy — a table `{ * nint => v }` in its own rule — keeps generating. Real nint/float key
   support is the candidate feature; flipping either row to `ok` requires real support, not a decay

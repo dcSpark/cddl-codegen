@@ -119,48 +119,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      type is a bare group — rather than emitting one the oracle can't answer — would let `nested_group`
      leave `RUST_ORACLE_SKIP` and restore rust-oracle coverage of `outer`. Small `emit_tests.rs`
      change gated by the existing `ir_conformance_corpus` gate.
-   - **Tracked-gap prose must cite its pin — and a lint should assert cited pins exist (low).**
-     Prose that tracks a live gap ("tracked by the `#[ignore]`'d fidelity tests", "construct X
-     panics the generator") rots silently when the gap closes: the fix retires the test/pin, but
-     nothing ties the sentence to it, so the claim outlives its referent (four instances were
-     hand-caught, not gate-caught, in the wasm-ABI grid extension audit alone: the roadmap bullet
-     tracking the read-fidelity gap, a `tests/core/tests_wasm.rs` comment citing the retired
-     `#[ignore]` stubs, a `project_wasm_matrix.ts` role comment claiming `{ ? f: T }` panics — it
-     generates — and a documented loud-skip "flatten points" entry with no corresponding skip site
-     in the code, in any revision). Three mechanical parts:
-     - *Convention* — a gap-tracking sentence names its pin by exact identifier via the
-       already-pervasive "pinned by/tracked by/gated by `name`" phrasing, and a *behavioral* claim
-       ("X panics/rejects") gets a robustness-catalog row FIRST (the panic/reject catalogs flip
-       loudly on a behavior change; the `{ ? f: T }` claim rotted precisely because it lived only
-       in prose).
-     - *Existence lint* — a drift gate extracts `pinned by`/`tracked by`/`gated by` citations from
-       the gap-tracking docs (`*ROADMAP*.md`, `tests/README.md`, `cddl-matrix/README.md`) and
-       asserts each cited identifier still exists in the tree — the same shape as the
-       `cddl-matrix/verify.ts` DSL-name forward lint, and the narrow, greppable complement to the
-       declined docs-vs-behavior snippet harness (bottom of this doc): identifier existence, not
-       prose semantics. A citation by exact TITLE is the same checkable shape (the quoted heading
-       either greps in the tree or it doesn't).
-     - *Positional-citation form ban* — a citation by list position ("ROADMAP item <N>") is
-       outside the existence lint's reach BY CONSTRUCTION: a number is not an identifier —
-       pruning/renumbering silently retargets it to a different item (or orphans it outright when
-       the list drops numbering), so the citation never dangles and there is nothing to resolve.
-       The only mechanical handle is banning the FORM: a drift-gate grep over the tree (hand docs
-       AND code/script comments — AGENTS.md § Markdown formatting states the convention; this grep
-       is what makes it hold) for `item <N>` spellings, BARE as well as ROADMAP-adjacent (scripts
-       habitually cite their own ROADMAP without naming it), hard-failing any hit and steering the
-       citation to a pin identifier or the delivered system's doc section — the forms the first
-       two parts can verify. In-doc illustrations of the banned form must be spelled unmatchably
-       (as here: `<N>` placeholders). The ban lands green: the tree's positional citations (over a
-       dozen, every one a dead referent into `cddl-matrix/ROADMAP.md`'s since-pruned numbering)
-       were converted to identifier citations when this part was specified, and the class's
-       recurrence — one rotted cross-doc citation per session across two consecutive sessions,
-       each caught only by in-session review — is exactly what the grep retires.
-   - **Markdown-structure lint over the hand docs (low).** A ROADMAP findings-bullet prune ate the
-     blank line separating the deleted bullet from the next `##` heading — valid-but-mangled
-     markdown caught only by in-session review, a class orthogonal to the citation lint above
-     (structure, not referents). An MD022-class check (blank line before headings) over
-     `*ROADMAP*.md` / `tests/README.md` / `cddl-matrix/README.md` is a one-liner in the drift
-     gates; worth wiring only if hand-doc surgery keeps being a per-feature step (it currently is).
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
      `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
      (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
@@ -213,8 +171,9 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      a hand-picked fixture list. json/wasm decode surfaces are likewise unminted. The breadth
      layer's first sweep caught two decoder bugs (the map-rep group-choice key-drop miscompile —
      since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing —
-     since fixed as a graceful rejection, pinned by projected `tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`
-     fixtures and unsupported-row decode catalog absence), so depth is not the current bottleneck.
+     since fixed as a graceful rejection, pinned by projected
+     `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
+     reject rows and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
 6. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
    ACCEPTS (low, but the gap is proven).** The decode-conformance catalog can only express two

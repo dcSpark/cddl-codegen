@@ -20,8 +20,10 @@ policy below). `local` is "run before considering work done" — the heavy corre
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
 `cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog +
-status-header count drift gates (`project_decode_conformance.ts`, `project_status_headers.ts`) live
-here, NOT in CI. `full` additionally runs the
+status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
+`project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
+checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, and enforces
+blank lines before headings in the hand docs. `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the six `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
@@ -450,7 +452,7 @@ and asserts they are accepted.
     variant/header-mutant siblings
     (`classify_variant_failure_owns_the_delimiter_and_maps_each_marker`,
     `classify_header_mutant_failure_disambiguates_prefix_colliding_names`); the header mutator
-    itself is pinned by `integration_tests::header_mutants_pin_hand_derived_bytes`.
+    itself is pinned by `header_mutants_pin_hand_derived_bytes`.
 
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
   re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
