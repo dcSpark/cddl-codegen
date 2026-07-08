@@ -1004,14 +1004,21 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
   once) / ~30 s warm for the 43 cells.
-- **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &str)]` (cell stem, reason) holds the
-  deliberately-red cells, four-state like `WASM_MATRIX_SKIP`: red+listed = expected; red+unlisted =
-  a new placement finding to fix or (deliberately, with a ROADMAP entry) pin; green+listed =
-  "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An up-front stale-key guard
-  rejects a listed stem absent from the projected set, and a missing wasm crate is handled
+- **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
+  error codes, reason) holds the deliberately-red cells, four-state like `WASM_MATRIX_SKIP`:
+  red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
+  ROADMAP entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
+  pass. **Class assertion:** a red+listed cell is NOT satisfied by any redness — the observed rustc
+  error-code set (`rustc_error_codes` scans the captured cargo stderr for `error[E####]` headers) must
+  EQUAL the pin's declared set, or the gate fails loud with "the cell's failure class changed —
+  re-triage the pin" (set equality is the contract, never subset — pin the full honest observed set if
+  a cell co-emits multiple codes). A listed cell whose GENERATION aborts is likewise a class mismatch:
+  the pin claims a rustc compile error, and a generation abort produces none. An up-front stale-key
+  guard rejects a listed stem absent from the projected set, and a missing wasm crate is handled
   symmetrically. Verify a new guard the way these were: temporarily poison a key (bogus stem →
-  stale-key fail; drop a real pin → the red cell fails with the remedy; pin a green cell →
-  resurfaced), watch it fail, revert.
+  stale-key fail; drop a real pin → the red cell fails with the remedy; pin a green cell → resurfaced;
+  change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
+  watch it fail, revert.
 
 **What it pins today** (the known-broken module-placement classes; the `mark_refs`/E0583 FIX flips
 these): 24 of 43 cells are red. **E0583** (21 cells) — a non-root module whose rules emit NO

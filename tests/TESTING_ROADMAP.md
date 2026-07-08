@@ -256,28 +256,7 @@ replays under mechanically-derived spec-equal re-encodings.
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-7. **Assert the pinned failure CLASS in compile-sweep skip ledgers (low, but the gap is proven).**
-   A compile-floor sweep's four-state verdict treats a skip-listed cell as satisfied by ANY
-   redness, so a pinned cell that is red for the WRONG reason passes silently — the pin's prose
-   reason is never checked against the observed error. Proven instance (caught by in-session
-   review, not by a gate, at the multifile placement sweep's landing): the plain-`anon` template
-   puts the shape alone in module `a`, so `a` is alias/table-only and its E0583 (missing
-   `serialization.rs`) fires before the b-side E0432 the roadmap finding actually named — the
-   cells were "red as expected" for a DIFFERENT bug than the class being ledgered, and only a
-   hand-comparison of the census against the original probe surfaced the masking (the `anonb`
-   ballast mode now pins the unmasked E0432, `collmap__anonb`). The same blindness makes pin
-   reasons rot silently in the other direction: when the E0583 stub fix lands,
-   `{coll,collmap,nullable}__anon` stay red under a different class and no guard flips. Remedy:
-   let class-claiming skip ledgers carry the expected rustc error code(s) (`E0432`/`E0583`/
-   `E0433`) and have the gate match them against the captured cargo stderr — red-with-wrong-class
-   becomes a loud "the cell's failure class changed — re-triage the pin". This is the
-   compile-sweep analogue of the replay gate's `class="constraint"` rejection-REASON assert (its
-   `expect_err` pin): wherever a pin claims a CLASS, a binary red/`Err` verdict is vacuous-evidence-prone —
-   assert the failure's identity. Candidates in order: `MULTIFILE_MATRIX_SKIP` (every pin names an
-   error class today), then `WASM_MATRIX_SKIP`/`COMPILE_SKIP` entries that claim more than
-   "references a user-supplied type".
-
-8. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
+7. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
    denies `clippy::all` on the generated rust crate but carries eight `-A` escapes so the generator's
    current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
    proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).

@@ -85,15 +85,75 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 ///   never compiles here, it never round-trips here either.
 const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
+/// Extract the DISTINCT rustc error codes (`E####`) from compiler output, keyed off the `error[E`
+/// prefix. Only a real diagnostic header (`error[E0583]: ...`) carries that prefix; the trailing
+/// `For more information about this error, try `rustc --explain E0583`.` summary and any bare code
+/// inside a note line do NOT (they lack `error[`), so they are correctly ignored — the set reflects
+/// the failure CLASS, not every textual mention. Deterministic `BTreeSet` (repo reproducibility
+/// invariant). No new deps — a plain byte scan.
+fn rustc_error_codes(stderr: &str) -> std::collections::BTreeSet<String> {
+    let mut codes = std::collections::BTreeSet::new();
+    let needle = "error[E";
+    let mut rest = stderr;
+    while let Some(pos) = rest.find(needle) {
+        // Advance past `error[` to the digits after `E`.
+        let after_e = &rest[pos + needle.len() - 1..]; // starts at 'E'
+        let mut chars = after_e.char_indices();
+        // first char is 'E'
+        let _ = chars.next();
+        let mut enddigits = 1;
+        for (i, c) in chars {
+            if c.is_ascii_digit() {
+                enddigits = i + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        let code = &after_e[..enddigits];
+        // Only accept a well-formed `E` + digits followed by the closing `]`.
+        if code.len() > 1 && after_e[enddigits..].starts_with(']') {
+            codes.insert(code.to_string());
+        }
+        rest = &rest[pos + needle.len()..];
+    }
+    codes
+}
+
+/// Pin `rustc_error_codes`: distinct codes only (duplicates dedupe), the `--explain E####` summary
+/// line must NOT count (no `error[` prefix), and a bare code inside a note must NOT count either.
+#[test]
+fn rustc_error_codes_extracts_the_failure_class() {
+    let stderr = "\
+error[E0583]: file not found for module `serialization`\n\
+ --> src/generated/a/mod.rs:1:1\n\
+error[E0583]: file not found for module `serialization`\n\
+error[E0432]: unresolved import `crate::generated::MapU64ToText`\n\
+note: the error code E0433 is only mentioned in prose here, not as a header\n\
+For more information about this error, try `rustc --explain E0583`.\n";
+    let codes = rustc_error_codes(stderr);
+    let expected: std::collections::BTreeSet<String> = ["E0432".to_string(), "E0583".to_string()]
+        .into_iter()
+        .collect();
+    assert_eq!(
+        codes, expected,
+        "E0583 dedupes to one; E0432 counts; the prose `E0433` note and the `--explain E0583` \
+         summary must NOT count (neither carries the `error[` prefix)"
+    );
+    assert!(rustc_error_codes("no diagnostics here").is_empty());
+}
+
 /// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
 /// do NOT compile — the known-broken module-placement classes the sweep pins while landing green.
-/// Each `(cell stem, reason)` names the error class and the `cddl-matrix/ROADMAP.md` § findings entry
-/// the future `mark_refs`/E0583 fix must flip. Four-state verdict in `multifile_matrix_compiles`:
-/// red+listed = expected (held here); red+unlisted = failure (fix the emitter or, deliberately, pin +
-/// ledger); green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An
-/// up-front stale-key guard rejects a listed stem absent from the projected fixture set, so the list
-/// can't rot silently.
-const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
+/// Each `(cell stem, expected rustc error codes, reason)` names the error class and the
+/// `cddl-matrix/ROADMAP.md` § findings entry the future `mark_refs`/E0583 fix must flip. Four-state
+/// verdict in `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the
+/// observed rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set,
+/// or the cell's failure CLASS changed and the pin is re-triaged loudly; red+unlisted = failure (fix
+/// the emitter or, deliberately, pin + ledger); green+listed = "resurfaced — remove the pin (a fix
+/// landed)"; green+unlisted = pass. A skip cell whose GENERATION aborts (no rustc compile error at all)
+/// is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from the
+/// projected fixture set, so the list can't rot silently.
+const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
     // --- E0583: a non-root MODULE that emits NO `serialization.rs` (all its rules compile to a
     // transparent `pub type` alias — scalar/collection/table alias — or a c-style enum whose
     // serialization is emitted elsewhere) still unconditionally declares `pub mod serialization;` in
@@ -104,86 +164,107 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
     // file first — so fixing `mark_refs` alone will not flip these; the alias-only-module stub must go too.
     (
         "cenum__named",
+        &["E0583"],
         "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "cenum__unref",
+        &["E0583"],
         "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "chain__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "chain__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "coll__anon",
+        &["E0583"],
         "E0583: alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
     ),
     (
         "coll__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "coll__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "collmap__anon",
+        &["E0583"],
         "E0583: table-alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
     ),
     (
         "collmap__named",
+        &["E0583"],
         "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "collmap__unref",
+        &["E0583"],
         "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "nullable__anon",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "nullable__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "nullable__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "palias__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "palias__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "passthru__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "passthru__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "passthrumap__named",
+        &["E0583"],
         "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "passthrumap__unref",
+        &["E0583"],
         "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "talias__named",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     (
         "talias__unref",
+        &["E0583"],
         "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
     ),
     // --- E0432: the CORE `mark_refs` finding, unmasked by the `anonb` mode (anon + a ballast record
@@ -195,6 +276,7 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
     // import), so the table structural wrapper is the discriminating cell.
     (
         "collmap__anonb",
+        &["E0432"],
         "E0432: anon same-shape table in `b` imports the structural name from root scope (mark_refs)",
     ),
     // --- E0433: a cross-module NAMED reference to a `.cbor` wrapper (`fb = bytes .cbor foo` in module
@@ -204,10 +286,12 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &str)] = &[
     // New multifile-placement finding, ledgered in cddl-matrix/ROADMAP.md § findings.
     (
         "cborwrap__named",
+        &["E0433"],
         "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
     ),
     (
         "cborwrap2__named",
+        &["E0433"],
         "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
     ),
 ];
@@ -1490,12 +1574,16 @@ fn wasm_matrix_compiles() {
 ///
 /// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells (the known-broken module-placement classes
 /// tracked in `cddl-matrix/ROADMAP.md` § findings — E0432 anonymous-same-shape import from root scope,
-/// E0583 alias/table-only serialization stub). Four-state verdict per cell: red+listed = expected;
-/// red+unlisted = a new placement finding to fix or (deliberately, with a ledger entry) pin;
-/// green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted = pass. An up-front
-/// stale-key guard rejects a listed stem absent from the projected set, and a missing wasm crate is
-/// handled symmetrically (a red for a non-skip cell, a resurface for a skip cell), so the ledger can't
-/// silently rot. Always-on (no `#[ignore]`): it joins the default `cargo test` / check.ts local tier.
+/// E0583 alias/table-only serialization stub). Four-state verdict per cell: red+listed = expected —
+/// but ADDITIONALLY the observed rustc error-code set (extracted from the captured cargo stderr) must
+/// EQUAL the pin's declared codes; red-with-the-wrong-class is a loud "the cell's failure class
+/// changed — re-triage the pin" (a skip cell whose GENERATION aborts, producing no rustc error at all,
+/// is likewise a class mismatch); red+unlisted = a new placement finding to fix or (deliberately, with
+/// a ledger entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
+/// pass. An up-front stale-key guard rejects a listed stem absent from the projected set, and a missing
+/// wasm crate is handled symmetrically (a red for a non-skip cell, a resurface for a skip cell), so the
+/// ledger can't silently rot. Always-on (no `#[ignore]`): it joins the default `cargo test` / check.ts
+/// local tier.
 #[test]
 fn multifile_matrix_compiles() {
     use std::str::FromStr;
@@ -1516,7 +1604,7 @@ fn multifile_matrix_compiles() {
         .iter()
         .map(|p| p.file_name().unwrap().to_str().unwrap())
         .collect();
-    for (stem, _reason) in MULTIFILE_MATRIX_SKIP {
+    for (stem, _codes, _reason) in MULTIFILE_MATRIX_SKIP {
         assert!(
             cell_stems.contains(stem),
             "MULTIFILE_MATRIX_SKIP names cell `{stem}` that no longer exists in tests/matrix_multifile \
@@ -1536,7 +1624,8 @@ fn multifile_matrix_compiles() {
     let mut resurfaced = vec![]; // MULTIFILE_MATRIX_SKIP cells that now compile — remove them
     for input in &cell_dirs {
         let stem = input.file_name().unwrap().to_str().unwrap();
-        let skipped = MULTIFILE_MATRIX_SKIP.iter().any(|(s, _)| *s == stem);
+        let pin = MULTIFILE_MATRIX_SKIP.iter().find(|(s, _, _)| *s == stem);
+        let skipped = pin.is_some();
         let out = root.join(stem);
         let gen_out = tool_cmd("cargo")
             .args(["run", "--"])
@@ -1546,12 +1635,21 @@ fn multifile_matrix_compiles() {
             .output()
             .unwrap();
         if !gen_out.status.success() {
-            // A generation failure is also "red". Only a NON-skipped one is a test failure.
-            if !skipped {
-                failures.push(format!(
+            match pin {
+                // The pin claims a rustc COMPILE-error class, but generation aborted — there is no
+                // rustc error code at all, so the cell's failure class changed.
+                Some((_, codes, reason)) => failures.push(format!(
+                    "{stem}: generation aborted, but MULTIFILE_MATRIX_SKIP pins a rustc compile-error \
+                     class {codes:?} ({reason}) — a generation abort produces no rustc error code, so \
+                     the cell's failure class changed — re-triage the pin and its \
+                     cddl-matrix/ROADMAP.md finding\n{}",
+                    String::from_utf8_lossy(&gen_out.stderr)
+                )),
+                // A NON-skipped generation failure is a plain red.
+                None => failures.push(format!(
                     "{stem}: generation failed\n{}",
                     String::from_utf8_lossy(&gen_out.stderr)
-                ));
+                )),
             }
             continue;
         }
@@ -1583,7 +1681,24 @@ fn multifile_matrix_compiles() {
                 String::from_utf8_lossy(&check.stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
-            _ => {} // (false,true)=green as expected; (true,false)=red as expected
+            (true, false) => {
+                // Red as expected — but the observed rustc error-code SET must EQUAL the pin's, or
+                // the cell's failure CLASS changed and the pin must be re-triaged (class assertion).
+                let (_, pinned_codes, reason) = pin.unwrap();
+                let stderr = String::from_utf8_lossy(&check.stderr);
+                let observed = rustc_error_codes(&stderr);
+                let expected: std::collections::BTreeSet<String> =
+                    pinned_codes.iter().map(|c| c.to_string()).collect();
+                if observed != expected {
+                    failures.push(format!(
+                        "{stem}: red as pinned, but the observed rustc error-code set {observed:?} \
+                         does NOT equal the pinned set {expected:?} ({reason}) — the cell's failure \
+                         class changed — re-triage the pin and its cddl-matrix/ROADMAP.md finding. \
+                         Captured stderr:\n{stderr}"
+                    ));
+                }
+            }
+            (false, true) => {} // green as expected
         }
     }
     let _ = std::fs::remove_dir_all(&root);
