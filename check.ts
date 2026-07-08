@@ -224,8 +224,8 @@ export const REGISTRY: Gate[] = [
   { id: "fmt", tier: "fast", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
     desc: "rustfmt check" },
   { id: "clippy", tier: "fast", kind: "cmd",
-    cmd: ["cargo", "clippy", "--locked", "--workspace", "--all-features", "--all-targets", "--", "--deny", "clippy::all"],
-    desc: "clippy (deny all)" },
+    cmd: ["cargo", "clippy", "--locked", "--workspace", "--all-features", "--all-targets", "--", "--deny", "clippy::all", "--deny", "clippy::assertions_on_result_states"],
+    desc: "clippy (deny all + assertions_on_result_states)" },
   { id: "snapshot_quick", tier: "fast", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "snapshot_tests"],
     desc: "golden snapshot tests (in-process, fast)" },
 

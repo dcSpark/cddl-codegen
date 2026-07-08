@@ -184,21 +184,6 @@ replays under mechanically-derived spec-equal re-encodings.
      the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
      rerun); once a recurrence lands with an errno, either harden the test against that transient
      (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding.
-   - **Deny `clippy::assertions_on_result_states` over this repo's own tests (low).** An
-     `assert!(r.is_ok())` / `assert!(r.is_err())` discards the payload that would attribute the
-     failure, so a red run — above all a transient one that resists reproduction — is
-     unactionable from its first (and possibly only) capture. The fix shape is
-     `.unwrap()`/`.expect()` (payload lands in the panic) or a `match` whose panic text carries
-     the error, as `acquire_scratch_lock_serializes`'s release-assert does (see the flake bullet
-     above — two full-suite reds were burned before that assert carried its errno). The clippy
-     restriction lint `assertions_on_result_states` flags exactly this shape; the workspace fast
-     gate denies only `clippy::all`, so this is one added per-lint deny on that invocation. Cost
-     is near-zero: the repo's own tests hold about one remaining site (`snapshot_tests`' rustfmt
-     smoke assert); the `is_ok`/`is_err` fragments in `emit_tests.rs` and the replay harness are
-     EMITTED text compiled in generated crates, outside this lint's scope (and the generated-code
-     clippy gate leaves restriction lints alone — its burn-down item below is a separate axis). A
-     genuine can't-Debug case (an `is_err` whose Ok payload has no Debug impl) takes a site-local
-     `#[allow]` with a reason — the visible, reviewable form of the tradeoff.
    - **Vacuity floors must witness the guarded artifact, not a proxy for it (design rule; mechanical
      layer only if the class recurs).** A floor whose count derives from an INPUT correlated with the
      guarded behavior — rather than from the behavior's own artifact — is satisfied by any regression
