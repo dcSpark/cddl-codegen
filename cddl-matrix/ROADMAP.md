@@ -173,7 +173,11 @@ are ledgered here (that's what the probe/gate error messages point at).
     anonymous-map import from the sole owner's scope (the ownership map generation.rs now computes).
     In the plain-`anon` cells (shape alone in `a`) this class stays MASKED: `a` is alias/table-only
     and its E0583 fires first, so the `mark_refs` fix alone is necessary but NOT sufficient to flip
-    `collmap__anon`/`coll__anon` green — the alias-only-module E0583 stub must go too.
+    `collmap__anon`/`coll__anon` green — the alias-only-module E0583 stub must go too. The ledger's
+    class assertion makes the mask lift LOUDLY: those cells pin `{E0583}` (each pin carries its
+    expected rustc error codes, set-equality-matched against the captured stderr — `tests/README.md`
+    § "multifile placement matrix"), so a stub fix that unmasks the E0432 turns them into "failure
+    class changed — re-triage" gate failures rather than silently-still-red cells.
   - **E0433 (2 cells, `cborwrap__named` / `cborwrap2__named`)** — a cross-module NAMED reference to a
     `.cbor` wrapper (`fb = bytes .cbor foo` in module `a`, referenced by name from `b`) emits
     `Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from
