@@ -259,9 +259,9 @@ are ledgered here (that's what the probe/gate error messages point at).
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
   - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
     (intermediate.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
-    array-of-plain-group arm (`a = [coords] / tstr`) is now storable — it promotes the plain group
+    array-of-plain-group arm (`a = [coords] / tstr`) is storable — it promotes the plain group
     to an Array-rep Record struct and generates a proper enum variant (pinned by
-    `tests/robustness/choice_group_array_arm.cddl`, now an `ok` fixture). Panic pinned by
+    `tests/robustness/choice_group_array_arm.cddl`, an `ok` fixture). Panic pinned by
     `tests/robustness/choice_any_arm.cddl`.
   - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
     reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the

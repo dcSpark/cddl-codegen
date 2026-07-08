@@ -1198,6 +1198,28 @@ Adding a member kind / role template / construct shape extends the swept surface
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled
 composition — do it deliberately and re-triage.
 
+## Design rules (review-owned; each with a shipped exemplar)
+
+Two rules govern how guards and graceful-rejection refactors are written. Review is their current
+owner; the conditional mechanical layers (built only if a class recurs) are a
+`tests/TESTING_ROADMAP.md` item.
+
+- **Invariant-softening refactors keep impossible states loud.** When a panic/assert is converted
+  into a graceful rejection, enumerate the states the assert covered and downgrade ONLY the
+  reachable, user-triggerable ones; states the assert made impossible stay `unreachable!`. A
+  catch-all soft arm silently absorbs the impossible state, and no gate can see that (a mutation
+  sweep would at best surface the arm as a survivor that triage then plausibly waves through as
+  equivalent — it cannot distinguish "kept loud" from "absorbed"). Shipped exemplar:
+  `set_rep_if_plain_group`'s multi-rep match in intermediate.rs (conflicting-rep = graceful
+  rejection; non-Record/non-GroupChoice materialization = still `unreachable!`).
+- **Vacuity floors witness the guarded artifact, not a proxy for it.** A floor whose count derives
+  from an INPUT correlated with the guarded behavior — rather than from the behavior's own
+  artifact — is satisfied by any regression that preserves the input (a floor counting catalog
+  `expect_err` presence stays green while the emitted assert regresses to a plain `is_err`,
+  leaving the pin vacuous). Derive the floor's count from the emitted/executed artifact, or place
+  an assert at the emission site itself, outside the branch being guarded. Shipped exemplar:
+  `decode_replay_run`'s CONSTRAINT_WRONG_REASON body assert.
+
 ## Coverage
 
 The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure
