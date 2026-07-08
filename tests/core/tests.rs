@@ -1385,20 +1385,19 @@ mod tests {
         );
     }
 
-    // KNOWN GAP PIN (flips when the gap closes — then move this to the once-only contract above):
-    // the NO-VARIANT-MATCHED arm of a directly-deserializing type choice emits the NAME-CARRYING
-    // `DeserializeError::new("TaggedTypeChoice", NoVariantMatched)` INSIDE the same
-    // `.annotate("TaggedTypeChoice")` closure whose tag check is correctly locationless, so the
-    // closure prepends the name AGAIN and the Display reads "TaggedTypeChoice.TaggedTypeChoice" —
-    // the exact double-annotation shape the tag-mismatch contract forbids. Generator-wide (every
-    // enum's NoVariantMatched / NoVariantMatchedWithCauses arm has this shape); ledgered in
-    // tests/TESTING_ROADMAP.md under the annotation residuals. This test pins the CURRENT doubled
-    // name so the eventual fix flips it loudly instead of landing unpinned.
+    // A NoVariantMatched failure on a directly-deserializing type choice must name the type EXACTLY
+    // ONCE. This enum deserializes DIRECTLY, so the `_ => NoVariantMatched` arm sits inside the
+    // `.annotate("TaggedTypeChoice")` closure; the arm therefore emits the LOCATIONLESS
+    // `DeserializeFailure::NoVariantMatched.into()` form and lets the closure supply the name (was a
+    // double-annotation gap: the name-carrying `DeserializeError::new("TaggedTypeChoice", ..)` form
+    // let the closure prepend the name again, reading "TaggedTypeChoice.TaggedTypeChoice"). Sibling
+    // of the tag-mismatch once-only contract above; pins the NoVariantMatched arm, which no other
+    // fixture exercises for the double-annotation shape.
     //
     // `[0xcb, 0x80]` = tag 11 (correct) then an empty ARRAY — neither the uint nor the text variant
     // matches, so the `_ => NoVariantMatched` arm fires.
     #[test]
-    fn error_annotation_no_variant_double_name_known_gap() {
+    fn error_annotation_no_variant_single_name() {
         let err = TaggedTypeChoice::from_cbor_bytes(&[0xcb, 0x80])
             .unwrap_err()
             .to_string();
@@ -1407,11 +1406,12 @@ mod tests {
             "the array payload must fail as NoVariantMatched, got: {err}"
         );
         assert!(
-            err.contains("TaggedTypeChoice.TaggedTypeChoice"),
-            "KNOWN GAP: NoVariantMatched currently double-annotates (name-carrying error inside \
-             the annotate closure). If this assert failed because the error now names the type \
-             exactly once, the gap CLOSED — invert this assertion into the once-only contract and \
-             prune the ledger entry in tests/TESTING_ROADMAP.md. Got: {err}"
+            err.contains("failed in TaggedTypeChoice"),
+            "NoVariantMatched error must name the type, got: {err}"
+        );
+        assert!(
+            !err.contains("TaggedTypeChoice.TaggedTypeChoice"),
+            "NoVariantMatched error must not double-annotate, got: {err}"
         );
     }
 }

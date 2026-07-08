@@ -122,31 +122,23 @@ breadth.
      the location-less Display branch). The header-mutation replay leg's
      `HEADER_MUTANT_LOCATION_SKIP` ledger (38 entries at HEAD, all this newtype-wrapper class)
      measures the gap at catalog breadth — closing it empties that ledger via its stale guards.
-   - **Enum `NoVariantMatched` errors double-annotate ("Foo.Foo").** The opposite polarity of the
-     annotation gap above: a directly-deserializing choice's `_ => NoVariantMatched` (and the
-     group-choice `NoVariantMatchedWithCauses`) arm emits the NAME-CARRYING
-     `DeserializeError::new(name, …)` *inside* the same `.annotate(name)` closure whose tag check
-     is correctly locationless, so the closure prepends the name again and the Display reads
-     "Foo.Foo" — generator-wide (every enum deserialize in the core snapshot has the shape). Fix by
-     emitting the locationless `DeserializeFailure::…into()` form when the arm sits inside an
-     annotate closure, mirroring `generate_tag_check`'s `annotated` switch. Pinned TDD-style by
-     `error_annotation_no_variant_double_name_known_gap` in `tests/core/tests.rs`, which asserts
-     the CURRENT doubled name and flips loudly when the fix lands (then invert it into the
-     once-only contract and prune this entry).
-     - *Class layer (lands WITH the fix, or starts with an every-enum-row ledger — at HEAD every
-       enum row trips it, which is also the demonstration it has teeth).* No existing or pending
-       gate could have caught the shape: it is a runtime Display property (the source-lint axes —
-       the clippy burn-down, the rustc style-lint set — can't see it), the replay legs' location
-       assert (`disp.contains("failed in {type_name}")`) is satisfied BY the doubled form
-       ("failed in Foo.Foo" contains the "failed in Foo" prefix — the header-mutation leg ran
-       green over rows that hit this very arm), and a `cargo-mutants` sweep would at most have
-       flagged the arm as behaviorally uncovered, not wrong. The mechanical invariant that catches
-       the class: wherever the replay legs already capture an error Display (the header-mutant and
-       constraint bodies in `decode_replay_run`), assert the location chain between "failed in "
-       and " because" has no immediately-repeated segment (adjacent-equal after splitting on '.').
-       Field segments are snake_case and type segments CamelCase, so a legitimate adjacent
-       duplicate essentially cannot arise from distinct annotation sites; a skip ledger absorbs
-       any surprise.
+   - **Class layer for the double-annotation shape: no adjacent-duplicate location segments.** The
+     enum `NoVariantMatched` double-annotation ("Foo.Foo") is FIXED at the emission site (the
+     `_ => NoVariantMatched` / group-choice `NoVariantMatchedWithCauses` arms now emit the
+     locationless `DeserializeFailure::…into()` form inside their `.annotate(name)` closure,
+     mirroring `generate_tag_check`'s `annotated` switch; once-only contract pinned by
+     `error_annotation_no_variant_single_name` in `tests/core/tests.rs`). What is still missing is
+     the MECHANICAL catch for the whole class, which no existing or pending gate covers: it is a
+     runtime Display property (the source-lint axes — the clippy burn-down, the rustc style-lint set
+     — can't see it), the replay legs' location assert (`disp.contains("failed in {type_name}")`) is
+     satisfied BY a doubled form ("failed in Foo.Foo" contains the "failed in Foo" prefix, so the
+     header-mutation leg runs green over rows that hit such an arm), and a `cargo-mutants` sweep
+     would at most flag the arm as behaviorally uncovered, not wrong. The invariant to add: wherever
+     the replay legs already capture an error Display (the header-mutant and constraint bodies in
+     `decode_replay_run`), assert the location chain between "failed in " and " because" has no
+     immediately-repeated segment (adjacent-equal after splitting on '.'). Field segments are
+     snake_case and type segments CamelCase, so a legitimate adjacent duplicate essentially cannot
+     arise from distinct annotation sites; a skip ledger absorbs any surprise.
    - **Fixture-appended tests are outside the `assertions_on_result_states` deny (low).** The
      fast-tier workspace clippy gate denies that restriction lint so a failed Result assert carries
      its payload — but it sweeps only the repo's own crates, and `tests/<dir>/tests.rs` /

@@ -98,10 +98,7 @@ impl Deserialize for FixedValueArm {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "FixedValueArm",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("FixedValueArm"))
     }
@@ -406,10 +403,7 @@ impl Deserialize for MixedKeyTypes {
                         len_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "MixedKeyTypes",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("MixedKeyTypes"))
@@ -503,10 +497,7 @@ impl Deserialize for MultiFieldArm {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "MultiFieldArm",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("MultiFieldArm"))
     }
@@ -841,10 +832,7 @@ impl Deserialize for TextKeyed {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "TextKeyed",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("TextKeyed"))
     }
@@ -968,10 +956,7 @@ impl Deserialize for UintKeyed {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "UintKeyed",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("UintKeyed"))
     }

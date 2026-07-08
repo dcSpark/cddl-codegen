@@ -8935,16 +8935,28 @@ fn generate_enum(
     match non_overlapping_types_match {
         Some((mut deser_type_match, deser_covers_all_types)) => {
             if !deser_covers_all_types {
-                deser_type_match.line(format!(
-                    "_ => Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched)),"
-                ));
+                // Mirror the `annotated` switch (see `generate_tag_check`): when annotate_fields is
+                // set, `deser_body` is the body of the `.annotate(name)` closure, so emit the
+                // locationless form and let the closure supply the name (the name-carrying form
+                // would get the name prepended AGAIN, reading "Name.Name").
+                if cli.annotate_fields {
+                    deser_type_match.line("_ => Err(DeserializeFailure::NoVariantMatched.into()),");
+                } else {
+                    deser_type_match.line(format!(
+                        "_ => Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatched)),"
+                    ));
+                }
             }
             deser_body.push_block(deser_type_match);
         }
         None => {
-            deser_body.line(&format!(
-                "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatchedWithCauses(errs)))"
-            ));
+            if cli.annotate_fields {
+                deser_body.line("Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())");
+            } else {
+                deser_body.line(&format!(
+                    "Err(DeserializeError::new(\"{name}\", DeserializeFailure::NoVariantMatchedWithCauses(errs)))"
+                ));
+            }
         }
     }
     if cli.annotate_fields {

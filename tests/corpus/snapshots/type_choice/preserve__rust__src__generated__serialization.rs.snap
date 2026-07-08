@@ -64,10 +64,7 @@ impl Deserialize for TypeChoice {
                         bytes_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "TypeChoice",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("TypeChoice"))

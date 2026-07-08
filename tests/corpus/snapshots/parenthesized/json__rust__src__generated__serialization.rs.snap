@@ -30,10 +30,7 @@ impl Deserialize for Choice {
                     Ok(Choice::U64(raw.unsigned_integer()? as u64))
                 }
                 cbor_event::Type::Text => Ok(Choice::Text(raw.text()? as String)),
-                _ => Err(DeserializeError::new(
-                    "Choice",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("Choice"))

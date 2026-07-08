@@ -1333,10 +1333,7 @@ impl Deserialize for GroupChoice {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "GroupChoice",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("GroupChoice"))
     }
@@ -2401,10 +2398,7 @@ impl Deserialize for TypeChoice {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "TypeChoice",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("TypeChoice"))
     }

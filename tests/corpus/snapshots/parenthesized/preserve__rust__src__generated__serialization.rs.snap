@@ -50,10 +50,7 @@ impl Deserialize for Choice {
                         text_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "Choice",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("Choice"))

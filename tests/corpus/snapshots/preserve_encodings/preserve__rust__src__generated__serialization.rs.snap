@@ -1278,10 +1278,7 @@ impl Deserialize for BoundsGroupChoice {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "BoundsGroupChoice",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("BoundsGroupChoice"))
     }
@@ -1353,10 +1350,7 @@ impl Deserialize for BoundsTypeChoice {
                         text_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "BoundsTypeChoice",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("BoundsTypeChoice"))
@@ -2889,10 +2883,7 @@ impl Deserialize for EnumOptEmbedFields {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "EnumOptEmbedFields",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("EnumOptEmbedFields"))
     }
@@ -3482,10 +3473,7 @@ impl Deserialize for GroupChoice {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "GroupChoice",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("GroupChoice"))
     }
@@ -3881,10 +3869,7 @@ impl Deserialize for NonOverlapBasicEmbed {
                         tag_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlapBasicEmbed",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlapBasicEmbed"))
@@ -3969,10 +3954,7 @@ impl Deserialize for NonOverlapBasicEmbedMixed {
                     }
                     Ok(NonOverlapBasicEmbedMixed::Second(second))
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlapBasicEmbedMixed",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlapBasicEmbedMixed"))
@@ -4072,10 +4054,7 @@ impl Deserialize for NonOverlapBasicEmbedMixedExplicit {
                     }
                     Ok(NonOverlapBasicEmbedMixedExplicit::Third(third))
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlapBasicEmbedMixedExplicit",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlapBasicEmbedMixedExplicit"))
@@ -4127,10 +4106,7 @@ impl Deserialize for NonOverlapBasicEmbedMultiFields {
                     }
                     Ok(NonOverlapBasicEmbedMultiFields::Second(second))
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlapBasicEmbedMultiFields",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlapBasicEmbedMultiFields"))
@@ -4274,10 +4250,7 @@ impl Deserialize for NonOverlapBasicNotBasic {
                         len_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlapBasicNotBasic",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlapBasicNotBasic"))
@@ -4510,10 +4483,7 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                         map_text_to_u64_value_encodings,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlappingTypeChoiceAll",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlappingTypeChoiceAll"))
@@ -4567,10 +4537,7 @@ impl Deserialize for NonOverlappingTypeChoiceSome {
                         text_encoding,
                     })
                 }
-                _ => Err(DeserializeError::new(
-                    "NonOverlappingTypeChoiceSome",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("NonOverlappingTypeChoiceSome"))
@@ -4706,10 +4673,7 @@ impl Deserialize for OverlapBasicEmbed {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "OverlapBasicEmbed",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("OverlapBasicEmbed"))
     }
@@ -4858,10 +4822,7 @@ impl Deserialize for OverlappingInlined {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "OverlappingInlined",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("OverlappingInlined"))
     }
@@ -7648,10 +7609,7 @@ impl Deserialize for TypeChoice {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "TypeChoice",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("TypeChoice"))
     }

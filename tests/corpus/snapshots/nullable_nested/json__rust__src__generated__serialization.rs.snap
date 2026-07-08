@@ -30,10 +30,7 @@ impl Deserialize for DataEnum {
                     Ok(DataEnum::U64(raw.unsigned_integer()? as u64))
                 }
                 cbor_event::Type::Text => Ok(DataEnum::Text(raw.text()? as String)),
-                _ => Err(DeserializeError::new(
-                    "DataEnum",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("DataEnum"))

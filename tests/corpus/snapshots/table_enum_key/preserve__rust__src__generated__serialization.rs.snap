@@ -225,10 +225,7 @@ impl Deserialize for Ikey {
                         .map(|(x, enc)| ((x + 1).abs() as u64, Some(enc)))?;
                     Ok(Self::N64 { n64, n64_encoding })
                 }
-                _ => Err(DeserializeError::new(
-                    "Ikey",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("Ikey"))
