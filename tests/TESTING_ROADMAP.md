@@ -82,15 +82,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **wasm surface.** Layer 2 generates `--wasm=false`; the wasm emission path is only
      generation-classified indirectly. A wasm-side batch (generate `--wasm=true`, `cargo check` the
      wasm crate) is the cheap extension; the wasm-ABI matrix owns the systematic per-shape surface.
-   - **Panic-class identity needs the panicking FRAME, not just message+file.** The sweep's
-     `KNOWN_PANIC_CLASSES` keys are normalized `<message> @ <file>` substrings, so every bare
-     `unimplemented!()` in one file shares ONE class key: the entry pinned to the fixed-bool member
-     arm also absorbs the six other bare-`unimplemented!()` catch-all sites in `generation.rs` — a
-     composition newly reaching any of those would be silently classified as the known class instead
-     of failing as a NEW finding (found by review, not by any gate; the ledger entry text carries the
-     warning meanwhile). The systematic fix: capture the panicking frame's function symbol (backtrace
-     in the sweep's capturing hook) into the class key, then split the collapsed entry per site —
-     line numbers stay excluded (refactor churn), but function symbols are stable enough to key on.
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
