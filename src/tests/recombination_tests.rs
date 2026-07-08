@@ -766,7 +766,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     ),
     (
         "not implemented @ src/generation.rs",
-        "fixed bool member deserialize arm catch-all (bare unimplemented!); pinned by tests/robustness/fixed_bool_member.cddl",
+        "fixed bool member deserialize arm catch-all (bare unimplemented!); pinned by tests/robustness/fixed_bool_member.cddl. WARNING: every bare unimplemented!() in generation.rs shares this class key (six other catch-all sites at HEAD), so a composition newly reaching one of THOSE is absorbed here rather than failing as a NEW finding — the frame-symbol class-key escalation in tests/TESTING_ROADMAP.md (grammar-fuzzer escalations) owns the fix",
     ),
     (
         "unsupported cddl prelude type:",

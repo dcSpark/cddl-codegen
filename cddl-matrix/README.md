@@ -35,7 +35,11 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > `annotations/corpus/`) — `query_q1_gaps.ts`, which generates the `## Limitations` section of
 > `docs/docs/current_capacities.mdx`, and `project_status_headers.ts`, which drift-checks the countable
 > status-header prose (feature/annotation/op/divergence/constraint counts) as spans in this README,
-> `ROADMAP.md`, and `tests/README.md`. **Every consumer query Q1–Q6 is answered by a standing script**
+> `ROADMAP.md`, and `tests/README.md`. A fifth projection feeds a consumer that is not a hand doc:
+> `project_recombination.ts` distils every feature `example` + the containment legality data into
+> `tests/recomb/ingredients.json` (drift-gated by check.ts `project_recombination_check`), the
+> ingredient set the shape-recombination fuzzer composes from (`tests/README.md`
+> § "Shape-recombination fuzzer"). **Every consumer query Q1–Q6 is answered by a standing script**
 > (`QUERIES.md` § "Definition of done"). Any "seed / only `type2` worked" or "renderer is the
 > remaining piece" framing below this line is historical.
 
