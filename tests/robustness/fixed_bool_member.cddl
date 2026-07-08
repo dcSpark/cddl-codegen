@@ -1,0 +1,11 @@
+; A fixed BOOL literal in MEMBER position (`[v: true]` / `{k: false}`) panics generation at the
+; fixed-value deserialize arm's catch-all (`generation.rs`'s `_ => unimplemented!()` — the match
+; handles Uint/Nint/Text/Float; Bool has no arm). Distinct from BOTH neighboring supported shapes:
+; fixed numeric/text members (`[v: 5]`, pinned by the matrix cells
+; `contain.array-element.value.{number,text}`) and a fixed NULL member (`[null, uint]` — null has
+; its own arm and generates fine). Also distinct from top-level `foo = true`, which is now a
+; graceful rejection (see `tests/matrix_reject/prelude.true.cddl`). The matrix has no
+; prelude-constant member containment cells (only `contain.choice-member.prelude.null`, the
+; nullable pattern), so this hand fixture is the pin until either the panic is fixed or such
+; cells land. Found incidentally during the top-level fixed-value rejection work.
+arr = [v: true, x: uint]

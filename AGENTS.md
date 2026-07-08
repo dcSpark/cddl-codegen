@@ -126,6 +126,11 @@ codex/Opus):
   multi-minute gates above.
 - The codex background runner can die silently mid-task (log stalls, pid dead, status stuck
   `running`) — detection signal + recovery procedure: `draft/codex-background-runner-silent-death.md`.
+- Two codex-sandbox filesystem facts to bake into delegation prompts (each cost a failed step when
+  learned): `.git` is mounted READ-ONLY (a codex agent cannot commit — tell it to leave work in the
+  worktree and commit after in-session review), and `~/.npm` is read-only too, so npm-backed gates
+  (the `test` gate's json2ts/wasm steps) need `npm_config_cache=/tmp/<something>` in the agent's
+  environment or the local tier fails on EROFS mid-verification.
 - The codex plugin runs write tasks under codex's `workspace-write` sandbox regardless of
   `~/.codex/config.toml`'s `sandbox_mode` (the companion hard-codes the per-job sandbox), and
   workspace-write turns network OFF unless the config's
