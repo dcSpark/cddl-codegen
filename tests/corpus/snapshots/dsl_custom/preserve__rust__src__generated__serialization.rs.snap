@@ -31,11 +31,15 @@ impl cbor_event::se::Serialize for CustomNewtype {
 
 impl Deserialize for CustomNewtype {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-        Ok(Self {
-            inner,
-            encodings: Some(CustomNewtypeEncoding { inner_encoding }),
-        })
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) =
+                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+            Ok(Self {
+                inner,
+                encodings: Some(CustomNewtypeEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("CustomNewtype"))
     }
 }
 

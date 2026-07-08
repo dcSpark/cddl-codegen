@@ -31,10 +31,14 @@ impl cbor_event::se::Serialize for ProtocolMagic {
 
 impl Deserialize for ProtocolMagic {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-        Ok(Self {
-            inner,
-            encodings: Some(ProtocolMagicEncoding { inner_encoding }),
-        })
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) =
+                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+            Ok(Self {
+                inner,
+                encodings: Some(ProtocolMagicEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("ProtocolMagic"))
     }
 }

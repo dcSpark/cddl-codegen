@@ -143,16 +143,19 @@ impl cbor_event::se::Serialize for PreludeB64legacy {
 
 impl Deserialize for PreludeB64legacy {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            34 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 34,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                34 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 34,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeB64legacy"))
     }
 }
 
@@ -168,16 +171,19 @@ impl cbor_event::se::Serialize for PreludeB64url {
 
 impl Deserialize for PreludeB64url {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            33 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 33,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                33 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 33,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeB64url"))
     }
 }
 
@@ -280,16 +286,19 @@ impl cbor_event::se::Serialize for PreludeBignint {
 
 impl Deserialize for PreludeBignint {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            3 => raw.bytes()? as Vec<u8>,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 3,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                3 => raw.bytes()? as Vec<u8>,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 3,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeBignint"))
     }
 }
 
@@ -305,16 +314,19 @@ impl cbor_event::se::Serialize for PreludeBiguint {
 
 impl Deserialize for PreludeBiguint {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            2 => raw.bytes()? as Vec<u8>,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 2,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                2 => raw.bytes()? as Vec<u8>,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 2,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeBiguint"))
     }
 }
 
@@ -374,16 +386,19 @@ impl cbor_event::se::Serialize for PreludeEncodedCbor {
 
 impl Deserialize for PreludeEncodedCbor {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            24 => raw.bytes()? as Vec<u8>,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 24,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                24 => raw.bytes()? as Vec<u8>,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 24,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeEncodedCbor"))
     }
 }
 
@@ -428,16 +443,19 @@ impl cbor_event::se::Serialize for PreludeMimeMessage {
 
 impl Deserialize for PreludeMimeMessage {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            36 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 36,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                36 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 36,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeMimeMessage"))
     }
 }
 
@@ -453,16 +471,19 @@ impl cbor_event::se::Serialize for PreludeRegexp {
 
 impl Deserialize for PreludeRegexp {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            35 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 35,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                35 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 35,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeRegexp"))
     }
 }
 
@@ -478,16 +499,19 @@ impl cbor_event::se::Serialize for PreludeTdate {
 
 impl Deserialize for PreludeTdate {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            0 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 0,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                0 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 0,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeTdate"))
     }
 }
 
@@ -534,15 +558,18 @@ impl cbor_event::se::Serialize for PreludeUri {
 
 impl Deserialize for PreludeUri {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            32 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 32,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                32 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 32,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeUri"))
     }
 }

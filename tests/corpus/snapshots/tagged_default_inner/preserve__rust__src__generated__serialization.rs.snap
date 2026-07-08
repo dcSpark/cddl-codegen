@@ -41,24 +41,27 @@ impl cbor_event::se::Serialize for TaggedDefault {
 
 impl Deserialize for TaggedDefault {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
-            (42, tag_enc) => raw
-                .unsigned_integer_sz()
-                .map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
-            (tag, _enc) => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 42,
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+                (42, tag_enc) => raw
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
+                (tag, _enc) => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 42,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        };
-        Ok(Self {
-            inner,
-            encodings: Some(TaggedDefaultEncoding {
-                inner_tag_encoding,
-                inner_encoding,
-            }),
-        })
+            };
+            Ok(Self {
+                inner,
+                encodings: Some(TaggedDefaultEncoding {
+                    inner_tag_encoding,
+                    inner_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("TaggedDefault"))
     }
 }

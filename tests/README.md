@@ -242,11 +242,22 @@ An enum `NoVariantMatched` failure on a directly-deserializing choice — where 
 carries the name exactly *once*: the arm emits the locationless `DeserializeFailure::…into()` form
 and lets the closure supply the name, pinned by `error_annotation_no_variant_single_name`.
 
-The contract's remaining boundaries, ledgered in `tests/TESTING_ROADMAP.md`: two paths sit outside
-the contract entirely — embedded plain-group scaffolding and newtype wrappers' container reads —
-the newtype-wrapper half now MEASURED at catalog breadth by the replay gate's
-`HEADER_MUTANT_LOCATION_SKIP` ledger (38 (row, label) cells across 20 rows at HEAD, emptied via its
-stale guards when the gap closes).
+The contract now covers the two paths that previously sat outside it — embedded/plain-group
+`deserialize()` header scaffolding and newtype wrappers' container reads. A standalone plain group's
+header reads sit inside a `.annotate(name)` closure that returns the `(len, read_len)` bindings (the
+delegated `deserialize_as_embedded_group` call stays OUTSIDE it — its body is already annotated
+per-field, so wrapping it would double-annotate as "Type.Type.field"), and its post-delegation
+final-len check gets its own annotate closure; a newtype wrapper's whole deserialize body is wrapped
+in one such closure while its `new()`/`TryFrom` range check keeps the name-carrying
+`DeserializeError::new` form (no closure wraps those). Pinned at fixture granularity by
+`error_annotation_plain_group_header_single_name`,
+`error_annotation_wrapper_wrong_container_single_name`, and
+`error_annotation_bounded_wrapper_range_single_name` in `tests/core/tests.rs` (with an
+encoding-fields sibling `error_annotation_wrapper_and_plain_group_single_name` in
+`tests/preserve-encodings/tests.rs`), and at catalog breadth by the replay gate: its
+`HEADER_MUTANT_LOCATION_SKIP` ledger is EMPTY at HEAD (stale-guarded), the only known-legitimate
+locationless resident being the `from_cbor_bytes` `TrailingData` path (pinned by
+`error_display_formatting`'s TrailingData no-location case).
 
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
@@ -416,12 +427,11 @@ and asserts they are accepted.
     exceptions: `HEADER_MUTANT_ACCEPT_SKIP` — a mutant the row's spec genuinely accepts WITHOUT any
     accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; EMPTY at
     HEAD; `trunc_head` can never be here, asserted as a hard error) — and
-    `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location: every entry at HEAD is the
-    newtype-wrapper container-read annotation gap (`ctl.*`, `rangeop.*`,
-    `dsl.newtype`/`dsl.custom_json`, `type1.ctlop`; the ledgered "Annotate embedded/plain-group
-    `deserialize()` header scaffolding (and newtype wrappers' container reads)" TESTING_ROADMAP
-    item), with the locationless `from_cbor_bytes` `TrailingData` path the other known-legitimate
-    resident. A header-mutant vacuity floor keeps the leg live.
+    `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location: EMPTY at HEAD now that
+    embedded/plain-group header scaffolding and newtype-wrapper container reads are annotated, with
+    the locationless `from_cbor_bytes` `TrailingData` path the only known-legitimate resident (no
+    header mutant reaches it here, so the ledger stays empty). A header-mutant vacuity floor keeps
+    the leg live.
   - *Failure attribution* — a FAILED replay test's cause is attributed by pure
     marker-classification functions (`classify_constraint_failure` / `classify_variant_failure` /
     `classify_header_mutant_failure`) whose needles own the trailing ':' that disambiguates

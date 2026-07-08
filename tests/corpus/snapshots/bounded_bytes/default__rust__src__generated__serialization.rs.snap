@@ -21,17 +21,18 @@ impl cbor_event::se::Serialize for Hash {
 
 impl Deserialize for Hash {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let inner = raw.bytes()? as Vec<u8>;
-        if inner.len() > 32 {
-            return Err(DeserializeError::new(
-                "Hash",
-                DeserializeFailure::RangeCheck {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw.bytes()? as Vec<u8>;
+            if inner.len() > 32 {
+                return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,
                     min: Some(0),
                     max: Some(32),
-                },
-            ));
-        }
-        Ok(Self(inner))
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("Hash"))
     }
 }
