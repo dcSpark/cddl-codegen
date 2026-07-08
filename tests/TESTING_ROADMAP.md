@@ -122,23 +122,6 @@ breadth.
      the location-less Display branch). The header-mutation replay leg's
      `HEADER_MUTANT_LOCATION_SKIP` ledger (38 entries at HEAD, all this newtype-wrapper class)
      measures the gap at catalog breadth — closing it empties that ledger via its stale guards.
-   - **Class layer for the double-annotation shape: no adjacent-duplicate location segments.** The
-     enum `NoVariantMatched` double-annotation ("Foo.Foo") is FIXED at the emission site (the
-     `_ => NoVariantMatched` / group-choice `NoVariantMatchedWithCauses` arms now emit the
-     locationless `DeserializeFailure::…into()` form inside their `.annotate(name)` closure,
-     mirroring `generate_tag_check`'s `annotated` switch; once-only contract pinned by
-     `error_annotation_no_variant_single_name` in `tests/core/tests.rs`). What is still missing is
-     the MECHANICAL catch for the whole class, which no existing or pending gate covers: it is a
-     runtime Display property (the source-lint axes — the clippy burn-down, the rustc style-lint set
-     — can't see it), the replay legs' location assert (`disp.contains("failed in {type_name}")`) is
-     satisfied BY a doubled form ("failed in Foo.Foo" contains the "failed in Foo" prefix, so the
-     header-mutation leg runs green over rows that hit such an arm), and a `cargo-mutants` sweep
-     would at most flag the arm as behaviorally uncovered, not wrong. The invariant to add: wherever
-     the replay legs already capture an error Display (the header-mutant and constraint bodies in
-     `decode_replay_run`), assert the location chain between "failed in " and " because" has no
-     immediately-repeated segment (adjacent-equal after splitting on '.'). Field segments are
-     snake_case and type segments CamelCase, so a legitimate adjacent duplicate essentially cannot
-     arise from distinct annotation sites; a skip ledger absorbs any surprise.
    - **Fixture-appended tests are outside the `assertions_on_result_states` deny (low).** The
      fast-tier workspace clippy gate denies that restriction lint so a failed Result assert carries
      its payload — but it sweeps only the repo's own crates, and `tests/<dir>/tests.rs` /

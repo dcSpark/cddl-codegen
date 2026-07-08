@@ -5648,6 +5648,8 @@ const MARKER_VARIANT_VALUE_MISMATCH: &str = "VARIANT_VALUE_MISMATCH";
 const MARKER_VAR_ORIG_DECODE_FAILED: &str = "VAR_ORIG_DECODE_FAILED";
 const MARKER_HDR_MUTANT_DECODED_OK: &str = "HDR_MUTANT_DECODED_OK";
 const MARKER_HDR_MUTANT_NO_LOCATION: &str = "HDR_MUTANT_NO_LOCATION";
+const MARKER_DOUBLED_LOCATION: &str = "DOUBLED_LOCATION";
+const DOUBLED_LOCATION_HELPER_SELF_CHECK: &str = "doubled_location_helper_self_check";
 
 /// How a FAILED `class="constraint"` reject vector's replay test attributed its cause.
 #[derive(Debug, PartialEq)]
@@ -5656,6 +5658,8 @@ enum ConstraintFailureKind {
     DecodedOk,
     /// The vector was rejected, but the error Display did not contain the pinned `expect_err`.
     WrongReason,
+    /// The vector was rejected with an adjacent-duplicate error location segment.
+    DoubledLocation,
     /// Neither marker was found in the captured output — unexpected.
     Unattributed,
 }
@@ -5670,6 +5674,8 @@ fn classify_constraint_failure(output: &str, test_name: &str) -> ConstraintFailu
         ConstraintFailureKind::DecodedOk
     } else if output.contains(&format!("{MARKER_CONSTRAINT_WRONG_REASON} {test_name}:")) {
         ConstraintFailureKind::WrongReason
+    } else if output.contains(&format!("{MARKER_DOUBLED_LOCATION} {test_name}:")) {
+        ConstraintFailureKind::DoubledLocation
     } else {
         ConstraintFailureKind::Unattributed
     }
@@ -5713,7 +5719,8 @@ fn classify_variant_failure(output: &str, test_name: &str) -> VariantFailureKind
 fn classify_constraint_failure_disambiguates_prefix_colliding_names() {
     let output = "\
         thread 'reject_1' panicked: CONSTRAINT_WRONG_REASON reject_1: rejected but Display did not contain\n\
-        thread 'reject_10' panicked: CONSTRAINT_DECODED_OK reject_10: a class=constraint vector decoded Ok\n";
+        thread 'reject_10' panicked: CONSTRAINT_DECODED_OK reject_10: a class=constraint vector decoded Ok\n\
+        thread 'reject_100' panicked: DOUBLED_LOCATION reject_100: adjacent duplicate location segment\n";
     assert_eq!(
         classify_constraint_failure(output, "reject_1"),
         ConstraintFailureKind::WrongReason
@@ -5722,18 +5729,40 @@ fn classify_constraint_failure_disambiguates_prefix_colliding_names() {
         classify_constraint_failure(output, "reject_10"),
         ConstraintFailureKind::DecodedOk
     );
+    assert_eq!(
+        classify_constraint_failure(output, "reject_100"),
+        ConstraintFailureKind::DoubledLocation
+    );
 
     // Mirror the pairing so neither ordering is privileged.
     let mirrored = "\
         thread 'reject_1' panicked: CONSTRAINT_DECODED_OK reject_1: a class=constraint vector decoded Ok\n\
-        thread 'reject_10' panicked: CONSTRAINT_WRONG_REASON reject_10: rejected but Display did not contain\n";
+        thread 'reject_10' panicked: DOUBLED_LOCATION reject_10: adjacent duplicate location segment\n\
+        thread 'reject_100' panicked: CONSTRAINT_WRONG_REASON reject_100: rejected but Display did not contain\n";
     assert_eq!(
         classify_constraint_failure(mirrored, "reject_1"),
         ConstraintFailureKind::DecodedOk
     );
     assert_eq!(
         classify_constraint_failure(mirrored, "reject_10"),
+        ConstraintFailureKind::DoubledLocation
+    );
+    assert_eq!(
+        classify_constraint_failure(mirrored, "reject_100"),
         ConstraintFailureKind::WrongReason
+    );
+
+    // The doubled-location marker owns the same trailing-delimiter grammar: a marker for the longer
+    // decimal suffix must NOT attribute to the prefix name.
+    let doubled_longer =
+        "thread 'reject_10' panicked: DOUBLED_LOCATION reject_10: adjacent duplicate\n";
+    assert_eq!(
+        classify_constraint_failure(doubled_longer, "reject_1"),
+        ConstraintFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_constraint_failure(doubled_longer, "reject_10"),
+        ConstraintFailureKind::DoubledLocation
     );
 
     // A name absent from the output attributes to nothing.
@@ -5801,6 +5830,8 @@ enum HeaderMutantFailureKind {
     /// (`failed in {type_name}`) — a generator annotation gap or the locationless `TrailingData` path;
     /// legitimate ones are ledgered in `HEADER_MUTANT_LOCATION_SKIP`.
     NoLocation,
+    /// The vector was rejected with an adjacent-duplicate error location segment.
+    DoubledLocation,
     /// Neither marker was found in the captured output — unexpected.
     Unattributed,
 }
@@ -5816,6 +5847,8 @@ fn classify_header_mutant_failure(output: &str, test_name: &str) -> HeaderMutant
         HeaderMutantFailureKind::DecodedOk
     } else if output.contains(&format!("{MARKER_HDR_MUTANT_NO_LOCATION} {test_name}:")) {
         HeaderMutantFailureKind::NoLocation
+    } else if output.contains(&format!("{MARKER_DOUBLED_LOCATION} {test_name}:")) {
+        HeaderMutantFailureKind::DoubledLocation
     } else {
         HeaderMutantFailureKind::Unattributed
     }
@@ -5830,7 +5863,8 @@ fn classify_header_mutant_failure(output: &str, test_name: &str) -> HeaderMutant
 fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
     let output = "\
         thread 'x' panicked: HDR_MUTANT_NO_LOCATION accept_1_hdr_wrong_major: rejected but no location\n\
-        thread 'y' panicked: HDR_MUTANT_DECODED_OK accept_10_hdr_wrong_major: header-mutated vector decoded Ok\n";
+        thread 'y' panicked: HDR_MUTANT_DECODED_OK accept_10_hdr_wrong_major: header-mutated vector decoded Ok\n\
+        thread 'z' panicked: DOUBLED_LOCATION accept_100_hdr_wrong_major: adjacent duplicate location segment\n";
     assert_eq!(
         classify_header_mutant_failure(output, "accept_1_hdr_wrong_major"),
         HeaderMutantFailureKind::NoLocation
@@ -5839,18 +5873,40 @@ fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
         classify_header_mutant_failure(output, "accept_10_hdr_wrong_major"),
         HeaderMutantFailureKind::DecodedOk
     );
+    assert_eq!(
+        classify_header_mutant_failure(output, "accept_100_hdr_wrong_major"),
+        HeaderMutantFailureKind::DoubledLocation
+    );
 
     // Mirror the pairing so neither ordering is privileged.
     let mirrored = "\
         thread 'x' panicked: HDR_MUTANT_DECODED_OK accept_1_hdr_wrong_major: header-mutated vector decoded Ok\n\
-        thread 'y' panicked: HDR_MUTANT_NO_LOCATION accept_10_hdr_wrong_major: rejected but no location\n";
+        thread 'y' panicked: DOUBLED_LOCATION accept_10_hdr_wrong_major: adjacent duplicate location segment\n\
+        thread 'z' panicked: HDR_MUTANT_NO_LOCATION accept_100_hdr_wrong_major: rejected but no location\n";
     assert_eq!(
         classify_header_mutant_failure(mirrored, "accept_1_hdr_wrong_major"),
         HeaderMutantFailureKind::DecodedOk
     );
     assert_eq!(
         classify_header_mutant_failure(mirrored, "accept_10_hdr_wrong_major"),
+        HeaderMutantFailureKind::DoubledLocation
+    );
+    assert_eq!(
+        classify_header_mutant_failure(mirrored, "accept_100_hdr_wrong_major"),
         HeaderMutantFailureKind::NoLocation
+    );
+
+    // The doubled-location marker owns the same trailing-delimiter grammar: a marker for the longer
+    // decimal suffix must NOT attribute to the prefix name.
+    let doubled_longer =
+        "thread 'x' panicked: DOUBLED_LOCATION accept_10_hdr_wrong_major: adjacent duplicate\n";
+    assert_eq!(
+        classify_header_mutant_failure(doubled_longer, "accept_1_hdr_wrong_major"),
+        HeaderMutantFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_header_mutant_failure(doubled_longer, "accept_10_hdr_wrong_major"),
+        HeaderMutantFailureKind::DoubledLocation
     );
 
     // A name absent from the output attributes to nothing.
@@ -5894,8 +5950,10 @@ fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
 /// single-letter type names like `T` would vacuously match against words like "TagMismatch"). An `Ok`
 /// panics with `HDR_MUTANT_DECODED_OK` (over-acceptance or a legitimately-accepting row) and a
 /// location-less rejection with `HDR_MUTANT_NO_LOCATION` (a generator annotation gap or the
-/// `from_cbor_bytes` `TrailingData` path, which is locationless by construction). The completeness
-/// check counts all three legs against `vectors.len() + variant_specs.len() + header_specs.len()`.
+/// `from_cbor_bytes` `TrailingData` path, which is locationless by construction). The emitted helper
+/// also rejects adjacent-duplicate Display location segments with `DOUBLED_LOCATION`. The completeness
+/// check counts all three legs plus the helper self-check against
+/// `vectors.len() + variant_specs.len() + header_specs.len() + 1`.
 fn decode_replay_run(
     out: &std::path::Path,
     type_name: &str,
@@ -5933,6 +5991,7 @@ fn decode_replay_run(
                          \x20           Ok(_) => panic!(\"{MARKER_CONSTRAINT_DECODED_OK} {name}: a class=constraint vector decoded Ok — the generated decoder does NOT enforce the constraint\"),\n\
                          \x20           Err(e) => {{\n\
                          \x20               let disp = e.to_string();\n\
+                         \x20               assert_no_adjacent_duplicate_location(\"{MARKER_DOUBLED_LOCATION}\", \"{name}\", &disp);\n\
                          \x20               assert!(disp.contains({expect_lit}), \"{MARKER_CONSTRAINT_WRONG_REASON} {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
                          \x20           }}\n\
                          \x20       }}"
@@ -5950,9 +6009,10 @@ fn decode_replay_run(
             // reason-asserting form.
             if !preserve && vector.expect_err.is_some() {
                 assert!(
-                    body.contains(MARKER_CONSTRAINT_WRONG_REASON),
-                    "decode_replay_run built a non-reason-asserting body for a default-leg vector \
-                     with expect_err ({name}) — the constraint match arm regressed"
+                    body.contains(MARKER_CONSTRAINT_WRONG_REASON)
+                        && body.contains(MARKER_DOUBLED_LOCATION),
+                    "decode_replay_run built a body missing a marker for a default-leg vector with \
+                     expect_err ({name}) — the constraint match arm regressed"
                 );
             }
             (name, body)
@@ -5987,8 +6047,8 @@ fn decode_replay_run(
     }
     // DEFAULT-leg header-mutation reject tests: each precomputed mutant must be REJECTED, and the
     // error Display must carry a location naming the decoding type (`failed in {type_name}` — the
-    // annotation analogue of the constraint leg's `expect_err` reason pin). Two grep-stable markers
-    // separate an over-acceptance (`Ok`) from a location-less rejection.
+    // annotation analogue of the constraint leg's `expect_err` reason pin). Grep-stable markers
+    // separate an over-acceptance (`Ok`), a location-less rejection, and a doubled location chain.
     let loc_needle = format!("failed in {type_name}");
     let loc_lit = rust_str_literal(&loc_needle);
     for (i, label, mut_bytes) in header_specs {
@@ -5999,18 +6059,20 @@ fn decode_replay_run(
              \x20           Ok(_) => panic!(\"{MARKER_HDR_MUTANT_DECODED_OK} {name}: a header-mutated (not spec-valid) vector decoded Ok — over-acceptance or a legitimately-accepting row (triage: HEADER_MUTANT_ACCEPT_SKIP)\"),\n\
              \x20           Err(e) => {{\n\
              \x20               let disp = e.to_string();\n\
+             \x20               assert_no_adjacent_duplicate_location(\"{MARKER_DOUBLED_LOCATION}\", \"{name}\", &disp);\n\
              \x20               assert!(disp.contains({loc_lit}), \"{MARKER_HDR_MUTANT_NO_LOCATION} {name}: rejected but the error carries no location naming the type — got: {{}}\", disp);\n\
              \x20           }}\n\
              \x20       }}"
         );
         // Vacuity guard at the emission site (mirrors the constraint arm's CONSTRAINT_WRONG_REASON
         // body assert, per the "vacuity floors must witness the guarded artifact" rule): the built
-        // body must carry BOTH markers, so a drifted match/assert can't silently emit a body that
+        // body must carry all markers, so a drifted match/assert can't silently emit a body that
         // never exercises the decode-Err + location contract while the header-test COUNT floor stays
         // green.
         assert!(
             body.contains(MARKER_HDR_MUTANT_DECODED_OK)
-                && body.contains(MARKER_HDR_MUTANT_NO_LOCATION),
+                && body.contains(MARKER_HDR_MUTANT_NO_LOCATION)
+                && body.contains(MARKER_DOUBLED_LOCATION),
             "decode_replay_run built a header-mutant body missing a marker ({name}) — the \
              emission arm regressed"
         );
@@ -6019,7 +6081,8 @@ fn decode_replay_run(
         ));
     }
     let module = format!(
-        "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {{\n    use super::*;\n    use super::serialization::*;\n{fns}}}\n"
+        "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {{\n    use super::*;\n    use super::serialization::*;\n\
+\n    fn assert_no_adjacent_duplicate_location(marker: &str, test_name: &str, disp: &str) {{\n        let Some(start) = disp.find(\"failed in \").map(|i| i + \"failed in \".len()) else {{\n            return;\n        }};\n        let Some(end) = disp.find(\" because\") else {{\n            return;\n        }};\n        if end <= start {{\n            return;\n        }};\n        let loc = &disp[start..end];\n        let mut prev = None;\n        for segment in loc.split('.') {{\n            if prev == Some(segment) {{\n                panic!(\"{{marker}} {{test_name}}: adjacent duplicate location segment {{segment:?}} in Display: {{disp}}\");\n            }}\n            prev = Some(segment);\n        }}\n    }}\n\n    #[test]\n    fn {DOUBLED_LOCATION_HELPER_SELF_CHECK}() {{\n        let doubled = std::panic::catch_unwind(|| {{\n            assert_no_adjacent_duplicate_location(\n                \"{MARKER_DOUBLED_LOCATION}\",\n                \"{DOUBLED_LOCATION_HELPER_SELF_CHECK}\",\n                \"Deserialization failed in Foo.Foo because: x\",\n            );\n        }});\n        assert!(doubled.is_err(), \"doubled adjacent segment should trip\");\n        assert_no_adjacent_duplicate_location(\n            \"{MARKER_DOUBLED_LOCATION}\",\n            \"{DOUBLED_LOCATION_HELPER_SELF_CHECK}\",\n            \"Deserialization failed in Foo.opt_text.Foo because: x\",\n        );\n        assert_no_adjacent_duplicate_location(\n            \"{MARKER_DOUBLED_LOCATION}\",\n            \"{DOUBLED_LOCATION_HELPER_SELF_CHECK}\",\n            \"Deserialization: x\",\n        );\n    }}\n{fns}}}\n"
     );
     // Append into the generated root scope (`generated/mod.rs`): the replay module's `use super::*;` /
     // `use super::serialization::*;` need the root scope's imports and its sibling serialization
@@ -6061,7 +6124,7 @@ fn decode_replay_run(
             }
         }
     }
-    if results.len() != vectors.len() + variant_specs.len() + header_specs.len() {
+    if results.len() != vectors.len() + variant_specs.len() + header_specs.len() + 1 {
         // No/partial result lines => the crate did not compile (or libtest output drifted).
         return (None, combined);
     }
@@ -6204,6 +6267,12 @@ fn decode_conformance_replay() {
     // guarded: a listed (row, label) whose variant now decodes+re-encodes cleanly fails the gate, so a
     // closed gap can't rot into a silent skip.
     const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
+
+    // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects
+    // with an adjacent-duplicate error location segment (`Foo.Foo`). EMPTY at HEAD: a newly-appearing
+    // doubled location is a generator double-annotation regression to triage, not something to bury
+    // without a reason. Stale-guarded like the other replay ledgers.
+    const DOUBLED_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
 
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test legitimately
     // DECODES the mutated bytes Ok because the row's spec genuinely accepts them WITHOUT that
@@ -6469,6 +6538,13 @@ fn decode_conformance_replay() {
              stale pin, remove or fix it"
         );
     }
+    for (id, _, _) in DOUBLED_LOCATION_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "DOUBLED_LOCATION_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
     for (id, label, _) in HEADER_MUTANT_ACCEPT_SKIP {
         assert!(
             *label != "trunc_head",
@@ -6507,9 +6583,18 @@ fn decode_conformance_replay() {
             .iter()
             .map(|(r, l, why)| ((*r, *l), *why))
             .collect();
+    let doubled_location_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        DOUBLED_LOCATION_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
     // (row, label) pairs whose variant test failed AND was suppressed by an ENCODING_VARIANT_SKIP
     // entry; the stale guard flags any listed entry that is NOT here (the gap closed).
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    // (row, replay test-name) pairs whose replay test failed AND was suppressed by a
+    // DOUBLED_LOCATION_SKIP entry; the stale guard flags any listed entry that is NOT here.
+    let mut doubled_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
     let header_mutant_accept_skip: std::collections::BTreeMap<(&str, &str), &str> =
         HEADER_MUTANT_ACCEPT_SKIP
@@ -6636,6 +6721,13 @@ fn decode_conformance_replay() {
             &header_specs,
         ) {
             (Some(results), combined) => {
+                if results.get(DOUBLED_LOCATION_HELPER_SELF_CHECK).copied() != Some(true) {
+                    failures.push(format!(
+                        "{}: replay helper self-check `{DOUBLED_LOCATION_HELPER_SELF_CHECK}` failed \
+                         — the doubled-location invariant harness regressed. Captured output:\n{combined}",
+                        row.id
+                    ));
+                }
                 rows_replayed += 1;
                 vectors_replayed += row.vectors.len();
                 for (i, vector) in row.vectors.iter().enumerate() {
@@ -6680,9 +6772,24 @@ fn decode_conformance_replay() {
                                  rejection to report. Captured Display in the run output below:\n{combined}",
                                 row.id
                             )),
+                            ConstraintFailureKind::DoubledLocation => {
+                                if doubled_location_skip
+                                    .contains_key(&(row.id.as_str(), name.as_str()))
+                                {
+                                    doubled_location_skip_still_failing
+                                        .insert((row.id.clone(), name.clone()));
+                                } else {
+                                    failures.push(format!(
+                                        "{}: constraint vector {hex} rejected with an adjacent-duplicate \
+                                         error location segment — generator double-annotation regression; \
+                                         triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                        row.id
+                                    ));
+                                }
+                            }
                             ConstraintFailureKind::Unattributed => failures.push(format!(
                                 "{}: constraint vector {hex} failed its reason assert but emitted \
-                                 neither marker — unexpected; full output:\n{combined}",
+                                 no known marker — unexpected; full output:\n{combined}",
                                 row.id
                             )),
                         }
@@ -6798,6 +6905,21 @@ fn decode_conformance_replay() {
                                 ));
                             }
                         }
+                        HeaderMutantFailureKind::DoubledLocation => {
+                            if doubled_location_skip.contains_key(&(row.id.as_str(), name.as_str()))
+                            {
+                                doubled_location_skip_still_failing
+                                    .insert((row.id.clone(), name.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} rejected \
+                                     with an adjacent-duplicate error location segment — generator \
+                                     double-annotation regression; triage: DOUBLED_LOCATION_SKIP. \
+                                     Captured output:\n{combined}",
+                                    row.id
+                                ));
+                            }
+                        }
                         HeaderMutantFailureKind::Unattributed => failures.push(format!(
                             "{}: header mutant test `{name}` failed but emitted no known marker — \
                              unexpected. Captured output:\n{combined}",
@@ -6838,26 +6960,36 @@ fn decode_conformance_replay() {
         } else {
             match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir, &[], &[]) {
                 (Some(results), combined) => {
-                    let all_pass = results.values().all(|&p| p);
-                    preserve_ok = all_pass;
-                    if !all_pass {
-                        let byte_mismatch = combined.contains("PRESERVE_BYTE_MISMATCH");
-                        let decode_failed = combined.contains("PRESERVE_DECODE_FAILED");
-                        if mismatch_reason.is_none() && skip_reason.is_none() {
-                            let kind = if byte_mismatch {
-                                "re-encodes to DIFFERENT bytes (decodes Ok but `to_cbor_bytes()` != \
+                    if results.get(DOUBLED_LOCATION_HELPER_SELF_CHECK).copied() != Some(true) {
+                        preserve_ok = false;
+                        failures.push(format!(
+                            "{}: preserve replay helper self-check `{DOUBLED_LOCATION_HELPER_SELF_CHECK}` \
+                             failed — the doubled-location invariant harness regressed. Captured \
+                             output:\n{combined}",
+                            row.id
+                        ));
+                    } else {
+                        let all_pass = results.values().all(|&p| p);
+                        preserve_ok = all_pass;
+                        if !all_pass {
+                            let byte_mismatch = combined.contains("PRESERVE_BYTE_MISMATCH");
+                            let decode_failed = combined.contains("PRESERVE_DECODE_FAILED");
+                            if mismatch_reason.is_none() && skip_reason.is_none() {
+                                let kind = if byte_mismatch {
+                                    "re-encodes to DIFFERENT bytes (decodes Ok but `to_cbor_bytes()` != \
                                  input — the preserve byte-identity contract is broken)"
-                            } else if decode_failed {
-                                "fails to DECODE an accept vector under preserve"
-                            } else {
-                                "fails preserve replay for an unrecognized reason"
-                            };
-                            failures.push(format!(
+                                } else if decode_failed {
+                                    "fails to DECODE an accept vector under preserve"
+                                } else {
+                                    "fails preserve replay for an unrecognized reason"
+                                };
+                                failures.push(format!(
                                 "{}: preserve profile {kind} — a finding: report it and pin with a \
                                  reason (PRESERVE_SKIP for gen/compile, EXPECTED_MISMATCH for \
                                  byte-identity)\n{combined}",
                                 row.id
                             ));
+                            }
                         }
                     }
                 }
@@ -6905,6 +7037,15 @@ fn decode_conformance_replay() {
                 "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS — the \
                  gap closed (or the row/label no longer emits a variant test); remove the entry \
                  (stale pin)"
+            ));
+        }
+    }
+    for (id, label, _reason) in DOUBLED_LOCATION_SKIP {
+        if !doubled_location_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "DOUBLED_LOCATION_SKIP names ({id}, {label}) but that replay test no longer rejects \
+                 with an adjacent-duplicate location segment — the double-annotation gap closed (or \
+                 the row/test no longer emits); remove the entry (stale pin)"
             ));
         }
     }

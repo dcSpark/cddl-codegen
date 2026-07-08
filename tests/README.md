@@ -409,7 +409,10 @@ and asserts they are accepted.
     decoding type (`failed in {type_name}` — the annotation analogue of the base leg's
     `expect_err`, at catalog breadth rather than the fixture-granularity `error_annotation_*`
     tests; a bare `type_name` contains is deliberately NOT used, since single-letter type names
-    like `T` would vacuously match "TagMismatch"). Two stale-guarded ledgers hold the honest
+    like `T` would vacuously match "TagMismatch"). Any replay test body that captures an error
+    Display also asserts the displayed location chain has no adjacent-duplicate segment (for
+    example `Foo.Foo`); any justified exception belongs in the stale-guarded, empty-at-HEAD
+    `DOUBLED_LOCATION_SKIP` ledger. Two stale-guarded ledgers hold the honest
     exceptions: `HEADER_MUTANT_ACCEPT_SKIP` — a mutant the row's spec genuinely accepts WITHOUT any
     accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; EMPTY at
     HEAD; `trunc_head` can never be here, asserted as a hard error) — and
