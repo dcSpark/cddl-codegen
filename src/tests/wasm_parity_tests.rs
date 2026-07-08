@@ -20,7 +20,7 @@
 //! - *`pub use`d / aliased types have no members to check.* When a rust struct/enum surfaces on the
 //!   wasm side as a `pub use` re-export (Copy c-enums) or a `pub type` alias, rules 1–2 count that as
 //!   full parity and the member rules (3–4) do NOT run: a `pub use` *is* the same type, and a rust
-//!   alias has no inherent members. This is item 8's "`pub use`d Copy enums" exemption, structural.
+//!   alias has no inherent members. This is the structural "`pub use`d Copy enums" exemption.
 //! - *No setter obligation.* A rust `pub` field yields a wasm getter (rule 3), never a setter: wasm
 //!   emits `set_*` only for optional fields, so rust pub-field mutability has no uniform wasm
 //!   counterpart by design.

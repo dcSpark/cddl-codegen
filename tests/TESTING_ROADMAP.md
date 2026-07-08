@@ -144,7 +144,7 @@ replays under mechanically-derived spec-equal re-encodings.
      the read-fidelity gap, a `tests/core/tests_wasm.rs` comment citing the retired `#[ignore]`
      stubs, and a `project_wasm_matrix.ts` role comment claiming `{ ? f: T }` panics — it
      generates; a fourth followed in the same audit: the wasm emitter's documented loud-skip lists
-     carried a "flatten points" entry with no corresponding skip site in the code, in any revision). Two mechanical halves: (1) convention — a gap-tracking sentence names its pin by
+     carried a "flatten points" entry with no corresponding skip site in the code, in any revision). Three mechanical parts: (1) convention — a gap-tracking sentence names its pin by
      exact identifier via the already-pervasive "pinned by/tracked by/gated by `name`" phrasing,
      and a *behavioral* claim ("X panics/rejects") gets a robustness-catalog row FIRST (the
      panic/reject catalogs flip loudly on a behavior change; the `{ ? f: T }` claim rotted
@@ -153,11 +153,24 @@ replays under mechanically-derived spec-equal re-encodings.
      `tests/README.md`, `cddl-matrix/README.md`) and asserts each cited identifier still exists in
      the tree — the same shape as the `cddl-matrix/verify.ts` DSL-name forward lint, and the
      narrow, greppable complement to the declined docs-vs-behavior snippet harness (bottom of this
-     doc): identifier existence, not prose semantics. Code/script comments citing roadmap items by
-     NUMBER or old TITLE ("ROADMAP item 6", a pruned TESTING_ROADMAP heading) are the same rot class
-     with a stricter rule already in AGENTS.md — cite the delivered system's doc section or pin
-     identifier instead, never the roadmap entry (six such citations rotted across one
-     renumber-heavy stretch and were caught only by a hand audit).
+     doc): identifier existence, not prose semantics — a citation by exact TITLE is the same
+     checkable shape (the quoted heading either greps in the tree or it doesn't). (3) POSITIONAL
+     roadmap citations ("ROADMAP item <N>") are a sub-class the existence lint cannot catch BY
+     CONSTRUCTION: a number is not an identifier — pruning/renumbering silently retargets it to a
+     different item (or orphans it outright when the list drops numbering), so the citation never
+     dangles and there is nothing to resolve. The only mechanical handle is banning the FORM: a
+     drift-gate grep over the tree (hand docs AND code/script comments — AGENTS.md § Markdown
+     formatting states the convention; this grep is what makes it hold) for `item <N>` spellings,
+     BARE as well as ROADMAP-adjacent (scripts habitually cite their own ROADMAP without naming
+     it), hard-failing any hit and steering the citation to a pin identifier or the delivered
+     system's doc section — the forms parts (1)-(2) can verify. In-doc illustrations of the banned
+     form must be spelled unmatchably (as here: `<N>` placeholders). The ban lands green: the live
+     positional citations into `cddl-matrix/ROADMAP.md`'s since-pruned numbering (over a dozen
+     across scripts, annotations, and code comments — every one a dead referent, since that list
+     no longer numbers its items at all) were converted to identifier citations when this part was
+     specified, and the class's doc-side recurrence (one rotted cross-doc citation caught per
+     session across two consecutive sessions, each by in-session review rather than any gate) is
+     exactly what the grep retires.
    - **Markdown-structure lint over the hand docs (low).** A ROADMAP findings-bullet prune ate the
      blank line separating the deleted bullet from the next `##` heading — valid-but-mangled
      markdown caught only by in-session review, a class orthogonal to the citation lint above

@@ -37,7 +37,7 @@ const CHECK = process.argv.includes("--check");
 // defs and is self-contained (can compile standalone). `anonForm` is the shape's inline anonymous
 // same-shape spelling (the `mark_refs` structural-wrapper class); present iff the anon holder
 // `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once during
-// construction (throwaway generate + `cargo check` rust+wasm). All 6 candidates from item 9's list
+// construction (throwaway generate + `cargo check` rust+wasm). All 6 anon-cell candidates
 // probed green (coll/collmap/tag/nullable/bwrap/cborwrap), so all 6 admit an anon cell; a red there
 // would be a single-file limitation, not a placement finding, and the shape would carry no `anonForm`.
 //

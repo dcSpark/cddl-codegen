@@ -395,7 +395,7 @@ function selfCheck() {
   if (featuresIn("x = 'ab\n;@newtype cd'").dsl.has("dsl.newtype")) throw new Error("selfCheck: `;@newtype` inside a multi-line bytes literal fabricated a comment directive");
 }
 
-// Role-aware self-check (item 6): the headline case — in `text / null`, `null` is covered as a
+// Role-aware self-check: the headline case — in `text / null`, `null` is covered as a
 // CHOICE-MEMBER, and must NOT be credited at top-level (the exact lie the text-scan floor told).
 function roleSelfCheck() {
   const r = rolesInStr("maybe_text = text / null\nholder = [val: maybe_text]");
@@ -410,7 +410,7 @@ function roleSelfCheck() {
   for (const c of must)
     if (!r.has(c)) throw new Error(`roleSelfCheck: expected ${c} — got {${[...r].sort().join(", ")}}`);
   if (r.has("prelude.null@role.top-level"))
-    throw new Error("roleSelfCheck: null wrongly credited at top-level (the text-scan lie item 6 fixes)");
+    throw new Error("roleSelfCheck: null wrongly credited at top-level (the text-scan lie the role-aware floor fixes)");
 }
 
 // Pure-regex regression suite, ~ms: run on EVERY import (not just the CLI), so the CI drift job —
@@ -463,9 +463,9 @@ if (import.meta.main) {
   console.log(`\nCDDL_CODEGEN profile ids seen across corpus: ${[...new Set(perFixture.flatMap(p => [...p.dsl]))].sort().join(" ")}`);
 
   // ==========================================================================================
-  // ROLE-AWARE floor (item 6) — the AST walk's (feature, role) cells, vs the text-scan floor above.
+  // ROLE-AWARE floor — the AST walk's (feature, role) cells, vs the text-scan floor above.
   // ==========================================================================================
-  console.log(`\n=== role-aware floor (item 6 — examples/ast_roles.rs, real cddl-crate parse) ===`);
+  console.log(`\n=== role-aware floor (examples/ast_roles.rs, real cddl-crate parse) ===`);
   const roleFloor = rolesIn(files);
   const allCells = new Set<string>();
   for (const cells of roleFloor.values()) for (const c of cells) allCells.add(c);

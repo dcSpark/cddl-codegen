@@ -311,15 +311,15 @@ id = "dsl.custom_deserialize"
 fixture = "dsl_custom.cddl"
 
 # ============================================================================================
-# PER-CELL (role × feature) COVERAGE — ROADMAP item 6. A [[cover]] with a `role` is a per-CELL claim:
+# PER-CELL (role × feature) COVERAGE. A [[cover]] with a `role` is a per-CELL claim:
 # "feature F is exercised in container-role R by fixture X." It is verified two ways by project_corpus.ts:
 #   (1) the AST role floor (examples/ast_roles.rs, a real cddl-crate parse) must show `F@role` in the
 #       fixture — a regex can't track the enclosing role, so this is what the AST walk buys us; and
 #   (2) the matrix's per-cell support verdict for that cell (contain.<role-tail>.F) must be `supported`
 #       — so a role cover can't claim ✅ on a cell the generator doesn't actually handle.
 # These are the constructs whose support DIFFERS BY ROLE: ➖ as a standalone top-level type (the per-feature
-# verdict + ➖ note below), yet ✅ in a member/choice context. Before item 6 this was only PROSE in the note;
-# now it's a mechanically-checked role-keyed cover. A role cover legitimately coexists with the ➖ top-level
+# verdict + ➖ note below), yet ✅ in a member/choice context — the role-keyed cover makes that a
+# mechanically-checked claim rather than prose in the note. A role cover legitimately coexists with the ➖ top-level
 # note (different context) — that is the whole "supported HERE, not THERE" point of the matrix.
 
 [[cover]]
