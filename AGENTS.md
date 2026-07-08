@@ -122,7 +122,13 @@ codex/Opus):
   resumed by an explicit message from its spawner, so "armed watchers"/"completion callbacks" never
   fire and the session stalls until a human (or the coordinator) manually nudges it. Poll the
   sub-agent's transcript/output with bounded foreground waits (extended tool timeouts) and end the
-  turn only when reporting completed, reviewed results. Same rationale as the foreground rule for
+  turn only when reporting completed, reviewed results. Two polling gotchas (each misread once
+  before being learned): the harness's task `.output` paths are SYMLINKS to the real transcript
+  (`stat -L`, or a bare `stat` measures the 150-byte link and reads as a dead agent); and an idle
+  transcript does NOT mean stalled/done — nothing is written for the whole duration of a long
+  foreground tool call (a `check.ts local` run is silent for ~4 min), so before invoking recovery,
+  check the last entry's type (a trailing `tool_use` = mid-call) and for live build processes.
+  Same rationale as the foreground rule for
   multi-minute gates above.
 - The codex background runner can die silently mid-task (log stalls, pid dead, status stuck
   `running`) — detection signal + recovery procedure: `draft/codex-background-runner-silent-death.md`.
