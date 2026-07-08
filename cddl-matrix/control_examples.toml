@@ -1,4 +1,4 @@
-# Minimal CDDL examples for per-control-op SUPPORT probing (ROADMAP item 7), keyed by control-op id.
+# Minimal CDDL examples for per-control-op SUPPORT probing, keyed by control-op id.
 #
 # The IANA registry (sources/cddl-control-operators.csv) is byte-pinned and carries no examples, so they
 # live here. verify.ts probes each through cddl-codegen (compile-gated) -> a [[support]] row keyed by

@@ -27,7 +27,7 @@
  * ponytail: COVERAGE.md IS this generated artifact — the hand doc was subsumed once two independent
  * reviews judged the projection a clear win (compile-gated support, per-control-op support, the c-style
  * enum feature, full ➖ rationale + findings). Regenerate after changing the matrix or overlay.
- * PER-CELL (role × feature) coverage (item 6) is wired: a [[cover]] with a `role` is verified against a
+ * PER-CELL (role × feature) coverage is wired: a [[cover]] with a `role` is verified against a
  * real cddl-crate AST walk (examples/ast_roles.rs) + the matrix's per-cell support verdict, so a construct
  * ➖ as a standalone type still shows its supported member/choice role. The support seam (C) is reported
  * non-fatal — reconciling isolated-probe vs in-context support is its own step.
@@ -48,7 +48,7 @@ interface Finding { text: string }
 const ov = overlay as { cover: Cover[]; note?: Note[]; finding?: Finding[] };
 const cover = ov.cover;
 const featureCovers = cover.filter(c => !c.role);   // feature-axis (role-agnostic)
-const cellCovers = cover.filter(c => c.role);       // per-cell (role × feature) — item 6
+const cellCovers = cover.filter(c => c.role);       // per-cell (role × feature) — the role-keyed cover axis
 const notes = ov.note ?? [];
 const findings = ov.finding ?? [];
 
@@ -271,7 +271,7 @@ function featureVerdict(id: string, track: boolean): { mark: string; ev: string 
   return { mark: MARK.unsupported, ev: `${shortProbe(id)}${track ? " — ⚠️ no rationale note yet (overlay gap)" : ""}` };
 }
 
-// markFeature = the per-feature verdict PLUS any per-cell (role × feature) coverage (item 6). A construct
+// markFeature = the per-feature verdict PLUS any per-cell (role × feature) coverage. A construct
 // can be ➖ as a standalone type yet ✅ in a member/choice role — appended as "also ✅ @role" so the
 // context axis is visible without overloading the single per-feature mark.
 function markFeature(id: string, track = true): { mark: string; ev: string } {

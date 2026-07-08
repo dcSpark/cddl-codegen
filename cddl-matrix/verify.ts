@@ -1199,7 +1199,7 @@ for (const c of containCells) {
   });
 }
 
-// CONTROL-OP support (item 7). Probe each IANA op's minimal `example` through cddl-codegen (compile-gated)
+// CONTROL-OP support. Probe each IANA op's minimal `example` through cddl-codegen (compile-gated)
 // -> a [[support]] row keyed by ctl.<name>, the same pattern as features. The op set is IANA-registry-
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
@@ -1374,7 +1374,7 @@ for (const c of containment_corroboration.filter(c => c.support !== null)) {
   pushEmissionLines(c.emission);
   annoLines.push("");
 }
-// PER-CONTROL-OP support (item 7), keyed by ctl.<name>. cddl-codegen is the support authority; ruby/rust
+// PER-CONTROL-OP support, keyed by ctl.<name>. cddl-codegen is the support authority; ruby/rust
 // corroborate (informational) — control ops are IANA-authoritative, so a ruby/rust reject is not invalidity.
 annoLines.push("# --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---");
 annoLines.push("");

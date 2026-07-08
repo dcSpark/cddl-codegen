@@ -1,4 +1,5 @@
-//! AST role-walk helper for `cddl-matrix` (ROADMAP item 6 — role-aware corpus coverage).
+//! AST role-walk helper for `cddl-matrix` — the role floor behind `project_corpus.ts`'s role-keyed
+//! `[[cover]]` verification (per-cell role × feature corpus coverage).
 //!
 //! Parses each CDDL file with the SAME `cddl` crate cddl-codegen builds against (=0.9.1) and emits,
 //! per file, the `(role, construct)` pairs it exercises — where `role` is the enclosing container
