@@ -5321,12 +5321,16 @@ struct ReplayVector {
 }
 
 /// One catalog `[[row]]` with vectors, distilled to what the replay needs: `spec` (what codegen
-/// consumed), the rust `type_name` the vectors decode through, and each vector's replay shape.
-/// Pinned/vectorless rows are skipped by construction (nothing to replay), so they never reach here.
+/// consumed), the rust `type_name` the vectors decode through, the `mode` (`standalone` => the item
+/// under test starts at byte 0; `holder` => it is wrapped in the `[0, <rule>]` = `82 00 …` preamble,
+/// so the item starts at byte 2 — the header-mutation leg needs this offset), and each vector's
+/// replay shape. Pinned/vectorless rows are skipped by construction (nothing to replay), so they
+/// never reach here.
 struct ReplayRow {
     id: String,
     spec: String,
     type_name: String,
+    mode: String,
     vectors: Vec<ReplayVector>,
 }
 
@@ -5357,6 +5361,247 @@ fn bytes_to_byte_literals(bytes: &[u8]) -> String {
         .map(|b| format!("0x{b:02x}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Merge a CBOR major type into its evidence CLASS: majors 0 and 1 (uint/nint — both "integer" to a
+/// CDDL `int`-shaped rule) collapse to class 0, everything else is itself. The same 0/1 merge
+/// `project_decode_conformance.ts` § 6 uses for its leading-major shape check; here it feeds the
+/// header-mutation leg's evidenced-major skip (`header_mutants`).
+fn header_major_class(major: u8) -> u8 {
+    if major == 1 { 0 } else { major }
+}
+
+/// The `wrong_major` major-type remap for a header-mutation reject vector: flip the leading head's
+/// top 3 bits to a DIFFERENT major that yields either a well-formed item of the wrong type (the
+/// decoder's annotated type-check must fire) or ill-formed CBOR (must also reject). Deterministic
+/// mapping (documented in `header_mutants`): containers swap array↔map, strings swap bstr↔tstr, ints
+/// become arrays, tags become arrays, simple/float heads become ints. Never identity (so `wrong_major`
+/// is never a no-op / vacuous mutant).
+fn header_mutant_flip_major(major: u8) -> u8 {
+    match major {
+        0 => 4, // uint      -> array   (announces N elems, none follow => ill-formed)
+        1 => 4, // nint      -> array
+        2 => 3, // bstr      -> tstr    (well-formed string of the wrong type)
+        3 => 2, // tstr      -> bstr
+        4 => 5, // array     -> map     (odd element count => ill-formed, or wrong type)
+        5 => 4, // map       -> array
+        6 => 4, // tag       -> array
+        7 => 0, // simple/fl -> uint
+        _ => unreachable!("CBOR major type is 3 bits (0..=7)"),
+    }
+}
+
+/// Read the CBOR head at `b[0]`: returns `(major, info, argument_value)`, or `None` when the head is
+/// indefinite (info 31) or uses a reserved additional-info (28..=30) — for which `trunc_head` has no
+/// well-defined argument to widen. Mint guarantees definite minimal input (info 0..=27), so `None` is
+/// only ever reached defensively.
+fn header_read_head_arg(b: &[u8]) -> Option<(u8, u8, u64)> {
+    let head = b[0];
+    let major = head >> 5;
+    let info = head & 0x1f;
+    if info < 24 {
+        Some((major, info, info as u64))
+    } else if info <= 27 {
+        let n = 1usize << (info - 24); // 24->1, 25->2, 26->4, 27->8 argument bytes
+        let mut v = 0u64;
+        for i in 0..n {
+            v = (v << 8) | b[1 + i] as u64;
+        }
+        Some((major, info, v))
+    } else {
+        None // 28..=30 reserved, 31 indefinite
+    }
+}
+
+/// Header-mutation reject mutants of `bytes` (a spec-VALID accept vector), derived by pure byte
+/// transforms of the leading CBOR head of the ITEM UNDER TEST — none are spec-valid for the row.
+/// `offset` is 0 for `standalone` rows and 2 for `holder` rows (whose vector is `[0, <rule instance>]`
+/// = `82 00 <item>`, mechanically enforced by `project_decode_conformance.ts` § 6); the preamble is
+/// asserted defensively before slicing, and the inner item is mutated then re-prepended.
+///
+/// Two labels:
+/// - `wrong_major`: rewrite the head's major (top 3 bits) via `header_mutant_flip_major`, keeping the
+///   info bits, argument bytes, and the rest of the buffer. Emitted ONLY when the flipped major's
+///   evidence class (`header_major_class` — majors 0/1 merged) is NOT in `evidenced_majors`, the set
+///   of leading-major classes the row's own ACCEPT vectors demonstrate the spec accepts. A flip
+///   landing on an evidenced major is AMBIGUOUS — the row's accept vectors prove the spec accepts
+///   that major, so the mutant has no trustworthy expected outcome (it may be a spec-valid instance,
+///   e.g. a `uint / tstr / bytes` type choice's bstr↔tstr flip landing on the other string arm) — and
+///   skipping emission is strictly better than (row, label)-wide DecodedOk suppression, which would
+///   also swallow a future genuine over-acceptance on the row's NON-ambiguous vectors (the same row's
+///   uint-headed vectors' 0→4 array flip is never spec-valid and must stay live).
+/// - `trunc_head`: re-encode the head with an 8-byte argument (info 27, big-endian = the head's
+///   argument value — numeric value for majors 0/1, length for 2..=5, tag number for 6), DROP
+///   everything after the head, then drop the final argument byte. The result announces 8 argument
+///   bytes but provides 7 and then EOF — unambiguously ill-formed for EVERY decoder (well-formedness,
+///   not semantics), so no legitimate accept is possible regardless of major — `evidenced_majors`
+///   does NOT apply. Skipped for major-7 heads (their info bits are not a wideable argument) and for
+///   indefinite/reserved heads (mint guarantees definite minimal, but be defensive).
+fn header_mutants(
+    bytes: &[u8],
+    offset: usize,
+    evidenced_majors: &std::collections::BTreeSet<u8>,
+) -> Vec<(&'static str, Vec<u8>)> {
+    if offset == 2 {
+        assert_eq!(
+            &bytes[..2],
+            &[0x82u8, 0x00u8],
+            "holder-mode vector must begin with the `82 00` = [0, _] preamble \
+             (project_decode_conformance.ts § 6) — got {bytes:02x?}"
+        );
+    }
+    let prefix = &bytes[..offset];
+    let inner = &bytes[offset..];
+    let head = inner[0];
+    let major = head >> 5;
+    let info = head & 0x1f;
+    let mut out: Vec<(&'static str, Vec<u8>)> = Vec::new();
+
+    // wrong_major: rewrite the top 3 bits, keep the info bits, argument bytes, and the rest verbatim
+    // — but only when the flipped major is NOT evidenced-accepted by the row (see the doc comment:
+    // an evidenced flip is ambiguous, so it is skipped at derivation rather than ledger-suppressed).
+    let flipped = header_mutant_flip_major(major);
+    if !evidenced_majors.contains(&header_major_class(flipped)) {
+        let new_head = (flipped << 5) | info;
+        let mut m = Vec::with_capacity(bytes.len());
+        m.extend_from_slice(prefix);
+        m.push(new_head);
+        m.extend_from_slice(&inner[1..]);
+        out.push(("wrong_major", m));
+    }
+
+    // trunc_head: 8-byte-argument head carrying the same argument value, payload dropped, final
+    // argument byte dropped => 8 announced, 7 present, EOF (ill-formed). Skip major-7 and
+    // indefinite/reserved heads.
+    if major != 7
+        && let Some((_, _, arg)) = header_read_head_arg(inner)
+    {
+        let mut m = Vec::with_capacity(offset + 8);
+        m.extend_from_slice(prefix);
+        m.push((major << 5) | 27);
+        m.extend_from_slice(&arg.to_be_bytes());
+        m.pop(); // drop the final argument byte
+        out.push(("trunc_head", m));
+    }
+
+    out
+}
+
+/// Self-check for the header-mutation transforms, pinned against hand-derived RFC 8949 bytes (mirrors
+/// `encoding_variants_copy_float_heads_verbatim`'s ethos: pin the mutator, not just the leg). Covers a
+/// uint, a wide (2-byte) uint (to pin `header_read_head_arg`'s multi-byte read), a string, a tag head,
+/// a holder-shaped input, the major-7 `trunc_head` skip, and the evidenced-major `wrong_major` skip
+/// (both directions: an evidenced FLIP target suppresses `wrong_major`; evidence of the input's OWN
+/// major does not).
+#[test]
+fn header_mutants_pin_hand_derived_bytes() {
+    // Most cases use EMPTY evidence: no accept vector demonstrates any major, so wrong_major always
+    // emits (the conservative default the evidence skip degrades to).
+    let none = std::collections::BTreeSet::new();
+    // uint 1 (0x01): wrong_major 0->4 => array(1) head 0x81 (ill-formed: no element follows);
+    // trunc_head => 0x1b + 7 arg bytes (announces 8, provides 7).
+    assert_eq!(
+        header_mutants(&[0x01], 0, &none),
+        vec![
+            ("wrong_major", vec![0x81]),
+            (
+                "trunc_head",
+                vec![0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // uint 256 (0x19 0x01 0x00, info 25 = 2-byte arg): wrong_major keeps the info+arg (0x99 0x01 0x00,
+    // array(256)); trunc_head widens the read arg 256 to 8 bytes then drops the last => the `01`
+    // survives in byte 7, proving header_read_head_arg read the multi-byte argument.
+    assert_eq!(
+        header_mutants(&[0x19, 0x01, 0x00], 0, &none),
+        vec![
+            ("wrong_major", vec![0x99, 0x01, 0x00]),
+            (
+                "trunc_head",
+                vec![0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]
+            ),
+        ]
+    );
+    // tstr "ab" (0x62 0x61 0x62): wrong_major 3->2 => bstr(2) "ab" (0x42 …, well-formed wrong type);
+    // trunc_head widens the length 2.
+    assert_eq!(
+        header_mutants(&[0x62, 0x61, 0x62], 0, &none),
+        vec![
+            ("wrong_major", vec![0x42, 0x61, 0x62]),
+            (
+                "trunc_head",
+                vec![0x7b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // tag(1) over uint 0 (0xc1 0x00): wrong_major 6->4 => array(1)[0] (0x81 0x00, well-formed wrong
+    // type); trunc_head widens the tag number 1 (0xdb + 7 arg bytes, payload dropped).
+    assert_eq!(
+        header_mutants(&[0xc1, 0x00], 0, &none),
+        vec![
+            ("wrong_major", vec![0x81, 0x00]),
+            (
+                "trunc_head",
+                vec![0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // holder-shaped [0, 1] (0x82 0x00 0x01), offset 2: the `82 00` preamble rides through unmutated,
+    // the inner uint 1 is mutated exactly as the standalone uint above.
+    assert_eq!(
+        header_mutants(&[0x82, 0x00, 0x01], 2, &none),
+        vec![
+            ("wrong_major", vec![0x82, 0x00, 0x81]),
+            (
+                "trunc_head",
+                vec![0x82, 0x00, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // major-7 true (0xf5): wrong_major 7->0 => uint 21 (0x15); trunc_head SKIPPED (info bits are not a
+    // wideable argument), so only ONE mutant is emitted.
+    assert_eq!(
+        header_mutants(&[0xf5], 0, &none),
+        vec![("wrong_major", vec![0x15])]
+    );
+    // Evidenced-major skip: tstr "ab" with major class 2 (bstr) evidenced — the 3->2 flip lands on an
+    // accepted major (the `uint / tstr / bytes` type-choice shape), so wrong_major is SKIPPED and only
+    // trunc_head (ill-formed regardless of major) is emitted.
+    let bstr_evidenced: std::collections::BTreeSet<u8> = [2u8].into_iter().collect();
+    assert_eq!(
+        header_mutants(&[0x62, 0x61, 0x62], 0, &bstr_evidenced),
+        vec![(
+            "trunc_head",
+            vec![0x7b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        )]
+    );
+    // Evidence of the input's OWN major does not suppress: uint 1 with class 0 evidenced (the row's
+    // own uint accept vectors) still emits wrong_major — the 0->4 flip target (array) is unevidenced.
+    // This is exactly the case (row, label)-wide ledger suppression would have swallowed.
+    let uint_evidenced: std::collections::BTreeSet<u8> = [0u8].into_iter().collect();
+    assert_eq!(
+        header_mutants(&[0x01], 0, &uint_evidenced),
+        vec![
+            ("wrong_major", vec![0x81]),
+            (
+                "trunc_head",
+                vec![0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // The 0/1 merge: nint -24 (0x37) with class 0 evidenced via a UINT accept vector still applies
+    // (nint evidences class 0 too); its 1->4 flip target is unevidenced, so wrong_major emits.
+    assert_eq!(
+        header_mutants(&[0x37], 0, &uint_evidenced),
+        vec![
+            ("wrong_major", vec![0x97]),
+            (
+                "trunc_head",
+                vec![0x3b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
 }
 
 /// Generate a crate from `spec` into `out` (default flags unless `extra` adds e.g.
@@ -5401,6 +5646,8 @@ const MARKER_CONSTRAINT_WRONG_REASON: &str = "CONSTRAINT_WRONG_REASON";
 const MARKER_VARIANT_REJECTED: &str = "VARIANT_REJECTED";
 const MARKER_VARIANT_VALUE_MISMATCH: &str = "VARIANT_VALUE_MISMATCH";
 const MARKER_VAR_ORIG_DECODE_FAILED: &str = "VAR_ORIG_DECODE_FAILED";
+const MARKER_HDR_MUTANT_DECODED_OK: &str = "HDR_MUTANT_DECODED_OK";
+const MARKER_HDR_MUTANT_NO_LOCATION: &str = "HDR_MUTANT_NO_LOCATION";
 
 /// How a FAILED `class="constraint"` reject vector's replay test attributed its cause.
 #[derive(Debug, PartialEq)]
@@ -5543,6 +5790,76 @@ fn classify_variant_failure_owns_the_delimiter_and_maps_each_marker() {
     );
 }
 
+/// How a FAILED header-mutant replay test (`accept_{i}_hdr_{label}`) attributed its cause.
+#[derive(Debug, PartialEq)]
+enum HeaderMutantFailureKind {
+    /// The header-mutated (not spec-valid) vector DECODED Ok — over-acceptance, OR a row whose spec
+    /// genuinely accepts the mutated bytes (`any`, a multi-major type choice the flipped major lands
+    /// on): the legitimate ones are ledgered in `HEADER_MUTANT_ACCEPT_SKIP`.
+    DecodedOk,
+    /// The vector was rejected, but the error Display carried NO location naming the decoding type
+    /// (`failed in {type_name}`) — a generator annotation gap or the locationless `TrailingData` path;
+    /// legitimate ones are ledgered in `HEADER_MUTANT_LOCATION_SKIP`.
+    NoLocation,
+    /// Neither marker was found in the captured output — unexpected.
+    Unattributed,
+}
+
+/// Classify a failed header-mutant replay test from the captured cargo output. Same prefix-collision
+/// grammar as `classify_constraint_failure` / `classify_variant_failure`: the needle is
+/// `"{marker} {test_name}:"` and the trailing ':' is what stops a prefix test name
+/// (`accept_1_hdr_wrong_major` is a prefix of nothing, but `accept_1_…` is a prefix of `accept_10_…`)
+/// from stealing the attribution. This function owns that delimiter so no attribution site can forget
+/// it.
+fn classify_header_mutant_failure(output: &str, test_name: &str) -> HeaderMutantFailureKind {
+    if output.contains(&format!("{MARKER_HDR_MUTANT_DECODED_OK} {test_name}:")) {
+        HeaderMutantFailureKind::DecodedOk
+    } else if output.contains(&format!("{MARKER_HDR_MUTANT_NO_LOCATION} {test_name}:")) {
+        HeaderMutantFailureKind::NoLocation
+    } else {
+        HeaderMutantFailureKind::Unattributed
+    }
+}
+
+/// Prefix-collision pin for `classify_header_mutant_failure`, mirroring
+/// `classify_constraint_failure_disambiguates_prefix_colliding_names`: libtest names end in decimal
+/// indices, so `accept_1_hdr_wrong_major` is a PREFIX of `accept_10_hdr_wrong_major`. Synthesize
+/// output where the two fail in OPPOSITE ways and assert each classifies to ITS OWN kind (both
+/// orderings), each marker maps to its kind, and an absent name attributes to nothing.
+#[test]
+fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
+    let output = "\
+        thread 'x' panicked: HDR_MUTANT_NO_LOCATION accept_1_hdr_wrong_major: rejected but no location\n\
+        thread 'y' panicked: HDR_MUTANT_DECODED_OK accept_10_hdr_wrong_major: header-mutated vector decoded Ok\n";
+    assert_eq!(
+        classify_header_mutant_failure(output, "accept_1_hdr_wrong_major"),
+        HeaderMutantFailureKind::NoLocation
+    );
+    assert_eq!(
+        classify_header_mutant_failure(output, "accept_10_hdr_wrong_major"),
+        HeaderMutantFailureKind::DecodedOk
+    );
+
+    // Mirror the pairing so neither ordering is privileged.
+    let mirrored = "\
+        thread 'x' panicked: HDR_MUTANT_DECODED_OK accept_1_hdr_wrong_major: header-mutated vector decoded Ok\n\
+        thread 'y' panicked: HDR_MUTANT_NO_LOCATION accept_10_hdr_wrong_major: rejected but no location\n";
+    assert_eq!(
+        classify_header_mutant_failure(mirrored, "accept_1_hdr_wrong_major"),
+        HeaderMutantFailureKind::DecodedOk
+    );
+    assert_eq!(
+        classify_header_mutant_failure(mirrored, "accept_10_hdr_wrong_major"),
+        HeaderMutantFailureKind::NoLocation
+    );
+
+    // A name absent from the output attributes to nothing.
+    assert_eq!(
+        classify_header_mutant_failure(output, "accept_2_hdr_trunc_head"),
+        HeaderMutantFailureKind::Unattributed
+    );
+}
+
 /// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
 /// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
 /// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
@@ -5567,8 +5884,18 @@ fn classify_variant_failure_owns_the_delimiter_and_maps_each_marker() {
 /// `Err` panics with `VARIANT_REJECTED` (an over-strict decoder rejecting a spec-equal re-encoding — the
 /// motivating class), and an `Ok` asserts `to_cbor_bytes()` equals the original's re-encoding with
 /// `VARIANT_VALUE_MISMATCH` (a same-value proxy: default-profile re-encoding is a deterministic function
-/// of the decoded value, and generated types don't uniformly derive PartialEq). The completeness check
-/// counts these against `vectors.len() + variant_specs.len()`.
+/// of the decoded value, and generated types don't uniformly derive PartialEq).
+///
+/// `header_specs` (DEFAULT leg only; `&[]` under preserve) carries precomputed HEADER-MUTATION reject
+/// mutants of the accept vectors as `(accept_vector_index, label, bytes)` — `wrong_major` / `trunc_head`
+/// byte transforms that are NOT spec-valid for the row (`header_mutants`). Each becomes an
+/// `accept_{i}_hdr_{label}` `#[test]` asserting the decoder returns `Err` AND the error Display carries
+/// a location naming the decoding type (`failed in {type_name}` — NOT a bare `type_name` contains, which
+/// single-letter type names like `T` would vacuously match against words like "TagMismatch"). An `Ok`
+/// panics with `HDR_MUTANT_DECODED_OK` (over-acceptance or a legitimately-accepting row) and a
+/// location-less rejection with `HDR_MUTANT_NO_LOCATION` (a generator annotation gap or the
+/// `from_cbor_bytes` `TrailingData` path, which is locationless by construction). The completeness
+/// check counts all three legs against `vectors.len() + variant_specs.len() + header_specs.len()`.
 fn decode_replay_run(
     out: &std::path::Path,
     type_name: &str,
@@ -5576,6 +5903,7 @@ fn decode_replay_run(
     preserve: bool,
     target_dir: &std::path::Path,
     variant_specs: &[(usize, String, Vec<u8>)],
+    header_specs: &[(usize, String, Vec<u8>)],
 ) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
     let mut fns = String::new();
     for (i, vector) in vectors.iter().enumerate() {
@@ -5657,6 +5985,39 @@ fn decode_replay_run(
             "\n    #[test]\n    fn {name}() {{\n        const ORIG: &[u8] = &[{orig}];\n        const VAR: &[u8] = &[{var}];\n        {body}\n    }}\n"
         ));
     }
+    // DEFAULT-leg header-mutation reject tests: each precomputed mutant must be REJECTED, and the
+    // error Display must carry a location naming the decoding type (`failed in {type_name}` — the
+    // annotation analogue of the constraint leg's `expect_err` reason pin). Two grep-stable markers
+    // separate an over-acceptance (`Ok`) from a location-less rejection.
+    let loc_needle = format!("failed in {type_name}");
+    let loc_lit = rust_str_literal(&loc_needle);
+    for (i, label, mut_bytes) in header_specs {
+        let name = format!("accept_{i}_hdr_{label}");
+        let mutb = bytes_to_byte_literals(mut_bytes);
+        let body = format!(
+            "match {type_name}::from_cbor_bytes(MUT) {{\n\
+             \x20           Ok(_) => panic!(\"{MARKER_HDR_MUTANT_DECODED_OK} {name}: a header-mutated (not spec-valid) vector decoded Ok — over-acceptance or a legitimately-accepting row (triage: HEADER_MUTANT_ACCEPT_SKIP)\"),\n\
+             \x20           Err(e) => {{\n\
+             \x20               let disp = e.to_string();\n\
+             \x20               assert!(disp.contains({loc_lit}), \"{MARKER_HDR_MUTANT_NO_LOCATION} {name}: rejected but the error carries no location naming the type — got: {{}}\", disp);\n\
+             \x20           }}\n\
+             \x20       }}"
+        );
+        // Vacuity guard at the emission site (mirrors the constraint arm's CONSTRAINT_WRONG_REASON
+        // body assert, per the "vacuity floors must witness the guarded artifact" rule): the built
+        // body must carry BOTH markers, so a drifted match/assert can't silently emit a body that
+        // never exercises the decode-Err + location contract while the header-test COUNT floor stays
+        // green.
+        assert!(
+            body.contains(MARKER_HDR_MUTANT_DECODED_OK)
+                && body.contains(MARKER_HDR_MUTANT_NO_LOCATION),
+            "decode_replay_run built a header-mutant body missing a marker ({name}) — the \
+             emission arm regressed"
+        );
+        fns.push_str(&format!(
+            "\n    #[test]\n    fn {name}() {{\n        const MUT: &[u8] = &[{mutb}];\n        {body}\n    }}\n"
+        ));
+    }
     let module = format!(
         "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {{\n    use super::*;\n    use super::serialization::*;\n{fns}}}\n"
     );
@@ -5700,7 +6061,7 @@ fn decode_replay_run(
             }
         }
     }
-    if results.len() != vectors.len() + variant_specs.len() {
+    if results.len() != vectors.len() + variant_specs.len() + header_specs.len() {
         // No/partial result lines => the crate did not compile (or libtest output drifted).
         return (None, combined);
     }
@@ -5728,9 +6089,28 @@ fn decode_replay_run(
 /// (stale-guarded) ledgers any (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md`
 /// finding; it is EMPTY at HEAD (every variant decodes cleanly).
 ///
+/// The default leg ALSO derives HEADER-MUTATION reject mutants of each accept vector (`header_mutants`
+/// — pure byte transforms, no oracle): `wrong_major` (flip the leading head's major type) and
+/// `trunc_head` (re-encode the head with an 8-byte argument, drop the payload, then drop the final
+/// argument byte → ill-formed by construction). A `wrong_major` flip landing on a major the row's OWN
+/// accept vectors evidence (majors 0/1 merged) is skipped at DERIVATION time — such a mutant is
+/// ambiguous (possibly spec-valid, e.g. type.choice's bstr↔tstr flip landing on the other
+/// `uint / tstr / bytes` arm), and derivation-time skipping keeps the row's non-ambiguous mutants live
+/// where a (row, label)-wide ledger entry would swallow them. Each emitted mutant must be REJECTED,
+/// and the error Display must carry a location naming the decoding type
+/// (`disp.contains("failed in {type_name}")` — the annotation analogue of the constraint leg's
+/// `expect_err` reason pin; NOT a bare `type_name` contains, which single-letter type names like `T`
+/// would vacuously match against words like "TagMismatch"). Two stale-guarded ledgers cover the honest
+/// exceptions: `HEADER_MUTANT_ACCEPT_SKIP` (a mutant the row's spec genuinely accepts WITHOUT any
+/// accept vector evidencing that major — an `any`-typed row, an unsampled choice arm; EMPTY at HEAD;
+/// `trunc_head` can never be here, asserted) and `HEADER_MUTANT_LOCATION_SKIP` (a rejection carrying
+/// no location — the newtype-wrapper container-read annotation gap for `ctl.*` / `rangeop.*` /
+/// `dsl.*newtype` rows, or the locationless `from_cbor_bytes` `TrailingData` path). A header-mutant
+/// vacuity floor keeps the leg live.
+///
 /// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~180s warm (104 active rows × up to two full
 /// generate+`cargo test` crate builds, the default build now also compiling ~4500 encoding-variant
-/// tests), well past the ~90s plain-`#[test]` threshold, so it is
+/// tests plus ~2040 header-mutation tests), well past the ~90s plain-`#[test]` threshold, so it is
 /// a `full`-tier check.ts gate rather than riding the always-on `test` gate. Its own scratch dir +
 /// `cddl_codegen_decode_conformance` target so it never collides with the corpus/wasm gates when
 /// `cargo test` runs tests in parallel; `acquire_scratch_lock` serializes same-checkout runs.
@@ -5825,6 +6205,181 @@ fn decode_conformance_replay() {
     // closed gap can't rot into a silent skip.
     const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
 
+    // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test legitimately
+    // DECODES the mutated bytes Ok because the row's spec genuinely accepts them WITHOUT that
+    // acceptance being evidenced by any committed accept vector — an `any`-typed row, or a choice arm
+    // whose major the mint never happened to sample. (A flip landing on an EVIDENCED major — one the
+    // row's own accept vectors demonstrate, like type.choice's bstr↔tstr flip — is already skipped at
+    // DERIVATION time by `header_mutants`' evidenced-major skip, precisely so this ledger never
+    // suppresses (row, label)-wide: a wide entry would also swallow a future genuine over-acceptance
+    // on the row's non-ambiguous vectors.) EMPTY at HEAD. Stale-guarded: a listed entry whose mutant
+    // no longer decodes Ok fails the gate. `trunc_head` mutants are ill-formed by construction and can
+    // NEVER decode Ok — a `trunc_head` entry here is a hard error (asserted below), not a legitimate
+    // skip.
+    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[];
+    // Shared reason for the newtype-wrapper container-read annotation gap (a single documented gap, so
+    // one const referenced by every entry below): the wrapper's inner scalar read
+    // (`raw.{uint,text,bytes}()` etc.) is not wrapped in an annotate closure, so a wrong-major
+    // ("Invalid cbor: not the right type") or truncated-head ("Invalid cbor: not enough bytes")
+    // rejection carries no `failed in <T>` location. This is the ledgered generator annotation gap
+    // "Annotate embedded/plain-group `deserialize()` header scaffolding (and newtype wrappers'
+    // container reads)" in tests/TESTING_ROADMAP.md (pinned indirectly by `error_display_formatting`'s
+    // `WrapperList` no-location case); it closes when that gap does.
+    const NEWTYPE_CONTAINER_READ_NO_LOCATION: &str = "newtype-wrapper container read carries no location — the ledgered generator annotation gap \
+         \"Annotate embedded/plain-group deserialize() header scaffolding (and newtype wrappers' \
+         container reads)\" (tests/TESTING_ROADMAP.md): the wrapper's inner scalar read is not wrapped \
+         in an annotate closure, so the type-mismatch / not-enough-bytes rejection has no \
+         `failed in <type_name>` location";
+    // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
+    // mutated bytes but the error Display carries NO location naming the decoding type. Each reason
+    // names the concrete locationless path. Every entry at HEAD is the newtype-wrapper container-read
+    // annotation gap above (control-op newtypes `ctl.*` / `type1.ctlop`, range newtypes `rangeop.*`,
+    // explicit `@newtype` rows `dsl.newtype` / `dsl.custom_json` — all single-value wrappers, none a
+    // plain record). The `.float` range rows carry only `wrong_major` (their accept vectors are
+    // major-7 float heads, which skip `trunc_head`). Stale-guarded like the others. The
+    // `from_cbor_bytes` `TrailingData` path (locationless by construction) would also belong here if a
+    // mutant decoded the item Ok and only the buffer-length check rejected — none does at HEAD.
+    const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[
+        ("ctl.eq", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.eq", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.ge", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.ge", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.gt", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.gt", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.le", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.le", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.lt", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.lt", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.ne", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        ("ctl.ne", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        (
+            "ctl.ne.one",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "ctl.ne.one",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "ctl.ne.zero",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "ctl.ne.zero",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "ctl.size",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        ("ctl.size", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
+        (
+            "dsl.custom_json",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "dsl.custom_json",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "dsl.newtype",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "dsl.newtype",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive.float",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive.int",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive.int",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive.nint",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.exclusive.nint",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive.float",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive.int",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive.int",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive.nint",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "rangeop.inclusive.nint",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "type1.ctlop",
+            "wrong_major",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+        (
+            "type1.ctlop",
+            "trunc_head",
+            NEWTYPE_CONTAINER_READ_NO_LOCATION,
+        ),
+    ];
+
     let catalog_path = std::path::Path::new("tests/decode_conformance/catalog.toml");
     let catalog_src = std::fs::read_to_string(catalog_path)
         .unwrap_or_else(|e| panic!("cannot read {catalog_path:?}: {e}"));
@@ -5859,6 +6414,13 @@ fn decode_conformance_replay() {
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("active row {id} is missing `type_name`"))
             .to_string();
+        // `mode` drives the header-mutation leg's byte offset (holder rows prefix the item with the
+        // `82 00` = `[0, _]` preamble); every minted active row carries it (catalog head comment).
+        let mode = row
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `mode`"))
+            .to_string();
         let vectors = vectors_toml
             .iter()
             .map(|v| {
@@ -5879,6 +6441,7 @@ fn decode_conformance_replay() {
             id,
             spec,
             type_name,
+            mode,
             vectors,
         });
     }
@@ -5906,6 +6469,26 @@ fn decode_conformance_replay() {
              stale pin, remove or fix it"
         );
     }
+    for (id, label, _) in HEADER_MUTANT_ACCEPT_SKIP {
+        assert!(
+            *label != "trunc_head",
+            "HEADER_MUTANT_ACCEPT_SKIP lists a `trunc_head` mutant for `{id}` — trunc_head is \
+             ill-formed by construction and can NEVER decode Ok, so this entry is impossible; a \
+             trunc_head that decodes Ok is a real over-acceptance finding, not a skip"
+        );
+        assert!(
+            active_row_ids.contains(id),
+            "HEADER_MUTANT_ACCEPT_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (id, _, _) in HEADER_MUTANT_LOCATION_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "HEADER_MUTANT_LOCATION_SKIP names catalog row `{id}` that is not an active replayed row \
+             — stale pin, remove or fix it"
+        );
+    }
 
     let scratch_name = format!("cddl_codegen_decode_conformance_{:016x}", checkout_hash());
     // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
@@ -5928,6 +6511,22 @@ fn decode_conformance_replay() {
     // entry; the stale guard flags any listed entry that is NOT here (the gap closed).
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
+    let header_mutant_accept_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        HEADER_MUTANT_ACCEPT_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    let header_mutant_location_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        HEADER_MUTANT_LOCATION_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    // (row, label) pairs whose header-mutant test failed AND was suppressed by a HEADER_MUTANT_*_SKIP
+    // entry; the stale guards flag any listed entry that is NOT here (the gap closed).
+    let mut header_accept_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    let mut header_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
 
     let mut failures: Vec<String> = Vec::new();
     let mut rows_replayed = 0usize;
@@ -5935,6 +6534,9 @@ fn decode_conformance_replay() {
     // How many DEFAULT-leg encoding-variant tests were emitted (a vacuity floor guards against the
     // variant leg silently emitting nothing — a mutator that returned empty, or a broken loop).
     let mut variant_tests_total = 0usize;
+    // How many DEFAULT-leg header-mutation reject tests were emitted (a vacuity floor guards the
+    // header-mutation leg the same way).
+    let mut header_tests_total = 0usize;
     // How many `class="constraint"` vectors actually had their rejection REASON asserted (Err whose
     // Display contained the pinned `expect_err`). A vacuity floor below guards against this collapsing
     // to near-zero (a broken match body, or the corpus losing its constraint vectors).
@@ -5969,6 +6571,50 @@ fn decode_conformance_replay() {
         }
         variant_tests_total += variant_specs.len();
 
+        // Precompute the header-mutation reject mutants of every accept vector (`wrong_major` /
+        // `trunc_head` pure byte transforms; `holder` rows carry the `82 00` preamble so the item
+        // under test starts at byte 2). Wrapped in `catch_unwind` for the same reason as the variant
+        // precompute — turn a mutator panic into a loud gate failure naming row+hex.
+        //
+        // `evidenced_majors` first: the leading-major classes (majors 0/1 merged, the
+        // project_decode_conformance.ts § 6 merge) of the row's OWN accept vectors — the majors the
+        // spec demonstrably accepts. `header_mutants` skips a `wrong_major` flip landing on an
+        // evidenced class at DERIVATION time (the mutant would be ambiguous — possibly spec-valid,
+        // e.g. type.choice's bstr↔tstr flip landing on the other `uint / tstr / bytes` string arm),
+        // which is strictly better than ledger-suppressing (row, label)-wide: the row's other,
+        // NON-ambiguous mutants (its uint vectors' 0→4 array flip) stay live against a future
+        // genuine over-acceptance.
+        let hdr_offset = if row.mode == "holder" { 2 } else { 0 };
+        let evidenced_majors: std::collections::BTreeSet<u8> = row
+            .vectors
+            .iter()
+            .filter(|v| v.accept)
+            .map(|v| header_major_class(hex_to_bytes(&v.hex)[hdr_offset] >> 5))
+            .collect();
+        let mut header_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
+        for (i, vector) in row.vectors.iter().enumerate() {
+            if !vector.accept {
+                continue;
+            }
+            let bytes = hex_to_bytes(&vector.hex);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                header_mutants(&bytes, hdr_offset, &evidenced_majors)
+            })) {
+                Ok(list) => {
+                    for (label, mut_bytes) in list {
+                        header_specs.push((i, label.to_string(), mut_bytes));
+                    }
+                }
+                Err(_) => failures.push(format!(
+                    "{}: header_mutants() PANICKED on accept vector {} (mode={}) — the mutator is a \
+                     pure byte transform over mint-guaranteed definite-minimal CBOR, so this is a \
+                     harness/mutator bug, not a decoder finding",
+                    row.id, vector.hex, row.mode
+                )),
+            }
+        }
+        header_tests_total += header_specs.len();
+
         let out = root.join(format!("{}__default", foreign_scratch_ident(&row.id)));
         let dgen = decode_replay_generate(&row.spec, &out, &[]);
         if !dgen.status.success() {
@@ -5987,6 +6633,7 @@ fn decode_conformance_replay() {
             false,
             &target_dir,
             &variant_specs,
+            &header_specs,
         ) {
             (Some(results), combined) => {
                 rows_replayed += 1;
@@ -6092,6 +6739,72 @@ fn decode_conformance_replay() {
                         )),
                     }
                 }
+                // ---- header-mutation results (default leg only) ----
+                for (i, label, _) in &header_specs {
+                    let name = format!("accept_{i}_hdr_{label}");
+                    let orig_hex = &row.vectors[*i].hex;
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    if passed {
+                        // A passing skip-listed mutant is a closed gap — the stale guards (below) fire
+                        // because this (row, label) never lands in the still-failing sets.
+                        continue;
+                    }
+                    // The needle's trailing ':' (prefix-collision guard) lives in the classifier.
+                    match classify_header_mutant_failure(&combined, &name) {
+                        HeaderMutantFailureKind::DecodedOk => {
+                            if header_mutant_accept_skip
+                                .contains_key(&(row.id.as_str(), label.as_str()))
+                            {
+                                header_accept_skip_still_failing
+                                    .insert((row.id.clone(), label.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} DECODED \
+                                     Ok — the header-mutated bytes were accepted, and flips landing \
+                                     on a major the row's own accept vectors evidence are ALREADY \
+                                     skipped at derivation, so this acceptance is unevidenced. If the \
+                                     row's spec genuinely accepts the bytes anyway (an `any`-typed \
+                                     row, a choice arm whose major the mint never sampled), ledger \
+                                     ({}, {label}) in HEADER_MUTANT_ACCEPT_SKIP with a reason naming \
+                                     the accepting spec arm. If you CANNOT justify it from the spec, \
+                                     this is a real OVER-ACCEPTANCE finding — do NOT ledger it; report \
+                                     it. (A `trunc_head` mutant here is ALWAYS a finding: it is \
+                                     ill-formed by construction.) Captured output:\n{combined}",
+                                    row.id, row.id
+                                ));
+                            }
+                        }
+                        HeaderMutantFailureKind::NoLocation => {
+                            if header_mutant_location_skip
+                                .contains_key(&(row.id.as_str(), label.as_str()))
+                            {
+                                header_location_skip_still_failing
+                                    .insert((row.id.clone(), label.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} was \
+                                     rejected but the error Display carries NO location naming the \
+                                     type (`failed in {ty}`). If it is the known generator \
+                                     annotation gap (embedded/plain-group `deserialize()` header \
+                                     scaffolding / newtype wrappers' container reads) or the \
+                                     locationless `from_cbor_bytes` `TrailingData` path, ledger \
+                                     ({}, {label}) in HEADER_MUTANT_LOCATION_SKIP naming that path. If \
+                                     the Display SHOULD carry a location (a plain record type), this \
+                                     is a real annotation regression — investigate before ledgering. \
+                                     Captured output:\n{combined}",
+                                    row.id,
+                                    row.id,
+                                    ty = row.type_name
+                                ));
+                            }
+                        }
+                        HeaderMutantFailureKind::Unattributed => failures.push(format!(
+                            "{}: header mutant test `{name}` failed but emitted no known marker — \
+                             unexpected. Captured output:\n{combined}",
+                            row.id
+                        )),
+                    }
+                }
             }
             (None, combined) => {
                 failures.push(format!(
@@ -6123,7 +6836,7 @@ fn decode_conformance_replay() {
                 ));
             }
         } else {
-            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir, &[]) {
+            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir, &[], &[]) {
                 (Some(results), combined) => {
                     let all_pass = results.values().all(|&p| p);
                     preserve_ok = all_pass;
@@ -6195,6 +6908,26 @@ fn decode_conformance_replay() {
             ));
         }
     }
+    // Stale-entry guards for the header-mutation ledgers, mirroring the ENCODING_VARIANT_SKIP guard:
+    // a listed (row, label) whose mutant test no longer fails IN THAT WAY has had its gap close.
+    for (id, label, _reason) in HEADER_MUTANT_ACCEPT_SKIP {
+        if !header_accept_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "HEADER_MUTANT_ACCEPT_SKIP names ({id}, {label}) but that mutant no longer DECODES Ok \
+                 — the row stopped accepting the mutated bytes (or no longer emits that mutant); \
+                 remove the entry (stale pin)"
+            ));
+        }
+    }
+    for (id, label, _reason) in HEADER_MUTANT_LOCATION_SKIP {
+        if !header_location_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "HEADER_MUTANT_LOCATION_SKIP names ({id}, {label}) but that mutant no longer rejects \
+                 WITHOUT a location — the annotation gap closed (or it no longer emits that mutant); \
+                 remove the entry (stale pin)"
+            ));
+        }
+    }
 
     // Vacuity floors from the real minted corpus (104 active rows, 915 vectors at HEAD; floors set
     // just under so ordinary corpus churn doesn't false-fail, while a collapsed parse or a
@@ -6229,6 +6962,17 @@ fn decode_conformance_replay() {
         variant_tests_total >= 4200,
         "only {variant_tests_total} encoding-variant tests were emitted (expected >= 4200) — the \
          variant leg looks disabled or the corpus lost its accept vectors"
+    );
+    // Header-mutant floor: the DEFAULT-leg header-mutation leg must actually emit its tests (2042 at
+    // HEAD — 1046 `wrong_major` (one per accept vector, minus the 6 type.choice string vectors whose
+    // flip lands on an evidenced major and is skipped at derivation) + 996 `trunc_head` (per accept
+    // vector whose head is not major-7/indefinite)). Floor set just under the measured count so
+    // ordinary corpus churn doesn't false-fail, while a mutator that returned empty (or a broken
+    // header loop) that emits almost nothing still trips the gate.
+    assert!(
+        header_tests_total >= 1900,
+        "only {header_tests_total} header-mutation tests were emitted (expected >= 1900) — the \
+         header-mutation leg looks disabled or the corpus lost its accept vectors"
     );
     assert!(
         failures.is_empty(),

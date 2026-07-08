@@ -35,8 +35,11 @@ and `cddl-matrix/README.md` (probe-side). The verdict is no longer a default-pro
 every default-`supported` row is also probed per non-default emission profile (`preserve`, `json`)
 and against foreign spec-derived decode vectors, both recorded in the committed annotations — and
 the decode-direction evidence is itself identity-carrying, not a bare Ok/Err count: constraint
-rejections are reason-asserted (the catalog's `expect_err` pins) and every accept vector also
-replays under mechanically-derived spec-equal re-encodings.
+rejections are reason-asserted (the catalog's `expect_err` pins), every accept vector also
+replays under mechanically-derived spec-equal re-encodings, and header-mutation reject mutants of
+each accept vector (wrong-major-type / truncated-header byte transforms) must reject WITH an error
+location naming the decoding type (`failed in {type_name}`) — the annotation contract at catalog
+breadth.
 
 ## Recommended next steps, in priority order
 
@@ -212,19 +215,16 @@ replays under mechanically-derived spec-equal re-encodings.
      the full-tier gate to kill it, so that layer stays manual-only and unbuilt until a second
      instance justifies it.
 
-5. **Extend the decode-conformance corpus along two more axes: header-mutation reject vectors, then
-   composition depth.** (The encoding-variant axis — spec-EQUAL re-encodings of each accept vector,
-   indefinite framing / non-minimal widths / chunked strings / reversed maps — is delivered by the
-   replay gate's encoding-variant leg, which reuses the shipped `cddl_encoding_fidelity::variants`
-   mutator harness-side; the remaining two axes are below.)
-   - **Header-mutation reject vectors (low).** Derive wrong-major-type and truncated-header
-     variants mechanically from each committed accept vector's bytes (flip the container's major
-     type, cut the header short) and assert the decode fails AND the error's location names the
-     rule — the annotation analogue of the replay gate's `class="constraint"` rejection-reason
-     assert (its `expect_err` pin), using the same
-     derive-from-accept-vector shape as the replay gate's delivered encoding-variant leg (pure-byte
-     transforms, no oracle). The per-type annotation contract is pinned today only at fixture
-     granularity (the `error_annotation_*` tests); this puts it at catalog breadth.
+5. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
+   already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
+   via pure-byte transforms harness-side, no oracle: the encoding-variant axis — spec-EQUAL
+   re-encodings (indefinite framing / non-minimal widths / chunked strings / reversed maps) via the
+   shipped `cddl_encoding_fidelity::variants` mutator — and the header-mutation reject axis —
+   wrong-major-type and truncated-header mutants (`header_mutants`) asserting decode-Err AND an error
+   location naming the rule (`failed in {type_name}`), the annotation analogue of the
+   `class="constraint"` rejection-reason (`expect_err`) pin, lifting the per-type annotation contract
+   from fixture granularity (the `error_annotation_*` tests) to catalog breadth. The remaining depth
+   axis is below.)
    - **Composition depth (low).** The shipped decode-direction harness (`tests/README.md`
      § "Decode-direction conformance") keys its obligation set on the matrix's minimal
      per-construct examples — breadth, not depth. The corpus fixtures (`tests/corpus/*.cddl`) add
