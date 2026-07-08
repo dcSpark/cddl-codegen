@@ -625,7 +625,51 @@ fn compositions() -> Vec<Composition> {
 enum Outcome {
     Ok,
     Graceful(String),
-    Panic(String), // normalized "<message> @ <file>" (line dropped: survives unrelated edits)
+    Panic(String), // normalized "<message> @ <file> @ fn <symbol>" (line dropped: survives
+                   // unrelated edits; the frame symbol splits same-file same-message sites by
+                   // panicking function — see `production_frame_symbol`)
+}
+
+/// Extract the panicking PRODUCTION frame's function symbol from a captured backtrace's Display
+/// text. Scans innermost-first (frame 0 = innermost) for the first frame whose symbol is in
+/// `cddl_codegen::` but NOT `cddl_codegen::tests` (the sweep's hook/worker frames), then normalizes
+/// it: drop `{{closure}}` wrapper segments (a bare `unimplemented!()` inside a `.map`/`match`
+/// closure would otherwise key on the closure, not the enclosing fn) and any trailing hash suffix
+/// (std's demangled Display carries none, but strip it defensively). Fallback when no production
+/// frame is found: `<no production frame>`.
+///
+/// COLLAPSE BOUNDARY: the key is per-(message, file, FUNCTION). Two bare sites inside the SAME
+/// function still share a key — `codegen_struct` and `generate_wrapper_struct` each host two bare
+/// `unimplemented!()` sites in `generation.rs`, so a composition newly reaching the *other* site in
+/// one of those functions is still absorbed by that function's entry rather than surfacing as a NEW
+/// finding. Splitting those would need line numbers, which are deliberately excluded (refactor
+/// churn).
+fn production_frame_symbol(bt: &str) -> String {
+    for line in bt.lines() {
+        let t = line.trim_start();
+        // frame lines are `<indent><num>: <symbol>`; the `at <file>:<line>` lines have no `<num>:`.
+        let Some((num, sym)) = t.split_once(": ") else {
+            continue;
+        };
+        if num.parse::<usize>().is_err() {
+            continue;
+        }
+        if !sym.contains("cddl_codegen::") || sym.contains("cddl_codegen::tests") {
+            continue;
+        }
+        return sym
+            .split("::")
+            .filter(|seg| *seg != "{{closure}}")
+            // a legacy mangled hash tail is `h` + 16 hex digits; real fn names never match that.
+            .filter(|seg| {
+                !(seg.len() == 17
+                    && seg.starts_with('h')
+                    && seg[1..].chars().all(|c| c.is_ascii_hexdigit()))
+            })
+            .collect::<Vec<_>>()
+            .join("::");
+    }
+    "<no production frame>".to_owned()
 }
 
 std::thread_local! {
@@ -635,8 +679,9 @@ std::thread_local! {
 /// Classify every composition's generation outcome, parallelized across worker threads (the
 /// composition SET is fixed beforehand; workers only classify, so thread count never changes WHAT
 /// is swept, only how fast). One silenced-hook window for the whole pass: inside it we swap in a
-/// CAPTURING hook that records message + file (no line — survives unrelated edits; same-file
-/// same-message sites collapse, reviewed per ledger entry) into each REGISTERED worker's
+/// CAPTURING hook that records message + file + panicking-function symbol (no line — survives
+/// unrelated edits; the symbol splits same-file same-message sites per function, see
+/// `production_frame_symbol`) into each REGISTERED worker's
 /// thread-local, delegating any other thread's panic to the hook we replaced (unrelated test
 /// failures stay visible), and restore before the window closes.
 fn classify_all(comps: &[Composition]) -> Vec<Outcome> {
@@ -665,8 +710,12 @@ fn classify_all(comps: &[Composition]) -> Vec<Outcome> {
                     .location()
                     .map(|l| l.file().to_owned())
                     .unwrap_or_default();
+                // Symbolication happens ONLY here (on a panic, ~500/sweep), never on the ok path.
+                let symbol = production_frame_symbol(
+                    &std::backtrace::Backtrace::force_capture().to_string(),
+                );
                 let norm = format!(
-                    "{} @ {file}",
+                    "{} @ {file} @ fn {symbol}",
                     msg.split_whitespace().collect::<Vec<_>>().join(" ")
                 );
                 LAST_PANIC.with(|p| *p.borrow_mut() = Some(norm));
@@ -747,10 +796,13 @@ fn classify_all(comps: &[Composition]) -> Vec<Outcome> {
 /// OBSERVED by the sweep (stale-pin guard: an entry whose class stops firing must be pruned or the
 /// composer fixed). A PANIC matching no entry is a NEW finding and fails the sweep.
 ///
-/// Messages are normalized to `<whitespace-collapsed message> @ <file>` (no line numbers), so a
-/// substring may pin the file when the message alone is ambiguous (`not implemented @
-/// src/generation.rs` matches only a BARE `unimplemented!()` there — any detailed message breaks
-/// the contiguity).
+/// Messages are normalized to `<whitespace-collapsed message> @ <file> @ fn <symbol>` (no line
+/// numbers — see `production_frame_symbol`), so a substring may pin the file AND the panicking
+/// function when the message alone is ambiguous (`not implemented @ src/generation.rs @ fn
+/// <symbol>` matches only a BARE `unimplemented!()` in that specific function — any detailed
+/// message breaks the contiguity, and a different function yields a different `<symbol>`). The
+/// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
+/// function share one key (`codegen_struct` / `generate_wrapper_struct` each host two).
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     (
         "Anonymous groups not allowed",
@@ -765,8 +817,8 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "anonymous composite where a type is required; pinned by tests/matrix_panic/contain.group-choice-arm.type2.map.array.cddl and tests/matrix_panic/contain.generic-arg.type2.map.cddl",
     ),
     (
-        "not implemented @ src/generation.rs",
-        "fixed bool member deserialize arm catch-all (bare unimplemented!); pinned by tests/robustness/fixed_bool_member.cddl. WARNING: every bare unimplemented!() in generation.rs shares this class key (six other catch-all sites at HEAD), so a composition newly reaching one of THOSE is absorbed here rather than failing as a NEW finding — the frame-symbol class-key escalation in tests/TESTING_ROADMAP.md (grammar-fuzzer escalations) owns the fix",
+        "not implemented @ src/generation.rs @ fn cddl_codegen::generation::GenerationScope::generate_deserialize",
+        "fixed bool member deserialize arm catch-all (bare unimplemented!); pinned by tests/robustness/fixed_bool_member.cddl. The class key now carries the panicking function symbol (see production_frame_symbol), so this entry pins ONLY the generate_deserialize bare site — the other bare unimplemented!() sites in generation.rs (key_encoding_field, the two in codegen_struct, the two in generate_wrapper_struct) yield different symbols and would surface as NEW findings. RESIDUAL boundary: the two bare sites that DO share a function (codegen_struct; generate_wrapper_struct) collapse to one key each — see the COLLAPSE BOUNDARY note on production_frame_symbol",
     ),
     (
         "unsupported cddl prelude type:",

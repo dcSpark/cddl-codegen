@@ -1175,7 +1175,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   classification is parallelized across worker threads; thread count never changes WHAT is swept):
   classifies every composition's generation outcome in-process (`catch_unwind` + the shared
   silenced-hook idiom, extended with a per-worker capturing hook that records the normalized panic
-  message + file). A PANIC whose normalized message matches no `KNOWN_PANIC_CLASSES` entry is a NEW
+  key `<message> @ <file> @ fn <symbol>` — the panicking production frame's function symbol, from a
+  backtrace captured only on a panic, so two bare `unimplemented!()` sites in different functions no
+  longer collapse to one class; line numbers stay excluded for refactor resilience). A PANIC whose
+  normalized key matches no `KNOWN_PANIC_CLASSES` entry is a NEW
   finding and FAILS the sweep, printing the spec + message + promotion instructions (minimize by
   hand → pin as a matrix row if the matrix can express the cell, else a `tests/robustness/*.cddl`
   fixture → ledger it in `cddl-matrix/ROADMAP.md` § findings → add the ledger entry citing the
