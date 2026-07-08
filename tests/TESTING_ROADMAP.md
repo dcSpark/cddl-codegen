@@ -67,28 +67,23 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
    mitigates churn.
 
-3. **Grammar-fuzz the corpus.** Generate random *valid* CDDL and run it through the generator to
-   surface coverage holes and crashes the hand-picked fixtures miss. Laziest source first: recombine
-   the matrix's `containment/*.toml` examples (they already enumerate which construct nests in which
-   role legally); escalate to an `arbitrary`-derived "supported-CDDL" AST only if that plateaus. Treat
-   the fuzzer as a *corpus generator*, not a CI gate — seed it for determinism, then promote any new
-   divergence/crash into the snapshot corpus (review once, commit). Complements a real-world on-chain
-   corpus differential (see `draft/testing-recommendations/RECOMMENDATIONS.md`): synthetic breadth vs
-   real-world depth.
-   The value of shape recombination is proven, not speculative: every gate samples ONE minimal
-   example per feature row, and the map-rep group-choice fix found three defects hiding in
-   unsampled shape variants of a single "supported" row — a multi-field arm whose enum dispatch
-   keyed on the wrong CBOR type (didn't even self-round-trip), a fixed-value-entry arm that
-   panicked generation, and a non-fixed-key arm that silently dropped the key. All three would
-   have surfaced mechanically from recombining member shapes inside one construct. Identifier
-   space is a fuzz dimension too, not just grammar shapes — the proven instance is now an
-   enumerated sweep, not a fuzz finding: `src/tests/identifier_hazard_tests.rs` verdicts hazardous
-   names × positions × emitted type shape (it caught the shape-dependent `r`/`w` generic collision
-   and the reserved-name panics, both since fixed). A grammar fuzzer should draw identifiers from
-   that hazard table rather than rediscover it. Recombination is only as complete as the role set it
-   draws from; the containment matrix now includes the group-choice-arm `//` role, map-key
-   spelling/arity cells, and occurrence-target marker-kind cells, so those examples are available as
-   structured fuzzer ingredients.
+3. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
+   (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
+   `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) +
+   `recombination_crates_execute` (full tier), with cited known-class ledgers and a promotion flow
+   into the pinned collections). Residuals, in escalation order:
+   - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
+     first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
+     a sweep over an extended member-kind/template table stops minting findings).
+   - **Layer-2 profile escalation.** `recombination_crates_execute` executes the default profile
+     only (the `feature_corpus_compiles` trade-off: one profile keeps wall-clock bounded). Escalate
+     the batches to `--preserve-encodings` / json compile-or-execute once the default-profile
+     finding stream dries up.
+   - **wasm surface.** Layer 2 generates `--wasm=false`; the wasm emission path is only
+     generation-classified indirectly. A wasm-side batch (generate `--wasm=true`, `cargo check` the
+     wasm crate) is the cheap extension; the wasm-ABI matrix owns the systematic per-shape surface.
+   - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
+     synthetic breadth vs real-world depth — recombination does not replace it.
 
 4. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,

@@ -260,6 +260,9 @@ export const REGISTRY: Gate[] = [
   { id: "project_decode_conformance", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "project_decode_conformance.ts"], cwd: MATRIX,
     script: "project_decode_conformance.ts", desc: "decode-conformance catalog drift gate (matrix.json + catalog.toml, no cargo)" },
+  { id: "project_recombination_check", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "project_recombination.ts", "--check"], cwd: MATRIX,
+    script: "project_recombination.ts", desc: "recombination-fuzzer ingredients drift gate (matrix.json → tests/recomb/ingredients.json, no cargo)" },
   // Sub-second file-scanner promoted to `fast` beside its sibling `project_wasm_matrix_check`
   // (maintainer call, 2026-07: measured ~0.04s wall).
   { id: "project_multifile_matrix_check", tier: "fast", kind: "cmd",
@@ -285,6 +288,10 @@ export const REGISTRY: Gate[] = [
   { id: "identifier_hazard_crates_compile", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "identifier_hazard_crates_compile", "--", "--ignored"],
     ignoredTest: "identifier_hazard_crates_compile", desc: "identifier-hazard sweep standalone compile gate (manual, #[ignore]d)" },
+  { id: "recombination_crates_execute", tier: "full", kind: "cmd",
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "recombination_crates_execute", "--", "--ignored", "--nocapture"],
+    ignoredTest: "recombination_crates_execute",
+    desc: "recombination fuzzer layer 2: batched --emit-tests execution of the ok compositions (manual, #[ignore]d)" },
   { id: "ir_conformance_corpus", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
     ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },

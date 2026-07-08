@@ -53,7 +53,9 @@ const EXTRA_HAZARDS: &[&str] = &[
 /// The full hazard list: `RUST_KEYWORDS` in its authored order, then `EXTRA_HAZARDS`, skipping any
 /// already seen (`box`). Deterministic order → stable snapshot. Nothing is filtered down to what is
 /// convenient: a keyword the `cddl` parser itself rejects records that rejection as its verdict.
-fn hazards() -> Vec<&'static str> {
+/// `pub(crate)` so the recombination fuzzer (`recombination_tests`) draws its low-weight
+/// hazardous-identifier axis from this table instead of rediscovering it.
+pub(crate) fn hazards() -> Vec<&'static str> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();
     for &h in RUST_KEYWORDS.iter().chain(EXTRA_HAZARDS.iter()) {

@@ -6,14 +6,20 @@ expression: catalog
 # A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry
 # is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.
 
+any_member                 PANIC
+choice_any_arm             PANIC
+choice_group_array_arm     PANIC
 duplicate_rule             error (graceful)
 empty                      ok
 empty_array                ok
 empty_group                ok
 fixed_bool_member          PANIC
+fixed_value_occurrence     PANIC
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
+generic_call_member        PANIC
 group_choice_map_keyless_entry error (graceful)
+inline_group_choice_member PANIC
 map_bareword_keyword_key   error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
@@ -21,6 +27,7 @@ prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok
 tagged_literal             error (graceful)
+tagged_prelude_constant    PANIC
 undefined_generic          error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)

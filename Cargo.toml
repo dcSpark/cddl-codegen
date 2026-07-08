@@ -63,3 +63,8 @@ toml = "0.8"
 # differential. Already in-tree transitively (2.0.x via the proc-macro derives), so this adds no
 # lockfile weight; `features=["full"]` gets the item/impl/fn AST the differential walks.
 syn = { version = "2", features = ["full"] }
+# Harness-side ONLY (never a generated-crate dep): `recombination_tests` parses the projected
+# `tests/recomb/ingredients.json` (cddl-matrix/project_recombination.ts). Already in-tree
+# transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via
+# `serde_json::Value` — no serde derives of our own.
+serde_json = "1"

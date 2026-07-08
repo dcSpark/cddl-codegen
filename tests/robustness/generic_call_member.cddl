@@ -1,0 +1,9 @@
+; A GENERIC INSTANTIATION used as a member/element type (`[pair<uint, tstr>]`) panics parsing at the
+; group-entry catch-all (`not yet implemented: If you run into this please create a github issue`,
+; parsing.rs). The same instantiation as a top-level rule RHS (`x = pair<uint, tstr>`,
+; genericarg.multiple) is supported — the gap is the MEMBER position only. The matrix has no
+; (member-role x genericarg) containment cells (role.generic-arg models the reverse: types AS
+; generic args), so this hand fixture is the pin. Surfaced by the recombination sweep
+; (src/tests/recombination_tests.rs).
+pair<k, v> = [k, v]
+a = [pair<uint, tstr>]

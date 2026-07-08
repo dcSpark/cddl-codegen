@@ -240,6 +240,71 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
   `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
+- **Six panic-class families surfaced by the recombination fuzzer's first sweep**
+  (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
+  the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
+  which is itself the coverage gap the fuzzer exists to find):
+  - An inline map carrying a GROUP CHOICE as a member/element type (`a = [{ x: uint // y: tstr }]`)
+    panics parsing (`group choices in inlined map types not allowed`) — a distinct, earlier site
+    than the choice-free "Anonymous groups not allowed" panic. Pinned by
+    `tests/robustness/inline_group_choice_member.cddl`.
+  - A generic INSTANTIATION in member position (`a = [pair<uint, tstr>]`) panics parsing's
+    group-entry catch-all (`not yet implemented: ... create a github issue`), while the same
+    instantiation as a rule RHS is supported. Pinned by `tests/robustness/generic_call_member.cddl`.
+  - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate.rs's
+    `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
+    (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
+  - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
+    (intermediate.rs, one shared site): `a = [coords] / tstr` (anonymous array-of-plain-group arm)
+    and `a = any / tstr`. Pinned by `tests/robustness/choice_group_array_arm.cddl` and
+    `tests/robustness/choice_any_arm.cddl`.
+  - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
+    reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
+    registration-time graceful rejection that owns the top-level shapes never sees this position.
+    Pinned by `tests/robustness/fixed_value_occurrence.cddl`.
+  - A tag wrapping a PRELUDE CONSTANT (`t = #6.11(true)`) hits the same `Fixed` panic: the literal
+    inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
+    constant resolves through the prelude alias on a path the guard does not classify. Pinned by
+    `tests/robustness/tagged_prelude_constant.cddl`.
+- **Nine compile/round-trip-class families surfaced by the recombination fuzzer's first layer-2 run**
+  (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
+  under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
+  class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
+  fixed class flips loudly) with THIS entry as its pin; each is a candidate cddl-codegen fix:
+  - **A non-final `?` optional field in an array record breaks compilation** (E0599:
+    `from_cbor_bytes` trait bounds unsatisfied — the `Deserialize` impl is not emitted):
+    `a = [ ? f0: uint, f1: uint ]` and any `[? x, …more…]` variant. Optional-LAST array fields
+    (`[uint, ? bytes]`) compile and round-trip — the gap is the position, needing decode lookahead
+    like the count-permitting occurrence entry above.
+  - **An array-rep group-choice arm containing a `?` optional member breaks compilation** (E0599:
+    the arm struct's `deserialize_as_embedded_group` is not emitted): `t = [ ? f0: uint, f1: uint // tstr ]`.
+  - **A float-family table key domain breaks compilation** (E0277 `f64: Eq`/`Ord` — the emitted
+    `BTreeMap`/derives need a total order the key type lacks): `{ number => uint }`,
+    `{ time => uint }`, and any composite key carrying a float (`{ gen<float64> => uint }`).
+  - **A generic instantiation as a homogeneous array element is never emitted** (E0425
+    `cannot find type <Instance>`): `a = [* pair<uint, tstr>]` references the instance type without
+    registering it. The MEMBER-position panic sibling is in the sweep entry above; the occurrence
+    position generates and dangles instead.
+  - **A `.cbor` payload wrapping an anonymous array-of-plain-group is never emitted** (E0425):
+    `x = bytes .cbor [coords]`, `coords = (uint, uint)`.
+  - **A tagged fixed value inside a map-rep group-choice arm emits a call to a non-fn struct**
+    (E0618 `expected function`): `t = { ga: #6.11(42) // fb: tstr }`.
+  - **Wire-ambiguous type-choice arms cannot round-trip variant identity** (emitted round-trip
+    asserts `variant N in == variant N out`, but first-match decoding maps every overlapping value
+    to the earliest matching arm): duplicate/equivalent arms (`tstr / tstr`, `text / tstr`), a
+    subsuming arm (`uint / tstr / bytes / tstr`, `int .ne 0 / tstr / tstr`,
+    `[ ga: -10...10 / tstr // tstr ]`), and payload/type overlap (`bytes .cbor uint / tstr / bytes`
+    — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
+    at generation, or document first-match semantics and have `--emit-tests` skip
+    variant-identity asserts for ambiguous choices.
+  - **The `--emit-tests` minter does not respect `.ne` on a table key domain**: for
+    `gen<{ int .ne 0 => uint }>` it mints key `0`, which the (correct) emitted decoder rejects
+    with a `RangeCheck` — a minter-side gap, not a decoder bug.
+  - **Two emitted-test baseline decode failures on nested shapes** to minimize when picked up: a
+    `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
+    following field — a `.cbor` float payload mis-frames the buffer), and
+    `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` (a `[null]`-carrying arm never matches its
+    own serialization).
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
@@ -275,7 +340,9 @@ are ledgered here (that's what the probe/gate error messages point at).
   when one does, do the IR widening and the `_sz` sweep as one change, then flip the pinned
   rejection rows (record path first, then the group-choice arm).
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
-  works as a member / array element.
+  works as a member / array element. Third instance from the recombination fuzzer's layer-2 run: an
+  `int`-VALUED table under a `.cbor` payload (`x = bytes .cbor { tstr => int }`) dangles the same
+  undefined `Int` (held in the sweep's `LAYER2_KNOWN_BAD` ledger citing this entry).
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; generics on
   plain groups rejected. Under `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
