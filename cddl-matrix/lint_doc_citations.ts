@@ -129,7 +129,7 @@ function positionalCitationProblems(file: TrackedFile): string[] {
   if (file.rel.startsWith("draft/")) return [];
   const problems: string[] = [];
   const patterns = [
-    // Roadmap-adjacent citations are always positional, including `TESTING_ROADMAP.md item #6`.
+    // Roadmap-adjacent citations are always positional, including `TESTING_ROADMAP.md item <N>`.
     /\b(?:[A-Za-z0-9_./-]*ROADMAP(?:\.md)?|roadmap)\s+(?:§\s+[^:\n()]{0,80}\s+)?item\s*#?\d+\b/gi,
     // Bare forms are limited to citation verbs/prepositions to avoid standards prose such as
     // "item 6 of Section 3.1" in pinned upstream source text.

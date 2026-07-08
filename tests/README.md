@@ -718,20 +718,19 @@ the same `__cddl_oracle_root = <rule>` trick aims it). The gem is **harness-side
 dep, so shipped output stays ruby-free. Teeth and posture:
 
 - **`RUBY_EXPECTED_FAIL`** — `(fixture, rule, reason)` triples the gem diverges on for a documented,
-  non-bug reason (a gem construct gap the fork legitimately supports; e.g. `nested_group`'s `inner`
-  rule, a bare top-level GROUP `inner = (a, b)` cddl-codegen serializes as an array but the gem won't
-  validate as an instance type). Ledgering is **per (fixture, rule)**, not per fixture: a fixture may
-  have one rule the gem can't judge while its *other* rules must still be sound — a divergence on an
-  unledgered sibling rule (e.g. `nested_group`'s `outer`) fails the gate. A divergence is *signal*: an
-  unledgered one is either a gem gap to record here **with a reason**, or — the class this oracle
-  exists to catch — a fork misparse minting spec-violating bytes. **Investigate before ledgering.** A
-  ledgered `(fixture, rule)` that stops diverging while still being swept turns the gate RED (stale
-  entry), mirroring `EXPECTED_FAIL`.
+  non-bug reason (a gem construct gap the fork legitimately supports). Empty at HEAD, but still
+  checked for stale fixture/rule keys when populated. Ledgering is **per (fixture, rule)**, not per
+  fixture: a fixture may have one rule the gem can't judge while its *other* rules must still be
+  sound. A divergence is *signal*: an unledgered one is either a gem gap to record here **with a
+  reason**, or — the class this oracle exists to catch — a fork misparse minting spec-violating bytes.
+  **Investigate before ledgering.** A ledgered `(fixture, rule)` that stops diverging while still
+  being swept turns the gate RED (stale entry), mirroring `EXPECTED_FAIL`.
 - **`GEN_SKIP` vs `RUST_ORACLE_SKIP`** — two distinct exclusions. `GEN_SKIP` (e.g. `dsl_custom`) can't
-  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` (e.g. `nested_group`) has
-  a *rust*-validator gap but generates, round-trips, and dumps fine — so it's generated **without**
-  `--emit-tests-conformance` (rust validate half off) yet its minted bytes are **still** swept by the
-  ruby gem. A rust-validator blind spot must not cost the decorrelated oracle its coverage.
+  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` is empty at HEAD; when a
+  future fixture has a *rust*-validator gap but still generates, round-trips, and dumps fine, it can be
+  generated **without** `--emit-tests-conformance` (rust validate half off) while its minted bytes are
+  **still** swept by the ruby gem. A rust-validator blind spot must not cost the decorrelated oracle its
+  coverage.
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops

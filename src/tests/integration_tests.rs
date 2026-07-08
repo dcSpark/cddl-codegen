@@ -3728,10 +3728,11 @@ fn ir_conformance_corpus() {
     //   - dsl_custom: references user-supplied @custom_serialize fns; can't compile standalone (same
     //     reason feature_corpus_compiles skips it).
     const GEN_SKIP: &[&str] = &["dsl_custom"];
-    // RUST_ORACLE_SKIP: the RUST conformance validator has a documented gap on this spec, but the
-    // fixture DOES generate, round-trip, and dump — so we generate it WITHOUT
-    // --emit-tests-conformance (rust validate half off) yet STILL dump its minted bytes and let the
-    // decorrelated ruby gem judge them. A rust-validator gap must not blind the second oracle.
+    // RUST_ORACLE_SKIP: fixtures whose minted bytes are valid but hit a documented RUST conformance
+    // validator gap. Such fixtures still generate, round-trip, and dump, but are generated WITHOUT
+    // --emit-tests-conformance (rust validate half off) so the decorrelated ruby gem can continue
+    // judging them. Empty at HEAD; keep the ledger and stale-fixture check armed for future validator
+    // gaps. A rust-validator gap must not blind the second oracle.
     //   (sized_int is a PAST resident, off the list twice over: its negative-lower-bound range
     //   `i_8: -128..127` stopped being a validator gap at the fork's `885c61c` non-uint-range fix,
     //   and its `i_64: int .size 8` member — which the rust validator hard-errors on, an
@@ -3741,21 +3742,7 @@ fn ir_conformance_corpus() {
     //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
     //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
     //   this list until the fork fix lands.)
-    //   - nested_group: RUST VALIDATOR STRICTENING (as of the fork's `773b723` array-sequence rewrite).
-    //     Its `inner = (a: uint, b: uint)` is a bare GROUP, not a type; cddl-codegen mints it as an
-    //     array-serialized struct (`[0, 0]` = 0x82 00 00). The pre-`773b723` validator leniently
-    //     accepted that array against a synthetic root aliasing the group; the rewritten validator no
-    //     longer does ("expected type uint, got Array([0, 0])") — which now AGREES with the ruby gem,
-    //     already ledgered on `inner` in RUBY_EXPECTED_FAIL for the same "a group is not a top-level
-    //     instance type" reason. The minted bytes faithfully encode (a:0, b:0) — round-trip passes, no
-    //     miscompile. RUST_ORACLE_SKIP is fixture-level (unlike RUBY_EXPECTED_FAIL's per-rule ledger),
-    //     so `outer = [x: uint, inner, y: uint]` loses its rust-oracle half too — but it keeps the
-    //     round-trip test, the ruby oracle, and the decorrelated structural differential; and `outer`'s
-    //     group-in-array splice is exactly what `773b723` fixed, so both oracles accept it. Cleaner
-    //     long-term fix (TESTING_ROADMAP): don't emit a conformance assertion for a bare-group rule that
-    //     is not a validatable top-level instance type, which would restore per-rule rust coverage of
-    //     `outer` here.
-    const RUST_ORACLE_SKIP: &[&str] = &["nested_group"];
+    const RUST_ORACLE_SKIP: &[&str] = &[];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -3796,20 +3783,7 @@ fn ir_conformance_corpus() {
     // reason, or — the class this whole oracle exists to catch — a fork misparse minting spec-violating
     // bytes. Investigate before ledgering. A ledgered (fixture, rule) that STOPS diverging (all its
     // cases accepted) while still being swept is flagged stale, like the rust oracle's fixed_or_toothless.
-    const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[
-        // `inner = (a: uint, b: uint)` is a bare GROUP, not a type. cddl-codegen represents a
-        // top-level group rule as a standalone array-serialized struct (mints `[0, 0]` = 0x82 00 00);
-        // the dcSpark fork's validator leniently accepts that array when the synthetic root aliases the
-        // group. The ruby gem is stricter — a group is not a top-level instance type, so it errors
-        // `Don't know how to validate [:grpent ...]`. Gem construct gap, NOT a fork misparse: the bytes
-        // faithfully encode (a:0, b:0). Only the `inner` RULE is ledgered — `outer`, which embeds
-        // `inner` inside `[...]`, validates fine and any divergence on IT must still fail the gate.
-        (
-            "nested_group",
-            "inner",
-            "gem cannot validate a bare top-level GROUP rule as an instance type",
-        ),
-    ];
+    const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[];
 
     // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;
     // floor kept well below that (same loose-headroom convention as `validated_fixtures`, 20 of 33) so

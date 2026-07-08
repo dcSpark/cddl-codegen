@@ -109,16 +109,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
-   - **Don't emit a conformance assertion for a bare-group rule (restore per-rule rust oracle).** A
-     top-level group rule (`inner = (a: uint, b: uint)`) is not a validatable instance type — both
-     conformance oracles reject it (the ruby gem always did; the rust fork's validator now does too,
-     since the `773b723` array-sequence rewrite stopped leniently accepting the array-serialized
-     mint). Today `nested_group` is handled by fixture-level `RUST_ORACLE_SKIP`, which also drops the
-     rust-oracle half of its sibling `outer = [x: uint, inner, y: uint]` (still covered by round-trip
-     + ruby + the structural differential). Emitting NO conformance call for a rule whose conceptual
-     type is a bare group — rather than emitting one the oracle can't answer — would let `nested_group`
-     leave `RUST_ORACLE_SKIP` and restore rust-oracle coverage of `outer`. Small `emit_tests.rs`
-     change gated by the existing `ir_conformance_corpus` gate.
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
      `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
      (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
