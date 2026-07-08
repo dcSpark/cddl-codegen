@@ -126,6 +126,12 @@ codex/Opus):
   multi-minute gates above.
 - The codex background runner can die silently mid-task (log stalls, pid dead, status stuck
   `running`) — detection signal + recovery procedure: `draft/codex-background-runner-silent-death.md`.
+- **The codex sandbox has no network access**, so any codex-run verification that resolves
+  dependencies (a generated-crate `cargo test`, the replay gate, check.ts's `test` gate on a cold
+  cache) fails on registry fetch regardless of the code's correctness — codex reports these
+  honestly as environment failures, but the orchestrator MUST re-run those gates itself before
+  treating the work as verified. Sandbox-safe verifications (fmt, clippy, snapshot tests,
+  warm-cache builds) can be trusted from codex's report.
 
 
 ## Markdown formatting
