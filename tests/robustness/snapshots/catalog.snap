@@ -10,6 +10,7 @@ duplicate_rule             error (graceful)
 empty                      ok
 empty_array                ok
 empty_group                ok
+fixed_bool_member          PANIC
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
 group_choice_map_keyless_entry error (graceful)

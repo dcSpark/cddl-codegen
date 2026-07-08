@@ -227,6 +227,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
   `generation.rs:2467` (`assert_eq!(";" vs "")`). This is a new valid-CDDL surface for fixed values in a
   map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
+- A fixed BOOL literal in ordinary member position panics: `[v: true]` / `{k: false}` abort at the
+  fixed-value deserialize arm's catch-all (`generation.rs`'s `_ => unimplemented!()` — Uint/Nint/
+  Text/Float have arms, Bool doesn't; a fixed NULL member generates fine via its own arm). The
+  matrix cannot see this cell: fixed-value member coverage stops at
+  `contain.array-element.value.{number,text}` and there are no prelude-constant member containment
+  cells (`contain.choice-member.prelude.null` is the nullable pattern, a different shape). Pinned by
+  the hand fixture `tests/robustness/fixed_bool_member.cddl` (PANIC row); the candidate feature is a
+  Bool arm in the fixed-value match (and, independently, prelude-constant member cells so the matrix
+  covers the role).
 - Array-representation group-choice arm with an inline group panics:
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
   `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
