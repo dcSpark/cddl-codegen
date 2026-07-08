@@ -133,20 +133,20 @@ breadth.
      `error_annotation_no_variant_double_name_known_gap` in `tests/core/tests.rs`, which asserts
      the CURRENT doubled name and flips loudly when the fix lands (then invert it into the
      once-only contract and prune this entry).
-     The CLASS layer, once the fix lands: no existing or pending gate could have caught this shape —
-     it is a runtime Display property, so the source-lint axes (the clippy burn-down, the rustc
-     style-lint set) can't see it; the replay legs' location assert
-     (`disp.contains("failed in {type_name}")`) is satisfied BY the doubled form ("failed in
-     Foo.Foo" contains the "failed in Foo" prefix — the header-mutation leg ran green over rows
-     that hit this very arm); and a `cargo-mutants` sweep would at most have flagged the arm as
-     behaviorally uncovered, not wrong. The mechanical invariant that catches the class is a
-     Display-SHAPE assert added wherever the replay legs already capture an error Display (the
-     header-mutant and constraint bodies in `decode_replay_run`): the location chain between
-     "failed in " and " because" has no immediately-repeated segment (adjacent-equal after
-     splitting on '.'). Field segments are snake_case and type segments CamelCase, so a legitimate
-     adjacent duplicate essentially cannot arise from distinct annotation sites; a skip ledger
-     absorbs any surprise. Must land WITH the fix (or start with an every-enum-row ledger): at HEAD
-     every enum row trips it — which is also the demonstration that it has teeth.
+     - *Class layer (lands WITH the fix, or starts with an every-enum-row ledger — at HEAD every
+       enum row trips it, which is also the demonstration it has teeth).* No existing or pending
+       gate could have caught the shape: it is a runtime Display property (the source-lint axes —
+       the clippy burn-down, the rustc style-lint set — can't see it), the replay legs' location
+       assert (`disp.contains("failed in {type_name}")`) is satisfied BY the doubled form
+       ("failed in Foo.Foo" contains the "failed in Foo" prefix — the header-mutation leg ran
+       green over rows that hit this very arm), and a `cargo-mutants` sweep would at most have
+       flagged the arm as behaviorally uncovered, not wrong. The mechanical invariant that catches
+       the class: wherever the replay legs already capture an error Display (the header-mutant and
+       constraint bodies in `decode_replay_run`), assert the location chain between "failed in "
+       and " because" has no immediately-repeated segment (adjacent-equal after splitting on '.').
+       Field segments are snake_case and type segments CamelCase, so a legitimate adjacent
+       duplicate essentially cannot arise from distinct annotation sites; a skip ledger absorbs
+       any surprise.
    - **Fixture-appended tests are outside the `assertions_on_result_states` deny (low).** The
      fast-tier workspace clippy gate denies that restriction lint so a failed Result assert carries
      its payload — but it sweeps only the repo's own crates, and `tests/<dir>/tests.rs` /

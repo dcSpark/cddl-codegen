@@ -229,21 +229,22 @@ fallible part of a record's header parsing — container major type, definite-le
 reads — errors with the type name as the location (`Deserialization failed in Foo because: …`),
 the same way field-level failures always have, and a tag mismatch carries the name exactly *once*
 (inside the `.annotate(name)` closure the tag check is emitted locationless; a name-carrying form
-there would read "Foo.Foo"). `error_annotation_tag_mismatch_type_choice_direct` pins the same
-once-only contract for the *enum-direct* tag check — a tag over a whole top-level type choice
-(`tagged_type_choice = #6.11(uint / text)`) deserializes directly with no container rep — and the
-`generate_tag_check_arms` unit test in `snapshot_tests.rs` renders both arms to pin the
-name-carrying `--annotate-fields=false` form that no fixture exercises. The two `_control` cases
-anchor that field-level and missing-mandatory-field annotation is not lost when the header code is
-restructured. One STANDING exception to the once-only reading: enum `NoVariantMatched` errors
-currently DO double-annotate ("Foo.Foo" — the arm emits a name-carrying error inside the annotate
-closure, generator-wide), pinned as a known gap by `error_annotation_no_variant_double_name_known_gap`
-(asserts the CURRENT doubled name; flips loudly when fixed) and ledgered in
-`tests/TESTING_ROADMAP.md` with its class-gate layer. Outside the
-contract: embedded plain-group scaffolding and newtype wrappers' container reads (both ledgered in
-`tests/TESTING_ROADMAP.md`; the newtype-wrapper half is now MEASURED at catalog breadth by the
-replay gate's `HEADER_MUTANT_LOCATION_SKIP` ledger — 38 (row, label) cells across 20 rows at HEAD,
-emptied via its stale guards when the gap closes).
+there would read "Foo.Foo"). The two `_control` cases anchor that field-level and
+missing-mandatory-field annotation is not lost when the header code is restructured. The
+*enum-direct* tag check — a tag over a whole top-level type choice
+(`tagged_type_choice = #6.11(uint / text)`), which deserializes directly with no container rep —
+is pinned to the same once-only contract by `error_annotation_tag_mismatch_type_choice_direct`,
+and the `generate_tag_check_arms` unit test in `snapshot_tests.rs` renders both arms to pin the
+name-carrying `--annotate-fields=false` form that no fixture exercises.
+
+The contract's current boundaries, all ledgered in `tests/TESTING_ROADMAP.md`: enum
+`NoVariantMatched` errors are a STANDING exception — they DO double-annotate ("Foo.Foo": the arm
+emits a name-carrying error inside the annotate closure, generator-wide), pinned as a known gap by
+`error_annotation_no_variant_double_name_known_gap` (asserts the CURRENT doubled name; flips
+loudly when fixed). And two paths sit outside the contract entirely — embedded plain-group
+scaffolding and newtype wrappers' container reads — the newtype-wrapper half now MEASURED at
+catalog breadth by the replay gate's `HEADER_MUTANT_LOCATION_SKIP` ledger (38 (row, label) cells
+across 20 rows at HEAD, emptied via its stale guards when the gap closes).
 
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
@@ -377,57 +378,62 @@ and asserts they are accepted.
     (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
     accept-less standalone rows).
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
-  `full` tier, ~3 min: per-row crate builds under two profiles, the default build including the
-  encoding-variant and header-mutation tests). Oracle-free and deterministic:
-  per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
-  every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
-  can't silently launder a bug), and for each `class="constraint"` vector asserts the error Display
-  CONTAINS the catalog's `expect_err` — pinning the rejection REASON, so a wrong-reason rejection
-  fails the gate with the captured Display (a vacuity floor keeps ≥ 40 such reason asserts live).
-  Each accept vector is ALSO replayed through mechanically-derived **encoding variants** (the shipped
-  `cddl_encoding_fidelity::variants` mutator, reused harness-side: indefinite framing, non-minimal
-  int/len widths, chunked strings, reversed maps) — a spec-EQUAL re-encoding the default decoder
-  REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
-  `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
-  legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
-  the leg live. Each accept vector is ALSO fed mechanically-derived **header-mutation reject mutants**
-  (`header_mutants` — pure byte transforms of the item-under-test's leading CBOR head: `wrong_major`
-  flips the major type, `trunc_head` re-encodes the head with an 8-byte argument then drops its final
-  byte, ill-formed by construction; holder rows mutate past the `82 00` = `[0, _]` preamble). A
-  `wrong_major` flip landing on a major the row's own accept vectors evidence (majors 0/1 merged, the
-  drift gate's § 6 merge) is skipped at DERIVATION time — such a mutant is ambiguous (possibly
-  spec-valid, e.g. `type.choice`'s bstr↔tstr flip landing on the other `uint / tstr / bytes` arm), and
-  skipping only the ambiguous flips keeps the row's non-ambiguous mutants (its uint vectors' 0→4 array
-  flip) live where a (row, label)-wide ledger entry would swallow a future over-acceptance. Each
-  emitted mutant must be REJECTED **and** the error Display must carry a location naming the decoding
-  type (`failed in {type_name}` — the annotation analogue of the constraint leg's `expect_err`, at
-  catalog breadth rather than the fixture-granularity `error_annotation_*` tests; a bare `type_name`
-  contains is deliberately NOT used, since single-letter type names like `T` would vacuously match
-  "TagMismatch"). Two stale-guarded ledgers hold the honest exceptions: `HEADER_MUTANT_ACCEPT_SKIP` —
-  a mutant the row's spec genuinely accepts WITHOUT any accept vector evidencing that major (an
-  `any`-typed row, an unsampled choice arm; EMPTY at HEAD; `trunc_head` can never be here, asserted as
-  a hard error) — and `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location, every entry at
-  HEAD the newtype-wrapper container-read annotation gap (`ctl.*`, `rangeop.*`,
-  `dsl.newtype`/`dsl.custom_json`, `type1.ctlop`; the ledgered "Annotate embedded/plain-group
-  `deserialize()` header scaffolding (and newtype wrappers' container reads)" TESTING_ROADMAP item),
-  or the locationless `from_cbor_bytes` `TrailingData` path. A header-mutant vacuity floor keeps the
-  leg live. When an emitted replay test
-  FAILS, its cause is attributed by pure marker-classification functions
-  (`classify_constraint_failure` / `classify_variant_failure` / `classify_header_mutant_failure`)
-  whose needles own the trailing ':' that disambiguates prefix-colliding libtest names (`reject_1`
-  vs `reject_10`); that grammar is pinned unit-side (no crate build) by
-  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names`, its
-  variant sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`,
-  and its header-mutant sibling
-  `integration_tests::classify_header_mutant_failure_disambiguates_prefix_colliding_names` (the
-  mutator itself is pinned by `integration_tests::header_mutants_pin_hand_derived_bytes`).
+  `full` tier, ~3 min): per active row it generates a crate from the committed `spec` and `cargo
+  test`s it under two profiles. Oracle-free and deterministic — the bytes were spec-cross-validated
+  at mint time, so the gate replays commitments, never re-derives them. Three assertion legs run on
+  the DEFAULT-profile build, sharing one failure-attribution grammar:
+  - *Base replay* — every accept vector decodes Ok and every reject pin still Errs (**a pin that
+    starts decoding green FAILS the gate** — a re-bless can't silently launder a bug). Each
+    `class="constraint"` vector additionally asserts the error Display CONTAINS the catalog's
+    `expect_err`, pinning the rejection REASON — a wrong-reason rejection fails the gate with the
+    captured Display (a vacuity floor keeps ≥ 40 reason asserts live).
+  - *Encoding-variant leg* — each accept vector is replayed through mechanically-derived spec-EQUAL
+    re-encodings (the shipped `cddl_encoding_fidelity::variants` mutator, reused harness-side:
+    indefinite framing, non-minimal int/len widths, chunked strings, reversed maps): a re-encoding
+    the decoder REJECTS (over-strict, the motivating class) or mis-decodes to a different value
+    fails the gate. `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any
+    (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test
+    vacuity floor keeps the leg live.
+  - *Header-mutation leg* — each accept vector also derives spec-INVALID reject mutants
+    (`header_mutants`, pure byte transforms of the item-under-test's leading CBOR head; holder rows
+    mutate past the `82 00` = `[0, _]` preamble): `wrong_major` flips the major type, `trunc_head`
+    re-encodes the head with an 8-byte argument then drops its final byte (ill-formed by
+    construction). A `wrong_major` flip landing on a major the row's own accept vectors evidence
+    (majors 0/1 merged, the drift gate's § 6 merge) is skipped at DERIVATION time: such a mutant is
+    ambiguous (possibly spec-valid — `type.choice`'s bstr↔tstr flip lands on the other
+    `uint / tstr / bytes` arm), and skipping only the ambiguous flips keeps the row's non-ambiguous
+    mutants live where a (row, label)-wide ledger entry would swallow a future over-acceptance.
+    Each emitted mutant must be REJECTED **and** the error Display must carry a location naming the
+    decoding type (`failed in {type_name}` — the annotation analogue of the base leg's
+    `expect_err`, at catalog breadth rather than the fixture-granularity `error_annotation_*`
+    tests; a bare `type_name` contains is deliberately NOT used, since single-letter type names
+    like `T` would vacuously match "TagMismatch"). Two stale-guarded ledgers hold the honest
+    exceptions: `HEADER_MUTANT_ACCEPT_SKIP` — a mutant the row's spec genuinely accepts WITHOUT any
+    accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; EMPTY at
+    HEAD; `trunc_head` can never be here, asserted as a hard error) — and
+    `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location: every entry at HEAD is the
+    newtype-wrapper container-read annotation gap (`ctl.*`, `rangeop.*`,
+    `dsl.newtype`/`dsl.custom_json`, `type1.ctlop`; the ledgered "Annotate embedded/plain-group
+    `deserialize()` header scaffolding (and newtype wrappers' container reads)" TESTING_ROADMAP
+    item), with the locationless `from_cbor_bytes` `TrailingData` path the other known-legitimate
+    resident. A header-mutant vacuity floor keeps the leg live.
+  - *Failure attribution* — a FAILED replay test's cause is attributed by pure
+    marker-classification functions (`classify_constraint_failure` / `classify_variant_failure` /
+    `classify_header_mutant_failure`) whose needles own the trailing ':' that disambiguates
+    prefix-colliding libtest names (`reject_1` vs `reject_10`); that grammar is pinned unit-side
+    (no crate build) by
+    `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its
+    variant/header-mutant siblings
+    (`classify_variant_failure_owns_the_delimiter_and_maps_each_marker`,
+    `classify_header_mutant_failure_disambiguates_prefix_colliding_names`); the header mutator
+    itself is pinned by `integration_tests::header_mutants_pin_hand_derived_bytes`.
+
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
   re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
   `PRESERVE_SKIP` (stale-guarded) carries the float class plus the tag-over-a-type-choice preserve
-  gap; anything new there is a finding. It
-  stays a hand list on purpose — it is NOT the matrix emission axis: the replay specs embed rows as
-  members, so e.g. `prelude.float` skips here while its `emission.preserve` verdict (a bare-alias
-  probe) is `supported`.
+  gap; anything new there is a finding. It stays a hand list on purpose — it is NOT the matrix
+  emission axis: the replay specs embed rows as members, so e.g. `prelude.float` skips here while
+  its `emission.preserve` verdict (a bare-alias probe) is `supported`.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
