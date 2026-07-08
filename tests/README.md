@@ -23,7 +23,10 @@ policy below). `local` is "run before considering work done" — the heavy corre
 status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
 `project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, and enforces
-blank lines before headings in the hand docs. `full` additionally runs the
+blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
+pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
+X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
+behavior change, where prose-only claims rot silently. `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the six `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
@@ -226,9 +229,10 @@ of the tradeoff. The `is_ok`/`is_err` fragments in `emit_tests.rs` and the repla
 EMITTED text compiled in generated crates, outside this lint's scope.
 
 Fixture-appended tests under `tests/*/tests*.rs` are also outside workspace clippy because they
-compile only inside generated crates. The default integration suite has a textual sweep that bans
-fresh `assert!(...is_ok())` there; positive Result checks should use `.unwrap()` or `.expect()` so
-the generated-crate failure includes the error payload.
+compile only inside generated crates. A textual sweep in the default integration suite bans fresh
+`assert!(...is_ok())` there, gated by `fixture_appended_tests_do_not_assert_is_ok`; positive
+Result checks should use `.unwrap()` or `.expect()` so the generated-crate failure includes the
+error payload.
 
 Deserialize-error annotation contract (the `error_annotation_*` tests in `tests/core/tests.rs`,
 plus `error_annotation_tag_mismatch_single_name` in `tests/preserve-encodings/tests.rs`): every
@@ -704,6 +708,15 @@ target cache is preserved. Two curated lists, each empirically justified:
 Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
 rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
 so a silent no-op sweep can't pass.
+
+**Which rules get rooted at all.** Both oracle halves share one seam —
+`emit_tests.rs::conformance_rule_name` — and it roots every top-level rule EXCEPT a bare-GROUP rule
+(`inner = (a: uint, b: uint)`): a group is a reusable fragment, not a validatable instance type, so
+both oracles reject any bytes offered against it *by design* (the ruby gem always did; the rust
+fork's validator since its `773b723` array-sequence rewrite). Such a rule gets NO conformance call
+and NO minted-bytes dump — a design exclusion, not a ledger entry, which is why its absence never
+shows up in `DUMP_EXEMPT`. Its *embedders* stay fully judged: `tests/corpus/nested_group.cddl`
+pins the shape (`inner` unrooted, its array-splicing sibling `outer` rooted by both halves).
 
 **Decorrelated (ruby `cddl` gem) second oracle.** The rust oracle above shares the dcSpark fork's
 parser with the generator, so a **fork misparse** (which corrupts generator IR and the oracle's spec

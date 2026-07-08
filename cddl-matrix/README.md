@@ -106,6 +106,12 @@ regenerated, never hand-edited. `build_matrix.ts` also runs the **drift-check** 
 resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` holds the shared loaders
 + the byte-exact JSON serializer.
 
+> **Editing this README or `ROADMAP.md`?** They are themselves linted: the sibling script
+> `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
+> tsc coverage) asserts every "pinned by/tracked by/gated by `name`" citation in the hand docs still
+> resolves in the tree, bans positional "…item `<N>`" citations, and requires a blank line before
+> headings.
+
 Why this shape: the (construct × variation × nesting × encoding) cross-product is intractable and mostly
 meaningless. Normalizing keeps each fact in one place — e.g. "tags are supported but **nested** tags are
 not" is not a bespoke row; it's `containment(tag-content, type2.tag)` with a cddl-codegen annotation of

@@ -234,7 +234,10 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
 - A docs-vs-behavior conformance harness for `comment_dsl.mdx` / `output_format.mdx` (snippet
   extraction + output spot-checks): emitted output is already pinned by the snapshot corpus and
   DSL-name drift by the `cddl-matrix/verify.ts` forward lint; a doc-snippet system is heavy
-  machinery for prose drift that review catches at its actual rate. NB this decision covers PROSE
+  machinery for prose drift that review catches at its actual rate. The decline has narrowed since
+  it was made: identifier-existence drift (a cited pin that no longer exists) is now mechanically
+  covered by the `lint_doc_citations` gate, so what stays declined is prose SEMANTICS only — a
+  sentence whose cited pin exists but whose claim about it is wrong. NB this decision covers PROSE
   drift only — the separate class of a directive silently no-oping in an unenumerated attachment
   position (`@name` was dropped on arrow keys once and bareword keys once, both found by hand) is
   a real class with its own standing system: the directive × attachment-position sweep
