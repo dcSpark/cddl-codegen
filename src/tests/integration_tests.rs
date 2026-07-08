@@ -5640,6 +5640,12 @@ fn decode_replay_run(
         let name = format!("accept_{i}_var_{label}");
         let orig = hex_to_byte_literals(&vectors[*i].hex);
         let var = bytes_to_byte_literals(var_bytes);
+        // NB the `.expect` message carries NO trailing ':' yet still satisfies
+        // `classify_variant_failure`'s `"{marker} {name}:"` needle — `Result::expect` panics with
+        // `{msg}: {err}`, so std's format supplies the colon at runtime (the classifier unit pin's
+        // `VAR_ORIG_DECODE_FAILED …: orig failed` fixture is that runtime shape). Rewriting this
+        // as a colon-less `panic!` would drop that delimiter and degrade attribution to the
+        // unexplained-failure branch; keep the marker inside `.expect` (or emit the ':' yourself).
         let body = format!(
             "let orig_val = {type_name}::from_cbor_bytes(ORIG).expect(\"{MARKER_VAR_ORIG_DECODE_FAILED} {name}\");\n\
              \x20       match {type_name}::from_cbor_bytes(VAR) {{\n\
