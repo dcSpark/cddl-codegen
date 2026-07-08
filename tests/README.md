@@ -211,6 +211,15 @@ fix landed generator-wide. The deny is `clippy::all` only, never `-D warnings` �
 legitimately over-imports (see `tool_cmd`'s doc comment). Rust crate only (`--wasm=false`);
 extending to the wasm crate is a ledgered roadmap follow-up.
 
+Distinct from this generated-code gate, the fast-tier WORKSPACE clippy gate (check.ts's `clippy`)
+denies `clippy::all` PLUS the restriction lint `clippy::assertions_on_result_states` over the
+repo's own code: an `assert!(r.is_ok())` / `assert!(r.is_err())` discards the payload that would
+attribute the failure, so a Result assert takes the `.expect()` / `match` form whose panic carries
+the error (a red run — above all a transient one — must be actionable from its first capture). A
+genuine can't-Debug case takes a site-local `#[allow]` with a reason — the visible, reviewable form
+of the tradeoff. The `is_ok`/`is_err` fragments in `emit_tests.rs` and the replay harness are
+EMITTED text compiled in generated crates, outside this lint's scope.
+
 Deserialize-error annotation contract (the `error_annotation_*` tests in `tests/core/tests.rs`,
 plus `error_annotation_tag_mismatch_single_name` in `tests/preserve-encodings/tests.rs`): every
 fallible part of a record's header parsing — container major type, definite-length checks, tag
@@ -1012,7 +1021,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   error-code set (`rustc_error_codes` scans the captured cargo stderr for `error[E####]` headers) must
   EQUAL the pin's declared set, or the gate fails loud with "the cell's failure class changed —
   re-triage the pin" (set equality is the contract, never subset — pin the full honest observed set if
-  a cell co-emits multiple codes). A listed cell whose GENERATION aborts is likewise a class mismatch:
+  a cell co-emits multiple codes). Author a new pin's codes from the observed evidence, not from the
+  expected diagnosis: the gate's red-cell failure output prints the captured cargo stderr, whose
+  `error[E####]` headers are exactly the set to pin. A listed cell whose GENERATION aborts is likewise a class mismatch:
   the pin claims a rustc compile error, and a generation abort produces none. An up-front stale-key
   guard rejects a listed stem absent from the projected set, and a missing wasm crate is handled
   symmetrically. Verify a new guard the way these were: temporarily poison a key (bogus stem →
