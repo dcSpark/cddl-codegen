@@ -364,7 +364,7 @@ and asserts they are accepted.
     accept-less standalone rows).
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~3 min: per-row crate builds under two profiles, the default build including the
-  encoding-variant tests). Oracle-free and deterministic:
+  encoding-variant and header-mutation tests). Oracle-free and deterministic:
   per active row it generates from the committed `spec`, asserts every accept vector decodes Ok and
   every reject pin still Errs (**a pin that starts decoding green FAILS the gate** — a re-bless
   can't silently launder a bug), and for each `class="constraint"` vector asserts the error Display
@@ -376,12 +376,37 @@ and asserts they are accepted.
   REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
   `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
   legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
-  the leg live. When an emitted replay test FAILS, its cause is attributed by pure
-  marker-classification functions (`classify_constraint_failure` / `classify_variant_failure`)
+  the leg live. Each accept vector is ALSO fed mechanically-derived **header-mutation reject mutants**
+  (`header_mutants` — pure byte transforms of the item-under-test's leading CBOR head: `wrong_major`
+  flips the major type, `trunc_head` re-encodes the head with an 8-byte argument then drops its final
+  byte, ill-formed by construction; holder rows mutate past the `82 00` = `[0, _]` preamble). A
+  `wrong_major` flip landing on a major the row's own accept vectors evidence (majors 0/1 merged, the
+  drift gate's § 6 merge) is skipped at DERIVATION time — such a mutant is ambiguous (possibly
+  spec-valid, e.g. `type.choice`'s bstr↔tstr flip landing on the other `uint / tstr / bytes` arm), and
+  skipping only the ambiguous flips keeps the row's non-ambiguous mutants (its uint vectors' 0→4 array
+  flip) live where a (row, label)-wide ledger entry would swallow a future over-acceptance. Each
+  emitted mutant must be REJECTED **and** the error Display must carry a location naming the decoding
+  type (`failed in {type_name}` — the annotation analogue of the constraint leg's `expect_err`, at
+  catalog breadth rather than the fixture-granularity `error_annotation_*` tests; a bare `type_name`
+  contains is deliberately NOT used, since single-letter type names like `T` would vacuously match
+  "TagMismatch"). Two stale-guarded ledgers hold the honest exceptions: `HEADER_MUTANT_ACCEPT_SKIP` —
+  a mutant the row's spec genuinely accepts WITHOUT any accept vector evidencing that major (an
+  `any`-typed row, an unsampled choice arm; EMPTY at HEAD; `trunc_head` can never be here, asserted as
+  a hard error) — and `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location, every entry at
+  HEAD the newtype-wrapper container-read annotation gap (`ctl.*`, `rangeop.*`,
+  `dsl.newtype`/`dsl.custom_json`, `type1.ctlop`; the ledgered "Annotate embedded/plain-group
+  `deserialize()` header scaffolding (and newtype wrappers' container reads)" TESTING_ROADMAP item),
+  or the locationless `from_cbor_bytes` `TrailingData` path. A header-mutant vacuity floor keeps the
+  leg live. When an emitted replay test
+  FAILS, its cause is attributed by pure marker-classification functions
+  (`classify_constraint_failure` / `classify_variant_failure` / `classify_header_mutant_failure`)
   whose needles own the trailing ':' that disambiguates prefix-colliding libtest names (`reject_1`
   vs `reject_10`); that grammar is pinned unit-side (no crate build) by
-  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its
-  variant sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`.
+  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names`, its
+  variant sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`,
+  and its header-mutant sibling
+  `integration_tests::classify_header_mutant_failure_disambiguates_prefix_colliding_names` (the
+  mutator itself is pinned by `integration_tests::header_mutants_pin_hand_derived_bytes`).
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
   re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
   `PRESERVE_SKIP` (stale-guarded) carries the float class plus the tag-over-a-type-choice preserve
