@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Coords {
+    pub index_0: u64,
+    pub index_1: u64,
+}
+
+impl Coords {
+    pub fn new(index_0: u64, index_1: u64) -> Self {
+        Self { index_0, index_1 }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub c: Coords,
+}
+
+impl Holder {
+    pub fn new(c: Coords) -> Self {
+        Self { c }
+    }
+}
+
+pub type Wrapped = Coords;

@@ -1516,7 +1516,18 @@ fn parse_group_type<'a>(
                         &ge.occur,
                     ),
                     GroupEntry::TypeGroupname { ge, .. } => (
-                        types.new_type(&CDDLIdent::new(ge.name.to_string()), cli),
+                        // Route through the shared helper so a generic instantiation used as a
+                        // homogeneous array element (`[* pair<uint, tstr>]`) registers its generic
+                        // instance instead of dropping `ge.generic_args` and emitting a reference to
+                        // the never-emitted bare generic base. `generic_args == None` stays
+                        // byte-identical to the previous `types.new_type(...)` call.
+                        generic_instance_or_new_type(
+                            types,
+                            parent_visitor,
+                            CDDLIdent::new(ge.name.to_string()),
+                            &ge.generic_args,
+                            cli,
+                        ),
                         &ge.occur,
                     ),
                     GroupEntry::InlineGroup { .. } => unreachable!("guarded above"),
@@ -1938,6 +1949,54 @@ fn rust_type_from_type1(
     }
 }
 
+/// Resolve a type/group name that may carry generic arguments into a `RustType`.
+///
+/// With `generic_args == None` this is exactly `types.new_type(&cddl_ident, cli)`, so callers that
+/// previously did that directly stay byte-identical. With generic args present it registers an
+/// anonymous generic instance under the synthesized name `<name>_<arg-variants>` (e.g. a
+/// `pair<uint, tstr>` element becomes `pair_uint_text`) and resolves *that* instance — otherwise the
+/// args are silently dropped and the emitted code references the bare, never-emitted generic base.
+///
+/// Shared by every member/element position that can carry a generic instantiation
+/// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
+/// `TypeGroupname` array arm) so the two paths cannot drift.
+fn generic_instance_or_new_type(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    cddl_ident: CDDLIdent,
+    generic_args: &Option<GenericArgs>,
+    cli: &Cli,
+) -> RustType {
+    match generic_args {
+        Some(args) => {
+            // This is for anonymous instances (i.e. members) such as:
+            // foo = [a: bar<text, bool>]
+            // so to be able to expose it to wasm, we create a new generic instance
+            // under the name bar_string_bool in this case.
+            let generic_args = args
+                .args
+                .iter()
+                .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
+                .collect::<Vec<_>>();
+            let args_name = generic_args
+                .iter()
+                .map(|t| t.for_variant().to_string())
+                .collect::<Vec<String>>()
+                .join("_");
+            let instance_cddl_ident = CDDLIdent::new(format!("{cddl_ident}_{args_name}"));
+            let instance_ident = RustIdent::new(instance_cddl_ident.clone());
+            let generic_ident = RustIdent::new(cddl_ident);
+            types.register_generic_instance(GenericInstance::new(
+                instance_ident,
+                generic_ident,
+                generic_args,
+            ));
+            types.new_type(&instance_cddl_ident, cli)
+        }
+        None => types.new_type(&cddl_ident, cli),
+    }
+}
+
 fn rust_type_from_type2(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -1960,37 +2019,13 @@ fn rust_type_from_type2(
             ident,
             generic_args,
             ..
-        } => {
-            let cddl_ident = CDDLIdent::new(ident.ident);
-            match generic_args {
-                Some(args) => {
-                    // This is for anonymous instances (i.e. members) such as:
-                    // foo = [a: bar<text, bool>]
-                    // so to be able to expose it to wasm, we create a new generic instance
-                    // under the name bar_string_bool in this case.
-                    let generic_args = args
-                        .args
-                        .iter()
-                        .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
-                        .collect::<Vec<_>>();
-                    let args_name = generic_args
-                        .iter()
-                        .map(|t| t.for_variant().to_string())
-                        .collect::<Vec<String>>()
-                        .join("_");
-                    let instance_cddl_ident = CDDLIdent::new(format!("{cddl_ident}_{args_name}"));
-                    let instance_ident = RustIdent::new(instance_cddl_ident.clone());
-                    let generic_ident = RustIdent::new(cddl_ident);
-                    types.register_generic_instance(GenericInstance::new(
-                        instance_ident,
-                        generic_ident,
-                        generic_args,
-                    ));
-                    types.new_type(&instance_cddl_ident, cli)
-                }
-                None => types.new_type(&cddl_ident, cli),
-            }
-        }
+        } => generic_instance_or_new_type(
+            types,
+            parent_visitor,
+            CDDLIdent::new(ident.ident),
+            generic_args,
+            cli,
+        ),
         Type2::Array { group, .. } => {
             // TODO: support for group choices in arrays?
             match group.group_choices.len() {
@@ -2050,7 +2085,24 @@ fn rust_type_from_type2(
                             // we aren't returning an array, but rather a struct where the fields are ordered
                             types.new_type(&cddl_ident, cli)
                         }
-                        GroupParsingType::WrappedBasicGroup(basic_type) => basic_type,
+                        GroupParsingType::WrappedBasicGroup(basic_type) => {
+                            // A member-position anonymous array wrapping a plain-group reference
+                            // (e.g. `bytes .cbor [coords]`, or a field `x = [coords]`) must promote
+                            // the referenced plain group to an Array-rep Record struct, exactly like
+                            // the `HomogenousArray` sibling above. Without this the group is never
+                            // emitted and the returned type dangles on a bare, non-existent struct.
+                            if let ConceptualRustType::Rust(element_ident) =
+                                basic_type.conceptual_type.resolve_alias_shallow()
+                            {
+                                types.set_rep_if_plain_group(
+                                    parent_visitor,
+                                    element_ident,
+                                    Representation::Array,
+                                    cli,
+                                );
+                            }
+                            basic_type
+                        }
                     }
                 }
                 // array of elements with choices: enums?

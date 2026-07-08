@@ -1,0 +1,8 @@
+pair<a0, b0> = [a0, b0]
+; A generic instantiation used as a homogeneous array ELEMENT (`[* pair<uint, tstr>]`): the
+; anonymous instance (`pair_uint_text`) must be registered + emitted, not dropped so the array
+; dangles on a bare, never-emitted `Pair`.
+pairs = [* pair<uint, tstr>]
+; The SAME instantiation also used at a rule RHS — the two positions share one emitted instance,
+; proving the member-position registration coexists with the definitional one.
+one_pair = pair<uint, tstr>

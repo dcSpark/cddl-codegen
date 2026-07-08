@@ -862,7 +862,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     ),
     (
         "called `Option::unwrap()` on a `None` value @ src/intermediate.rs",
-        "type-choice arm with no storable representation ([group] / any arms); pinned by tests/robustness/choice_group_array_arm.cddl and tests/robustness/choice_any_arm.cddl (recombination findings)",
+        "type-choice arm with no storable representation (`any` arm); pinned by tests/robustness/choice_any_arm.cddl (recombination finding). The sibling `[group]`-arm shape (`[coords] / tstr`) is now storable — it promotes the plain group to a Record struct and generates a proper enum variant (pinned by tests/robustness/choice_group_array_arm.cddl, now an `ok` fixture)",
     ),
     (
         "should not expose Fixed type in member",
@@ -927,9 +927,11 @@ fn recombination_generation_sweep() {
         findings.join("\n\n")
     );
 
-    // Vacuity floors — from the EXECUTED artifact, not the inputs. Baselines from the first run
-    // (1544 swept / 848 ok / 509 panic / 187 graceful); floors sit ~10% under so real shrinkage
-    // fails loud while ingredient additions don't churn them.
+    // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline
+    // (1544 swept / 840 ok / 507 panic / 197 graceful); floors sit ~10% under so real shrinkage
+    // fails loud while ingredient additions don't churn them. (The `[coords] / tstr` choice-arm and
+    // the `gen<[coords]>` generic-arg shapes moved panic -> ok when member-position array-of-plain-
+    // group promotion landed — see the choice-arm `KNOWN_PANIC_CLASSES` note.)
     assert!(
         comps.len() >= 1400,
         "only {} compositions swept (floor 1400) — the composer rotted or ingredients went missing",
@@ -981,28 +983,13 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // Float-family table key domains are now a GRACEFUL generation-time rejection (floats have no
     // total order → no valid map key; pinned by tests/robustness/float_table_key.cddl and
     // float_table_key_composite.cddl), so those compositions never reach layer 2 — no entry needed.
-    // -- generic instantiation as a homogeneous array element: instance never emitted (E0425) -----
-    (
-        "outer=occurrence filler=genericarg.",
-        "generic instantiation as a homogeneous array element is never emitted (E0425); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "inner=occurrence filler=genericarg.multiple",
-        "generic instantiation as a homogeneous array element is never emitted (E0425); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=occurrence inner=generic_arg filler=value.number",
-        "generic instantiation as a homogeneous array element is never emitted (E0425); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=occurrence inner=generic_arg filler=rangeop.exclusive.float",
-        "generic instantiation as a homogeneous array element is never emitted (E0425); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // A generic instantiation as a homogeneous array element (`[* pair<uint, tstr>]`) now registers
+    // its generic instance and compiles + round-trips (pinned by tests/corpus/generic_array_element.cddl),
+    // so those compositions execute in layer 2 — no entry needed.
+    // A `.cbor` payload wrapping an anonymous array-of-plain-group (`bytes .cbor [coords]`) now
+    // promotes the plain group to a Record struct and compiles + round-trips (pinned by
+    // tests/corpus/cbor_wrapped_group_array.cddl), so those compositions execute — no entry needed.
     // -- `.cbor` payload shapes --------------------------------------------------------------------
-    (
-        "outer=cbor_payload filler=grpent.groupname",
-        ".cbor payload wrapping an anonymous array-of-plain-group is never emitted (E0425); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
     (
         "outer=cbor_payload filler=memberkey.type1",
         "int-valued table under a .cbor payload dangles the undefined `Int` wrapper; cddl-matrix/ROADMAP.md § findings, `cannot find type Int` entry",

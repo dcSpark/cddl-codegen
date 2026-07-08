@@ -1,0 +1,8 @@
+coords = (uint, uint)
+; A `.cbor` payload wrapping an anonymous array-of-plain-group (`bytes .cbor [coords]`): the plain
+; group `coords` must be promoted to an Array-rep Record struct and emitted, not dangled on a bare,
+; never-emitted `Coords`.
+wrapped = bytes .cbor [coords]
+; The same array-of-plain-group directly in member position (`[coords]` as a field type) exercises
+; the identical promotion path (formerly it too dangled).
+holder = [c: [coords]]

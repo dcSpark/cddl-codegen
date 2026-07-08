@@ -248,15 +248,20 @@ are ledgered here (that's what the probe/gate error messages point at).
     panics parsing (`group choices in inlined map types not allowed`) — a distinct, earlier site
     than the choice-free "Anonymous groups not allowed" panic. Pinned by
     `tests/robustness/inline_group_choice_member.cddl`.
-  - A generic INSTANTIATION in member position (`a = [pair<uint, tstr>]`) panics parsing's
+  - A generic INSTANTIATION in bare member position (`a = [pair<uint, tstr>]`) panics parsing's
     group-entry catch-all (`not yet implemented: ... create a github issue`), while the same
-    instantiation as a rule RHS is supported. Pinned by `tests/robustness/generic_call_member.cddl`.
+    instantiation as a rule RHS AND as a homogeneous array element (`[* pair<uint, tstr>]`, which
+    registers the anonymous instance — pinned by `tests/corpus/generic_array_element.cddl`) are both
+    supported. Only the bare member position remains. Pinned by
+    `tests/robustness/generic_call_member.cddl`.
   - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate.rs's
     `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
   - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
-    (intermediate.rs, one shared site): `a = [coords] / tstr` (anonymous array-of-plain-group arm)
-    and `a = any / tstr`. Pinned by `tests/robustness/choice_group_array_arm.cddl` and
+    (intermediate.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
+    array-of-plain-group arm (`a = [coords] / tstr`) is now storable — it promotes the plain group
+    to an Array-rep Record struct and generates a proper enum variant (pinned by
+    `tests/robustness/choice_group_array_arm.cddl`, now an `ok` fixture). Panic pinned by
     `tests/robustness/choice_any_arm.cddl`.
   - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
     reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
@@ -266,7 +271,7 @@ are ledgered here (that's what the probe/gate error messages point at).
     inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
     constant resolves through the prelude alias on a path the guard does not classify. Pinned by
     `tests/robustness/tagged_prelude_constant.cddl`.
-- **Nine compile/round-trip-class families surfaced by the recombination fuzzer's first layer-2 run**
+- **Seven compile/round-trip-class families surfaced by the recombination fuzzer's first layer-2 run**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
@@ -278,12 +283,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     like the count-permitting occurrence entry above.
   - **An array-rep group-choice arm containing a `?` optional member breaks compilation** (E0599:
     the arm struct's `deserialize_as_embedded_group` is not emitted): `t = [ ? f0: uint, f1: uint // tstr ]`.
-  - **A generic instantiation as a homogeneous array element is never emitted** (E0425
-    `cannot find type <Instance>`): `a = [* pair<uint, tstr>]` references the instance type without
-    registering it. The MEMBER-position panic sibling is in the sweep entry above; the occurrence
-    position generates and dangles instead.
-  - **A `.cbor` payload wrapping an anonymous array-of-plain-group is never emitted** (E0425):
-    `x = bytes .cbor [coords]`, `coords = (uint, uint)`.
   - **A tagged fixed value inside a map-rep group-choice arm emits a call to a non-fn struct**
     (E0618 `expected function`): `t = { ga: #6.11(42) // fb: tstr }`.
   - **Wire-ambiguous type-choice arms cannot round-trip variant identity** (emitted round-trip
