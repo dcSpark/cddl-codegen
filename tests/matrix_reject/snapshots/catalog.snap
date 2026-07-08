@@ -37,5 +37,12 @@ ctl.oid                            error (graceful)
 ctl.sdnv                           error (graceful)
 ctl.sdnvseq                        error (graceful)
 prelude.any                        ok
+prelude.false                      error (graceful)
+prelude.nil                        error (graceful)
+prelude.null                       error (graceful)
+prelude.true                       error (graceful)
 type2.tag_head_type                PANIC
+type2.value                        error (graceful)
 value.bytes                        error (graceful)
+value.number                       error (graceful)
+value.text                         error (graceful)

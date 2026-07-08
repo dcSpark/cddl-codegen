@@ -55,13 +55,9 @@ prelude.cbor-any                   PANIC
 prelude.eb16                       PANIC
 prelude.eb64legacy                 PANIC
 prelude.eb64url                    PANIC
-prelude.false                      PANIC
 prelude.float16-32                 PANIC
 prelude.float16                    PANIC
 prelude.float32-64                 PANIC
-prelude.nil                        PANIC
-prelude.null                       PANIC
-prelude.true                       PANIC
 prelude.undefined                  PANIC
 type2.any                          PANIC
 type2.choice_from_group            PANIC
@@ -69,6 +65,3 @@ type2.choice_from_inline_group     PANIC
 type2.major                        PANIC
 type2.major7                       PANIC
 type2.unwrap                       PANIC
-type2.value                        PANIC
-value.number                       PANIC
-value.text                         PANIC

@@ -78,13 +78,13 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | eb16 | `x = eb16` | panics generation |
 | eb64legacy | `x = eb64legacy` | panics generation |
 | eb64url | `x = eb64url` | panics generation |
-| false | `x = false` | panics generation |
+| false | `x = false` | rejected gracefully at parse |
 | float16 | `x = float16` | panics generation |
 | float16-32 | `x = float16-32` | panics generation |
 | float32-64 | `x = float32-64` | panics generation |
-| nil | `x = nil` | panics generation |
-| null | `x = null` | panics generation |
-| true | `x = true` | panics generation |
+| nil | `x = nil` | rejected gracefully at parse |
+| null | `x = null` | rejected gracefully at parse |
+| true | `x = true` | rejected gracefully at parse |
 | undefined | `x = undefined` | panics generation |
 | Any (#) | `foo = #` | panics generation |
 | Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | panics generation |
@@ -92,10 +92,10 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Major-type sigil (#N, #N.n) | `foo = #1.2` | panics generation |
 | Major-type 7 / simple sigil (#7, #7.n) | `foo = #7.20` | panics generation |
 | Unwrap (~) | `bar = [uint]; foo = ~bar` | panics generation |
-| Literal value as a type | `answer = 42` | panics generation |
+| Literal value as a type | `answer = 42` | rejected gracefully at parse |
 | Byte-string literal value | `magic = h'cafe'` | rejected gracefully at parse |
-| Numeric literal value | `version = 5` | panics generation |
-| Text literal value | `marker = "v1"` | panics generation |
+| Numeric literal value | `version = 5` | rejected gracefully at parse |
+| Text literal value | `marker = "v1"` | rejected gracefully at parse |
 
 ### Control operators
 

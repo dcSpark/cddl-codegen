@@ -540,6 +540,43 @@ impl<'a> IntermediateTypes<'a> {
                 alias, info.base_type
             );
         }
+        // A top-level rule whose entire body resolves to a bare fixed value — `foo = 5`, `foo = -5`,
+        // `foo = "text"`, `foo = 5.0`, the reserved-alias constants `foo = true`/`false`/`null`/`nil`,
+        // or any of these behind a tag head (`foo = #6.n(5)`) — arrives here as a standalone `Fixed`
+        // conceptual type. `Fixed` has NO standalone/member Rust representation: it exists only
+        // implicitly, as an unstored struct/array member whose value is fixed by the schema, so
+        // exposing it as a top-level type would panic `for_rust_member`/`for_wasm_member` during
+        // generation. Reject gracefully here — the single choke point every top-level alias passes
+        // through — via the normal rejection channel: `finalize` short-circuits on `has_rejections`
+        // BEFORE any resolution/generation runs, so the recorded rejection becomes an `Err` and the
+        // `Fixed` alias below never reaches the panic site. Supporting it (a wrapper newtype carrying
+        // the constant) is future work. This does NOT touch member-position fixed values
+        // (`foo = [1, uint]`, `foo = { bar: 1 }`): those live on group entries and are never
+        // registered as a top-level alias. It also leaves the auto-wrapping tag-inner variants alone
+        // (`#6.n(uint .default 5)`, `#6.n(uint .le 255)`): those resolve to a Primitive wrapper
+        // struct, not a bare `Fixed`.
+        //
+        // We still INSERT the alias (rather than returning early): a sibling rule can reference this
+        // one (`foo = 5` + `m = { foo => uint }`), and its parse resolves the reference through the
+        // alias table. Dropping the entry would leave that reference dangling and panic a downstream
+        // lookup during parse — before `finalize` ever surfaces the graceful `Err`. The registered
+        // `Fixed` alias is harmless because `finalize` never generates once a rejection is recorded.
+        if let ConceptualRustType::Fixed(fixed) = &info.base_type.conceptual_type {
+            let value_desc = match fixed {
+                FixedValue::Null => "null".to_owned(),
+                FixedValue::Bool(b) => b.to_string(),
+                FixedValue::Nint(i) => i.to_string(),
+                FixedValue::Uint(u) => u.to_string(),
+                FixedValue::Float(f) => format!("{f:?}"),
+                FixedValue::Text(s) => format!("\"{s}\""),
+            };
+            self.record_rejection(format!(
+                "rule `{alias}`: a top-level rule whose entire body is a bare fixed value ({value_desc}) \
+                 is unsupported — a fixed value has no standalone type representation, only meaning as an \
+                 (unstored) struct or array member. Wrap it in a group (e.g. `{alias} = [{value_desc}]`) \
+                 or reference it from a member position."
+            ));
+        }
         self.type_aliases.insert(alias.into(), info);
     }
 

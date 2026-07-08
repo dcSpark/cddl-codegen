@@ -19,6 +19,7 @@ map_entry_no_key_single    error (graceful)
 prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok
+tagged_literal             error (graceful)
 undefined_generic          error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)
