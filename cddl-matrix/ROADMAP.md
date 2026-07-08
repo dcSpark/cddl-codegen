@@ -43,6 +43,21 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Accept-vector ARM-coverage floor for choice rows.** The mint's instance generation is randomized,
+  so a multi-arm choice row can land with a whole arm unsampled — the row's decode verdict then
+  silently under-claims: at HEAD `prelude.number` (`int / float`) carries only int-headed accept
+  vectors (the float arm has ZERO decode-direction evidence — nothing shows a foreign float instance
+  decodes), and `prelude.integer`'s vectors are nint + tagged-bignum only (the plain-uint side is
+  unsampled), while `type.choice`, `prelude.unsigned`, and the choice-member null row are fully
+  arm-sampled, so the gap is real but narrow. This also couples to the replay gate's header-mutation
+  leg: its `wrong_major` ambiguity skip derives evidenced majors from the SAME sampling, so an
+  unsampled arm's major is treated as must-reject — a future re-mint that happens to sample
+  differently surfaces as a `HEADER_MUTANT_ACCEPT_SKIP` triage instead of a coverage improvement.
+  Mechanical shape: for a row whose spec root is a type choice with statically-resolvable arm head
+  major-classes (majors 0/1 merged), require ≥1 accept vector per arm class — either a
+  `project_decode_conformance.ts` check (drift-gate tier, red until the under-sampled rows are
+  re-minted with `--only=`) or a mint-side resample-until-covered loop; arms whose head major is not
+  statically resolvable stay exempt (the floor must not guess).
 
 ## 2. F4 / F5 follow-ons (only when their consumer exists)
 
@@ -139,7 +154,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   `[3.0]` as `81 f9 4200`, both oracles accept it, our decoder rejects with FixedValueMismatch
   found=16896). Recorded on the `value.number.hexfloat` catalog row as its `class="bug"` reject pin
   (spec-valid, wrongly rejected; the mint re-validates it and it is pruned when a fixed cbor_event
-  ships). Same disposition as the length-prefix over-allocation entry below: generated crates
+  ships). A second, GREEN-but-corrupted instance sits on the `prelude.time` catalog row: its
+  `c1 f9 068e` accept vector replays Ok while the decoded value is the mis-cast one — an accept
+  vector asserts Ok only, and this row's preserve byte-identity leg (which would expose the f16
+  re-encode) is on the replay gate's `PRESERVE_SKIP` for the unrelated float-generation gap, so
+  nothing pins the wrong value. When a fixed cbor_event ships, that vector's decoded value silently
+  changes; the repro/prune steps in the local note above cover both instances. Same disposition as the length-prefix over-allocation entry below: generated crates
   depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`. Known
   upstream already: issue #16 reports the wrong data, and open PR #18 carries the exact arm fix but
   gates the crate on the nightly-only `f16` primitive, so it cannot ship for stable consumers as
