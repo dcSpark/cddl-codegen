@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the six `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the seven `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -1138,6 +1138,62 @@ project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is d
 hand-edit `tests/matrix_multifile/`**; `--check` is the drift gate (stale/missing/orphaned dir or
 file). `EXPECTED_CELLS`, `EXPECTED_ANON_SHAPES`, and `EXPECTED_ANONB_SHAPES` guard the grid, so a
 shrink/growth is an explicit reviewed edit.
+
+## Shape-recombination fuzzer (`tests/recomb/` + `src/tests/recombination_tests.rs`)
+
+Deterministically recombines the matrix's per-feature examples into composed CDDL specs that no
+single-example gate samples, and runs them through the generator with escalating oracles. The
+motivating gap is proven, not speculative: every other gate samples ONE minimal example per feature
+row, and the map-rep group-choice fix found three defects hiding in unsampled shape *variants* of a
+single "supported" row. The harness varies exactly the axes that mattered there: multi-member shape
+variation inside one construct (a member-kind table: fixed uint/text/bool/null values, keyed
+scalars, optional / zero-permitting occurrences, inline groups, filler-typed members — composed 1–3
+at a time into struct maps, array records, and both group-choice representations), depth-2 nesting
+of constructs in container roles (a role-template table: array element, map key/value, choice
+member, group-choice arm, occurrence target, tag content, `.cbor` payload, generic arg, top level),
+and — low-weight — identifier choice drawn from `identifier_hazard_tests::hazards()` (never
+rediscovered; the hazard sweep owns that axis systematically).
+
+Stage A is a TypeScript projection, `cddl-matrix/project_recombination.ts`: it reduces each matrix
+feature's `example` to a reusable hole-fillable expression (primary-rule RHS + auxiliary rules;
+irreducible examples are recorded in a `skipped` list with reasons) and projects the containment
+legality data, writing the committed `tests/recomb/ingredients.json` (`--check` is the
+`project_recombination_check` drift gate, check.ts local tier). Legality semantics: the containment
+matrix enumerates only structurally interesting cells and deliberately omits trivial
+primitive-as-member cells as implicitly allowed, so the composer treats the projected `disallowed`
+pairs as a BLACKLIST (anything unlisted composes) and uses the `legal` (spec="allowed") pairs only
+as template↔matrix drift protection — every role template must name a role with at least one
+modelled allowed cell.
+
+Stage B is the Rust harness, seeded (fixed `SEED` + splitmix64) and enumeration-deterministic
+(systematic cross-products where cheap, seeded sampling where the product explodes; the sweep
+asserts two back-to-back enumerations are identical). It is a **corpus generator, not a CI gate**:
+the standing harness detects NEW divergence classes; each finding is promoted into the existing
+pinned collections after review. Two layers, mirroring the identifier-hazard split:
+
+- `recombination_generation_sweep` (default `cargo test`, check.ts local tier, ~5 s wall —
+  classification is parallelized across worker threads; thread count never changes WHAT is swept):
+  classifies every composition's generation outcome in-process (`catch_unwind` + the shared
+  silenced-hook idiom, extended with a per-worker capturing hook that records the normalized panic
+  message + file). A PANIC whose normalized message matches no `KNOWN_PANIC_CLASSES` entry is a NEW
+  finding and FAILS the sweep, printing the spec + message + promotion instructions (minimize by
+  hand → pin as a matrix row if the matrix can express the cell, else a `tests/robustness/*.cddl`
+  fixture → ledger it in `cddl-matrix/ROADMAP.md` § findings → add the ledger entry citing the
+  pin). Every ledger entry cites a committed pin AND is asserted actually observed (stale-pin
+  guard); graceful rejections are the designed boundary, tallied but never findings. Vacuity floors
+  (swept count, ok count) are derived from the executed artifact.
+- `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
+  gate): batches the sweep's `ok` compositions (~40 rules/batch; per-composition `rc<num>_` rule
+  prefixes make names collision-free by construction), generates each batch with
+  `--emit-tests=true --wasm=false` (default profile) via the `tool_cmd`/shared-`CARGO_TARGET_DIR`
+  pattern of `feature_corpus_compiles`, and `cargo test`s the generated rust crate — executing the
+  emitted round-trip/reject tests, not just compiling. A failing batch is re-attributed by rerunning
+  members individually; a failing member outside the cited `LAYER2_KNOWN_BAD` ledger (desc-substring
+  keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow.
+
+Adding a member kind / role template / construct shape extends the swept surface; re-tune the
+executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled
+composition — do it deliberately and re-triage.
 
 ## Coverage
 

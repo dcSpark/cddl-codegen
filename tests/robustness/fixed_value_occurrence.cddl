@@ -1,0 +1,10 @@
+; A bare FIXED VALUE as a zero-or-more occurrence target (`[* 5]` — a homogeneous array of the
+; constant 5) panics generation in `for_rust_member` (`should not expose Fixed type in member`,
+; intermediate.rs): the homogeneous-element path asks for a Rust representation of a standalone
+; `Fixed`, which has none. The registration-time graceful rejection that owns the TOP-LEVEL shapes
+; (`x = 5` / `x = true` / `#6.5(5)` — pinned by the tests/matrix_reject value.number/type2.value
+; rows and tests/robustness/tagged_literal.cddl) never sees this position, so the occurrence shape
+; still reaches the panic. Same class fires for `[* true]` / `[* "v1"]` / `[* null]`, and for a
+; tagged prelude constant (tests/robustness/tagged_prelude_constant.cddl). Surfaced by the
+; recombination sweep (src/tests/recombination_tests.rs).
+a = [* 5]

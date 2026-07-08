@@ -1,0 +1,745 @@
+{
+  "disallowed": [
+    {
+      "feature": "type.choice",
+      "role": "role.generic-arg"
+    },
+    {
+      "feature": "grpent.member",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "type.choice",
+      "role": "role.map-key"
+    }
+  ],
+  "fillers": [
+    {
+      "aux": [],
+      "expr": "int .ne 1",
+      "feature": "ctl.ne.one"
+    },
+    {
+      "aux": [],
+      "expr": "int .ne 0",
+      "feature": "ctl.ne.zero"
+    },
+    {
+      "aux": [],
+      "expr": "uint .size 2",
+      "feature": "ctl.size.uint"
+    },
+    {
+      "aux": [
+        "pair<k, v> = [k, v]"
+      ],
+      "expr": "pair<uint, tstr>",
+      "feature": "genericarg.multiple"
+    },
+    {
+      "aux": [
+        "foo<a> = [a]"
+      ],
+      "expr": "foo<uint>",
+      "feature": "genericarg.type"
+    },
+    {
+      "aux": [
+        "foo<a> = [a]"
+      ],
+      "expr": "foo<1..10>",
+      "feature": "genericarg.type1"
+    },
+    {
+      "aux": [],
+      "expr": "{ a: uint // b: tstr }",
+      "feature": "group.choice"
+    },
+    {
+      "aux": [],
+      "expr": "{ x: int, y: int }",
+      "feature": "grpchoice.sequence"
+    },
+    {
+      "aux": [
+        "coords = (uint, uint)"
+      ],
+      "expr": "[coords]",
+      "feature": "grpent.groupname"
+    },
+    {
+      "aux": [],
+      "expr": "[(uint, tstr)]",
+      "feature": "grpent.inline_group"
+    },
+    {
+      "aux": [],
+      "expr": "[int]",
+      "feature": "grpent.member"
+    },
+    {
+      "aux": [],
+      "expr": "[name: tstr]",
+      "feature": "memberkey.bareword"
+    },
+    {
+      "aux": [],
+      "expr": "{ \"a\" ^ => int }",
+      "feature": "memberkey.cut"
+    },
+    {
+      "aux": [],
+      "expr": "{ tstr => int }",
+      "feature": "memberkey.type1"
+    },
+    {
+      "aux": [],
+      "expr": "{ 1: tstr }",
+      "feature": "memberkey.value"
+    },
+    {
+      "aux": [],
+      "expr": "[2*5 uint]",
+      "feature": "occur.bounded"
+    },
+    {
+      "aux": [],
+      "expr": "[2* uint]",
+      "feature": "occur.bounded.lower"
+    },
+    {
+      "aux": [],
+      "expr": "[*5 uint]",
+      "feature": "occur.bounded.upper"
+    },
+    {
+      "aux": [],
+      "expr": "[+ uint]",
+      "feature": "occur.one_or_more"
+    },
+    {
+      "aux": [],
+      "expr": "[? name: tstr]",
+      "feature": "occur.optional"
+    },
+    {
+      "aux": [],
+      "expr": "[* uint]",
+      "feature": "occur.zero_or_more"
+    },
+    {
+      "aux": [],
+      "expr": "any",
+      "feature": "prelude.any"
+    },
+    {
+      "aux": [],
+      "expr": "b64legacy",
+      "feature": "prelude.b64legacy"
+    },
+    {
+      "aux": [],
+      "expr": "b64url",
+      "feature": "prelude.b64url"
+    },
+    {
+      "aux": [],
+      "expr": "bigfloat",
+      "feature": "prelude.bigfloat"
+    },
+    {
+      "aux": [],
+      "expr": "bigint",
+      "feature": "prelude.bigint"
+    },
+    {
+      "aux": [],
+      "expr": "bignint",
+      "feature": "prelude.bignint"
+    },
+    {
+      "aux": [],
+      "expr": "biguint",
+      "feature": "prelude.biguint"
+    },
+    {
+      "aux": [],
+      "expr": "bool",
+      "feature": "prelude.bool"
+    },
+    {
+      "aux": [],
+      "expr": "bstr",
+      "feature": "prelude.bstr"
+    },
+    {
+      "aux": [],
+      "expr": "bytes",
+      "feature": "prelude.bytes"
+    },
+    {
+      "aux": [],
+      "expr": "cbor-any",
+      "feature": "prelude.cbor-any"
+    },
+    {
+      "aux": [],
+      "expr": "decfrac",
+      "feature": "prelude.decfrac"
+    },
+    {
+      "aux": [],
+      "expr": "eb16",
+      "feature": "prelude.eb16"
+    },
+    {
+      "aux": [],
+      "expr": "eb64legacy",
+      "feature": "prelude.eb64legacy"
+    },
+    {
+      "aux": [],
+      "expr": "eb64url",
+      "feature": "prelude.eb64url"
+    },
+    {
+      "aux": [],
+      "expr": "encoded-cbor",
+      "feature": "prelude.encoded-cbor"
+    },
+    {
+      "aux": [],
+      "expr": "false",
+      "feature": "prelude.false"
+    },
+    {
+      "aux": [],
+      "expr": "float",
+      "feature": "prelude.float"
+    },
+    {
+      "aux": [],
+      "expr": "float16",
+      "feature": "prelude.float16"
+    },
+    {
+      "aux": [],
+      "expr": "float16-32",
+      "feature": "prelude.float16-32"
+    },
+    {
+      "aux": [],
+      "expr": "float32",
+      "feature": "prelude.float32"
+    },
+    {
+      "aux": [],
+      "expr": "float32-64",
+      "feature": "prelude.float32-64"
+    },
+    {
+      "aux": [],
+      "expr": "float64",
+      "feature": "prelude.float64"
+    },
+    {
+      "aux": [],
+      "expr": "[x: int]",
+      "feature": "prelude.int"
+    },
+    {
+      "aux": [],
+      "expr": "integer",
+      "feature": "prelude.integer"
+    },
+    {
+      "aux": [],
+      "expr": "mime-message",
+      "feature": "prelude.mime-message"
+    },
+    {
+      "aux": [],
+      "expr": "nil",
+      "feature": "prelude.nil"
+    },
+    {
+      "aux": [],
+      "expr": "nint",
+      "feature": "prelude.nint"
+    },
+    {
+      "aux": [],
+      "expr": "null",
+      "feature": "prelude.null"
+    },
+    {
+      "aux": [],
+      "expr": "number",
+      "feature": "prelude.number"
+    },
+    {
+      "aux": [],
+      "expr": "regexp",
+      "feature": "prelude.regexp"
+    },
+    {
+      "aux": [],
+      "expr": "tdate",
+      "feature": "prelude.tdate"
+    },
+    {
+      "aux": [],
+      "expr": "text",
+      "feature": "prelude.text"
+    },
+    {
+      "aux": [],
+      "expr": "time",
+      "feature": "prelude.time"
+    },
+    {
+      "aux": [],
+      "expr": "true",
+      "feature": "prelude.true"
+    },
+    {
+      "aux": [],
+      "expr": "tstr",
+      "feature": "prelude.tstr"
+    },
+    {
+      "aux": [],
+      "expr": "uint",
+      "feature": "prelude.uint"
+    },
+    {
+      "aux": [],
+      "expr": "undefined",
+      "feature": "prelude.undefined"
+    },
+    {
+      "aux": [],
+      "expr": "unsigned",
+      "feature": "prelude.unsigned"
+    },
+    {
+      "aux": [],
+      "expr": "uri",
+      "feature": "prelude.uri"
+    },
+    {
+      "aux": [],
+      "expr": "0...10",
+      "feature": "rangeop.exclusive"
+    },
+    {
+      "aux": [],
+      "expr": "0.5...10.5",
+      "feature": "rangeop.exclusive.float"
+    },
+    {
+      "aux": [],
+      "expr": "-10...10",
+      "feature": "rangeop.exclusive.int"
+    },
+    {
+      "aux": [],
+      "expr": "-10...-3",
+      "feature": "rangeop.exclusive.nint"
+    },
+    {
+      "aux": [],
+      "expr": "0..10",
+      "feature": "rangeop.inclusive"
+    },
+    {
+      "aux": [],
+      "expr": "0.5..10.5",
+      "feature": "rangeop.inclusive.float"
+    },
+    {
+      "aux": [],
+      "expr": "-10..10",
+      "feature": "rangeop.inclusive.int"
+    },
+    {
+      "aux": [],
+      "expr": "-10..-3",
+      "feature": "rangeop.inclusive.nint"
+    },
+    {
+      "aux": [],
+      "expr": "uint / tstr / bytes",
+      "feature": "type.choice"
+    },
+    {
+      "aux": [],
+      "expr": "0 / 1 / 2",
+      "feature": "type.enum"
+    },
+    {
+      "aux": [],
+      "expr": "tstr .size 4",
+      "feature": "type1.ctlop"
+    },
+    {
+      "aux": [],
+      "expr": "#",
+      "feature": "type2.any"
+    },
+    {
+      "aux": [],
+      "expr": "[uint, tstr, bytes]",
+      "feature": "type2.array"
+    },
+    {
+      "aux": [
+        "colors = (red: 0, green: 1)"
+      ],
+      "expr": "&colors",
+      "feature": "type2.choice_from_group"
+    },
+    {
+      "aux": [],
+      "expr": "&(red: 0, green: 1, blue: 2)",
+      "feature": "type2.choice_from_inline_group"
+    },
+    {
+      "aux": [],
+      "expr": "#1.2",
+      "feature": "type2.major"
+    },
+    {
+      "aux": [],
+      "expr": "#7.20",
+      "feature": "type2.major7"
+    },
+    {
+      "aux": [],
+      "expr": "{ * tstr => int }",
+      "feature": "type2.map"
+    },
+    {
+      "aux": [],
+      "expr": "(uint)",
+      "feature": "type2.parenthesized"
+    },
+    {
+      "aux": [],
+      "expr": "#6.30([uint, uint])",
+      "feature": "type2.tag"
+    },
+    {
+      "aux": [
+        "n = uint"
+      ],
+      "expr": "#6.<n>(int)",
+      "feature": "type2.tag_head_type"
+    },
+    {
+      "aux": [
+        "bar = uint"
+      ],
+      "expr": "bar",
+      "feature": "type2.typename"
+    },
+    {
+      "aux": [
+        "bar = [uint]"
+      ],
+      "expr": "~bar",
+      "feature": "type2.unwrap"
+    },
+    {
+      "aux": [],
+      "expr": "42",
+      "feature": "type2.value"
+    },
+    {
+      "aux": [],
+      "expr": "h'cafe'",
+      "feature": "value.bytes"
+    },
+    {
+      "aux": [],
+      "expr": "5",
+      "feature": "value.number"
+    },
+    {
+      "aux": [],
+      "expr": "[v: 0b1010]",
+      "feature": "value.number.bin"
+    },
+    {
+      "aux": [],
+      "expr": "[v: 0x10]",
+      "feature": "value.number.hex"
+    },
+    {
+      "aux": [],
+      "expr": "[v: 0x1.8p+1]",
+      "feature": "value.number.hexfloat"
+    },
+    {
+      "aux": [],
+      "expr": "\"v1\"",
+      "feature": "value.text"
+    }
+  ],
+  "legal": [
+    {
+      "feature": "grpent.groupname",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "grpent.inline_group",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type.choice",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type2.unwrap",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type2.value",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "value.number",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "value.text",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "type.choice",
+      "role": "role.cbor-payload"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.cbor-payload"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.cbor-payload"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.cbor-payload"
+    },
+    {
+      "feature": "prelude.null",
+      "role": "role.choice-member"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.choice-member"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.choice-member"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.choice-member"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.generic-arg"
+    },
+    {
+      "feature": "grpchoice.sequence",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "grpent.groupname",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "grpent.inline_group",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "grpent.member",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "memberkey.bareword",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "memberkey.type1",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "memberkey.value",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "type2.value",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "memberkey.type1",
+      "role": "role.map-key"
+    },
+    {
+      "feature": "memberkey.value",
+      "role": "role.map-key"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.map-key"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.map-key"
+    },
+    {
+      "feature": "type.choice",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "type2.unwrap",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "grpent.groupname",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "grpent.inline_group",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "grpent.member",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "memberkey.bareword",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "type.choice",
+      "role": "role.tag-content"
+    },
+    {
+      "feature": "type2.array",
+      "role": "role.tag-content"
+    },
+    {
+      "feature": "type2.map",
+      "role": "role.tag-content"
+    },
+    {
+      "feature": "type2.tag",
+      "role": "role.tag-content"
+    },
+    {
+      "feature": "type2.unwrap",
+      "role": "role.top-level"
+    }
+  ],
+  "skipped": [
+    {
+      "feature": "assigng.extend",
+      "reason": "duplicate rule names (choice-extension / redefinition)"
+    },
+    {
+      "feature": "assignt.extend",
+      "reason": "duplicate rule names (choice-extension / redefinition)"
+    },
+    {
+      "feature": "dsl.custom_deserialize",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
+      "feature": "dsl.custom_json",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.custom_serialize",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
+      "feature": "dsl.doc",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.name",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.newtype",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.no_alias",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
+      "feature": "dsl.used_as_key",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "ext.extern",
+      "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
+    },
+    {
+      "feature": "ext.raw_bytes",
+      "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
+    },
+    {
+      "feature": "genericparm.group",
+      "reason": "generic-parameterized root; RHS is not a standalone expression"
+    },
+    {
+      "feature": "genericparm.multiple",
+      "reason": "generic-parameterized root; RHS is not a standalone expression"
+    },
+    {
+      "feature": "genericparm.type",
+      "reason": "generic-parameterized root; RHS is not a standalone expression"
+    }
+  ]
+}

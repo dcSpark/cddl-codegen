@@ -1,0 +1,9 @@
+; A TYPE-CHOICE whose arm is an anonymous array wrapping a plain-group reference (`[coords] / tstr`)
+; panics generation at an `Option::unwrap()` on `None` in intermediate.rs: the choice's variant
+; naming/representation lookup has no entry for the anonymous array-of-group arm. Both arms are
+; individually supported (`a = [coords]` alone generates; so does `a = uint / tstr`); the panic is
+; the COMBINATION. Same normalized panic class as choice_any_arm.cddl (a different trigger shape
+; sharing the message). No matrix cell models choice arms carrying anonymous composites of plain
+; groups. Surfaced by the recombination sweep (src/tests/recombination_tests.rs).
+coords = (uint, uint)
+a = [coords] / tstr

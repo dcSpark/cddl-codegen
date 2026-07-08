@@ -1,0 +1,8 @@
+; `any` as an ARRAY ELEMENT (`[any]`; equally `{ k: any }` map values) panics generation at
+; intermediate.rs's `generic_instances` assert — the pre-registered `any` extern struct is looked up
+; as if it were a generic instance. DISTINCT from the top-level alias `x = any`, which GENERATES
+; fine and is pinned as a compile-class gap by tests/matrix_reject/prelude.any.cddl (matrix
+; evidence: generates but does not compile). The matrix has no member-position prelude.any
+; containment cell, so this hand fixture pins the member-position panic. Surfaced by the
+; recombination sweep (src/tests/recombination_tests.rs).
+a = [any]
