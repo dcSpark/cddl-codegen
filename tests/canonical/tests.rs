@@ -553,13 +553,13 @@ mod tests {
     // Negative half of the suite: malformed / out-of-contract CBOR into the canonical crate's
     // from_cbor_bytes must be REJECTED, with the reason pinned as an error-message substring
     // (mirroring tests/core structural_rejects) so a reject can't pass for the wrong reason.
-    // Every case sits next to an is_ok() baseline differing in one dimension. Bytes are raw hex
+    // Every case sits next to an accept baseline differing in one dimension. Bytes are raw hex
     // on purpose (independent of the deser_test helpers).
     #[test]
     fn structural_rejects() {
         // Foo = #6.11([uint, text, bytes]) — baseline: tag 11, array(3), 9, "abc", h'0102'.
         let foo_ok: &[u8] = &[0xcb, 0x83, 0x09, 0x63, 0x61, 0x62, 0x63, 0x42, 0x01, 0x02];
-        assert!(Foo::from_cbor_bytes(foo_ok).is_ok());
+        Foo::from_cbor_bytes(foo_ok).unwrap();
         // empty input
         assert!(Foo::from_cbor_bytes(&[]).is_err());
         // wrong tag (12 instead of 11)
@@ -581,7 +581,7 @@ mod tests {
         // indefinite map with the 3 mandatory entries ("foo" => tag13(foo), 1 => null, "five" => 5).
         let bar_foo_entry: &[u8] = &[0x63, 0x66, 0x6f, 0x6f, 0xcd, 0xcb, 0x83, 0x09, 0x63, 0x61, 0x62, 0x63, 0x42, 0x01, 0x02];
         let bar_ok = [&[0xbf][..], bar_foo_entry, &[0x01, 0xf6, 0x64, 0x66, 0x69, 0x76, 0x65, 0x05, 0xff]].concat();
-        assert!(Bar::from_cbor_bytes(&bar_ok).is_ok());
+        Bar::from_cbor_bytes(&bar_ok).unwrap();
         // duplicate map key ("five" twice)
         let bar_dup = [&[0xbf][..], bar_foo_entry, &[0x01, 0xf6, 0x64, 0x66, 0x69, 0x76, 0x65, 0x05, 0x64, 0x66, 0x69, 0x76, 0x65, 0x05, 0xff]].concat();
         let bar_dup_err = Bar::from_cbor_bytes(&bar_dup).unwrap_err();
@@ -593,12 +593,12 @@ mod tests {
         // string64 = text .size (0..64) — deserialize-side bounds check: 64 chars pass, 65 reject
         // (RangeCheck's "not in range" display).
         let text_n = |n: usize| [&[0x78, n as u8][..], &vec![0x3f; n]].concat();
-        assert!(String64::from_cbor_bytes(&text_n(64)).is_ok());
+        String64::from_cbor_bytes(&text_n(64)).unwrap();
         let string64_long = String64::from_cbor_bytes(&text_n(65)).unwrap_err();
         assert!(string64_long.to_string().contains("not in range"), "{string64_long}");
 
         // TypeChoice = 0 / "hello world" / uint / text / #6.16([*uint]) — a map matches no variant.
-        assert!(TypeChoice::from_cbor_bytes(&[0x01]).is_ok());
+        TypeChoice::from_cbor_bytes(&[0x01]).unwrap();
         assert!(TypeChoice::from_cbor_bytes(&[0xa0]).is_err());
     }
 }

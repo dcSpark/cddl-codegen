@@ -126,7 +126,7 @@ mod tests {
 
     // Negative half of the wrapper tests above (which never feed one invalid input): each reject
     // is asserted on an error-message SUBSTRING, not bare is_err(), so a rejection can't pass for
-    // the wrong reason (e.g. a parse hiccup instead of the bound). The is_ok() baselines are the
+    // the wrong reason (e.g. a parse hiccup instead of the bound). The accept baselines are the
     // positive tests above, which accept the same shapes with one dimension fixed.
     fn assert_json_reject<W>(json: &str, needle: &str)
     where

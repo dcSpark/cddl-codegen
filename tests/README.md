@@ -223,6 +223,11 @@ genuine can't-Debug case takes a site-local `#[allow]` with a reason — the vis
 of the tradeoff. The `is_ok`/`is_err` fragments in `emit_tests.rs` and the replay harness are
 EMITTED text compiled in generated crates, outside this lint's scope.
 
+Fixture-appended tests under `tests/*/tests*.rs` are also outside workspace clippy because they
+compile only inside generated crates. The default integration suite has a textual sweep that bans
+fresh `assert!(...is_ok())` there; positive Result checks should use `.unwrap()` or `.expect()` so
+the generated-crate failure includes the error payload.
+
 Deserialize-error annotation contract (the `error_annotation_*` tests in `tests/core/tests.rs`,
 plus `error_annotation_tag_mismatch_single_name` in `tests/preserve-encodings/tests.rs`): every
 fallible part of a record's header parsing — container major type, definite-length checks, tag

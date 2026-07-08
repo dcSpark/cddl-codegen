@@ -47,13 +47,13 @@ mod tests {
     // Round-trip tests only ever feed well-formed CBOR; these pin that *malformed* input is
     // rejected rather than silently accepted. Structural cases the
     // bounds test doesn't reach: wrong shape, wrong element type, wrong/missing tag. Each case has
-    // an is_ok() baseline so a reject can't pass for the wrong reason (e.g. garbage encoding).
+    // an accept baseline so a reject can't pass for the wrong reason (e.g. garbage encoding).
     #[test]
     fn structural_rejects() {
         // Foo = [uint, text, bytes]
         let bytes3 = vec![0x43u8, 1, 2, 3]; // cbor bytes(3)
         let foo_ok = [arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat();
-        assert!(Foo::from_cbor_bytes(&foo_ok).is_ok());
+        Foo::from_cbor_bytes(&foo_ok).unwrap();
         assert!(Foo::from_cbor_bytes(&[]).is_err()); // empty input
         // trailing bytes after a complete value are rejected, not silently ignored (from_cbor_bytes
         // checks the cursor reached the end of the buffer)
@@ -79,17 +79,17 @@ mod tests {
             b.extend([arr_def(2), cbor_int(1, cbor_event::Sz::Inline), vec![NULL]].concat());
             Foo2::from_cbor_bytes(&b)
         };
-        assert!(foo2(Some(23)).is_ok());
+        foo2(Some(23)).unwrap();
         assert!(foo2(Some(22)).is_err()); // wrong tag
         assert!(foo2(None).is_err()); // missing tag
 
         // Hash = bytes .size (0..8): wrong major type (uint where bytes is required).
-        assert!(Hash::from_cbor_bytes(&bytes3).is_ok());
+        Hash::from_cbor_bytes(&bytes3).unwrap();
         assert!(Hash::from_cbor_bytes(&cbor_int(5, cbor_event::Sz::Inline)).is_err());
 
         // WrapperTable = { * uint => uint }: wrong major type (array where a map is required).
         let wrapper_table_ok = [map_def(1), cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline)].concat();
-        assert!(WrapperTable::from_cbor_bytes(&wrapper_table_ok).is_ok());
+        WrapperTable::from_cbor_bytes(&wrapper_table_ok).unwrap();
         assert!(WrapperTable::from_cbor_bytes(&arr_def(0)).is_err());
 
         // Duplicate map keys are rejected (DeserializeFailure::DuplicateKey).
@@ -101,7 +101,7 @@ mod tests {
             cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline),
             cbor_int(7, cbor_event::Sz::Inline), cbor_int(8, cbor_event::Sz::Inline),
         ].concat();
-        assert!(WrapperTable::from_cbor_bytes(&wrapper_table_two_keys).is_ok());
+        WrapperTable::from_cbor_bytes(&wrapper_table_two_keys).unwrap();
         let wrapper_table_dup = [
             map_def(2),
             cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline),
@@ -121,7 +121,7 @@ mod tests {
                 cbor_string("arr2"), arr_def(0),
             vec![BREAK],
         ].concat();
-        assert!(TableArrMembers::from_cbor_bytes(&table_arr_members_ok).is_ok());
+        TableArrMembers::from_cbor_bytes(&table_arr_members_ok).unwrap();
         let table_arr_members_dup = [
             vec![MAP_INDEF],
                 cbor_string("tab"), map_def(0),
@@ -133,7 +133,7 @@ mod tests {
 
         // A required key absent from an indefinite struct-map trips MandatoryFieldMissing. A definite
         // map would fail its declared length first (DefiniteLenMismatch), so the omission is reached
-        // only via an indefinite map. The all-keys map above is the is_ok() baseline, so only dropping
+        // only via an indefinite map. The all-keys map above is the accept baseline, so only dropping
         // "arr2" can reject this one.
         let table_arr_members_missing = [
             vec![MAP_INDEF],
@@ -147,7 +147,7 @@ mod tests {
         // Length-framing errors. Foo = [uint, text, bytes] is read with read_elems(3) + finish().
         // A definite array whose header counts MORE than the 3 fields passes read_elems but trips
         // DefiniteLenMismatch at finish() (the "array too short" case above covers the under-count,
-        // which fails earlier in read_elems). foo_ok (arr_def(3)) above is the is_ok() baseline.
+        // which fails earlier in read_elems). foo_ok (arr_def(3)) above is the accept baseline.
         let foo_too_long = [
             arr_def(4),
             cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
@@ -157,13 +157,13 @@ mod tests {
         assert!(foo_too_long_err.to_string().contains("Definite length mismatch"), "{foo_too_long_err}");
 
         // An indefinite array must be terminated by a CBOR Break; any other special in the tail slot
-        // trips EndingBreakMissing. The Break-terminated form is the is_ok() baseline.
+        // trips EndingBreakMissing. The Break-terminated form is the accept baseline.
         let foo_indef_ok = [
             vec![ARR_INDEF],
             cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
             vec![BREAK],
         ].concat();
-        assert!(Foo::from_cbor_bytes(&foo_indef_ok).is_ok());
+        Foo::from_cbor_bytes(&foo_indef_ok).unwrap();
         let foo_indef_no_break = [
             vec![ARR_INDEF],
             cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone(),
@@ -175,14 +175,14 @@ mod tests {
         // A CBOR Break encountered while iterating a *definite*-length struct-map trips
         // BreakInDefiniteLen. The header must still count the 3 struct fields (or finish() rejects
         // the length first), so the definite map declares 3 and a Break is fed in element position.
-        // A complete definite map of the 3 required keys is the is_ok() baseline.
+        // A complete definite map of the 3 required keys is the accept baseline.
         let table_arr_members_def_ok = [
             map_def(3),
                 cbor_string("tab"), map_def(0),
                 cbor_string("arr"), arr_def(0),
                 cbor_string("arr2"), arr_def(0),
         ].concat();
-        assert!(TableArrMembers::from_cbor_bytes(&table_arr_members_def_ok).is_ok());
+        TableArrMembers::from_cbor_bytes(&table_arr_members_def_ok).unwrap();
         let table_arr_members_break = [map_def(3), vec![BREAK]].concat();
         let table_arr_members_break_err = TableArrMembers::from_cbor_bytes(&table_arr_members_break).unwrap_err();
         assert!(table_arr_members_break_err.to_string().contains("Break while reading definite length sequence"), "{table_arr_members_break_err}");
@@ -191,7 +191,7 @@ mod tests {
         // distinct from the struct-map path above, once did `assert_eq!(special, Break)` on ANY special
         // in element position — so a definite-length collection holding a non-Break special (e.g. a
         // `null`, `0x81 0xf6`) aborted the process instead of returning an error to the untrusted-input
-        // parser this library's consumers rely on. It must now be a graceful Err. is_ok() baselines
+        // parser this library's consumers rely on. It must now be a graceful Err. accept baselines
         // differ only in the offending element, so a reject can't pass for the wrong reason.
         // WrapperList = [ * uint ] ; @newtype
         // A non-Break major-type-7 value (here `null`) in a definite `[* uint]` element slot is a
@@ -202,7 +202,7 @@ mod tests {
         // break in element position; only indefinite ones look for the terminator. `unwrap_err()`
         // already proves graceful (no abort); the token pins the received-type so a regression to a
         // wrong reason is still caught.
-        assert!(WrapperList::from_cbor_bytes(&[arr_def(1), cbor_int(1, cbor_event::Sz::Inline)].concat()).is_ok());
+        WrapperList::from_cbor_bytes(&[arr_def(1), cbor_int(1, cbor_event::Sz::Inline)].concat()).unwrap();
         let wrapper_list_null_elem = WrapperList::from_cbor_bytes(&[arr_def(1), vec![NULL]].concat()).unwrap_err();
         assert!(wrapper_list_null_elem.to_string().contains("Special"), "{wrapper_list_null_elem}");
         // WrapperTable = { * uint => uint }: same loop, null fed in key position.
@@ -480,18 +480,18 @@ mod tests {
             SignedInts::from_cbor_bytes(&cbor)
         };
         // Boundary (exactly-representable) values decode on every field.
-        assert!(make(0, 255).is_ok());
-        assert!(make(1, 65535).is_ok());
-        assert!(make(2, 4294967295).is_ok());
-        assert!(make(3, u64::MAX as i128).is_ok());
-        assert!(make(4, 127).is_ok());
-        assert!(make(4, -128).is_ok());
-        assert!(make(5, 32767).is_ok());
-        assert!(make(5, -32768).is_ok());
-        assert!(make(6, 2147483647).is_ok());
-        assert!(make(6, -2147483648).is_ok());
-        assert!(make(7, i64::MAX as i128).is_ok());
-        assert!(make(7, i64::MIN as i128).is_ok());
+        make(0, 255).unwrap();
+        make(1, 65535).unwrap();
+        make(2, 4294967295).unwrap();
+        make(3, u64::MAX as i128).unwrap();
+        make(4, 127).unwrap();
+        make(4, -128).unwrap();
+        make(5, 32767).unwrap();
+        make(5, -32768).unwrap();
+        make(6, 2147483647).unwrap();
+        make(6, -2147483648).unwrap();
+        make(7, i64::MAX as i128).unwrap();
+        make(7, i64::MIN as i128).unwrap();
         // One-past-width values must REJECT (pre-fix: silently truncate-decoded).
         assert!(make(0, 256).is_err());
         assert!(make(1, 65536).is_err());
@@ -518,7 +518,7 @@ mod tests {
         deser_test(&ffw);
         let expected: Vec<u8> = [arr_def(3), cbor_float(3.0), cbor_float(3.0), cbor_float(3.5)].concat();
         assert_eq!(ffw.to_cbor_bytes(), expected);
-        assert!(FloatFixedWhole::from_cbor_bytes(&expected).is_ok());
+        FloatFixedWhole::from_cbor_bytes(&expected).unwrap();
         // A wrong value in a whole-fixed slot rejects (FixedValueMismatch).
         let wrong: Vec<u8> = [arr_def(3), cbor_float(3.5), cbor_float(3.0), cbor_float(3.5)].concat();
         assert!(FloatFixedWhole::from_cbor_bytes(&wrong).is_err());
@@ -744,18 +744,18 @@ mod tests {
         // y is `nint .ge -5`, stored as the u64 magnitude m = |v + 1| (m = 4 ⇒ v = -5). new() enforces
         // the bound in magnitude space; regression for the inverted-nint-constructor-bound bug where the
         // check was `m < 4` (rejecting valid values, accepting invalid ones) instead of `m > 4`.
-        assert!(Bounds::new(10, 5, 0, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=0 ⇒ v=-1, in range
-        assert!(Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_ok()); // m=4 ⇒ v=-5, boundary
+        Bounds::new(10, 5, 0, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).unwrap(); // m=0 ⇒ v=-1, in range
+        Bounds::new(10, 5, 4, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).unwrap(); // m=4 ⇒ v=-5, boundary
         assert!(Bounds::new(10, 5, 5, "abc".to_owned(), vec![5], [(0, 1), (2, 3)].into()).is_err()); // m=5 ⇒ v=-6, below min
         // Same magnitude-space bound on the Wrapper (`@newtype`) path — regression for the standalone
         // bounded-nint-newtype bug, where new()/deserialize emitted `if inner < -5` on a u64 `inner`
         // (E0600, didn't compile). Also round-trips a valid value through the deserializer's own check.
-        assert!(NintGeNewtype::new(0).is_ok()); // m=0 ⇒ v=-1, in range (v >= -5)
-        assert!(NintGeNewtype::new(4).is_ok()); // m=4 ⇒ v=-5, boundary
+        NintGeNewtype::new(0).unwrap(); // m=0 ⇒ v=-1, in range (v >= -5)
+        NintGeNewtype::new(4).unwrap(); // m=4 ⇒ v=-5, boundary
         assert!(NintGeNewtype::new(5).is_err()); // m=5 ⇒ v=-6, out (v < -5)
         deser_test(&NintGeNewtype::new(4).unwrap());
-        assert!(NintLeNewtype::new(5).is_ok()); // m=5 ⇒ v=-6, in range (v <= -5)
-        assert!(NintLeNewtype::new(4).is_ok()); // m=4 ⇒ v=-5, boundary
+        NintLeNewtype::new(5).unwrap(); // m=5 ⇒ v=-6, in range (v <= -5)
+        NintLeNewtype::new(4).unwrap(); // m=4 ⇒ v=-5, boundary
         assert!(NintLeNewtype::new(0).is_err()); // m=0 ⇒ v=-1, out (v > -5)
         deser_test(&NintLeNewtype::new(5).unwrap());
         enum OOB {
@@ -831,9 +831,9 @@ mod tests {
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
 
         // type and group choices share the same deserialization code so we only check the API
-        assert!(BoundsTypeChoice::new_bytes(vec![0; 64]).is_ok());
+        BoundsTypeChoice::new_bytes(vec![0; 64]).unwrap();
         assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
-        assert!(BoundsGroupChoice::new_a(0, "four".to_owned()).is_ok());
+        BoundsGroupChoice::new_a(0, "four".to_owned()).unwrap();
         assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
         deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
     }
@@ -860,69 +860,69 @@ mod tests {
         // Baseline round-trips through both the constructor and the deserializer.
         let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0, 0, 1).unwrap();
         deser_test(&baseline);
-        assert!(make(0, -5).is_ok());
+        make(0, -5).unwrap();
 
         // all_neg (-10..-3): rejects ANY uint, rejects either side; accepts both endpoints.
         assert!(make(0, 5).is_err()); // uint arm entirely excluded
         assert!(make(0, -2).is_err()); // above upper
         assert!(make(0, -11).is_err()); // below lower
-        assert!(make(0, -3).is_ok());
-        assert!(make(0, -10).is_ok());
+        make(0, -3).unwrap();
+        make(0, -10).unwrap();
 
         // upto_zero (-10..0): the upper endpoint 0 is constraining (kills the naive drop-the-0 fix).
-        assert!(make(1, 0).is_ok());
-        assert!(make(1, -10).is_ok());
+        make(1, 0).unwrap();
+        make(1, -10).unwrap();
         assert!(make(1, 1).is_err());
         assert!(make(1, -11).is_err());
 
         // le_neg (int .le -3): rejects any uint; nint arm keeps the upper.
         assert!(make(2, 5).is_err());
         assert!(make(2, -2).is_err());
-        assert!(make(2, -3).is_ok());
-        assert!(make(2, -10).is_ok());
+        make(2, -3).unwrap();
+        make(2, -10).unwrap();
 
         // le_pos (int .le 10): the nint arm is VACUOUS and must NOT reject a large negative.
-        assert!(make(3, -999999).is_ok());
-        assert!(make(3, 10).is_ok());
+        make(3, -999999).unwrap();
+        make(3, 10).unwrap();
         assert!(make(3, 11).is_err());
 
         // ge_pos (int .ge 3): the nint arm is EMPTY (every negative rejected).
-        assert!(make(4, 3).is_ok());
-        assert!(make(4, 100).is_ok());
+        make(4, 3).unwrap();
+        make(4, 100).unwrap();
         assert!(make(4, 2).is_err());
         assert!(make(4, -1).is_err());
 
         // ne_pos (int .ne 5): the excluded value is non-negative, so only the uint arm checks it.
-        assert!(make(5, -5).is_ok());
-        assert!(make(5, 4).is_ok());
-        assert!(make(5, 6).is_ok());
+        make(5, -5).unwrap();
+        make(5, 4).unwrap();
+        make(5, 6).unwrap();
         assert!(make(5, 5).is_err());
 
         // ne_neg (int .ne -5): the excluded value is negative, so only the nint arm checks it
         // (the uint arm must NOT try to compare a u64 against -5).
-        assert!(make(6, 5).is_ok());
-        assert!(make(6, -4).is_ok());
-        assert!(make(6, -6).is_ok());
+        make(6, 5).unwrap();
+        make(6, -4).unwrap();
+        make(6, -6).unwrap();
         assert!(make(6, -5).is_err());
 
         // straddle (-10..3): unchanged survivor — accepts across the sign boundary, rejects outside.
-        assert!(make(7, -10).is_ok());
-        assert!(make(7, 3).is_ok());
-        assert!(make(7, 0).is_ok());
+        make(7, -10).unwrap();
+        make(7, 3).unwrap();
+        make(7, 0).unwrap();
         assert!(make(7, -11).is_err());
         assert!(make(7, 4).is_err());
 
         // ne_one (int .ne 1): the excluded-value boundary where the (N+1, N-1) exclusion encoding's
         // max hits 0 — a per-side partition of (2, 0) once emitted `x < 2`, silently rejecting 0.
-        assert!(make(8, 0).is_ok()); // the value the mis-check rejected
-        assert!(make(8, 2).is_ok());
-        assert!(make(8, -1).is_ok()); // nint arm is unconstrained by a non-negative exclusion
+        make(8, 0).unwrap(); // the value the mis-check rejected
+        make(8, 2).unwrap();
+        make(8, -1).unwrap(); // nint arm is unconstrained by a non-negative exclusion
         assert!(make(8, 1).is_err());
 
         // ne_zero (int .ne 0): encoding (1, -1) has a bound on each side of the sign split; only 0
         // may reject.
-        assert!(make(9, 1).is_ok());
-        assert!(make(9, -1).is_ok());
+        make(9, 1).unwrap();
+        make(9, -1).unwrap();
         assert!(make(9, 0).is_err());
     }
 
@@ -939,8 +939,8 @@ mod tests {
         assert!(neg(5).is_err()); // any uint is out of an all-negative window
         assert!(neg(-11).is_err()); // below lower
         assert!(neg(-2).is_err()); // above upper
-        assert!(neg(-3).is_ok());
-        assert!(neg(-10).is_ok());
+        neg(-3).unwrap();
+        neg(-10).unwrap();
         deser_test(&TopLevelNegRange::new(-3).unwrap());
         deser_test(&TopLevelNegRange::new(-10).unwrap());
         assert!(TopLevelNegRange::new(5).is_err());
@@ -950,8 +950,8 @@ mod tests {
         let pos = |v: i128| TopLevelPosRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
         assert!(pos(2).is_err());
         assert!(pos(11).is_err());
-        assert!(pos(3).is_ok());
-        assert!(pos(10).is_ok());
+        pos(3).unwrap();
+        pos(10).unwrap();
         deser_test(&TopLevelPosRange::new(3).unwrap());
         deser_test(&TopLevelPosRange::new(10).unwrap());
 
@@ -966,7 +966,7 @@ mod tests {
             [cbor_tag(5), cbor_int(7, cbor_event::Sz::Inline)].concat()
         );
         deser_test(&tagged_ok);
-        assert!(TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
         assert!(
             TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
@@ -1003,49 +1003,49 @@ mod tests {
         // baseline round-trips through both ctor and deserializer
         let baseline = FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
         deser_test(&baseline);
-        assert!(make(0, 5.5).is_ok());
+        make(0, 5.5).unwrap();
 
         // incl (0.5..10.5): both endpoints accepted, just-outside rejected, NaN rejected.
-        assert!(make(0, 0.5).is_ok());
-        assert!(make(0, 10.5).is_ok());
+        make(0, 0.5).unwrap();
+        make(0, 10.5).unwrap();
         assert!(make(0, 0.4).is_err());
         assert!(make(0, 10.6).is_err());
         assert!(make(0, f64::NAN).is_err());
         assert!(FloatBounds::new(f64::NAN, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
-        assert!(FloatBounds::new(0.5, 5.5, 5.0, 5.0, 3.5, 5.0).is_ok());
-        assert!(FloatBounds::new(10.5, 5.5, 5.0, 5.0, 3.5, 5.0).is_ok());
+        FloatBounds::new(0.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
+        FloatBounds::new(10.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
         assert!(FloatBounds::new(10.6, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
 
         // excl (0.5...10.5): the exclusive upper endpoint 10.5 is REJECTED; the min stays inclusive.
-        assert!(make(1, 0.5).is_ok());
+        make(1, 0.5).unwrap();
         assert!(make(1, 10.5).is_err());
-        assert!(make(1, 10.4).is_ok());
+        make(1, 10.4).unwrap();
         assert!(make(1, f64::NAN).is_err());
 
         // lt (float64 .lt 10.5): one-sided exclusive max; no lower bound.
-        assert!(make(2, -100.0).is_ok());
-        assert!(make(2, 10.4).is_ok());
+        make(2, -100.0).unwrap();
+        make(2, 10.4).unwrap();
         assert!(make(2, 10.5).is_err());
         assert!(make(2, f64::NAN).is_err());
 
         // ge (float64 .ge 0.5): one-sided inclusive min; no upper bound.
-        assert!(make(3, 0.5).is_ok());
-        assert!(make(3, 1000.0).is_ok());
+        make(3, 0.5).unwrap();
+        make(3, 1000.0).unwrap();
         assert!(make(3, 0.4).is_err());
         assert!(make(3, f64::NAN).is_err());
 
         // eq (float64 .eq 3.5): only 3.5 accepted.
-        assert!(make(4, 3.5).is_ok());
+        make(4, 3.5).unwrap();
         assert!(make(4, 3.4).is_err());
         assert!(make(4, 3.6).is_err());
         assert!(make(4, f64::NAN).is_err());
 
         // f32le (float32 .le 10.5): f32 value compared as f64 so 10.5 (exact in f32) is the boundary.
-        assert!(make(5, 10.5).is_ok());
+        make(5, 10.5).unwrap();
         assert!(make(5, 10.6).is_err());
-        assert!(make(5, -5.0).is_ok());
+        make(5, -5.0).unwrap();
         assert!(make(5, f64::NAN).is_err());
-        assert!(FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.5).is_ok());
+        FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.5).unwrap();
         assert!(FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.6).is_err());
     }
 
@@ -1055,9 +1055,9 @@ mod tests {
         // rejected at BOTH new() and from_cbor_bytes. A bare `pub type = f64` alias would enforce
         // nothing.
         let fr = |v: f64| FloatRange::from_cbor_bytes(&cbor_float(v));
-        assert!(fr(0.5).is_ok());
-        assert!(fr(10.5).is_ok());
-        assert!(fr(5.5).is_ok());
+        fr(0.5).unwrap();
+        fr(10.5).unwrap();
+        fr(5.5).unwrap();
         assert!(fr(0.4).is_err());
         assert!(fr(10.6).is_err());
         assert!(fr(f64::NAN).is_err());
@@ -1068,10 +1068,10 @@ mod tests {
 
         // float_range_excl = 0.5...10.5: the exclusive upper endpoint 10.5 is rejected.
         let fre = |v: f64| FloatRangeExcl::from_cbor_bytes(&cbor_float(v));
-        assert!(fre(10.4).is_ok());
+        fre(10.4).unwrap();
         assert!(fre(10.5).is_err());
         assert!(FloatRangeExcl::new(10.5).is_err());
-        assert!(FloatRangeExcl::new(10.4).is_ok());
+        FloatRangeExcl::new(10.4).unwrap();
 
         // tagged_float_range = #6.5(0.5..10.5): the wrapper writes tag 5 AND enforces the window.
         let tagged = TaggedFloatRange::new(7.5).unwrap();
@@ -1079,7 +1079,7 @@ mod tests {
         assert_eq!(tagged_bytes[0], 0xc5); // major type 6 (tag), argument 5
         assert_eq!(tagged_bytes, [cbor_tag(5), cbor_float(7.5)].concat());
         deser_test(&tagged);
-        assert!(TaggedFloatRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        TaggedFloatRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input rejected (a bare alias would drop the tag)
         assert!(TaggedFloatRange::from_cbor_bytes(&cbor_float(7.5)).is_err());
         // out-of-window tagged input rejected
