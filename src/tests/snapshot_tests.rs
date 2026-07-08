@@ -707,7 +707,7 @@ fn no_anonymous_text_list_wrapper() {
 #[test]
 fn rustfmt_rejects_unparseable_source() {
     // valid Rust formats successfully
-    assert!(crate::generation::rustfmt_generated_string("fn main() {}").is_ok());
+    crate::generation::rustfmt_generated_string("fn main() {}").expect("valid Rust must format Ok");
     // the turbofish shape (generic type-spelling before `::method`) is a parse error — must be Err
     assert!(
         crate::generation::rustfmt_generated_string(
