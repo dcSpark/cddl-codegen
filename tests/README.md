@@ -86,7 +86,10 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   the *full* output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path,
   and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot
   (`json-float`: floats can't join the corpus, whose snapshots span all three profiles, and
-  preserve-encodings is unimplemented for floats) and for inputs whose output *can't compile
+  preserve-encodings is unimplemented for floats). The same constraint routes a single CONSTRUCT
+  into a profile-limited input's `.cddl` rather than the corpus: `tagged_type_choice` (tag over a
+  whole type choice) lives in `core` because tagging a type-choice enum is unimplemented under
+  preserve-encodings. And it's the home for inputs whose output *can't compile
   standalone* (`extern_deps`/`raw_bytes` reference user-supplied types; their behavioral coverage is
   their integration fixtures) — this suite never compiles, so neither constraint bites here, which
   is why such inputs are pinned here rather than via corpus skip-lists that would weaken the corpus
@@ -232,9 +235,15 @@ once-only contract for the *enum-direct* tag check — a tag over a whole top-le
 `generate_tag_check_arms` unit test in `snapshot_tests.rs` renders both arms to pin the
 name-carrying `--annotate-fields=false` form that no fixture exercises. The two `_control` cases
 anchor that field-level and missing-mandatory-field annotation is not lost when the header code is
-restructured. Outside the
+restructured. One STANDING exception to the once-only reading: enum `NoVariantMatched` errors
+currently DO double-annotate ("Foo.Foo" — the arm emits a name-carrying error inside the annotate
+closure, generator-wide), pinned as a known gap by `error_annotation_no_variant_double_name_known_gap`
+(asserts the CURRENT doubled name; flips loudly when fixed) and ledgered in
+`tests/TESTING_ROADMAP.md` with its class-gate layer. Outside the
 contract: embedded plain-group scaffolding and newtype wrappers' container reads (both ledgered in
-`tests/TESTING_ROADMAP.md`).
+`tests/TESTING_ROADMAP.md`; the newtype-wrapper half is now MEASURED at catalog breadth by the
+replay gate's `HEADER_MUTANT_LOCATION_SKIP` ledger — 38 (row, label) cells across 20 rows at HEAD,
+emptied via its stale guards when the gap closes).
 
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
