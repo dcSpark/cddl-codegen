@@ -5277,6 +5277,157 @@ fn rust_str_literal(s: &str) -> String {
     format!("\"{escaped}\"")
 }
 
+/// Grep-stable panic markers the per-vector replay `#[test]`s emit (in `decode_replay_run`) and the
+/// caller (`decode_conformance_replay`) matches to attribute a FAILED test's cause. Defined ONCE and
+/// used at BOTH the emission site and the classifier functions below, so the emitted marker word and
+/// the needle that attributes it cannot drift apart.
+const MARKER_CONSTRAINT_DECODED_OK: &str = "CONSTRAINT_DECODED_OK";
+const MARKER_CONSTRAINT_WRONG_REASON: &str = "CONSTRAINT_WRONG_REASON";
+const MARKER_VARIANT_REJECTED: &str = "VARIANT_REJECTED";
+const MARKER_VARIANT_VALUE_MISMATCH: &str = "VARIANT_VALUE_MISMATCH";
+const MARKER_VAR_ORIG_DECODE_FAILED: &str = "VAR_ORIG_DECODE_FAILED";
+
+/// How a FAILED `class="constraint"` reject vector's replay test attributed its cause.
+#[derive(Debug, PartialEq)]
+enum ConstraintFailureKind {
+    /// The vector DECODED Ok — the generated decoder does not enforce the constraint (enforcement gap).
+    DecodedOk,
+    /// The vector was rejected, but the error Display did not contain the pinned `expect_err`.
+    WrongReason,
+    /// Neither marker was found in the captured output — unexpected.
+    Unattributed,
+}
+
+/// Classify a failed constraint-vector replay test from the captured cargo output. The needle is
+/// `"{marker} {test_name}:"` and the trailing ':' is LOAD-BEARING: libtest test names end in decimal
+/// indices, so `reject_1` is a PREFIX of `reject_10`; without the delimiter `reject_1`'s needle would
+/// substring-match `reject_10`'s marker line and misattribute the failure. This function owns that
+/// delimiter so no attribution site can forget it.
+fn classify_constraint_failure(output: &str, test_name: &str) -> ConstraintFailureKind {
+    if output.contains(&format!("{MARKER_CONSTRAINT_DECODED_OK} {test_name}:")) {
+        ConstraintFailureKind::DecodedOk
+    } else if output.contains(&format!("{MARKER_CONSTRAINT_WRONG_REASON} {test_name}:")) {
+        ConstraintFailureKind::WrongReason
+    } else {
+        ConstraintFailureKind::Unattributed
+    }
+}
+
+/// How a FAILED encoding-variant replay test (`accept_{i}_var_{label}`) attributed its cause.
+#[derive(Debug, PartialEq)]
+enum VariantFailureKind {
+    /// A spec-EQUAL re-encoding was REJECTED by the default decoder (over-strict — the motivating class).
+    Rejected,
+    /// The variant decoded to a DIFFERENT value than the original (its default re-encoding differs).
+    ValueMismatch,
+    /// The ORIGINAL accept vector failed to decode inside the variant test — unexpected.
+    OrigDecodeFailed,
+    /// No known marker was found in the captured output — unexpected.
+    Unattributed,
+}
+
+/// Classify a failed encoding-variant replay test from the captured cargo output. Same prefix-collision
+/// grammar as `classify_constraint_failure`: the needle is `"{marker} {test_name}:"` and the trailing
+/// ':' is what stops a prefix test name (`accept_1_var_widen` is a prefix of `accept_1_var_widen_step`,
+/// and `accept_1_...` of `accept_10_...`) from stealing the attribution. This function owns that
+/// delimiter so no attribution site can forget it.
+fn classify_variant_failure(output: &str, test_name: &str) -> VariantFailureKind {
+    if output.contains(&format!("{MARKER_VARIANT_REJECTED} {test_name}:")) {
+        VariantFailureKind::Rejected
+    } else if output.contains(&format!("{MARKER_VARIANT_VALUE_MISMATCH} {test_name}:")) {
+        VariantFailureKind::ValueMismatch
+    } else if output.contains(&format!("{MARKER_VAR_ORIG_DECODE_FAILED} {test_name}:")) {
+        VariantFailureKind::OrigDecodeFailed
+    } else {
+        VariantFailureKind::Unattributed
+    }
+}
+
+/// Prefix-collision pin for `classify_constraint_failure`: libtest names end in decimal indices, so
+/// `reject_1` is a PREFIX of `reject_10`. Synthesize output where the two fail in OPPOSITE ways and
+/// assert each classifies to ITS OWN kind — a needle missing its trailing ':' would let `reject_1`'s
+/// DECODED_OK needle match `reject_10`'s marker line and misclassify.
+#[test]
+fn classify_constraint_failure_disambiguates_prefix_colliding_names() {
+    let output = "\
+        thread 'reject_1' panicked: CONSTRAINT_WRONG_REASON reject_1: rejected but Display did not contain\n\
+        thread 'reject_10' panicked: CONSTRAINT_DECODED_OK reject_10: a class=constraint vector decoded Ok\n";
+    assert_eq!(
+        classify_constraint_failure(output, "reject_1"),
+        ConstraintFailureKind::WrongReason
+    );
+    assert_eq!(
+        classify_constraint_failure(output, "reject_10"),
+        ConstraintFailureKind::DecodedOk
+    );
+
+    // Mirror the pairing so neither ordering is privileged.
+    let mirrored = "\
+        thread 'reject_1' panicked: CONSTRAINT_DECODED_OK reject_1: a class=constraint vector decoded Ok\n\
+        thread 'reject_10' panicked: CONSTRAINT_WRONG_REASON reject_10: rejected but Display did not contain\n";
+    assert_eq!(
+        classify_constraint_failure(mirrored, "reject_1"),
+        ConstraintFailureKind::DecodedOk
+    );
+    assert_eq!(
+        classify_constraint_failure(mirrored, "reject_10"),
+        ConstraintFailureKind::WrongReason
+    );
+
+    // A name absent from the output attributes to nothing.
+    assert_eq!(
+        classify_constraint_failure(output, "reject_2"),
+        ConstraintFailureKind::Unattributed
+    );
+}
+
+/// Prefix-collision pin for `classify_variant_failure`. Variant test names are `accept_{i}_var_{label}`,
+/// so a SHORTER label is a prefix of a longer one (`accept_1_var_widen` is a prefix of
+/// `accept_1_var_widen_step`) — the trailing ':' is what stops the prefix label from stealing the
+/// attribution. Also a straight three-way check that each marker classifies to its kind.
+#[test]
+fn classify_variant_failure_owns_the_delimiter_and_maps_each_marker() {
+    // Truncation direction: a marker line for the LONGER label must NOT attribute the prefix name.
+    let widen = "thread 'x' panicked: VARIANT_REJECTED accept_1_var_widen_step: over-strict\n";
+    assert_eq!(
+        classify_variant_failure(widen, "accept_1_var_widen"),
+        VariantFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_variant_failure(widen, "accept_1_var_widen_step"),
+        VariantFailureKind::Rejected
+    );
+
+    // Three-way: each marker classifies to its own kind.
+    assert_eq!(
+        classify_variant_failure(
+            "VARIANT_REJECTED accept_0_var_indefinite: over-strict\n",
+            "accept_0_var_indefinite"
+        ),
+        VariantFailureKind::Rejected
+    );
+    assert_eq!(
+        classify_variant_failure(
+            "VARIANT_VALUE_MISMATCH accept_0_var_reversed_maps: different value\n",
+            "accept_0_var_reversed_maps"
+        ),
+        VariantFailureKind::ValueMismatch
+    );
+    assert_eq!(
+        classify_variant_failure(
+            "VAR_ORIG_DECODE_FAILED accept_0_var_chunked: orig failed\n",
+            "accept_0_var_chunked"
+        ),
+        VariantFailureKind::OrigDecodeFailed
+    );
+
+    // A name absent from the output attributes to nothing.
+    assert_eq!(
+        classify_variant_failure(widen, "accept_2_var_indefinite"),
+        VariantFailureKind::Unattributed
+    );
+}
+
 /// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
 /// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
 /// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
@@ -5336,10 +5487,10 @@ fn decode_replay_run(
                     let expect_lit = rust_str_literal(expect_err);
                     format!(
                         "match {type_name}::from_cbor_bytes(BYTES) {{\n\
-                         \x20           Ok(_) => panic!(\"CONSTRAINT_DECODED_OK {name}: a class=constraint vector decoded Ok — the generated decoder does NOT enforce the constraint\"),\n\
+                         \x20           Ok(_) => panic!(\"{MARKER_CONSTRAINT_DECODED_OK} {name}: a class=constraint vector decoded Ok — the generated decoder does NOT enforce the constraint\"),\n\
                          \x20           Err(e) => {{\n\
                          \x20               let disp = e.to_string();\n\
-                         \x20               assert!(disp.contains({expect_lit}), \"CONSTRAINT_WRONG_REASON {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
+                         \x20               assert!(disp.contains({expect_lit}), \"{MARKER_CONSTRAINT_WRONG_REASON} {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
                          \x20           }}\n\
                          \x20       }}"
                     )
@@ -5356,7 +5507,7 @@ fn decode_replay_run(
             // reason-asserting form.
             if !preserve && vector.expect_err.is_some() {
                 assert!(
-                    body.contains("CONSTRAINT_WRONG_REASON"),
+                    body.contains(MARKER_CONSTRAINT_WRONG_REASON),
                     "decode_replay_run built a non-reason-asserting body for a default-leg vector \
                      with expect_err ({name}) — the constraint match arm regressed"
                 );
@@ -5375,10 +5526,10 @@ fn decode_replay_run(
         let orig = hex_to_byte_literals(&vectors[*i].hex);
         let var = bytes_to_byte_literals(var_bytes);
         let body = format!(
-            "let orig_val = {type_name}::from_cbor_bytes(ORIG).expect(\"VAR_ORIG_DECODE_FAILED {name}\");\n\
+            "let orig_val = {type_name}::from_cbor_bytes(ORIG).expect(\"{MARKER_VAR_ORIG_DECODE_FAILED} {name}\");\n\
              \x20       match {type_name}::from_cbor_bytes(VAR) {{\n\
-             \x20           Err(e) => panic!(\"VARIANT_REJECTED {name}: a spec-equal re-encoding was rejected by the default decoder (over-strict) — err: {{}}\", e),\n\
-             \x20           Ok(var_val) => assert_eq!(var_val.to_cbor_bytes(), orig_val.to_cbor_bytes(), \"VARIANT_VALUE_MISMATCH {name}: variant decoded to a DIFFERENT value than the original\"),\n\
+             \x20           Err(e) => panic!(\"{MARKER_VARIANT_REJECTED} {name}: a spec-equal re-encoding was rejected by the default decoder (over-strict) — err: {{}}\", e),\n\
+             \x20           Ok(var_val) => assert_eq!(var_val.to_cbor_bytes(), orig_val.to_cbor_bytes(), \"{MARKER_VARIANT_VALUE_MISMATCH} {name}: variant decoded to a DIFFERENT value than the original\"),\n\
              \x20       }}"
         );
         fns.push_str(&format!(
@@ -5744,31 +5895,28 @@ fn decode_conformance_replay() {
                     } else if vector.expect_err.is_some() {
                         // A constraint vector failed: distinguish "decoded Ok" (enforcement gap) from
                         // "rejected for the WRONG reason" via the grep-stable markers the test emits.
+                        // The needle's trailing ':' (prefix-collision guard) lives in the classifier.
                         let expect = vector.expect_err.as_deref().unwrap_or("");
-                        // NB the trailing ':' — without it `reject_1`'s marker would substring-match
-                        // `reject_10`'s and misattribute the failure text.
-                        if combined.contains(&format!("CONSTRAINT_DECODED_OK {name}:")) {
-                            failures.push(format!(
+                        match classify_constraint_failure(&combined, &name) {
+                            ConstraintFailureKind::DecodedOk => failures.push(format!(
                                 "{}: constraint vector {hex} DECODED Ok — the generated decoder does \
                                  NOT enforce the constraint (enforcement gap); expected rejection \
                                  whose Display contains {expect:?}",
                                 row.id
-                            ));
-                        } else if combined.contains(&format!("CONSTRAINT_WRONG_REASON {name}:")) {
-                            failures.push(format!(
+                            )),
+                            ConstraintFailureKind::WrongReason => failures.push(format!(
                                 "{}: constraint vector {hex} was rejected for the WRONG reason — its \
                                  error Display did NOT contain the pinned {expect:?}; either re-author \
                                  the catalog `expect_err` (after confirming the message genuinely \
                                  names the violated constraint) or this is a real wrong-reason \
                                  rejection to report. Captured Display in the run output below:\n{combined}",
                                 row.id
-                            ));
-                        } else {
-                            failures.push(format!(
+                            )),
+                            ConstraintFailureKind::Unattributed => failures.push(format!(
                                 "{}: constraint vector {hex} failed its reason assert but emitted \
                                  neither marker — unexpected; full output:\n{combined}",
                                 row.id
-                            ));
+                            )),
                         }
                     } else {
                         failures.push(format!(
@@ -5794,10 +5942,9 @@ fn decode_conformance_replay() {
                         variant_skip_still_failing.insert((row.id.clone(), label.clone()));
                         continue;
                     }
-                    // NB the trailing ':' — see the constraint-marker comment above (same substring-
-                    // collision guard for accept_1 vs accept_10).
-                    if combined.contains(&format!("VARIANT_REJECTED {name}:")) {
-                        failures.push(format!(
+                    // The needle's trailing ':' (prefix-collision guard) lives in the classifier.
+                    match classify_variant_failure(&combined, &name) {
+                        VariantFailureKind::Rejected => failures.push(format!(
                             "{}: encoding variant `{label}` of accept vector {orig_hex} was REJECTED by \
                              the default decoder — a spec-EQUAL re-encoding (indefinite framing / \
                              non-minimal width / chunked string / reversed map) the decoder is \
@@ -5805,26 +5952,23 @@ fn decode_conformance_replay() {
                              ledger it in cddl-matrix/ROADMAP.md § findings and add ({}, {label}) to \
                              ENCODING_VARIANT_SKIP. Captured output:\n{combined}",
                             row.id, row.id
-                        ));
-                    } else if combined.contains(&format!("VARIANT_VALUE_MISMATCH {name}:")) {
-                        failures.push(format!(
+                        )),
+                        VariantFailureKind::ValueMismatch => failures.push(format!(
                             "{}: encoding variant `{label}` of accept vector {orig_hex} decoded to a \
                              DIFFERENT value than the original (its default re-encoding differs) — a \
                              mis-decode of a spec-equal re-encoding. Captured output:\n{combined}",
                             row.id
-                        ));
-                    } else if combined.contains(&format!("VAR_ORIG_DECODE_FAILED {name}:")) {
-                        failures.push(format!(
+                        )),
+                        VariantFailureKind::OrigDecodeFailed => failures.push(format!(
                             "{}: the ORIGINAL accept vector {orig_hex} failed to decode inside variant \
                              test `{name}` — unexpected (it is an accept vector). Captured output:\n{combined}",
                             row.id
-                        ));
-                    } else {
-                        failures.push(format!(
+                        )),
+                        VariantFailureKind::Unattributed => failures.push(format!(
                             "{}: encoding variant test `{name}` failed but emitted no known marker — \
                              unexpected. Captured output:\n{combined}",
                             row.id
-                        ));
+                        )),
                     }
                 }
             }
