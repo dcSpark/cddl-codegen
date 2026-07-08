@@ -1,0 +1,56 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{OnePairEncoding, PairU64TextEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct OnePair {
+    pub a0: u64,
+    pub b0: String,
+    pub encodings: Option<OnePairEncoding>,
+}
+
+impl OnePair {
+    pub fn new(a0: u64, b0: String) -> Self {
+        Self {
+            a0,
+            b0,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PairU64Text {
+    pub a0: u64,
+    pub b0: String,
+    pub encodings: Option<PairU64TextEncoding>,
+}
+
+impl PairU64Text {
+    pub fn new(a0: u64, b0: String) -> Self {
+        Self {
+            a0,
+            b0,
+            encodings: None,
+        }
+    }
+}
+
+pub type Pairs = Vec<PairU64Text>;

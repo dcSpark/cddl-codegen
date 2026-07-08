@@ -889,28 +889,62 @@ impl<'a> IntermediateTypes<'a> {
             if let Some(group) = plain_group.group.as_ref() {
                 // we are defined via .cddl and thus need to register a concrete
                 // representation of the plain group
-                if let Some(rust_struct) = self.rust_structs.get(ident) {
-                    // it's already defined, let's check that we're not giving it multiple representations
-                    let found_rep = match &rust_struct.variant {
-                        RustStructType::Record(record) => Some(record.rep),
-                        RustStructType::GroupChoice { rep, .. } => Some(*rep),
-                        _ => None,
-                    };
-                    assert_eq!(found_rep, Some(rep));
-                } else {
-                    // you can't tag plain groups hence the None
-                    // we also don't support generics in plain groups hence the other None
-                    crate::parsing::parse_group(
-                        self,
-                        parent_visitor,
-                        group,
-                        ident,
-                        rep,
-                        None,
-                        None,
-                        &plain_group.rule_metadata,
-                        cli,
-                    );
+                // `Some(inner)` = already materialized (inner = its rep, if a Record/GroupChoice);
+                // `None` = not yet materialized. Extracted up front so the `rust_structs` borrow ends
+                // before any `&mut self` call below.
+                let existing =
+                    self.rust_structs
+                        .get(ident)
+                        .map(|rust_struct| match &rust_struct.variant {
+                            RustStructType::Record(record) => Some(record.rep),
+                            RustStructType::GroupChoice { rep, .. } => Some(*rep),
+                            _ => None,
+                        });
+                match existing {
+                    // A plain group materialized once cannot be re-materialized with a DIFFERENT
+                    // representation — one Rust struct has exactly one wire shape. This is reached
+                    // when an array-of-plain-group collapsed to the bare group ident (`[coords]` ->
+                    // Array-rep `Coords`, via `parse_group_type`'s `WrappedBasicGroup`) is then used
+                    // where a conflicting rep is demanded, notably as a MAP-record / map-group-choice
+                    // field value (`{ k: [coords] }`, `{ f0: [coords] // ... }`): the record-field
+                    // and group-choice-arm paths stamp the outer Map rep onto the already-Array group.
+                    // That collapsed field also carries a `basic_override` the map-value
+                    // (de)serializer emits no code for (E0425/E0599), so the shape is unsupported
+                    // today — reject it gracefully (drained by `finalize`) rather than `panic!`, with
+                    // the supported named-type remedy. A matching rep is a no-op.
+                    Some(Some(found_rep)) if found_rep != rep => {
+                        self.record_rejection(format!(
+                            "`{ident}` is used with conflicting representations (both array and map) \
+                             — a single generated struct has one wire shape. This arises when an \
+                             array wrapping a plain group (`[{ident}]`) is used as a map-value / \
+                             map-group-choice field, whose (de)serializer is unsupported today. Give \
+                             the array its own named type rule (e.g. `t = [..]`) and reference `t`."
+                        ));
+                    }
+                    // already materialized with the SAME rep — nothing to do
+                    Some(Some(_)) => {}
+                    // A plain group only ever materializes via `parse_group` below, i.e. as a
+                    // Record or GroupChoice — any other variant here is an internal invariant
+                    // break, kept as loud as the `assert_eq!` this match replaced (which failed
+                    // on `None != Some(rep)`), not silently absorbed.
+                    Some(None) => unreachable!(
+                        "plain group `{ident}` already materialized as a non-Record/non-GroupChoice struct"
+                    ),
+                    None => {
+                        // you can't tag plain groups hence the None
+                        // we also don't support generics in plain groups hence the other None
+                        crate::parsing::parse_group(
+                            self,
+                            parent_visitor,
+                            group,
+                            ident,
+                            rep,
+                            None,
+                            None,
+                            &plain_group.rule_metadata,
+                            cli,
+                        );
+                    }
                 }
             } else {
                 // If plain_group is None, then this wasn't defined in .cddl but instead

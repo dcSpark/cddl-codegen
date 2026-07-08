@@ -1,0 +1,136 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Coords(cddl_lib::Coords);
+
+#[wasm_bindgen]
+impl Coords {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Coords, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Coords, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn new(index_0: u64, index_1: u64) -> Self {
+        Self(cddl_lib::Coords::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Coords> for Coords {
+    fn from(native: cddl_lib::Coords) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Coords> for cddl_lib::Coords {
+    fn from(wasm: Coords) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Coords> for Coords {
+    fn as_ref(&self) -> &cddl_lib::Coords {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Holder, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn c(&self) -> Coords {
+        self.0.c.clone().into()
+    }
+
+    pub fn new(c: &Coords) -> Self {
+        Self(cddl_lib::Holder::new(c.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+pub type Wrapped = Coords;
