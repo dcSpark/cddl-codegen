@@ -199,20 +199,6 @@ replays under mechanically-derived spec-equal re-encodings.
      clippy gate leaves restriction lints alone — its burn-down item below is a separate axis). A
      genuine can't-Debug case (an `is_err` whose Ok payload has no Debug impl) takes a site-local
      `#[allow]` with a reason — the visible, reviewable form of the tradeoff.
-   - **Unit-pin the replay gate's failure-marker attribution against prefix-colliding test names
-     (low).** The replay gate explains a failed emitted test by substring-searching the captured
-     cargo output for that test's grep-stable marker (`CONSTRAINT_DECODED_OK reject_{i}:`,
-     `VARIANT_REJECTED accept_{i}_var_{label}:`). Verdicts are exact-keyed off libtest result
-     lines, so only the failure EXPLANATION can misattribute — but libtest names end in decimal
-     indices, where `…_1` is a prefix of `…_10`, so a marker needle is unambiguous only with its
-     trailing delimiter included; that delimiter is held today by a comment at each match site,
-     not by any test. Extract the marker classification into a pure function over (captured
-     output, test name) and pin it with a synthetic output in which `…_1` and `…_10` fail in
-     opposite ways — the ambiguity is a property of the name grammar alone, so the pin needs no
-     crate build. Same assert-the-failure's-identity family as the compile-sweep skip-ledger item
-     below, one level up: the attribution code itself needs a pin, not only the pins it manages.
-     (Out of every other gate's reach: mutation testing scopes emit-core production code, and the
-     gate's own vacuity floors count verdicts, not explanation quality.)
    - **Vacuity floors must witness the guarded artifact, not a proxy for it (design rule; mechanical
      layer only if the class recurs).** A floor whose count derives from an INPUT correlated with the
      guarded behavior — rather than from the behavior's own artifact — is satisfied by any regression

@@ -367,7 +367,13 @@ and asserts they are accepted.
   REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
   `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
   legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
-  the leg live. Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors
+  the leg live. When an emitted replay test FAILS, its cause is attributed by a pure marker-
+  classification function (`classify_constraint_failure` / `classify_variant_failure`) whose needle
+  owns the trailing ':' that disambiguates prefix-colliding libtest names (`reject_1` vs `reject_10`);
+  that grammar is pinned unit-side (no crate build) by
+  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its variant
+  sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`.
+  Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors
   decode AND re-encode **byte-identically** (the preserve contract is itself decode-direction
   evidence). `PRESERVE_SKIP` (stale-guarded) carries the
   float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It
