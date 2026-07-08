@@ -32,10 +32,7 @@ impl Deserialize for TypeChoice {
                 }
                 cbor_event::Type::Text => Ok(TypeChoice::Text(raw.text()? as String)),
                 cbor_event::Type::Bytes => Ok(TypeChoice::Bytes(raw.bytes()? as Vec<u8>)),
-                _ => Err(DeserializeError::new(
-                    "TypeChoice",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("TypeChoice"))

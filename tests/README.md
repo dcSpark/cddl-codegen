@@ -237,14 +237,16 @@ is pinned to the same once-only contract by `error_annotation_tag_mismatch_type_
 and the `generate_tag_check_arms` unit test in `snapshot_tests.rs` renders both arms to pin the
 name-carrying `--annotate-fields=false` form that no fixture exercises.
 
-The contract's current boundaries, all ledgered in `tests/TESTING_ROADMAP.md`: enum
-`NoVariantMatched` errors are a STANDING exception — they DO double-annotate ("Foo.Foo": the arm
-emits a name-carrying error inside the annotate closure, generator-wide), pinned as a known gap by
-`error_annotation_no_variant_double_name_known_gap` (asserts the CURRENT doubled name; flips
-loudly when fixed). And two paths sit outside the contract entirely — embedded plain-group
-scaffolding and newtype wrappers' container reads — the newtype-wrapper half now MEASURED at
-catalog breadth by the replay gate's `HEADER_MUTANT_LOCATION_SKIP` ledger (38 (row, label) cells
-across 20 rows at HEAD, emptied via its stale guards when the gap closes).
+An enum `NoVariantMatched` failure on a directly-deserializing choice — where the `_ => NoVariantMatched`
+(and group-choice `NoVariantMatchedWithCauses`) arm sits inside the `.annotate(name)` closure —
+carries the name exactly *once*: the arm emits the locationless `DeserializeFailure::…into()` form
+and lets the closure supply the name, pinned by `error_annotation_no_variant_single_name`.
+
+The contract's remaining boundaries, ledgered in `tests/TESTING_ROADMAP.md`: two paths sit outside
+the contract entirely — embedded plain-group scaffolding and newtype wrappers' container reads —
+the newtype-wrapper half now MEASURED at catalog breadth by the replay gate's
+`HEADER_MUTANT_LOCATION_SKIP` ledger (38 (row, label) cells across 20 rows at HEAD, emptied via its
+stale guards when the gap closes).
 
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see

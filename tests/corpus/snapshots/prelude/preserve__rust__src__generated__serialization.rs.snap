@@ -390,10 +390,7 @@ impl Deserialize for PreludeBigint {
                         .unwrap();
                 }
             };
-            Err(DeserializeError::new(
-                "PreludeBigint",
-                DeserializeFailure::NoVariantMatchedWithCauses(errs),
-            ))
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("PreludeBigint"))
     }
@@ -642,10 +639,7 @@ impl Deserialize for PreludeInteger {
                 cbor_event::Type::Tag => Ok(PreludeInteger::PreludeBigint(
                     PreludeBigint::deserialize(raw)?,
                 )),
-                _ => Err(DeserializeError::new(
-                    "PreludeInteger",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("PreludeInteger"))
@@ -834,10 +828,7 @@ impl Deserialize for PreludeUnsigned {
                 cbor_event::Type::Tag => Ok(PreludeUnsigned::PreludeBiguint(
                     PreludeBiguint::deserialize(raw)?,
                 )),
-                _ => Err(DeserializeError::new(
-                    "PreludeUnsigned",
-                    DeserializeFailure::NoVariantMatched,
-                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
         .map_err(|e| e.annotate("PreludeUnsigned"))
