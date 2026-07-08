@@ -1345,4 +1345,73 @@ mod tests {
             "missing-mandatory-field failure must name the type, got: {err}"
         );
     }
+
+    // A tag mismatch on a tagged top-level TYPE CHOICE (`tagged_type_choice = #6.11(uint / text)`)
+    // must name the type EXACTLY ONCE. This enum deserializes DIRECTLY (no container rep), so the
+    // tag check `generate_tag_check` emits sits inside the `.annotate("TaggedTypeChoice")` closure;
+    // if it used the location-carrying form (`DeserializeError::new("TaggedTypeChoice", ..)`) the
+    // closure's map_err would PREPEND the name again, reading "TaggedTypeChoice.TaggedTypeChoice".
+    // Mirrors `error_annotation_tag_mismatch_single_name` in tests/preserve-encodings, but pins the
+    // enum-direct tag-check path that no other fixture exercises.
+    //
+    // 0xcb is tag 11 (major 6, value 11) and 0xcc is tag 12; 0x05 is uint 5. So `[0xcc, 0x05]`
+    // decodes the tag successfully and trips `tag != 11` → TagMismatch, while `[0xcb, 0x05]` decodes.
+    #[test]
+    fn error_annotation_tag_mismatch_type_choice_direct() {
+        // Happy path: correct tag decodes Ok — guards against the test passing because the type
+        // rejects everything. Unwrapped (DeserializeError: Debug) so a regression's first capture
+        // carries the error, not just "is_ok was false".
+        TaggedTypeChoice::from_cbor_bytes(&[0xcb, 0x05]).unwrap();
+        let err = TaggedTypeChoice::from_cbor_bytes(&[0xcc, 0x05])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("TaggedTypeChoice"),
+            "tag-mismatch error must name the type, got: {err}"
+        );
+        assert!(
+            !err.contains("TaggedTypeChoice.TaggedTypeChoice"),
+            "tag-mismatch error must not double-annotate, got: {err}"
+        );
+        // The Display must also identify the tag mismatch (static/error.rs formats TagMismatch as
+        // "Expected tag {expected}, found {found}").
+        assert!(
+            err.contains("Expected tag 11"),
+            "tag-mismatch error must state the expected tag, got: {err}"
+        );
+        assert!(
+            err.contains("found 12"),
+            "tag-mismatch error must state the found tag, got: {err}"
+        );
+    }
+
+    // KNOWN GAP PIN (flips when the gap closes — then move this to the once-only contract above):
+    // the NO-VARIANT-MATCHED arm of a directly-deserializing type choice emits the NAME-CARRYING
+    // `DeserializeError::new("TaggedTypeChoice", NoVariantMatched)` INSIDE the same
+    // `.annotate("TaggedTypeChoice")` closure whose tag check is correctly locationless, so the
+    // closure prepends the name AGAIN and the Display reads "TaggedTypeChoice.TaggedTypeChoice" —
+    // the exact double-annotation shape the tag-mismatch contract forbids. Generator-wide (every
+    // enum's NoVariantMatched / NoVariantMatchedWithCauses arm has this shape); ledgered in
+    // tests/TESTING_ROADMAP.md under the annotation residuals. This test pins the CURRENT doubled
+    // name so the eventual fix flips it loudly instead of landing unpinned.
+    //
+    // `[0xcb, 0x80]` = tag 11 (correct) then an empty ARRAY — neither the uint nor the text variant
+    // matches, so the `_ => NoVariantMatched` arm fires.
+    #[test]
+    fn error_annotation_no_variant_double_name_known_gap() {
+        let err = TaggedTypeChoice::from_cbor_bytes(&[0xcb, 0x80])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("No variant matched"),
+            "the array payload must fail as NoVariantMatched, got: {err}"
+        );
+        assert!(
+            err.contains("TaggedTypeChoice.TaggedTypeChoice"),
+            "KNOWN GAP: NoVariantMatched currently double-annotates (name-carrying error inside \
+             the annotate closure). If this assert failed because the error now names the type \
+             exactly once, the gap CLOSED — invert this assertion into the once-only contract and \
+             prune the ledger entry in tests/TESTING_ROADMAP.md. Got: {err}"
+        );
+    }
 }

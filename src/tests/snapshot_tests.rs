@@ -717,3 +717,59 @@ fn rustfmt_rejects_unparseable_source() {
         "rustfmt parse failure must propagate as Err, not be swallowed"
     );
 }
+
+/// `generate_tag_check` (the tag check a directly-deserializing tagged type emits) has two arms
+/// selected by `--annotate-fields`. The `annotated=true` arm is exercised end-to-end by the core
+/// `tagged_type_choice` fixture (whole_program snapshot + the wrong-tag behavioral test), but that
+/// fixture always renders with `annotate_fields=true`; the `annotated=false` name-carrying arm has
+/// no *rendered* pin. This unit-renders BOTH arms and asserts the discriminating fragments (robust
+/// to rustfmt line-wrapping via whitespace stripping):
+/// * `annotated=true` — a bare `raw.tag()?` read and the LOCATIONLESS
+///   `DeserializeFailure::TagMismatch{ .. }.into()` (the annotate closure supplies the name), never
+///   the name-carrying `DeserializeError::new`.
+/// * `annotated=false` — the name-carrying `DeserializeError::new("Ident", ..)` plus a tag read that
+///   annotates the ident itself (`.map_err(|e| DeserializeError::from(e).annotate("Ident"))?`), since
+///   no closure will add the location.
+#[test]
+fn generate_tag_check_arms() {
+    use crate::generation::generate_tag_check;
+    use crate::intermediate::{CDDLIdent, RustIdent};
+
+    let ident = RustIdent::new(CDDLIdent::new("Ident"));
+    let render = |annotated: bool| {
+        let mut f = codegen::Function::new("deserialize");
+        generate_tag_check(&mut f, &ident, Some(11), annotated);
+        let mut scope = codegen::Scope::new();
+        scope.push_fn(f);
+        scope.to_string()
+    };
+    let flatten = |s: &str| -> String { s.chars().filter(|c| !c.is_whitespace()).collect() };
+
+    let annotated = render(true);
+    let flat_annotated = flatten(&annotated);
+    assert!(
+        flat_annotated.contains("lettag=raw.tag()?;"),
+        "annotated arm must read the tag bare (no map_err annotate), got:\n{annotated}"
+    );
+    assert!(
+        flat_annotated.contains("DeserializeFailure::TagMismatch{found:tag,expected:11}.into()"),
+        "annotated arm must emit the locationless TagMismatch form, got:\n{annotated}"
+    );
+    assert!(
+        !flat_annotated.contains("DeserializeError::new"),
+        "annotated arm must NOT carry the name (the closure supplies it), got:\n{annotated}"
+    );
+
+    let named = render(false);
+    let flat_named = flatten(&named);
+    assert!(
+        flat_named.contains(
+            "DeserializeError::new(\"Ident\",DeserializeFailure::TagMismatch{found:tag,expected:11})"
+        ),
+        "unannotated arm must emit the name-carrying error, got:\n{named}"
+    );
+    assert!(
+        flat_named.contains(".map_err(|e|DeserializeError::from(e).annotate(\"Ident\"))?"),
+        "unannotated arm must annotate the tag read with the ident, got:\n{named}"
+    );
+}
