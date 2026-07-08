@@ -49,7 +49,7 @@ check(
 );
 // Above the cliff (u64 > 2^53) the three JSON paths deliberately diverge, and the current behaviour
 // is the *blessed* contract (empirically verified; documented in docs/docs/wasm_differences.mdx,
-// TESTING_ROADMAP.md item 6):
+// tracked by `wasm_json_roundtrip`):
 //   - to_json() (serde_json) stays lossless / full precision;
 //   - to_json_value() (serde-wasm-bindgen json_compatible, no bigint) FAILS LOUD — it throws rather
 //     than silently handing back a rounded JS number;
