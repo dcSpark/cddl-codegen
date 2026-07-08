@@ -40,6 +40,12 @@ non_overlapping_type_choice_all = uint / nint / text / bytes / #6.30("hello worl
 
 non_overlapping_type_choice_some = uint / nint / text
 
+; A tag over a WHOLE top-level type choice: this enum deserializes DIRECTLY (no array/map container
+; rep), so the tag check is emitted enum-direct — `generate_tag_check` inside the annotate closure —
+; rather than via the container-header path. Pins that enum-direct arm (tagging a type-choice enum is
+; unimplemented under --preserve-encodings, so this fixture only lives in the default-profile core set).
+tagged_type_choice = #6.11(uint / text)
+
 overlap_basic_embed =  [
   ; @name identity
   tag: 0 //

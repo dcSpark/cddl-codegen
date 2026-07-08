@@ -5669,6 +5669,45 @@ impl Deserialize for TaggedText {
     }
 }
 
+impl cbor_event::se::Serialize for TaggedTypeChoice {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        match self {
+            TaggedTypeChoice::U64(uint) => serializer.write_unsigned_integer(*uint),
+            TaggedTypeChoice::Text(text) => serializer.write_text(&text),
+        }
+    }
+}
+
+impl Deserialize for TaggedTypeChoice {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let tag = raw.tag()?;
+            if tag != 11 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 11,
+                }
+                .into());
+            }
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    Ok(TaggedTypeChoice::U64(raw.unsigned_integer()? as u64))
+                }
+                cbor_event::Type::Text => Ok(TaggedTypeChoice::Text(raw.text()? as String)),
+                _ => Err(DeserializeError::new(
+                    "TaggedTypeChoice",
+                    DeserializeFailure::NoVariantMatched,
+                )),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedTypeChoice"))
+    }
+}
+
 impl cbor_event::se::Serialize for TextArrayWrapper {
     fn serialize<'se, W: Write>(
         &self,

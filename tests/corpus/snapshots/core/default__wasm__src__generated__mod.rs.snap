@@ -4115,6 +4115,76 @@ impl AsRef<cddl_lib::TaggedText> for TaggedText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct TaggedTypeChoice(cddl_lib::TaggedTypeChoice);
+
+#[wasm_bindgen]
+impl TaggedTypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedTypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::TaggedTypeChoice::new_uint(uint))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedTypeChoice::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedTypeChoiceKind {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::U64(_) => TaggedTypeChoiceKind::U64,
+            cddl_lib::TaggedTypeChoice::Text(_) => TaggedTypeChoiceKind::Text,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedTypeChoice::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedTypeChoice> for TaggedTypeChoice {
+    fn from(native: cddl_lib::TaggedTypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedTypeChoice> for cddl_lib::TaggedTypeChoice {
+    fn from(wasm: TaggedTypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedTypeChoice> for TaggedTypeChoice {
+    fn as_ref(&self) -> &cddl_lib::TaggedTypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedTypeChoiceKind {
+    U64,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct TextArrayWrapper(cddl_lib::TextArrayWrapper);
 
 #[wasm_bindgen]

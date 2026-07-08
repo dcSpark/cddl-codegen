@@ -4623,7 +4623,7 @@ enum BlockOrLine {
 }
 
 #[derive(Default, Debug, Clone)]
-struct BlocksOrLines(Vec<BlockOrLine>);
+pub(crate) struct BlocksOrLines(Vec<BlockOrLine>);
 
 impl BlocksOrLines {
     fn as_single_line(&self) -> Option<&str> {
@@ -4643,7 +4643,7 @@ impl From<Block> for BlocksOrLines {
     }
 }
 
-trait CodeBlock {
+pub(crate) trait CodeBlock {
     fn line(&mut self, line: &str) -> &mut dyn CodeBlock;
 
     fn push_block(&mut self, block: Block) -> &mut dyn CodeBlock;
@@ -9039,7 +9039,7 @@ fn make_encoding_struct(encoding_name: &str) -> codegen::Struct {
 // locationless errors and let the closure supply the name (the per-error annotate/named forms
 // would get the name prepended AGAIN by the closure, reading "Name.Name"). When false, each error
 // carries the name itself, as no closure will add it.
-fn generate_tag_check(
+pub(crate) fn generate_tag_check(
     deser_func: &mut dyn CodeBlock,
     ident: &RustIdent,
     tag: Option<usize>,

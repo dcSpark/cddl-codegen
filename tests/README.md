@@ -226,8 +226,13 @@ fallible part of a record's header parsing — container major type, definite-le
 reads — errors with the type name as the location (`Deserialization failed in Foo because: …`),
 the same way field-level failures always have, and a tag mismatch carries the name exactly *once*
 (inside the `.annotate(name)` closure the tag check is emitted locationless; a name-carrying form
-there would read "Foo.Foo"). The two `_control` cases anchor that field-level and
-missing-mandatory-field annotation is not lost when the header code is restructured. Outside the
+there would read "Foo.Foo"). `error_annotation_tag_mismatch_type_choice_direct` pins the same
+once-only contract for the *enum-direct* tag check — a tag over a whole top-level type choice
+(`tagged_type_choice = #6.11(uint / text)`) deserializes directly with no container rep — and the
+`generate_tag_check_arms` unit test in `snapshot_tests.rs` renders both arms to pin the
+name-carrying `--annotate-fields=false` form that no fixture exercises. The two `_control` cases
+anchor that field-level and missing-mandatory-field annotation is not lost when the header code is
+restructured. Outside the
 contract: embedded plain-group scaffolding and newtype wrappers' container reads (both ledgered in
 `tests/TESTING_ROADMAP.md`).
 

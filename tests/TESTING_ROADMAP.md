@@ -119,13 +119,20 @@ breadth.
      cannot double-annotate). Newtype wrappers' container reads are the same class — their errors
      carry no location at all, pinned indirectly by `error_display_formatting`'s `WrapperList`
      no-location case (re-anchor that case when this closes, since it *relies* on the gap to reach
-     the location-less Display branch).
-   - **A tagged top-level type-choice fixture.** `generate_tag_check`'s enum-direct output — the
-     tag check a type choice deserializing *directly* (no container rep) emits — is exercised by
-     ZERO fixtures: no snapshot or export crate contains it, so its emission contract (locationless
-     tag-mismatch inside the annotate closure, name-carrying form when `--annotate-fields=false`)
-     has no pin. A `#6.n(a / b)`-shaped corpus fixture plus a wrong-tag assertion in the
-     error-annotation family closes it.
+     the location-less Display branch). The header-mutation replay leg's
+     `HEADER_MUTANT_LOCATION_SKIP` ledger (38 entries at HEAD, all this newtype-wrapper class)
+     measures the gap at catalog breadth — closing it empties that ledger via its stale guards.
+   - **Enum `NoVariantMatched` errors double-annotate ("Foo.Foo").** The opposite polarity of the
+     annotation gap above: a directly-deserializing choice's `_ => NoVariantMatched` (and the
+     group-choice `NoVariantMatchedWithCauses`) arm emits the NAME-CARRYING
+     `DeserializeError::new(name, …)` *inside* the same `.annotate(name)` closure whose tag check
+     is correctly locationless, so the closure prepends the name again and the Display reads
+     "Foo.Foo" — generator-wide (every enum deserialize in the core snapshot has the shape). Fix by
+     emitting the locationless `DeserializeFailure::…into()` form when the arm sits inside an
+     annotate closure, mirroring `generate_tag_check`'s `annotated` switch. Pinned TDD-style by
+     `error_annotation_no_variant_double_name_known_gap` in `tests/core/tests.rs`, which asserts
+     the CURRENT doubled name and flips loudly when the fix lands (then invert it into the
+     once-only contract and prune this entry).
    - **`bool_wrapper` JSON newtype** — blocked on generator bug #223 (bool newtype does not
      compile); the commented-out rule in `tests/json/input.cddl` carries the issue link. Unblocks
      only by fixing the generator.
