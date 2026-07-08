@@ -778,6 +778,31 @@ impl<'a> IntermediateTypes<'a> {
                 k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
             }
         }
+        // A map key that is (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or
+        // an `OrderedHashMap` bounded `K: Hash + Eq + Ord` under --preserve-encodings); floats
+        // implement none of Eq/Ord/Hash, so the emitted crate always fails to build (E0277). Such
+        // rules are rejected gracefully at generation below. Collected into a local set (recorded
+        // after the loop) to sidestep the borrow checker, like `used_as_key`, since the loop borrows
+        // `self` immutably. `visit_types` guards recursion with a visited-ident set, so a
+        // self-referential key type can't loop.
+        let mut float_key_rejections = BTreeSet::new();
+        fn key_contains_float(ty: &ConceptualRustType, types: &IntermediateTypes<'_>) -> bool {
+            let mut found = false;
+            ty.visit_types(types, &mut |t| {
+                if matches!(
+                    t,
+                    ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64)
+                ) {
+                    found = true;
+                }
+            });
+            found
+        }
+        fn float_key_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
+            )
+        }
         // do a recursive check on the ones explicitly tagged as keys using @used_as_key
         // this is done here since the lambdas are defined here so we can reuse them
         for ident in &self.used_as_key {
@@ -787,16 +812,42 @@ impl<'a> IntermediateTypes<'a> {
         }
         // check all other places used as keys
         for rust_struct in self.rust_structs().values() {
+            let rule_ident = rust_struct.ident().clone();
             rust_struct.visit_types(self, &mut |ty| {
-                check_used_as_key(ty, self, &mut used_as_key)
+                check_used_as_key(ty, self, &mut used_as_key);
+                // A nested/inline map (`{ number => uint }` as an array element or map value)
+                // surfaces as a Map conceptual type rather than a Table struct, so its float key is
+                // rejected here — the Table branch below only sees top-level `x = { k => v }` rules.
+                if let ConceptualRustType::Map(k, _v) = ty
+                    && key_contains_float(&k.conceptual_type, self)
+                {
+                    float_key_rejections.insert(float_key_msg(&rule_ident));
+                }
             });
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+                // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
+                // so it needs its own check. This runs AFTER generic resolution, so it also catches
+                // float keys hidden behind a resolved generic instance (`{ gen<float64> => uint }`),
+                // the one seam that sees such instances. The marking above is left intact (harmless —
+                // the crate never generates once we reject) so this is a pure add-on.
+                if key_contains_float(&domain.conceptual_type, self) {
+                    float_key_rejections.insert(float_key_msg(&rule_ident));
+                }
             }
         }
         // we use a separate one here to get around the borrow checker in the above visit_types
         for ident in used_as_key {
             self.mark_used_as_key(ident);
+        }
+        for msg in float_key_rejections {
+            self.record_rejection(msg);
+        }
+        // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
+        // only run post-generic-resolution). Without this the entry-point check at the top of
+        // finalize would silently swallow anything recorded here.
+        if self.has_rejections() {
+            return Err(self.rejections_error());
         }
         Ok(())
     }

@@ -978,27 +978,9 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
         "shape=gchoice_arr members=[fixed_null,optional,optional]",
         "array-rep group-choice arm with `?` optional member breaks compilation (E0599 deserialize_as_embedded_group); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
     ),
-    // -- float-family table key domain: BTreeMap key without Eq/Ord (E0277 f64: Eq) ---------------
-    (
-        "outer=map_key filler=prelude.number",
-        "float-family table key domain breaks compilation (E0277 f64: Eq); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=map_key filler=prelude.time",
-        "float-family table key domain breaks compilation (E0277 f64: Eq); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "inner=map_key filler=prelude.number",
-        "float-family table key domain breaks compilation (E0277 f64: Eq); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "inner=map_key filler=prelude.time",
-        "float-family table key domain breaks compilation (E0277 f64: Eq); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=map_key inner=generic_arg filler=prelude.float64",
-        "float-family (composite) table key domain breaks compilation (E0277 f64: Eq); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // Float-family table key domains are now a GRACEFUL generation-time rejection (floats have no
+    // total order → no valid map key; pinned by tests/robustness/float_table_key.cddl and
+    // float_table_key_composite.cddl), so those compositions never reach layer 2 — no entry needed.
     // -- generic instantiation as a homogeneous array element: instance never emitted (E0425) -----
     (
         "outer=occurrence filler=genericarg.",

@@ -1,0 +1,9 @@
+; The float-family table-key rejection must also fire when the key's float only becomes visible
+; after generic resolution. A generic instance (`gen<float64>`) is NOT a concrete rust struct at
+; parse time — it materializes during `finalize`'s generic-resolution phase, so the float-in-key
+; check has to live in finalize (the one seam that sees resolved generic instances), not in the
+; parse walk. Without the finalize-time check this generates `ok` and the emitted crate fails
+; `cargo build` with E0277 (`f64: Eq`) exactly like the direct family (float_table_key.cddl); with
+; it, this rejects GRACEFULLY. Companion pin to float_table_key.cddl for the finalize-only seam.
+gen<a0> = [a0]
+x = { gen<float64> => uint }

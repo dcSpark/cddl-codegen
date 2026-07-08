@@ -1,5 +1,6 @@
 ---
 source: src/tests/robustness_tests.rs
+assertion_line: 843
 expression: catalog
 ---
 # generator outcome per malformed/edge input
@@ -15,6 +16,8 @@ empty_array                ok
 empty_group                ok
 fixed_bool_member          PANIC
 fixed_value_occurrence     PANIC
+float_table_key            error (graceful)
+float_table_key_composite  error (graceful)
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
 generic_call_member        PANIC
