@@ -1570,7 +1570,7 @@ mod tests {
     // the closure's map_err would PREPEND "Foo" again (static/error.rs annotate concatenates
     // "location.loc"), reading "Foo.Foo". Inside an annotated closure the emitted tag-check error
     // must therefore be the locationless form, while the named form is kept when no closure exists
-    // (annotate_fields=false / embedded plain-group scaffolding) so the name is never lost.
+    // (annotate_fields=false) so the name is never lost.
     //
     // foo = #6.11([uint, text, bytes]); 0xcc is tag 12 (major 6, value 12) — wrong tag, so
     // `raw.tag_sz()?` succeeds and the `tag != 11` check raises TagMismatch.
@@ -1584,6 +1584,39 @@ mod tests {
         assert!(
             !err.contains("Foo.Foo"),
             "tag-mismatch error must not double-annotate, got: {err}"
+        );
+    }
+
+    // Preserve-profile sibling of tests/core's newtype-wrapper / plain-group annotation pins: the
+    // preserve profile carries encoding fields (`enc_fields`), exercising the `Ok(Self { inner,
+    // encodings: Some(..) })` branch of the wrapped body that the default profile can't. Both header
+    // errors must name their type EXACTLY ONCE.
+    //
+    // wrapper_list = [* uint] (@newtype) reads an array; plain = (d: #6.13(uint), e: tagged_text)
+    // decodes standalone as a 2-element array. A bare uint (0x00) trips each container read inside
+    // its `.annotate(<T>)` closure.
+    #[test]
+    fn error_annotation_wrapper_and_plain_group_single_name() {
+        let wrapper_err = WrapperList::from_cbor_bytes(&[0x00u8])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            wrapper_err.contains("WrapperList"),
+            "wrapper wrong-container error must name the wrapper, got: {wrapper_err}"
+        );
+        assert!(
+            !wrapper_err.contains("WrapperList.WrapperList"),
+            "wrapper wrong-container error must not double-annotate, got: {wrapper_err}"
+        );
+
+        let plain_err = Plain::from_cbor_bytes(&[0x00u8]).unwrap_err().to_string();
+        assert!(
+            plain_err.contains("Plain"),
+            "plain-group header error must name the group, got: {plain_err}"
+        );
+        assert!(
+            !plain_err.contains("Plain.Plain"),
+            "plain-group header error must not double-annotate, got: {plain_err}"
         );
     }
 }

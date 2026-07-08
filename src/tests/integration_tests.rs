@@ -6167,8 +6167,9 @@ fn decode_replay_run(
 /// exceptions: `HEADER_MUTANT_ACCEPT_SKIP` (a mutant the row's spec genuinely accepts WITHOUT any
 /// accept vector evidencing that major — an `any`-typed row, an unsampled choice arm; EMPTY at HEAD;
 /// `trunc_head` can never be here, asserted) and `HEADER_MUTANT_LOCATION_SKIP` (a rejection carrying
-/// no location — the newtype-wrapper container-read annotation gap for `ctl.*` / `rangeop.*` /
-/// `dsl.*newtype` rows, or the locationless `from_cbor_bytes` `TrailingData` path). A header-mutant
+/// no location — EMPTY at HEAD now that the newtype-wrapper container reads and embedded/plain-group
+/// header scaffolding are annotated; the only known-legitimate locationless resident, the
+/// `from_cbor_bytes` `TrailingData` path, is not reached by any header mutant here). A header-mutant
 /// vacuity floor keeps the leg live.
 ///
 /// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~180s warm (104 active rows × up to two full
@@ -6286,168 +6287,16 @@ fn decode_conformance_replay() {
     // NEVER decode Ok — a `trunc_head` entry here is a hard error (asserted below), not a legitimate
     // skip.
     const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[];
-    // Shared reason for the newtype-wrapper container-read annotation gap (a single documented gap, so
-    // one const referenced by every entry below): the wrapper's inner scalar read
-    // (`raw.{uint,text,bytes}()` etc.) is not wrapped in an annotate closure, so a wrong-major
-    // ("Invalid cbor: not the right type") or truncated-head ("Invalid cbor: not enough bytes")
-    // rejection carries no `failed in <T>` location. This is the ledgered generator annotation gap
-    // "Annotate embedded/plain-group `deserialize()` header scaffolding (and newtype wrappers'
-    // container reads)" in tests/TESTING_ROADMAP.md (pinned indirectly by `error_display_formatting`'s
-    // `WrapperList` no-location case); it closes when that gap does.
-    const NEWTYPE_CONTAINER_READ_NO_LOCATION: &str = "newtype-wrapper container read carries no location — the ledgered generator annotation gap \
-         \"Annotate embedded/plain-group deserialize() header scaffolding (and newtype wrappers' \
-         container reads)\" (tests/TESTING_ROADMAP.md): the wrapper's inner scalar read is not wrapped \
-         in an annotate closure, so the type-mismatch / not-enough-bytes rejection has no \
-         `failed in <type_name>` location";
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
-    // mutated bytes but the error Display carries NO location naming the decoding type. Each reason
-    // names the concrete locationless path. Every entry at HEAD is the newtype-wrapper container-read
-    // annotation gap above (control-op newtypes `ctl.*` / `type1.ctlop`, range newtypes `rangeop.*`,
-    // explicit `@newtype` rows `dsl.newtype` / `dsl.custom_json` — all single-value wrappers, none a
-    // plain record). The `.float` range rows carry only `wrong_major` (their accept vectors are
-    // major-7 float heads, which skip `trunc_head`). Stale-guarded like the others. The
-    // `from_cbor_bytes` `TrailingData` path (locationless by construction) would also belong here if a
-    // mutant decoded the item Ok and only the buffer-length check rejected — none does at HEAD.
-    const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[
-        ("ctl.eq", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.eq", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.ge", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.ge", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.gt", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.gt", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.le", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.le", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.lt", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.lt", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.ne", "wrong_major", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        ("ctl.ne", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        (
-            "ctl.ne.one",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "ctl.ne.one",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "ctl.ne.zero",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "ctl.ne.zero",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "ctl.size",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        ("ctl.size", "trunc_head", NEWTYPE_CONTAINER_READ_NO_LOCATION),
-        (
-            "dsl.custom_json",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "dsl.custom_json",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "dsl.newtype",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "dsl.newtype",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive.float",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive.int",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive.int",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive.nint",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.exclusive.nint",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive.float",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive.int",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive.int",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive.nint",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "rangeop.inclusive.nint",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "type1.ctlop",
-            "wrong_major",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-        (
-            "type1.ctlop",
-            "trunc_head",
-            NEWTYPE_CONTAINER_READ_NO_LOCATION,
-        ),
-    ];
+    // mutated bytes but the error Display carries NO location naming the decoding type. EMPTY at HEAD:
+    // the newtype-wrapper container reads (3a) and embedded/plain-group deserialize() header
+    // scaffolding (3b) are now each wrapped in an `.annotate(<T>)` closure, so those rejections carry
+    // a `failed in <T>` location. Stale-guarded: a listed entry whose mutant no longer rejects WITHOUT
+    // a location fails the gate (below). The `from_cbor_bytes` `TrailingData` path (locationless by
+    // construction) would belong here if a mutant decoded the item Ok and only the buffer-length check
+    // rejected — none does at HEAD (that path is pinned by `error_display_formatting`'s TrailingData
+    // no-location case instead).
+    const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
 
     let catalog_path = std::path::Path::new("tests/decode_conformance/catalog.toml");
     let catalog_src = std::fs::read_to_string(catalog_path)
@@ -6891,13 +6740,14 @@ fn decode_conformance_replay() {
                                 failures.push(format!(
                                     "{}: header mutant `{label}` of accept vector {orig_hex} was \
                                      rejected but the error Display carries NO location naming the \
-                                     type (`failed in {ty}`). If it is the known generator \
-                                     annotation gap (embedded/plain-group `deserialize()` header \
-                                     scaffolding / newtype wrappers' container reads) or the \
-                                     locationless `from_cbor_bytes` `TrailingData` path, ledger \
-                                     ({}, {label}) in HEADER_MUTANT_LOCATION_SKIP naming that path. If \
-                                     the Display SHOULD carry a location (a plain record type), this \
-                                     is a real annotation regression — investigate before ledgering. \
+                                     type (`failed in {ty}`). Header scaffolding (records, \
+                                     embedded/plain-groups) and newtype-wrapper container reads are \
+                                     all annotated now, so this is a real annotation regression — \
+                                     investigate before ledgering. The only known-legitimate \
+                                     locationless path is `from_cbor_bytes` `TrailingData` (a mutant \
+                                     that decodes the item Ok and trips only the buffer-length \
+                                     check); if that is genuinely what happened, ledger ({}, {label}) \
+                                     in HEADER_MUTANT_LOCATION_SKIP naming that path. \
                                      Captured output:\n{combined}",
                                     row.id,
                                     row.id,

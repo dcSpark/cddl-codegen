@@ -1590,18 +1590,26 @@ impl SerializeEmbeddedGroup for Plain {
 
 impl Deserialize for Plain {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let len = raw.array_sz()?;
-        let mut read_len = CBORReadLen::new(len);
-        read_len.read_elems(2)?;
-        read_len.finish()?;
+        let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            Ok((len, read_len))
+        })()
+        .map_err(|e| e.annotate("Plain"))?;
         let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
-        match len {
-            cbor_event::LenSz::Len(_, _) => (),
-            cbor_event::LenSz::Indefinite => match raw.special()? {
-                cbor_event::Special::Break => (),
-                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-            },
-        }
+        (|| -> Result<_, DeserializeError> {
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(())
+        })()
+        .map_err(|e| e.annotate("Plain"))?;
         ret
     }
 }
@@ -1673,35 +1681,36 @@ impl Serialize for String32 {
 
 impl Deserialize for String32 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
-            (7, tag_enc) => raw
-                .text_sz()
-                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
-            (tag, _enc) => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 7,
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+                (7, tag_enc) => raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+                (tag, _enc) => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 7,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        };
-        if inner.len() < 16 || inner.len() > 32 {
-            return Err(DeserializeError::new(
-                "String32",
-                DeserializeFailure::RangeCheck {
+            };
+            if inner.len() < 16 || inner.len() > 32 {
+                return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,
                     min: Some(16),
                     max: Some(32),
-                },
-            ));
-        }
-        Ok(Self {
-            inner,
-            encodings: Some(String32Encoding {
-                inner_tag_encoding,
-                inner_encoding,
-            }),
-        })
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(String32Encoding {
+                    inner_tag_encoding,
+                    inner_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("String32"))
     }
 }
 
@@ -1724,23 +1733,24 @@ impl Serialize for String64 {
 
 impl Deserialize for String64 {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_encoding) = raw
-            .text_sz()
-            .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-        if inner.len() > 64 {
-            return Err(DeserializeError::new(
-                "String64",
-                DeserializeFailure::RangeCheck {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .text_sz()
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+            if inner.len() > 64 {
+                return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,
                     min: Some(0),
                     max: Some(64),
-                },
-            ));
-        }
-        Ok(Self {
-            inner,
-            encodings: Some(String64Encoding { inner_encoding }),
-        })
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(String64Encoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("String64"))
     }
 }
 
@@ -2186,25 +2196,28 @@ impl Serialize for TaggedText {
 
 impl Deserialize for TaggedText {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
-            (9, tag_enc) => raw
-                .text_sz()
-                .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
-            (tag, _enc) => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 9,
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+                (9, tag_enc) => raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, Some(tag_enc), StringEncoding::from(enc)))?,
+                (tag, _enc) => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 9,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        };
-        Ok(Self {
-            inner,
-            encodings: Some(TaggedTextEncoding {
-                inner_tag_encoding,
-                inner_encoding,
-            }),
-        })
+            };
+            Ok(Self {
+                inner,
+                encodings: Some(TaggedTextEncoding {
+                    inner_tag_encoding,
+                    inner_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("TaggedText"))
     }
 }
 

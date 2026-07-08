@@ -43,33 +43,36 @@ impl cbor_event::se::Serialize for WrappedArr {
 
 impl Deserialize for WrappedArr {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let mut inner_arr = Vec::new();
-        let len = raw.array_sz()?;
-        let inner_encoding = len.into();
-        let mut inner_elem_encodings = Vec::new();
-        while match len {
-            cbor_event::LenSz::Len(n, _) => (inner_arr.len() as u64) < n,
-            cbor_event::LenSz::Indefinite => true,
-        } {
-            if let cbor_event::LenSz::Indefinite = len {
-                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                    break;
+        (|| -> Result<_, DeserializeError> {
+            let mut inner_arr = Vec::new();
+            let len = raw.array_sz()?;
+            let inner_encoding = len.into();
+            let mut inner_elem_encodings = Vec::new();
+            while match len {
+                cbor_event::LenSz::Len(n, _) => (inner_arr.len() as u64) < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                if let cbor_event::LenSz::Indefinite = len {
+                    if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                        break;
+                    }
                 }
+                let (inner_elem, inner_elem_encoding) =
+                    raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                inner_arr.push(inner_elem);
+                inner_elem_encodings.push(inner_elem_encoding);
             }
-            let (inner_elem, inner_elem_encoding) =
-                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-            inner_arr.push(inner_elem);
-            inner_elem_encodings.push(inner_elem_encoding);
-        }
-        let (inner, inner_encoding, inner_elem_encodings) =
-            (inner_arr, inner_encoding, inner_elem_encodings);
-        Ok(Self {
-            inner,
-            encodings: Some(WrappedArrEncoding {
-                inner_encoding,
-                inner_elem_encodings,
-            }),
-        })
+            let (inner, inner_encoding, inner_elem_encodings) =
+                (inner_arr, inner_encoding, inner_elem_encodings);
+            Ok(Self {
+                inner,
+                encodings: Some(WrappedArrEncoding {
+                    inner_encoding,
+                    inner_elem_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("WrappedArr"))
     }
 }
 
@@ -114,44 +117,49 @@ impl cbor_event::se::Serialize for WrappedMap {
 
 impl Deserialize for WrappedMap {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let mut inner_table = OrderedHashMap::new();
-        let inner_len = raw.map_sz()?;
-        let inner_encoding = inner_len.into();
-        let mut inner_key_encodings = BTreeMap::new();
-        let mut inner_value_encodings = BTreeMap::new();
-        while match inner_len {
-            cbor_event::LenSz::Len(n, _) => (inner_table.len() as u64) < n,
-            cbor_event::LenSz::Indefinite => true,
-        } {
-            if let cbor_event::LenSz::Indefinite = inner_len {
-                if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                    break;
+        (|| -> Result<_, DeserializeError> {
+            let mut inner_table = OrderedHashMap::new();
+            let inner_len = raw.map_sz()?;
+            let inner_encoding = inner_len.into();
+            let mut inner_key_encodings = BTreeMap::new();
+            let mut inner_value_encodings = BTreeMap::new();
+            while match inner_len {
+                cbor_event::LenSz::Len(n, _) => (inner_table.len() as u64) < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                if let cbor_event::LenSz::Indefinite = inner_len {
+                    if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                        break;
+                    }
                 }
+                let (inner_key, inner_key_encoding) =
+                    raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                let (inner_value, inner_value_encoding) = raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                if inner_table.insert(inner_key, inner_value).is_some() {
+                    return Err(
+                        DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into(),
+                    );
+                }
+                inner_key_encodings.insert(inner_key, inner_key_encoding);
+                inner_value_encodings.insert(inner_key, inner_value_encoding);
             }
-            let (inner_key, inner_key_encoding) =
-                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-            let (inner_value, inner_value_encoding) = raw
-                .text_sz()
-                .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-            if inner_table.insert(inner_key, inner_value).is_some() {
-                return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into());
-            }
-            inner_key_encodings.insert(inner_key, inner_key_encoding);
-            inner_value_encodings.insert(inner_key, inner_value_encoding);
-        }
-        let (inner, inner_encoding, inner_key_encodings, inner_value_encodings) = (
-            inner_table,
-            inner_encoding,
-            inner_key_encodings,
-            inner_value_encodings,
-        );
-        Ok(Self {
-            inner,
-            encodings: Some(WrappedMapEncoding {
+            let (inner, inner_encoding, inner_key_encodings, inner_value_encodings) = (
+                inner_table,
                 inner_encoding,
                 inner_key_encodings,
                 inner_value_encodings,
-            }),
-        })
+            );
+            Ok(Self {
+                inner,
+                encodings: Some(WrappedMapEncoding {
+                    inner_encoding,
+                    inner_key_encodings,
+                    inner_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("WrappedMap"))
     }
 }

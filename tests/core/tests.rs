@@ -272,15 +272,31 @@ mod tests {
         assert!(foo_len_err.contains("found 4"), "{foo_len_err}");
         assert!(foo_len_err.contains("expected: 3"), "{foo_len_err}");
 
-        // None branch ("Deserialization: " — no location): WrapperList is a newtype wrapper whose
-        // deserialize reads its container directly (no annotate closure), so its errors carry no
-        // location and Display takes the None branch. Feed a bare uint where the array is required.
-        let wrapper_no_loc_err = WrapperList::from_cbor_bytes(&[0x00u8])
+        // None branch ("Deserialization: " — no location): TrailingData is raised by
+        // `from_cbor_bytes` AFTER a complete value decodes, as
+        // `DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()` with no annotate closure
+        // anywhere in the call path — so it is locationless by construction and Display takes the
+        // None branch. Feed a valid single-element WrapperList followed by a stray trailing byte.
+        let trailing_no_loc_err = WrapperList::from_cbor_bytes(
+            &[arr_def(1), cbor_int(1, cbor_event::Sz::Inline), vec![0x00]].concat(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            trailing_no_loc_err.starts_with("Deserialization: "),
+            "{trailing_no_loc_err}"
+        );
+
+        // Positive pin for the CLOSED newtype-wrapper container-read annotation gap: WrapperList's
+        // whole deserialize body now sits inside an `.annotate("WrapperList")` closure, so a
+        // wrong-container read (a bare uint where the `[* uint]` array is required) carries the
+        // "WrapperList" location (was the old None-branch witness before the gap closed).
+        let wrapper_wrong_container_err = WrapperList::from_cbor_bytes(&[0x00u8])
             .unwrap_err()
             .to_string();
         assert!(
-            wrapper_no_loc_err.starts_with("Deserialization: "),
-            "{wrapper_no_loc_err}"
+            wrapper_wrong_container_err.contains("WrapperList"),
+            "{wrapper_wrong_container_err}"
         );
 
         // MandatoryFieldMissing with a Key::Str: an empty indefinite Bar map drops every key; "foo"
@@ -1412,6 +1428,73 @@ mod tests {
         assert!(
             !err.contains("TaggedTypeChoice.TaggedTypeChoice"),
             "NoVariantMatched error must not double-annotate, got: {err}"
+        );
+    }
+
+    // A plain-group standalone deserialize() must name the group EXACTLY ONCE on a header error.
+    // `plain = (d: #6.23(uint), e: tagged_text)` decodes standalone as a 2-element array; its
+    // pre-delegation scaffolding (the `raw.array()?` container read + the read_len length checks)
+    // now sits inside an `.annotate("Plain")` closure, while the delegated
+    // deserialize_as_embedded_group() body stays OUTSIDE it (already annotated per-field). A bare
+    // uint where the array is required trips `raw.array()?` inside that closure.
+    #[test]
+    fn error_annotation_plain_group_header_single_name() {
+        let err = Plain::from_cbor_bytes(&[0x00u8]).unwrap_err().to_string();
+        assert!(
+            err.contains("Plain"),
+            "plain-group header error must name the group, got: {err}"
+        );
+        assert!(
+            !err.contains("Plain.Plain"),
+            "plain-group header error must not double-annotate, got: {err}"
+        );
+    }
+
+    // A newtype wrapper's wrong-container read must name the wrapper EXACTLY ONCE. `wrapper_list =
+    // [* uint]` (@newtype) reads an array; the whole deserialize body is wrapped in an
+    // `.annotate("WrapperList")` closure, so a bare uint (0x00) where the array is required carries
+    // the "WrapperList" location without doubling.
+    #[test]
+    fn error_annotation_wrapper_wrong_container_single_name() {
+        let err = WrapperList::from_cbor_bytes(&[0x00u8])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("WrapperList"),
+            "wrapper wrong-container error must name the wrapper, got: {err}"
+        );
+        assert!(
+            !err.contains("WrapperList.WrapperList"),
+            "wrapper wrong-container error must not double-annotate, got: {err}"
+        );
+    }
+
+    // A BOUNDED wrapper's out-of-range decode must name the wrapper EXACTLY ONCE. This pins the 3a
+    // locationless-switch: inside the annotate closure the range check emits the LOCATIONLESS
+    // `DeserializeFailure::RangeCheck.into()` form (the closure supplies the name); the name-carrying
+    // `DeserializeError::new("NintGeNewtype", ..)` form there would let the closure prepend the name
+    // AGAIN, reading "NintGeNewtype.NintGeNewtype". `nint_ge_newtype = nint .ge -5` accepts -5..=-1;
+    // -6 (nint magnitude 5, 0x25) is out of range.
+    #[test]
+    fn error_annotation_bounded_wrapper_range_single_name() {
+        // -5 (the inclusive lower bound) decodes Ok — guards against the type rejecting everything.
+        NintGeNewtype::from_cbor_bytes(&[0x24u8]).unwrap(); // 0x24 = nint 4 = -5
+        let err = NintGeNewtype::from_cbor_bytes(&[0x25u8]) // 0x25 = nint 5 = -6, below -5
+            .unwrap_err()
+            .to_string();
+        // nint bounds map to a SWAPPED u64 magnitude window (`nint .ge -5` -> magnitude `<= 4`), so
+        // the RangeCheck Display reads "5 not at most 4" (static/error.rs formats (None, Some) so).
+        assert!(
+            err.contains("not at most"),
+            "bounded-wrapper decode must fail as a RangeCheck, got: {err}"
+        );
+        assert!(
+            err.contains("NintGeNewtype"),
+            "bounded-wrapper range error must name the wrapper, got: {err}"
+        );
+        assert!(
+            !err.contains("NintGeNewtype.NintGeNewtype"),
+            "bounded-wrapper range error must not double-annotate, got: {err}"
         );
     }
 }

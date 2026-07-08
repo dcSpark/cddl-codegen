@@ -29,22 +29,23 @@ impl cbor_event::se::Serialize for SizedText {
 
 impl Deserialize for SizedText {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_encoding) = raw
-            .text_sz()
-            .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-        if inner.len() < 1 || inner.len() > 16 {
-            return Err(DeserializeError::new(
-                "SizedText",
-                DeserializeFailure::RangeCheck {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .text_sz()
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+            if inner.len() < 1 || inner.len() > 16 {
+                return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,
                     min: Some(1),
                     max: Some(16),
-                },
-            ));
-        }
-        Ok(Self {
-            inner,
-            encodings: Some(SizedTextEncoding { inner_encoding }),
-        })
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(SizedTextEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("SizedText"))
     }
 }

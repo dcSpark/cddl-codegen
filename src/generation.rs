@@ -5195,8 +5195,11 @@ fn add_deserialize_final_len_check(
 //   tag-mismatch error must then be the locationless form (`DeserializeFailure::..into()`): the
 //   closure's map_err supplies the type name, and the location-carrying form
 //   (`DeserializeError::new(name, ..)`) would get the name PREPENDED again ("Name.Name"). When no
-//   closure exists (annotate_fields=false, or embedded scaffolding that stays in deserialize()),
-//   the named form is required or the name would be lost entirely.
+//   closure exists (annotate_fields=false) the named form is required or the name would be lost
+//   entirely. This param governs the NON-embedded emission below; the embedded (plain-group)
+//   deserialize() case builds its own scaffolding closures when `cli.annotate_fields` (handled in a
+//   dedicated branch at the top of the fn) and ignores `annotated` — the codegen_struct caller
+//   therefore passes it `false` for plain groups.
 #[allow(clippy::too_many_arguments)]
 fn create_deserialize_impls(
     ident: &RustIdent,
@@ -5215,6 +5218,96 @@ fn create_deserialize_impls(
     //       or theirs using Error::Custom(String) + DeserializeError::to_string()
     //deser_impl.impl_trait("cbor_event::de::Deserialize");
     deser_impl.impl_trait("Deserialize");
+    // Plain-group (embedded) deserialize() with annotation on: the pre-delegation scaffolding (tag
+    // read/check + container-len read + read_len construction/initial checks) and the post-delegation
+    // final-len check each get their OWN `.annotate(name)` error closure so a wrong-major /
+    // wrong-length / missing-break rejection carries the type name — exactly like the non-embedded
+    // record path already annotates its scaffolding. The `deserialize_as_embedded_group` delegation
+    // stays OUTSIDE any closure: its body is already annotated per-field, so wrapping it would
+    // double-annotate ("Type.Type.field"). This branch only fires for embedded groups (never the enum
+    // path, which passes generate_deserialize_embedded=false); every other case keeps the original
+    // sequential emission below unchanged, so non-embedded records and enums stay byte-identical.
+    if generate_deserialize_embedded && cli.annotate_fields {
+        let rep = rep.expect("embedded groups always have an array/map representation");
+        let len_info =
+            len_info.expect("embedded plain-group deserialize() is always given its len_info");
+        // Pre-delegation scaffolding, built into a closure returning the bindings later code needs.
+        let mut pre = BlocksOrLines::default();
+        if let Some(tag) = tag {
+            if cli.preserve_encodings {
+                pre.line("let (tag, tag_encoding) = raw.tag_sz()?;");
+            } else {
+                pre.line("let tag = raw.tag()?;");
+            }
+            // Inside the annotate closure, so the locationless form (the closure supplies the name).
+            let mut tag_check = Block::new(format!("if tag != {tag}"));
+            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
+            pre.push_block(tag_check);
+        }
+        match rep {
+            Representation::Array => {
+                pre.line(if cli.preserve_encodings {
+                    "let len = raw.array_sz()?;"
+                } else {
+                    "let len = raw.array()?;"
+                });
+            }
+            Representation::Map => {
+                pre.line(if cli.preserve_encodings {
+                    "let len = raw.map_sz()?;"
+                } else {
+                    "let len = raw.map()?;"
+                });
+            }
+        }
+        // Inline the read_len construction + initial checks instead of calling
+        // add_deserialize_initial_len_check: here the delegation's `&mut read_len` use lives OUTSIDE
+        // the closure, so `read_len` is only mutated inside the closure when a `read_elems` is
+        // emitted (Fixed>0 / OptionalFields>0). Binding it `mut` unconditionally (as the shared
+        // helper does, correct there because the delegation follows in-scope) would emit `unused_mut`
+        // for the Dynamic / Fixed(0) / OptionalFields(0) cases. Everything else matches the helper.
+        let read_len_mutated = matches!(len_info, RustStructCBORLen::Fixed(f) if f != 0)
+            || matches!(len_info, RustStructCBORLen::OptionalFields(m) if m != 0);
+        pre.line(&format!(
+            "let {}read_len = {}(len);",
+            if read_len_mutated { "mut " } else { "" },
+            cbor_read_len_ctor(cli)
+        ));
+        match len_info {
+            RustStructCBORLen::Dynamic => {}
+            RustStructCBORLen::OptionalFields(mandatory) => {
+                if mandatory != 0 {
+                    pre.line(&format!("read_len.read_elems({mandatory})?;"));
+                }
+            }
+            RustStructCBORLen::Fixed(fixed) => {
+                if fixed != 0 {
+                    pre.line(&format!("read_len.read_elems({fixed})?;"));
+                }
+                pre.line("read_len.finish()?;");
+            }
+        }
+        pre.line("Ok((len, read_len))");
+        let mut pre_closure = make_err_annotate_block(name, "let (len, mut read_len) = ", "?;");
+        pre_closure.push_all(pre);
+        deser_body.push_block(pre_closure);
+        // Delegation OUTSIDE any closure (its per-field errors are already annotated).
+        deser_body.line("let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);");
+        // Post-delegation final-len check (ending break / trailing-length), wrapped in its own
+        // annotate closure so a missing-break / definite-len-mismatch rejection carries the name.
+        let mut post = BlocksOrLines::default();
+        add_deserialize_final_len_check(&mut post, Some(rep), len_info, cli);
+        if !post.0.is_empty() {
+            let mut post_closure = make_err_annotate_block(name, "", "?;");
+            post_closure.push_all(post);
+            post_closure.line("Ok(())");
+            deser_body.push_block(post_closure);
+        }
+        deser_body.line("ret");
+        let mut embedded_impl = codegen::Impl::new(name);
+        embedded_impl.impl_trait("DeserializeEmbeddedGroup");
+        return (deser_impl, Some(embedded_impl));
+    }
     if let Some(tag) = tag {
         if cli.preserve_encodings {
             deser_body.line("let (tag, tag_encoding) = raw.tag_sz()?;");
@@ -7368,11 +7461,12 @@ fn codegen_struct(
             // must sit INSIDE the annotate closure so wrong-major-type and wrong-length errors
             // carry the type name exactly like field-level errors already do. Prepend the
             // scaffolding ahead of the field-read code so the whole body is annotated as one unit.
-            // (The embedded/plain-group case keeps its scaffolding in deserialize() unannotated:
-            // the delegated deserialize_as_embedded_group() body is already annotated, so wrapping
-            // the delegation would double-annotate field errors ("Type.Type.field"). Annotating the
-            // embedded header reads would need annotation threaded through the shared
-            // add_deserialize_{initial,final}_len_check helpers, which also serve the enum paths.)
+            // (The embedded/plain-group case annotates its scaffolding differently:
+            // create_deserialize_impls wraps the pre-delegation header reads and the post-delegation
+            // final-len check each in their own annotate closure, keeping the delegated
+            // deserialize_as_embedded_group() call OUTSIDE any closure — its body is already
+            // annotated per-field, so wrapping the delegation would double-annotate field errors
+            // ("Type.Type.field").)
             let mut body = std::mem::take(&mut deser_scaffolding);
             body.push_all(std::mem::take(&mut deser_code.content));
             deser_code.content = body;
@@ -9385,6 +9479,13 @@ fn generate_wrapper_struct(
     } else {
         min_max
     };
+    // The whole deserialize() body is accumulated here so it can be wrapped in one
+    // `.annotate(type_name)` error closure when `cli.annotate_fields` (giving the container/
+    // primitive reads a `failed in <T>` location exactly as field-level errors already get). When
+    // annotate_fields is off no closure is emitted and the content is pushed verbatim, byte-identical
+    // to before. `new()` and the `TryFrom`/`From` paths NEVER go through this closure, so any error
+    // they emit must keep the name-carrying form (see `build_check`'s `annotated=false` arm).
+    let mut deser_body = BlocksOrLines::default();
     let from_impl = if min_max.is_some() || float_min_max.is_some() {
         let (before, after) = if var_names_str.is_empty() {
             ("".to_owned(), "")
@@ -9399,19 +9500,20 @@ fn generate_wrapper_struct(
                 DeserializeConfig::new("inner"),
                 cli,
             )
-            .add_to(&mut deser_func);
+            .add_to(&mut deser_body);
 
-        let check = if let Some(window) = float_min_max {
+        // Build the range-check `if` condition and its `DeserializeFailure::..` payload once, then
+        // materialize the check per-consumer (see `build_check`): the deserialize() copy is
+        // locationless (`.into()`) when it lands inside the annotate closure, while the `new()` copy
+        // always carries the name (`DeserializeError::new`) since no closure ever wraps it.
+        let (cond, failure_expr) = if let Some(window) = float_min_max {
             // NaN-safe float window: accept-form negation, value compared as f64 so the authored
             // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
             let cast_f64 = matches!(
                 &field_type.conceptual_type,
                 ConceptualRustType::Primitive(Primitive::F32)
             );
-            let mut check = Block::new(format!(
-                "if !({})",
-                float_accept_cond(&window, "inner", cast_f64)
-            ));
+            let cond = format!("if !({})", float_accept_cond(&window, "inner", cast_f64));
             let opt = |side: Option<(f64, bool)>| match side {
                 Some((v, _)) => format!("Some({})", float_literal(v)),
                 None => "None".to_owned(),
@@ -9420,15 +9522,14 @@ fn generate_wrapper_struct(
                 Some((_, exclusive)) => (!exclusive).to_string(),
                 None => "false".to_owned(),
             };
-            check.line(format!(
-                "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheckFloat{{ found: inner as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}));",
-                type_name,
+            let failure_expr = format!(
+                "DeserializeFailure::RangeCheckFloat{{ found: inner as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
                 opt(window.0),
                 opt(window.1),
                 incl(window.0),
                 incl(window.1)
-            ));
-            check
+            );
+            (cond, failure_expr)
         } else {
             let (min, max) = min_max.unwrap();
             let against = if field_type
@@ -9456,13 +9557,13 @@ fn generate_wrapper_struct(
                     _ => unimplemented!(),
                 }
             };
-            let mut check = match (min, max) {
+            let cond = match (min, max) {
                 (Some(min), Some(max)) => {
                     if min == max {
-                        Block::new(format!("if {against} != {min}"))
+                        format!("if {against} != {min}")
                     } else if min > max {
                         // `.ne N` is encoded as Range(N+1, N-1): an exclusion, not a window
-                        Block::new(format!("if {against} == {}", min - 1))
+                        format!("if {against} == {}", min - 1)
                     } else {
                         let non_negative = field_type.encodings.is_empty()
                             && match &field_type.conceptual_type {
@@ -9484,36 +9585,47 @@ fn generate_wrapper_struct(
                                 _ => unimplemented!(),
                             };
                         if min == 0 && non_negative {
-                            Block::new(format!("if {against} > {max}"))
+                            format!("if {against} > {max}")
                         } else {
-                            Block::new(format!("if {against} < {min} || {against} > {max}"))
+                            format!("if {against} < {min} || {against} > {max}")
                         }
                     }
                 }
-                (Some(min), None) => Block::new(format!("if {against} < {min}")),
-                (None, Some(max)) => Block::new(format!("if {against} > {max}")),
+                (Some(min), None) => format!("if {against} < {min}"),
+                (None, Some(max)) => format!("if {against} > {max}"),
                 (None, None) => panic!(
                     "How did we end up with a range requirement of (None, None)? Entire thing should've been None then"
                 ),
             };
-            check.line(format!(
-                "return Err(DeserializeError::new(\"{}\", DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}));",
-                type_name,
+            let failure_expr = format!(
+                "DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}",
                 against,
                 match min {
                     Some(min) => format!("Some({min})"),
-                    None => String::from("None")
+                    None => String::from("None"),
                 },
                 match max {
                     Some(max) => format!("Some({max})"),
-                    None => String::from("None")
-                }));
+                    None => String::from("None"),
+                }
+            );
+            (cond, failure_expr)
+        };
+        let build_check = |annotated: bool| {
+            let mut check = Block::new(cond.clone());
+            if annotated {
+                check.line(format!("return Err({failure_expr}.into());"));
+            } else {
+                check.line(format!(
+                    "return Err(DeserializeError::new(\"{type_name}\", {failure_expr}));"
+                ));
+            }
             check
         };
-        deser_func.push_block(check.clone());
+        deser_body.push_block(build_check(cli.annotate_fields));
         new_func
             .ret("Result<Self, DeserializeError>")
-            .push_block(check);
+            .push_block(build_check(false));
         if let Some(enc_fields) = &enc_fields {
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");
@@ -9526,7 +9638,7 @@ fn generate_wrapper_struct(
                 deser_ctor.push_block(encoding_ctor);
             }
             deser_ctor.after(")");
-            deser_func.push_block(deser_ctor);
+            deser_body.push_block(deser_ctor);
 
             let mut ctor_block = Block::new("Ok(Self");
             ctor_block.line("inner,");
@@ -9536,7 +9648,7 @@ fn generate_wrapper_struct(
             ctor_block.after(")");
             new_func.push_block(ctor_block);
         } else {
-            deser_func.line("Ok(Self(inner))");
+            deser_body.line("Ok(Self(inner))");
             new_func.line("Ok(Self(inner))");
         }
         let mut try_from = codegen::Impl::new(type_name.to_string());
@@ -9581,7 +9693,7 @@ fn generate_wrapper_struct(
                     DeserializeConfig::new("inner"),
                     cli,
                 )
-                .add_to(&mut deser_func);
+                .add_to(&mut deser_body);
 
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");
@@ -9594,7 +9706,7 @@ fn generate_wrapper_struct(
                 deser_ctor.push_block(encoding_ctor);
             }
             deser_ctor.after(")");
-            deser_func.push_block(deser_ctor);
+            deser_body.push_block(deser_ctor);
 
             let mut ctor_block = Block::new("Self");
             ctor_block.line("inner,");
@@ -9611,7 +9723,7 @@ fn generate_wrapper_struct(
                     DeserializeConfig::new("inner"),
                     cli,
                 )
-                .add_to(&mut deser_func);
+                .add_to(&mut deser_body);
             new_func.line("Self(inner)");
         }
 
@@ -9634,6 +9746,17 @@ fn generate_wrapper_struct(
         ));
         from
     };
+    // Flush the accumulated deserialize() body: wrap it in a single `.annotate(type_name)` error
+    // closure when annotate_fields is on (giving container/primitive reads a `failed in <T>`
+    // location; the in-body range check is already the locationless form so the closure names it
+    // exactly once), else push it verbatim (byte-identical to the pre-annotation output).
+    if cli.annotate_fields {
+        let mut error_annotator = make_err_annotate_block(type_name.as_ref(), "", "");
+        error_annotator.push_all(deser_body);
+        deser_func.push_block(error_annotator);
+    } else {
+        deser_func.push_all(deser_body);
+    }
     deser_impl.push_fn(deser_func);
     s_impl.push_fn(new_func);
     let mut from_inner_impl = codegen::Impl::new(field_type.for_rust_member(types, false, cli));

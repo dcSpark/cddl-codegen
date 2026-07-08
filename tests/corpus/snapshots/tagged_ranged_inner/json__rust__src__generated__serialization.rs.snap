@@ -22,29 +22,32 @@ impl cbor_event::se::Serialize for TaggedRanged {
 
 impl Deserialize for TaggedRanged {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            42 => raw
-                .unsigned_integer()
-                .map_err(Into::<DeserializeError>::into)
-                .and_then(|x| {
-                    if x > 255 {
-                        Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
-                            min: Some(0),
-                            max: Some(255),
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                42 => raw
+                    .unsigned_integer()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|x| {
+                        if x > 255 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x as isize,
+                                min: Some(0),
+                                max: Some(255),
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
                         }
-                        .into())
-                    } else {
-                        Ok(x)
+                    })? as u8,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 42,
                     }
-                })? as u8,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 42,
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("TaggedRanged"))
     }
 }

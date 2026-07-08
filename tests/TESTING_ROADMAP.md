@@ -106,22 +106,6 @@ breadth.
      asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
      `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
      when a consumer asks.
-   - **Annotate embedded/plain-group `deserialize()` header scaffolding (and newtype wrappers'
-     container reads).** Non-embedded records annotate ALL fallible header/len/tag parsing with the
-     type name (pinned by the `error_annotation_*` tests in `tests/core/tests.rs`), but a plain
-     group's `deserialize()` keeps its header scaffolding outside any closure: the delegated
-     `deserialize_as_embedded_group` body is already annotated (wrapping the delegation would
-     double-annotate field errors as "Type.Type.field"), and the shared
-     `add_deserialize_initial_len_check`/`add_deserialize_final_len_check` helpers also serve the
-     enum paths — see the scaffolding comment in `codegen_struct`. Close it without touching the
-     enum paths by wrapping only the pre-delegation scaffolding in its own annotate closure that
-     returns the bindings later code needs (or by annotating its individual fallible calls, which
-     cannot double-annotate). Newtype wrappers' container reads are the same class — their errors
-     carry no location at all, pinned indirectly by `error_display_formatting`'s `WrapperList`
-     no-location case (re-anchor that case when this closes, since it *relies* on the gap to reach
-     the location-less Display branch). The header-mutation replay leg's
-     `HEADER_MUTANT_LOCATION_SKIP` ledger (38 entries at HEAD, all this newtype-wrapper class)
-     measures the gap at catalog breadth — closing it empties that ledger via its stale guards.
    - **Fixture-appended tests are outside the `assertions_on_result_states` deny (low).** The
      fast-tier workspace clippy gate denies that restriction lint so a failed Result assert carries
      its payload — but it sweeps only the repo's own crates, and `tests/<dir>/tests.rs` /

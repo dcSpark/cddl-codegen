@@ -55,16 +55,19 @@ impl cbor_event::se::Serialize for Tagged {
 
 impl Deserialize for Tagged {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            42 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 42,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                42 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 42,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("Tagged"))
     }
 }
 
@@ -80,15 +83,18 @@ impl cbor_event::se::Serialize for TaggedNewtype {
 
 impl Deserialize for TaggedNewtype {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        Ok(Self(match raw.tag()? {
-            42 => raw.text()? as String,
-            tag => {
-                return Err(DeserializeFailure::TagMismatch {
-                    found: tag,
-                    expected: 42,
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                42 => raw.text()? as String,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 42,
+                    }
+                    .into())
                 }
-                .into())
-            }
-        }))
+            }))
+        })()
+        .map_err(|e| e.annotate("TaggedNewtype"))
     }
 }

@@ -29,22 +29,23 @@ impl cbor_event::se::Serialize for Hash {
 
 impl Deserialize for Hash {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let (inner, inner_encoding) = raw
-            .bytes_sz()
-            .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
-        if inner.len() > 32 {
-            return Err(DeserializeError::new(
-                "Hash",
-                DeserializeFailure::RangeCheck {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+            if inner.len() > 32 {
+                return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,
                     min: Some(0),
                     max: Some(32),
-                },
-            ));
-        }
-        Ok(Self {
-            inner,
-            encodings: Some(HashEncoding { inner_encoding }),
-        })
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(HashEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("Hash"))
     }
 }
