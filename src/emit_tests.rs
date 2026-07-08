@@ -391,6 +391,14 @@ fn conformance_rule_name(
     if !types.is_toplevel_rule(ident) {
         return None;
     }
+    if types.is_plain_group(ident) {
+        // A top-level GROUP rule (`g = (a: uint, b: uint)`) is a reusable group fragment, not a
+        // rootable instance type, even if embed-site resolution has registered it as an
+        // array/map-serialized Rust struct. This cannot exclude ordinary array/map TYPE rules:
+        // `types.is_plain_group` is set only by `Rule::Group` registration, while `t = [...]` /
+        // `t = {...}` rules are registered as normal Rust structs and still reach the oracles.
+        return None;
+    }
     match types.source_rule_name(ident) {
         Some(name) => Some(name.to_owned()),
         None => {
