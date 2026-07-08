@@ -278,9 +278,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     like the count-permitting occurrence entry above.
   - **An array-rep group-choice arm containing a `?` optional member breaks compilation** (E0599:
     the arm struct's `deserialize_as_embedded_group` is not emitted): `t = [ ? f0: uint, f1: uint // tstr ]`.
-  - **A float-family table key domain breaks compilation** (E0277 `f64: Eq`/`Ord` — the emitted
-    `BTreeMap`/derives need a total order the key type lacks): `{ number => uint }`,
-    `{ time => uint }`, and any composite key carrying a float (`{ gen<float64> => uint }`).
   - **A generic instantiation as a homogeneous array element is never emitted** (E0425
     `cannot find type <Instance>`): `a = [* pair<uint, tstr>]` references the instance type without
     registering it. The MEMBER-position panic sibling is in the sweep entry above; the occurrence
@@ -309,6 +306,16 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
   has its own panic site, tracked as a known PANIC row in `tests/matrix_panic/`.
+- Float-family table key domains are **rejected gracefully** at generation — a key domain that is
+  (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
+  `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
+  so every such crate failed to build (E0277). The rejection covers the direct family (`{ float64 =>
+  uint }`, `{ float32 => uint }`, `{ number => uint }`, `{ time => uint }`) and float keys hidden
+  behind a resolved generic instance (`{ gen<float64> => uint }`), checked at the one finalize seam
+  that sees resolved instances. Pinned by `tests/robustness/float_table_key.cddl` (direct) and
+  `tests/robustness/float_table_key_composite.cddl` (composite generic). Remedy: an integer/text/bytes
+  key domain. Real float-key support (e.g. an ordered-float wrapper) is a candidate feature only if a
+  consumer justifies it.
 - Nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
