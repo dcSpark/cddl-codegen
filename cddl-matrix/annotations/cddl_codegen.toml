@@ -498,7 +498,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.false"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.float"
@@ -572,7 +572,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.nil"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.nint"
@@ -586,7 +586,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.null"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.number"
@@ -636,7 +636,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen panic (exi
 [[support]]
 id = "prelude.true"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.tstr"
@@ -861,7 +861,7 @@ evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
 [[support]]
 id = "type2.value"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "value.bytes"
@@ -871,7 +871,7 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fai
 [[support]]
 id = "value.number"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "value.number.bin"
@@ -903,7 +903,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen panic (exi
 [[support]]
 id = "value.text"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 # --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---
 

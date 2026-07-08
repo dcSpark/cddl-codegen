@@ -91,18 +91,23 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    structured fuzzer ingredients.
 
 4. **Small independent residuals (low).**
-   - **Top-level fixed-value / bare-literal rules panic generation** (`foo = 5`, and equally
-     `#6.n(5)` — the tag is irrelevant). Generation aborts in `intermediate.rs`
-     (`should not expose Fixed type in member, only needed for serializaiton: Fixed(Uint(5))`)
-     because a `Fixed` conceptual type has no standalone member representation. Support it (a
-     one-field wrapper that stores nothing and re-emits the constant on serialize) or reject it
-     gracefully; either flips the panic. Distinct from tag handling — a bare literal never reaches
-     the tag-wrapping arms. (The two tag-inner variants that DID silently drop the tag through a
-     `pub type` alias — a `.default`-carrying inner `#6.n(uint .default 5)` and a range that
-     collapses exactly onto a rust primitive `#6.n(uint .le 255)` — now auto-wrap like the
-     primitive/`.cbor` arms; pinned by `tests/corpus/tagged_default_inner.cddl` and
-     `tests/corpus/tagged_ranged_inner.cddl`. Literal-headed range inners — `#6.5(3..10)` — wrap
-     too, pinned by `top_level_ranges` in `tests/core`.)
+   - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
+     `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
+     resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust
+     representation, so they are rejected gracefully at rule registration
+     (`intermediate::register_type_alias`, surfaced as `Err` at `finalize`) instead of panicking
+     `for_rust_member`; pinned as `error (graceful)` by the `tests/matrix_reject/` rows
+     `value.number` / `value.text` / `type2.value` / `prelude.true` / `prelude.false` /
+     `prelude.nil` / `prelude.null` and the hand fixture `tests/robustness/tagged_literal.cddl`.
+     The open FEATURE is full support — a one-field wrapper that stores nothing and re-emits the
+     constant on serialize. The auto-wrapping model already exists for the tag-inner variants that
+     stay supported and must not be caught by the rejection: a `.default`-carrying inner
+     `#6.n(uint .default 5)` and a range that collapses exactly onto a rust primitive
+     `#6.n(uint .le 255)` auto-wrap (pinned by `tests/corpus/tagged_default_inner.cddl` and
+     `tests/corpus/tagged_ranged_inner.cddl`); literal-headed range inners — `#6.5(3..10)` — wrap
+     too, pinned by `top_level_ranges` in `tests/core`. (Separately, `foo = undefined` still panics
+     — a distinct gap, unsupported cddl-prelude `#7.23`, not the `Fixed`-member path; ledgered by
+     `tests/matrix_panic/prelude.undefined.cddl`.)
    - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
      fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
      `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
