@@ -271,7 +271,7 @@ are ledgered here (that's what the probe/gate error messages point at).
     inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
     constant resolves through the prelude alias on a path the guard does not classify. Pinned by
     `tests/robustness/tagged_prelude_constant.cddl`.
-- **Seven compile/round-trip-class families surfaced by the recombination fuzzer's first layer-2 run**
+- **Seven compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
@@ -320,9 +320,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
   `contain.map-key.memberkey.value.{nint,float}_colon_multi`, and the matching group-choice-arm rows
   `contain.group-choice-arm.memberkey.value.{nint,float}_map` in `tests/matrix_reject/`). The
-  printed remedy — a table `{ * nint => v }` in its own rule — keeps generating. Real nint/float key
-  support is the candidate feature; flipping either row to `ok` requires real support, not a decay
-  back to the old `group_entry_to_field_name` panics.
+  printed remedy differs by kind: for nint the table `{ * nint => v }` in its own rule keeps
+  generating; for FLOAT the table form is itself rejected (the float-family table-key boundary
+  above — floats have no total order), so the float message advertises an integer/text key instead
+  of the dead-end table (asserted by the `float arrow key` remedy check in
+  `src/tests/robustness_tests.rs`). Real nint key support is the candidate feature (float key
+  support is owned by the float-table-key boundary entry's ordered-float question); flipping either
+  row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
+  panics.
 - Two comment-DSL candidate fixes surfaced by the `src/tests/dsl_position_tests.rs` position sweep
   (held in its `KNOWN_SILENT_DROP` pin list — pinned, not fixed; the pins flip loudly when a fix
   lands): (1) `@name` at a MEMBER-position anonymous inline group never reaches the naming site

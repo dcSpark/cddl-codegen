@@ -691,6 +691,13 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         flt.contains("unsupported fixed map key"),
         "float arrow key should get the unsupported-fixed-kind message, got: {flt}"
     );
+    // The float message must NOT advertise the table `{ * k => v }` remedy: a float table key
+    // domain is itself rejected (no total order), so that advice would dead-end in a second
+    // rejection. It must say floats cannot key a map instead.
+    assert!(
+        !flt.contains("in its own rule") && flt.contains("either form"),
+        "float key remedy must not point at the (also-rejected) table form, got: {flt}"
+    );
     let boolean =
         run("m = { true => uint }\n", "bool").expect_err("bool arrow key must reject gracefully");
     assert!(
