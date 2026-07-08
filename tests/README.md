@@ -394,7 +394,14 @@ and asserts they are accepted.
   `full` tier, ~3 min): per active row it generates a crate from the committed `spec` and `cargo
   test`s it under two profiles. Oracle-free and deterministic — the bytes were spec-cross-validated
   at mint time, so the gate replays commitments, never re-derives them. Three assertion legs run on
-  the DEFAULT-profile build, sharing one failure-attribution grammar:
+  the DEFAULT-profile build, sharing one failure-attribution grammar. Shared across every leg body
+  that captures an error Display (the constraint and header-mutant Err arms, both profiles): an
+  emitted helper asserts the displayed location chain has no adjacent-duplicate segment — a doubled
+  location ("Foo.Foo", the generator double-annotation class) *satisfies* a bare `failed in {name}`
+  contains, so without this check the location asserts below cannot see it. Justified exceptions go
+  in the stale-guarded, empty-at-HEAD `DOUBLED_LOCATION_SKIP` ledger; the helper ships an emitted
+  self-check per replayed crate, counted by the per-crate completeness check so it can't silently
+  vanish. The legs:
   - *Base replay* — every accept vector decodes Ok and every reject pin still Errs (**a pin that
     starts decoding green FAILS the gate** — a re-bless can't silently launder a bug). Each
     `class="constraint"` vector additionally asserts the error Display CONTAINS the catalog's
@@ -420,10 +427,7 @@ and asserts they are accepted.
     decoding type (`failed in {type_name}` — the annotation analogue of the base leg's
     `expect_err`, at catalog breadth rather than the fixture-granularity `error_annotation_*`
     tests; a bare `type_name` contains is deliberately NOT used, since single-letter type names
-    like `T` would vacuously match "TagMismatch"). Any replay test body that captures an error
-    Display also asserts the displayed location chain has no adjacent-duplicate segment (for
-    example `Foo.Foo`); any justified exception belongs in the stale-guarded, empty-at-HEAD
-    `DOUBLED_LOCATION_SKIP` ledger. Two stale-guarded ledgers hold the honest
+    like `T` would vacuously match "TagMismatch"). Two stale-guarded ledgers hold the honest
     exceptions: `HEADER_MUTANT_ACCEPT_SKIP` — a mutant the row's spec genuinely accepts WITHOUT any
     accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; EMPTY at
     HEAD; `trunc_head` can never be here, asserted as a hard error) — and

@@ -39,7 +39,10 @@ rejections are reason-asserted (the catalog's `expect_err` pins), every accept v
 replays under mechanically-derived spec-equal re-encodings, and header-mutation reject mutants of
 each accept vector (wrong-major-type / truncated-header byte transforms) must reject WITH an error
 location naming the decoding type (`failed in {type_name}`) — the annotation contract at catalog
-breadth.
+breadth. The location evidence is itself validated, not just present: every captured Display's
+location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *satisfies* a bare
+`failed in Foo` contains, so presence alone could not see the double-annotation class;
+`DOUBLED_LOCATION_SKIP`, empty at HEAD, ledgers any justified exception).
 
 ## Recommended next steps, in priority order
 
