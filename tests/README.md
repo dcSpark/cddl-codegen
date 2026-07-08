@@ -376,16 +376,16 @@ and asserts they are accepted.
   REJECTS (over-strict, the motivating class) or mis-decodes to a different value fails the gate.
   `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any (row, label) that
   legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test vacuity floor keeps
-  the leg live. When an emitted replay test FAILS, its cause is attributed by a pure marker-
-  classification function (`classify_constraint_failure` / `classify_variant_failure`) whose needle
-  owns the trailing ':' that disambiguates prefix-colliding libtest names (`reject_1` vs `reject_10`);
-  that grammar is pinned unit-side (no crate build) by
-  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its variant
-  sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`.
-  Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors
-  decode AND re-encode **byte-identically** (the preserve contract is itself decode-direction
-  evidence). `PRESERVE_SKIP` (stale-guarded) carries the
-  float class plus the tag-over-a-type-choice preserve gap; anything new there is a finding. It
+  the leg live. When an emitted replay test FAILS, its cause is attributed by pure
+  marker-classification functions (`classify_constraint_failure` / `classify_variant_failure`)
+  whose needles own the trailing ':' that disambiguates prefix-colliding libtest names (`reject_1`
+  vs `reject_10`); that grammar is pinned unit-side (no crate build) by
+  `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its
+  variant sibling `integration_tests::classify_variant_failure_owns_the_delimiter_and_maps_each_marker`.
+  Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
+  re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
+  `PRESERVE_SKIP` (stale-guarded) carries the float class plus the tag-over-a-type-choice preserve
+  gap; anything new there is a finding. It
   stays a hand list on purpose — it is NOT the matrix emission axis: the replay specs embed rows as
   members, so e.g. `prelude.float` skips here while its `emission.preserve` verdict (a bare-alias
   probe) is `supported`.
@@ -1018,13 +1018,14 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
   ROADMAP entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
   pass. **Class assertion:** a red+listed cell is NOT satisfied by any redness — the observed rustc
-  error-code set (`rustc_error_codes` scans the captured cargo stderr for `error[E####]` headers) must
-  EQUAL the pin's declared set, or the gate fails loud with "the cell's failure class changed —
-  re-triage the pin" (set equality is the contract, never subset — pin the full honest observed set if
-  a cell co-emits multiple codes). Author a new pin's codes from the observed evidence, not from the
-  expected diagnosis: the gate's red-cell failure output prints the captured cargo stderr, whose
-  `error[E####]` headers are exactly the set to pin. A listed cell whose GENERATION aborts is likewise a class mismatch:
-  the pin claims a rustc compile error, and a generation abort produces none. An up-front stale-key
+  error-code set (`rustc_error_codes` scans the captured cargo stderr for `error[E####]` headers)
+  must EQUAL the pin's declared set, or the gate fails loud with "the cell's failure class changed —
+  re-triage the pin" (set equality is the contract, never subset — pin the full honest observed set
+  if a cell co-emits multiple codes); a listed cell whose GENERATION aborts is likewise a class
+  mismatch (the pin claims a rustc compile error, and a generation abort produces none). Author a
+  new pin's codes from the observed evidence, not the expected diagnosis: the gate's red-cell
+  failure output prints the captured cargo stderr, whose `error[E####]` headers are exactly the set
+  to pin. An up-front stale-key
   guard rejects a listed stem absent from the projected set, and a missing wasm crate is handled
   symmetrically. Verify a new guard the way these were: temporarily poison a key (bogus stem →
   stale-key fail; drop a real pin → the red cell fails with the remedy; pin a green cell → resurfaced;
