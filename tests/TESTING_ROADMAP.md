@@ -133,9 +133,36 @@ breadth.
      `error_annotation_no_variant_double_name_known_gap` in `tests/core/tests.rs`, which asserts
      the CURRENT doubled name and flips loudly when the fix lands (then invert it into the
      once-only contract and prune this entry).
-   - **`bool_wrapper` JSON newtype** — blocked on generator bug #223 (bool newtype does not
-     compile); the commented-out rule in `tests/json/input.cddl` carries the issue link. Unblocks
-     only by fixing the generator.
+     The CLASS layer, once the fix lands: no existing or pending gate could have caught this shape —
+     it is a runtime Display property, so the source-lint axes (the clippy burn-down, the rustc
+     style-lint set) can't see it; the replay legs' location assert
+     (`disp.contains("failed in {type_name}")`) is satisfied BY the doubled form ("failed in
+     Foo.Foo" contains the "failed in Foo" prefix — the header-mutation leg ran green over rows
+     that hit this very arm); and a `cargo-mutants` sweep would at most have flagged the arm as
+     behaviorally uncovered, not wrong. The mechanical invariant that catches the class is a
+     Display-SHAPE assert added wherever the replay legs already capture an error Display (the
+     header-mutant and constraint bodies in `decode_replay_run`): the location chain between
+     "failed in " and " because" has no immediately-repeated segment (adjacent-equal after
+     splitting on '.'). Field segments are snake_case and type segments CamelCase, so a legitimate
+     adjacent duplicate essentially cannot arise from distinct annotation sites; a skip ledger
+     absorbs any surprise. Must land WITH the fix (or start with an every-enum-row ledger): at HEAD
+     every enum row trips it — which is also the demonstration that it has teeth.
+   - **Fixture-appended tests are outside the `assertions_on_result_states` deny (low).** The
+     fast-tier workspace clippy gate denies that restriction lint so a failed Result assert carries
+     its payload — but it sweeps only the repo's own crates, and `tests/<dir>/tests.rs` /
+     `tests_wasm.rs` are hand-written repo-maintained code COMPILED ONLY inside generated crates,
+     which are clippy'd only by `generated_code_clippy_clean` — a gate that (a) generates without
+     appending fixture tests and (b) denies `clippy::all`, which does not include restriction
+     lints. So the fixture-test surface is structurally unreachable by both gates (found when a
+     fresh `assert!(…is_ok())` sailed through a green fast tier; ~120 `is_ok` sites exist across
+     five fixture files). The two directions differ: `assert!(r.is_ok())` is always strictly worse
+     than `.unwrap()`/`.expect()` (they need only `E: Debug`, and `DeserializeError` is `Debug`),
+     while `assert!(r.is_err())` is often FORCED (`.unwrap_err()` needs `T: Debug`, which generated
+     types don't uniformly derive — the same reason the emitted replay bodies use `match`). Close
+     the `is_ok` direction only: either run clippy with the restriction lint over one generated
+     crate WITH its fixture tests appended, or — cheaper and offline — a textual sweep test over
+     `tests/*/tests*.rs` banning the `assert!(…is_ok())` form, landed together with the ~120-site
+     mechanical conversion so it starts green.
    - **Don't emit a conformance assertion for a bare-group rule (restore per-rule rust oracle).** A
      top-level group rule (`inner = (a: uint, b: uint)`) is not a validatable instance type — both
      conformance oracles reject it (the ruby gem always did; the rust fork's validator now does too,
