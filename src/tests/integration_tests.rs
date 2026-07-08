@@ -4,6 +4,63 @@
 
 use std::io::Write;
 
+/// Fixture-appended tests compile only inside generated crates, outside the workspace clippy
+/// `assertions_on_result_states` deny. Positive Result assertions must unwrap/expect so a red
+/// generated-crate run carries the error payload; `is_err()` stays allowed because `unwrap_err()`
+/// requires generated Ok types to implement `Debug`, which they do not uniformly derive.
+#[test]
+fn fixture_appended_tests_do_not_assert_is_ok() {
+    let tests_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut fixture_test_files = std::collections::BTreeSet::new();
+
+    for dir_entry in std::fs::read_dir(&tests_root)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", tests_root.display()))
+    {
+        let dir_entry = dir_entry
+            .unwrap_or_else(|e| panic!("cannot read an entry under {}: {e}", tests_root.display()));
+        let dir_path = dir_entry.path();
+        if !dir_path.is_dir() {
+            continue;
+        }
+
+        for file_entry in std::fs::read_dir(&dir_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir_path.display()))
+        {
+            let file_entry = file_entry.unwrap_or_else(|e| {
+                panic!("cannot read an entry under {}: {e}", dir_path.display())
+            });
+            let file_path = file_entry.path();
+            let Some(file_name) = file_path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if file_name.starts_with("tests") && file_name.ends_with(".rs") {
+                fixture_test_files.insert(file_path);
+            }
+        }
+    }
+
+    let mut violations = Vec::new();
+    for file_path in fixture_test_files {
+        let contents = std::fs::read_to_string(&file_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", file_path.display()));
+        for (line_index, line) in contents.lines().enumerate() {
+            if line.contains("assert!") && line.contains(".is_ok()") {
+                let display_path = file_path
+                    .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+                    .unwrap_or(&file_path)
+                    .display();
+                violations.push(format!("{display_path}:{}", line_index + 1));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "fixture-appended tests must unwrap/expect positive Results so failures carry payloads: {}",
+        violations.join(", ")
+    );
+}
+
 /// Name-level docs-contract gate for `docs/docs/command_line_flags.mdx`, sibling in spirit to
 /// `src/tests/dsl_position_tests.rs`'s `comment_dsl.mdx` contract: every clap long flag must have
 /// a matching `:::info `--flag`` block, and every documented block must still name a real clap

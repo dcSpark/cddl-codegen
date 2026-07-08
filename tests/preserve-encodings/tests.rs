@@ -1074,9 +1074,9 @@ mod tests {
         assert!(make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Above).is_err());
 
         // type and group choices share the same deserialization code so we only check the API
-        assert!(BoundsTypeChoice::new_bytes(vec![0; 64]).is_ok());
+        BoundsTypeChoice::new_bytes(vec![0; 64]).unwrap();
         assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
-        assert!(BoundsGroupChoice::new_a(0, "four".to_owned()).is_ok());
+        BoundsGroupChoice::new_a(0, "four".to_owned()).unwrap();
         assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
         deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
     }
@@ -1101,69 +1101,69 @@ mod tests {
         };
         let baseline = SignBounds::new(-5, -5, -5, 10, 3, 4, -4, 0, 0, 1).unwrap();
         deser_test(&baseline);
-        assert!(make(0, -5).is_ok());
+        make(0, -5).unwrap();
 
         // all_neg (-10..-3): rejects ANY uint and both out-of-window sides; accepts endpoints.
         assert!(make(0, 5).is_err());
         assert!(make(0, -2).is_err());
         assert!(make(0, -11).is_err());
-        assert!(make(0, -3).is_ok());
-        assert!(make(0, -10).is_ok());
+        make(0, -3).unwrap();
+        make(0, -10).unwrap();
 
         // upto_zero (-10..0): upper endpoint 0 constraining.
-        assert!(make(1, 0).is_ok());
-        assert!(make(1, -10).is_ok());
+        make(1, 0).unwrap();
+        make(1, -10).unwrap();
         assert!(make(1, 1).is_err());
         assert!(make(1, -11).is_err());
 
         // le_neg (int .le -3): rejects any uint.
         assert!(make(2, 5).is_err());
         assert!(make(2, -2).is_err());
-        assert!(make(2, -3).is_ok());
-        assert!(make(2, -10).is_ok());
+        make(2, -3).unwrap();
+        make(2, -10).unwrap();
 
         // le_pos (int .le 10): nint arm VACUOUS — must accept a large negative (panicked before).
-        assert!(make(3, -999999).is_ok());
-        assert!(make(3, 10).is_ok());
+        make(3, -999999).unwrap();
+        make(3, 10).unwrap();
         assert!(make(3, 11).is_err());
 
         // ge_pos (int .ge 3): nint arm EMPTY — rejects every negative (panicked before).
-        assert!(make(4, 3).is_ok());
-        assert!(make(4, 100).is_ok());
+        make(4, 3).unwrap();
+        make(4, 100).unwrap();
         assert!(make(4, 2).is_err());
         assert!(make(4, -1).is_err());
 
         // ne_pos (int .ne 5): excluded value non-negative → only the uint arm checks it (panicked before).
-        assert!(make(5, -5).is_ok());
-        assert!(make(5, 4).is_ok());
-        assert!(make(5, 6).is_ok());
+        make(5, -5).unwrap();
+        make(5, 4).unwrap();
+        make(5, 6).unwrap();
         assert!(make(5, 5).is_err());
 
         // ne_neg (int .ne -5): excluded value negative → only the nint arm checks it.
-        assert!(make(6, 5).is_ok());
-        assert!(make(6, -4).is_ok());
-        assert!(make(6, -6).is_ok());
+        make(6, 5).unwrap();
+        make(6, -4).unwrap();
+        make(6, -6).unwrap();
         assert!(make(6, -5).is_err());
 
         // straddle (-10..3): survivor — must stay byte-identical to pre-fix and behave correctly.
-        assert!(make(7, -10).is_ok());
-        assert!(make(7, 3).is_ok());
-        assert!(make(7, 0).is_ok());
+        make(7, -10).unwrap();
+        make(7, 3).unwrap();
+        make(7, 0).unwrap();
         assert!(make(7, -11).is_err());
         assert!(make(7, 4).is_err());
 
         // ne_one (int .ne 1): the excluded-value boundary where the (N+1, N-1) exclusion encoding's
         // max hits 0 — a per-side partition of (2, 0) once emitted `x < 2`, silently rejecting 0.
         // Under preserve BOTH arms classify, so this pins the boundary in the partitioned uint arm.
-        assert!(make(8, 0).is_ok()); // the value the mis-check rejected
-        assert!(make(8, 2).is_ok());
-        assert!(make(8, -1).is_ok()); // nint arm is unconstrained by a non-negative exclusion
+        make(8, 0).unwrap(); // the value the mis-check rejected
+        make(8, 2).unwrap();
+        make(8, -1).unwrap(); // nint arm is unconstrained by a non-negative exclusion
         assert!(make(8, 1).is_err());
 
         // ne_zero (int .ne 0): encoding (1, -1) has a bound on each side of the sign split; only 0
         // may reject.
-        assert!(make(9, 1).is_ok());
-        assert!(make(9, -1).is_ok());
+        make(9, 1).unwrap();
+        make(9, -1).unwrap();
         assert!(make(9, 0).is_err());
     }
 
@@ -1180,8 +1180,8 @@ mod tests {
         assert!(neg(5).is_err()); // any uint is out of an all-negative window
         assert!(neg(-11).is_err());
         assert!(neg(-2).is_err());
-        assert!(neg(-3).is_ok());
-        assert!(neg(-10).is_ok());
+        neg(-3).unwrap();
+        neg(-10).unwrap();
         deser_test(&TopLevelNegRange::new(-3).unwrap());
         deser_test(&TopLevelNegRange::new(-10).unwrap());
 
@@ -1189,8 +1189,8 @@ mod tests {
         let pos = |v: i128| TopLevelPosRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
         assert!(pos(2).is_err());
         assert!(pos(11).is_err());
-        assert!(pos(3).is_ok());
-        assert!(pos(10).is_ok());
+        pos(3).unwrap();
+        pos(10).unwrap();
         deser_test(&TopLevelPosRange::new(3).unwrap());
         deser_test(&TopLevelPosRange::new(10).unwrap());
 
@@ -1204,7 +1204,7 @@ mod tests {
             [cbor_tag(5), cbor_int(7, cbor_event::Sz::Inline)].concat()
         );
         deser_test(&tagged_ok);
-        assert!(TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).is_ok());
+        TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
         assert!(
             TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
@@ -1549,11 +1549,11 @@ mod tests {
             WidthCollapse::from_cbor_bytes(&cbor)
         };
         // Boundary (exactly-representable) values decode.
-        assert!(make(65535, 0, 0).is_ok());
-        assert!(make(0, 127, 0).is_ok());
-        assert!(make(0, -128, 0).is_ok());
-        assert!(make(0, 0, i64::MAX as i128).is_ok());
-        assert!(make(0, 0, i64::MIN as i128).is_ok());
+        make(65535, 0, 0).unwrap();
+        make(0, 127, 0).unwrap();
+        make(0, -128, 0).unwrap();
+        make(0, 0, i64::MAX as i128).unwrap();
+        make(0, 0, i64::MIN as i128).unwrap();
         // One-past-width values must REJECT (pre-fix: silently truncate-decoded).
         assert!(make(65536, 0, 0).is_err());
         assert!(make(0, 128, 0).is_err());
