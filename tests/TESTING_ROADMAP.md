@@ -192,36 +192,36 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-7. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
-   denies `clippy::all` on the generated rust crate but carries three `-A` escapes so the generator's
-   current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
-   proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).
-   `clippy::disallowed_names` is NOT in this list — it is a permanent input-dependent allow (the
-   fixture's own `foo`/`bar` rule names become generated parameter names). The remaining entries to
-   retire, each
-   fixed by adjusting the emitted shape rather than the lint config, with approximate default-profile
-   counts:
-   - `derivable_impls` (2×, preserve profile) — a hand-emitted `impl Default` clippy can derive.
-   - `type_complexity` (1×, preserve profile) — a very complex inline type worth a `type` alias.
-   - `unnecessary_lazy_evaluations` (1×, preserve profile) — `.unwrap_or_else(|| None)`-style closures
-     that should be the eager form.
-   Removing an entry from the gate's `-A` list is the pin: it flips red until the generator stops
-   minting that shape, then stays green. The gate already holds `clippy::no_effect` (the retired
-   `();` shape) and every unlisted lint hard-red, so a NEW emission-quality regression fails
-   immediately. Second axis once the list shrinks: extend the gate to the generated *wasm* crate —
-   it currently generates with `--wasm=false`, so the wasm-binding emission path has no lint gate
-   at all (the same "compiles green but lint-worthy" class the rust half existed to catch).
-   Third axis: deny a curated **rustc** style-lint set (`-D unused_parens`, candidates from the
-   `unused` group) alongside `clippy::all`. The gate can't use a blanket `-D warnings` (generated
-   code legitimately over-imports, so `unused_imports` must stay a warning), but per-lint denies
-   don't have that problem, and the class is real: a redundant-parens emission (`Ok((x))` on a
-   single-binding match pattern) shipped and was caught by review, not by any gate — rustc's
-   `unused_parens` would have flagged it. The review-found shapes are pinned individually by the
-   `snapshot_tests` emission-hygiene needle gates (`deserialize_converts_error_at_most_once`,
-   `ok_pattern_parenthesizes_only_tuples`); the lint axis is what would catch the *next* shape in
-   the class without a needle per bug. (The doubled-`map_err` shape is the counterexample that
-   keeps the needle gates load-bearing even after the lint axis lands: no rustc/clippy lint flags
-   a repeated identity error-conversion, so that one stays needle-only.)
+7. **Extend the generated-code clippy gate's axes (`generated_code_clippy_clean`).** The gate denies
+   `clippy::all` on the generated rust crate for both the default and `preserve+canonical` profiles.
+   Its emission-quality burn-down `-A` list is fully retired: the only remaining allow is
+   `clippy::disallowed_names`, a permanent input-dependent allow (the fixture's own `foo`/`bar` rule
+   names become generated parameter names — not a generator defect). With the list empty, every
+   `clippy::all` class — and any NEW one a generator regression mints — is hard-red on both profiles;
+   there is no longer a "shrink the list" pin to reach for, so future regressions must be fixed at the
+   emitted shape, not re-allowed. Two follow-on axes remain, each broadening what the gate covers:
+   - **wasm-crate axis.** The gate generates with `--wasm=false`, so the wasm-binding emission path
+     has no lint gate at all (the same "compiles green but lint-worthy" class the rust half exists to
+     catch). Extend it to `cargo clippy` the generated wasm crate, with its own commented `-A`
+     burn-down list for whatever classes the wasm emission currently mints (ledgered here, mirroring
+     how the rust list was), the deliverable being the AXIS — hard-red on new wasm classes — not a
+     zero-warning wasm crate. Watch warm wall-clock: if adding the wasm leg pushes the gate over the
+     ~90s plain-`#[test]` threshold, split it into an `#[ignore]`d test wired into check.ts, never
+     into `fast`.
+   - **rustc style-lint axis.** Deny a curated **rustc** style-lint set (`-D unused_parens`, plus
+     safe `unused`-group candidates like `unused_braces`/`unused_allocation`) alongside `clippy::all`.
+     A blanket `-D warnings` is out (generated code legitimately over-imports, so `unused_imports`
+     must stay a warning), but per-lint denies don't have that problem, and the class is real: a
+     redundant-parens emission (`Ok((x))` on a single-binding match pattern) shipped and was caught by
+     review, not by any gate — rustc's `unused_parens` would have flagged it. Add each lint only if
+     currently green on both profiles; document the curated set + rationale as a gate comment.
+
+   The review-found shapes are pinned individually by the `snapshot_tests` emission-hygiene needle
+   gates (`deserialize_converts_error_at_most_once`, `ok_pattern_parenthesizes_only_tuples`); the
+   style-lint axis is what would catch the *next* shape in the class without a needle per bug. The
+   doubled-`map_err` shape is the counterexample that keeps the needle gates load-bearing even after
+   the lint axis lands: no rustc/clippy lint flags a repeated identity error-conversion, so that one
+   stays needle-only.
 
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated

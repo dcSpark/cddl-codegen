@@ -77,17 +77,12 @@ pub fn sz_max(sz: cbor_event::Sz) -> u64 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Default)]
 pub enum LenEncoding {
+    #[default]
     Canonical,
     Definite(cbor_event::Sz),
     Indefinite,
-}
-
-impl Default for LenEncoding {
-    fn default() -> Self {
-        Self::Canonical
-    }
 }
 
 impl From<cbor_event::LenSz> for LenEncoding {
@@ -103,17 +98,12 @@ impl From<cbor_event::LenSz> for LenEncoding {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum StringEncoding {
+    #[default]
     Canonical,
     Indefinite(Vec<(u64, cbor_event::Sz)>),
     Definite(cbor_event::Sz),
-}
-
-impl Default for StringEncoding {
-    fn default() -> Self {
-        Self::Canonical
-    }
 }
 
 impl From<cbor_event::StringLenSz> for StringEncoding {
