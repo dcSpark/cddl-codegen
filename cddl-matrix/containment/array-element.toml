@@ -74,9 +74,41 @@ note = "A text literal as a fixed array-element value (`[v: \"x\"]`) — support
 example = "a = [v: \"x\"]"
 
 [[contain]]
+id = "contain.array-element.prelude.true"
+role = "role.array-element"
+feature = "prelude.true"
+spec = "allowed"
+note = "The prelude constant `true` as a fixed array-element member value (`[v: true]`) — supported as a member; the top-level `foo = true` type is not. RFC8610 §2.1, §3.4."
+example = "a = [v: true, x: uint]"
+
+[[contain]]
+id = "contain.array-element.prelude.null"
+role = "role.array-element"
+feature = "prelude.null"
+spec = "allowed"
+note = "The prelude constant `null` as a fixed array-element member value (`[v: null]`) — distinct from the choice-member nullable pattern. RFC8610 §2.1, §3.4."
+example = "a = [v: null, x: uint]"
+
+[[contain]]
 id = "contain.array-element.type2.value"
 role = "role.array-element"
 feature = "type2.value"
 spec = "allowed"
 note = "A literal value as a member type (`[w: uint, v: 5]`) — supported in-composite; the standalone `answer = 42` type is not. RFC8610 §2.1, §3.4."
 example = "a = [w: uint, v: 5]"
+
+[[contain]]
+id = "contain.array-element.type2.tag.fixed_null"
+role = "role.array-element"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tag wrapping a fixed null member value (`[v: #6.1(null)]`) — covers the member-position wrapped fixed-value arm, including preserve-encoding emission. RFC8610 §3.4, §3.6."
+example = "a = [v: #6.1(null), x: uint]"
+
+[[contain]]
+id = "contain.array-element.type2.tag.fixed_bool"
+role = "role.array-element"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tag wrapping a fixed bool member value (`[v: #6.11(true)]`) — covers the member-position wrapped fixed-value arm with a non-null prelude constant. RFC8610 §3.4, §3.6."
+example = "a = [v: #6.11(true), x: uint]"

@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 83 containment cells, and 223 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 88 containment cells, and 228 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -249,20 +249,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
   `generation.rs:2467` (`assert_eq!(";" vs "")`). This is a new valid-CDDL surface for fixed values in a
   map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
-- The matrix has no prelude-constant MEMBER containment cells: fixed-value member coverage stops at
-  `contain.array-element.value.{number,text}` and `contain.choice-member.prelude.null` is the
-  nullable pattern (a different shape), so prelude constants (`true`/`false`) in member position have
-  no matrix cell. The behaviour itself is exercised by hand fixtures
-  (`tests/robustness/fixed_bool_member.cddl`, `tests/corpus/fixed_bool_member.cddl`); the enumeration
-  gap is adding those member cells so the matrix covers the role. The same enumeration gap extends
-  to TAG-WRAPPED fixed-value members (`[v: #6.1(null)]`): no `contain.*` cell wraps a fixed value in
-  a tag at member position, so the emission axis never probed the shape under `preserve` — which is
-  how a preserve-only E0308 regression there escaped every gate until review caught it (the corpus
-  fixture's tag-wrapped members now pin those two cells; the CLASS — fixed-value kinds × wrapping
-  positions × profiles — is owned by enumeration here plus the layer-2 preserve escalation in
-  `tests/TESTING_ROADMAP.md`). This is the "Intra-alternative variation rows" expansion rule (this
-  doc) applied to the fixed-value member role: enumerate the wrapped variants as rows BEFORE
-  trusting a green.
+- Fixed-value member containment still has unenumerated variants beyond the precedent rows
+  `contain.array-element.prelude.{true,null}`, `contain.map-value.prelude.false`, and
+  `contain.array-element.type2.tag.{fixed_null,fixed_bool}`. Remaining candidates include map-value
+  tag-wrapped fixed members and the other fixed prelude constants across array/map member positions,
+  so the emission axis probes each fixed-value kind × wrapping position × profile instead of relying
+  on the hand fixtures (`tests/robustness/fixed_bool_member.cddl`,
+  `tests/corpus/fixed_bool_member.cddl`). This is the "Intra-alternative variation rows" expansion
+  rule (this doc) applied to the fixed-value member role: enumerate the wrapped variants as rows
+  BEFORE trusting a green.
 - **An OPTIONAL fixed value with no encoding variation (bool / null) in member position fails
   generation** — independent of the mandatory case, which round-trips
   (`tests/corpus/fixed_bool_member.cddl`). `[x: uint, ? v: true]` / `{? k: true, x: uint}` (and the

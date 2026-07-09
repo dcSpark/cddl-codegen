@@ -496,6 +496,14 @@
       "role": "role.array-element"
     },
     {
+      "feature": "prelude.null",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "prelude.true",
+      "role": "role.array-element"
+    },
+    {
       "feature": "type.choice",
       "role": "role.array-element"
     },
@@ -614,6 +622,10 @@
     {
       "feature": "type2.tag",
       "role": "role.map-key"
+    },
+    {
+      "feature": "prelude.false",
+      "role": "role.map-value"
     },
     {
       "feature": "type.choice",

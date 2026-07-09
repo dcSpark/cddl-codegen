@@ -29,6 +29,14 @@ note = "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grp
 example = "m = { k: #6.10(int), j: uint }"
 
 [[contain]]
+id = "contain.map-value.prelude.false"
+role = "role.map-value"
+feature = "prelude.false"
+spec = "allowed"
+note = "The prelude constant `false` as a fixed map-member value (`{ k: false }`) — supported as a member; the top-level `foo = false` type is not. RFC8610 §2.1, §3.5.1. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)"
+example = "m = { k: false, j: uint }"
+
+[[contain]]
 id = "contain.map-value.type2.unwrap"
 role = "role.map-value"
 feature = "type2.unwrap"
