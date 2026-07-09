@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct HolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub g_bytes_encoding: StringEncoding,
+    pub g_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedCtlNeEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedRangeExclEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedRangeInclEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedRangeNintEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedRangeUintEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}

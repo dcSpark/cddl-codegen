@@ -299,24 +299,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     following field — a `.cbor` float payload mis-frames the buffer), and
     `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` (a `[null]`-carrying arm never matches its
     own serialization).
-- **Two compile-class families remaining from the recombination fuzzer's PRESERVE layer-2 sweep**
-  (`recombination_preserve_crates_execute`: generation is ok under `--preserve-encodings=true`, the
-  DEFAULT-profile crate compiles + round-trips, but the preserve crate fails `cargo build`). These
-  are preserve-ONLY compile bugs, invisible to the default layer-2 gate; each is held in the sweep's
-  `LAYER2_PRESERVE_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded) with THIS entry as its pin,
-  and each is a candidate cddl-codegen fix:
-  - **A CBOR tag wrapping a range/control-constrained integer mis-shapes the preserve deserialize
-    tuple** (E0308: `expected a tuple with 2 elements, found one with 3`): `#6.11(int .ne 1)`,
-    `#6.11(-10...10)` / `#6.11(-10..10)` and their nint variants, and the same inside a group-choice
-    arm (`[ ga: #6.11(-10...-3) // tstr ]`). The tag-content deserialize destructures a 2-tuple
-    `(value, Option<Sz>)` but the constrained-primitive arm returns the 3-tuple `(value,
-    inner_tag_encoding, inner_encoding)` under preserve. Same E0308 tag-deserialize family as the
-    review-caught preserve-only regression on tag-wrapped fixed-value members (`[v: #6.1(null)]`,
-    pinned by `tests/corpus/fixed_bool_member.cddl`) — this is the range/control-constrained cell of
-    that class, which is exactly what the preserve escalation sweeps.
-  - **A composite (array) map key mis-compiles under preserve** (E0382: use of moved value
-    `index_0_key`): `[{ [+ uint] => uint }]` — a map whose KEY is an array-of-one-or-more builds the
-    key encoding by moving a binding it later reuses. Default-profile the same spec compiles + round-trips.
 - **A CBOR tag wrapping a table panics during wasm generation** (`recombination_wasm_crates_check`:
   generation is ok under the default `--wasm=false` profile but panics under `--wasm=true` before the
   generated wasm crate can be checked). Examples include `#6.11({ tstr => int })`,

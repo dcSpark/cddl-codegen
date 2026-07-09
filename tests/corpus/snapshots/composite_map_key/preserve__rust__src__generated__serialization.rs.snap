@@ -1,0 +1,166 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.table_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.table.len() as u64),
+        )?;
+        for (key, value) in self.table.iter() {
+            let (table_key_encoding, table_key_elem_encodings) = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.table_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_else(|| (LenEncoding::default(), Vec::new()));
+            serializer.write_array_sz(table_key_encoding.to_len_sz(key.len() as u64))?;
+            for (i, element) in key.iter().enumerate() {
+                let table_key_elem_encoding =
+                    table_key_elem_encodings.get(i).cloned().unwrap_or_default();
+                serializer.write_unsigned_integer_sz(
+                    *element,
+                    fit_sz(*element, table_key_elem_encoding),
+                )?;
+            }
+            table_key_encoding.end(serializer)?;
+            let table_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.table_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*value, fit_sz(*value, table_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.table_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let (table, table_encoding, table_key_encodings, table_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut table_table = OrderedHashMap::new();
+                    let table_len = raw.map_sz()?;
+                    let table_encoding = table_len.into();
+                    let mut table_key_encodings = BTreeMap::new();
+                    let mut table_value_encodings = BTreeMap::new();
+                    while match table_len {
+                        cbor_event::LenSz::Len(n, _) => (table_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(table_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let mut table_key_arr = Vec::new();
+                        let len = raw.array_sz()?;
+                        let table_key_encoding = len.into();
+                        let mut table_key_elem_encodings = Vec::new();
+                        while match len {
+                            cbor_event::LenSz::Len(n, _) => (table_key_arr.len() as u64) < n,
+                            cbor_event::LenSz::Indefinite => true,
+                        } {
+                            if matches!(len, cbor_event::LenSz::Indefinite)
+                                && raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
+                            }
+                            let (table_key_elem, table_key_elem_encoding) =
+                                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                            table_key_arr.push(table_key_elem);
+                            table_key_elem_encodings.push(table_key_elem_encoding);
+                        }
+                        if table_key_arr.len() < 1 {
+                            return Err(DeserializeFailure::RangeCheck {
+                                found: table_key_arr.len() as isize,
+                                min: Some(1),
+                                max: None,
+                            }
+                            .into());
+                        }
+                        let (table_key, table_key_encoding, table_key_elem_encodings) =
+                            (table_key_arr, table_key_encoding, table_key_elem_encodings);
+                        let (table_value, table_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if table_table.insert(table_key.clone(), table_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        table_key_encodings.insert(
+                            table_key.clone(),
+                            (table_key_encoding, table_key_elem_encodings),
+                        );
+                        table_value_encodings.insert(table_key.clone(), table_value_encoding);
+                    }
+                    Ok((
+                        table_table,
+                        table_encoding,
+                        table_key_encodings,
+                        table_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("table"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder {
+                table,
+                encodings: Some(HolderEncoding {
+                    len_encoding,
+                    table_encoding,
+                    table_key_encodings,
+                    table_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}

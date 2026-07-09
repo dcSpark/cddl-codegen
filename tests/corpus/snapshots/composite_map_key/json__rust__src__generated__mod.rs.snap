@@ -1,0 +1,29 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type ArrU64List = Vec<Vec<u64>>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub table: T,
+}
+
+impl Holder {
+    pub fn new(table: T) -> Self {
+        Self { table }
+    }
+}
+
+pub type T = BTreeMap<Vec<u64>, u64>;

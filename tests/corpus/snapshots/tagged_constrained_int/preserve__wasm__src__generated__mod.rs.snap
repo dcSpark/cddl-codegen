@@ -1,0 +1,398 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+pub type CborCtlNe = i64;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Garm(cddl_lib::Garm);
+
+#[wasm_bindgen]
+impl Garm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Garm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_ga(ga: i64) -> Result<Garm, JsError> {
+        cddl_lib::Garm::new_ga(ga)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn new_gb(gb: String) -> Self {
+        Self(cddl_lib::Garm::new_gb(gb))
+    }
+
+    pub fn kind(&self) -> GarmKind {
+        match &self.0 {
+            cddl_lib::Garm::Ga { .. } => GarmKind::Ga,
+            cddl_lib::Garm::Gb { .. } => GarmKind::Gb,
+        }
+    }
+
+    pub fn as_ga(&self) -> Option<i64> {
+        match &self.0 {
+            cddl_lib::Garm::Ga { ga, .. } => Some(*ga),
+            _ => None,
+        }
+    }
+
+    pub fn as_gb(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Garm::Gb { gb, .. } => Some(gb.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Garm> for Garm {
+    fn from(native: cddl_lib::Garm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Garm> for cddl_lib::Garm {
+    fn from(wasm: Garm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Garm> for Garm {
+    fn as_ref(&self) -> &cddl_lib::Garm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GarmKind {
+    Ga,
+    Gb,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> TaggedCtlNe {
+        self.0.a.clone().into()
+    }
+
+    pub fn b(&self) -> TaggedRangeIncl {
+        self.0.b.clone().into()
+    }
+
+    pub fn c(&self) -> TaggedRangeExcl {
+        self.0.c.clone().into()
+    }
+
+    pub fn d(&self) -> TaggedRangeNint {
+        self.0.d.clone().into()
+    }
+
+    pub fn e(&self) -> TaggedRangeUint {
+        self.0.e.clone().into()
+    }
+
+    pub fn f(&self) -> Garm {
+        self.0.f.clone().into()
+    }
+
+    pub fn g(&self) -> CborCtlNe {
+        self.0.g
+    }
+
+    pub fn new(
+        a: &TaggedCtlNe,
+        b: &TaggedRangeIncl,
+        c: &TaggedRangeExcl,
+        d: &TaggedRangeNint,
+        e: &TaggedRangeUint,
+        f: &Garm,
+        g: CborCtlNe,
+    ) -> Result<Holder, JsError> {
+        cddl_lib::Holder::new(
+            a.clone().into(),
+            b.clone().into(),
+            c.clone().into(),
+            d.clone().into(),
+            e.clone().into(),
+            f.clone().into(),
+            g,
+        )
+        .map(Into::into)
+        .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedCtlNe(cddl_lib::TaggedCtlNe);
+
+#[wasm_bindgen]
+impl TaggedCtlNe {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedCtlNe, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: i64) -> Result<TaggedCtlNe, JsError> {
+        cddl_lib::TaggedCtlNe::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedCtlNe> for TaggedCtlNe {
+    fn from(native: cddl_lib::TaggedCtlNe) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedCtlNe> for cddl_lib::TaggedCtlNe {
+    fn from(wasm: TaggedCtlNe) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedCtlNe> for TaggedCtlNe {
+    fn as_ref(&self) -> &cddl_lib::TaggedCtlNe {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedRangeExcl(cddl_lib::TaggedRangeExcl);
+
+#[wasm_bindgen]
+impl TaggedRangeExcl {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedRangeExcl, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: i64) -> Result<TaggedRangeExcl, JsError> {
+        cddl_lib::TaggedRangeExcl::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedRangeExcl> for TaggedRangeExcl {
+    fn from(native: cddl_lib::TaggedRangeExcl) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedRangeExcl> for cddl_lib::TaggedRangeExcl {
+    fn from(wasm: TaggedRangeExcl) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedRangeExcl> for TaggedRangeExcl {
+    fn as_ref(&self) -> &cddl_lib::TaggedRangeExcl {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedRangeIncl(cddl_lib::TaggedRangeIncl);
+
+#[wasm_bindgen]
+impl TaggedRangeIncl {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedRangeIncl, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: i64) -> Result<TaggedRangeIncl, JsError> {
+        cddl_lib::TaggedRangeIncl::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedRangeIncl> for TaggedRangeIncl {
+    fn from(native: cddl_lib::TaggedRangeIncl) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedRangeIncl> for cddl_lib::TaggedRangeIncl {
+    fn from(wasm: TaggedRangeIncl) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedRangeIncl> for TaggedRangeIncl {
+    fn as_ref(&self) -> &cddl_lib::TaggedRangeIncl {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedRangeNint(cddl_lib::TaggedRangeNint);
+
+#[wasm_bindgen]
+impl TaggedRangeNint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedRangeNint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: i64) -> Result<TaggedRangeNint, JsError> {
+        cddl_lib::TaggedRangeNint::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> i64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedRangeNint> for TaggedRangeNint {
+    fn from(native: cddl_lib::TaggedRangeNint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedRangeNint> for cddl_lib::TaggedRangeNint {
+    fn from(wasm: TaggedRangeNint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedRangeNint> for TaggedRangeNint {
+    fn as_ref(&self) -> &cddl_lib::TaggedRangeNint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedRangeUint(cddl_lib::TaggedRangeUint);
+
+#[wasm_bindgen]
+impl TaggedRangeUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedRangeUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<TaggedRangeUint, JsError> {
+        cddl_lib::TaggedRangeUint::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedRangeUint> for TaggedRangeUint {
+    fn from(native: cddl_lib::TaggedRangeUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedRangeUint> for cddl_lib::TaggedRangeUint {
+    fn from(wasm: TaggedRangeUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedRangeUint> for TaggedRangeUint {
+    fn as_ref(&self) -> &cddl_lib::TaggedRangeUint {
+        &self.0
+    }
+}
