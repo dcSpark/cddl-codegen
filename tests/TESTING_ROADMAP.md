@@ -86,19 +86,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      synthetic breadth vs real-world depth — recombination does not replace it.
 
 4. **Small independent residuals (low).**
-   - **Pipeline-boundary rejection-drain assert (ready to implement — fully specified).**
-     `record_rejection` surfaces only where a drain point checks — `finalize`'s entry and (since the
-     finalize-time float-table-key rejection, whose pin is
-     `tests/robustness/float_table_key_composite.cddl`) its exit. A record site that runs AFTER the
-     last drain (e.g. during generation.rs emission) is silently swallowed: the tool exits 0 having
-     emitted whatever the rejected construct produced. Neither the mutation sweep (absent code mints
-     no mutant) nor the recombination layers (they see only the manifestation, and only if the
-     emitted crate happens to break) owns this class; review found it. The systematic catcher:
-     assert at the api.rs pipeline seam — after generation, before export, OUTSIDE any guarded
-     branch (the emission-site placement the vacuity-floor rule prescribes — `tests/README.md`
-     § "Design rules") — that no undrained rejection remains. Every fixture in the snapshot corpus
-     exercises that seam, so any future record point past the drains fails loudly on its first
-     trigger.
    - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
      `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
      resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust
