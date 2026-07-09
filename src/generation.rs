@@ -9331,10 +9331,11 @@ fn type_complexity_score(ty: &str) -> u64 {
 /// `clippy::type_complexity` stays quiet without an `#[allow]`. Alias names can't collide with each
 /// other: `owner` (the owning encoding struct's base type name) is distinct per struct and
 /// `field_name` is distinct within a struct, so identical anonymous shapes in different rules never
-/// collide. An alias CAN in principle collide with another rule's encoding-struct name (owner `Foo`
-/// + field `bar_encoding` aliases to `FooBarEncoding`, which a rule named `foo-bar` also claims) —
-/// that needs an over-threshold field AND the exact sibling rule name, and it fails LOUD (E0428 in
-/// the generated crate, caught by every compile gate), so it is not disambiguated preemptively.
+/// collide. An alias CAN in principle collide with another rule's encoding-struct name:
+/// owner `Foo` + field `bar_encoding` aliases to `FooBarEncoding`, which a rule named `foo-bar`
+/// also claims. That needs an over-threshold field AND the exact sibling rule name, and it fails
+/// LOUD (E0428 in the generated crate, caught by every compile gate), so it is not disambiguated
+/// preemptively.
 /// Aliases are collected (not pushed) so the caller can push them into the scope alongside the
 /// struct.
 fn push_encoding_struct_field(

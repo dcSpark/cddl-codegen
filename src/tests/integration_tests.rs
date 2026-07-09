@@ -2133,19 +2133,47 @@ fn flag_value_smoke() {
 /// `flag_value_smoke` already relies on for exactly its extern-freedom + breadth) under two
 /// representative profiles: default flags, and `--preserve-encodings=true --canonical-form=true`.
 ///
-/// Deny only `clippy::all`, NOT `-D warnings`: generated code legitimately over-imports and rustc's
-/// `unused_imports` must stay a warning here (see `tool_cmd`'s doc comment; `tool_cmd` also strips the
-/// CI-injected `RUSTFLAGS=-D warnings`). Generate-into-own-temp-dir shape mirrors `flag_value_smoke`
-/// so this gate can't race the fixtures' own `tests/<dir>/export` outputs. `--wasm=false`: the rust
-/// crate carries the deserialize source this gate is about (extending clippy to wasm is a ledgered
-/// TESTING_ROADMAP follow-up). Tier: check.ts `local` (a plain non-ignored test) — measured warm
-/// wall-clock stays under the ~90s plain-`#[test]` threshold. NEVER promote to `fast`/CI.
+/// Deny only `clippy::all` plus a curated rustc style-lint set, NOT `-D warnings`: generated code
+/// legitimately over-imports and rustc's `unused_imports` / `unused_variables` must stay warnings
+/// here (see `tool_cmd`'s doc comment; `tool_cmd` also strips the CI-injected `RUSTFLAGS=-D
+/// warnings`). The rustc denies cover emitted source-shape regressions `clippy::all` does not:
+/// redundant grouping (`unused_parens`, `unused_braces`) and useless heap allocation
+/// (`unused_allocation`), each proven green for both profiles when this axis was added.
+/// Generate-into-own-temp-dir shape mirrors `flag_value_smoke` so this gate can't race the fixtures'
+/// own `tests/<dir>/export` outputs. `--wasm=true` generates both the rust and wasm crates; the rust
+/// output differs from `--wasm=false` only by an extra wasm-support type alias in this fixture, so a
+/// single generation run covers the prior rust surface and lets the gate lint the wasm binding crate
+/// too. Tier: check.ts `local` (a plain non-ignored test) — measured warm wall-clock stays under the
+/// ~90s plain-`#[test]` threshold. NEVER promote to `fast`/CI.
 #[test]
 fn generated_code_clippy_clean() {
     use std::str::FromStr;
     if !tool_exists("cargo") {
         return;
     }
+    const RUSTC_STYLE_DENIES: &[&str] = &[
+        "-D",
+        "unused_parens",
+        "-D",
+        "unused_braces",
+        "-D",
+        "unused_allocation",
+    ];
+    const PERMANENT_ALLOWS: &[&str] = &["-A", "clippy::disallowed_names"];
+    const WASM_BURN_DOWN_ALLOWS: &[&str] = &[
+        // default: 1, preserve+canonical: 0. Map-key list accessors iterate `(k, _v)` pairs where
+        // `.keys()` would express the generated binding shape directly.
+        "-A",
+        "clippy::iter_kv_map",
+        // default: 1, preserve+canonical: 1. WASM map getters clone through `.map(|v| v.clone())`
+        // instead of `.cloned()`.
+        "-A",
+        "clippy::map_clone",
+        // default: 1, preserve+canonical: 1. Array getter returns emit `.into()` where the Rust and
+        // WASM-facing value types are already the same `Vec<T>`.
+        "-A",
+        "clippy::useless_conversion",
+    ];
     let input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
     let cases: &[(&str, &[&str])] = &[
         ("default", &[][..]),
@@ -2167,7 +2195,7 @@ fn generated_code_clippy_clean() {
             .args(["run", "--"])
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
-            .arg("--wasm=false")
+            .arg("--wasm=true")
             .args(*options)
             .output()
             .unwrap();
@@ -2182,18 +2210,14 @@ fn generated_code_clippy_clean() {
             .arg("clippy")
             .current_dir(out.join("rust"))
             .env("CARGO_TARGET_DIR", &target_dir)
-            .args([
-                "--",
-                "-D",
-                "clippy::all",
-                // Input-dependent, permanent allow: the fixture's own `foo`/`bar` rule names become
-                // generated parameter names, which clippy::disallowed_names flags — not a generator
-                // defect. This is the ONLY allow: the emission-quality burn-down list is fully
-                // retired, so every other clippy::all lint class (and any NEW one a generator
-                // regression might mint) is hard-red on both profiles.
-                "-A",
-                "clippy::disallowed_names",
-            ])
+            .args(["--", "-D", "clippy::all"])
+            .args(RUSTC_STYLE_DENIES)
+            // Input-dependent, permanent allow: the fixture's own `foo`/`bar` rule names become
+            // generated parameter names, which clippy::disallowed_names flags — not a generator
+            // defect. This is the rust crate's ONLY allow: the emission-quality burn-down list is
+            // fully retired, so every other clippy::all lint class (and any NEW one a generator
+            // regression might mint) is hard-red on both profiles.
+            .args(PERMANENT_ALLOWS)
             .output()
             .unwrap();
         if !clippy.status.success() {
@@ -2202,6 +2226,27 @@ fn generated_code_clippy_clean() {
                  --- stdout ---\n{}\n--- stderr ---\n{}",
                 String::from_utf8_lossy(&clippy.stdout),
                 String::from_utf8_lossy(&clippy.stderr)
+            ));
+        }
+        let wasm_clippy = tool_cmd("cargo")
+            .arg("clippy")
+            .current_dir(out.join("wasm"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .args(["--", "-D", "clippy::all"])
+            .args(RUSTC_STYLE_DENIES)
+            .args(PERMANENT_ALLOWS)
+            // WASM emission-quality burn-down: these are the current real lint classes minted by
+            // the binding crate. Any new clippy::all class is hard-red; removing an `-A` here is the
+            // pin that the corresponding emitted shape stopped being generated.
+            .args(WASM_BURN_DOWN_ALLOWS)
+            .output()
+            .unwrap();
+        if !wasm_clippy.status.success() {
+            failures.push(format!(
+                "{label}: `cargo clippy -- -D clippy::all` failed on the generated wasm crate\n\
+                 --- stdout ---\n{}\n--- stderr ---\n{}",
+                String::from_utf8_lossy(&wasm_clippy.stdout),
+                String::from_utf8_lossy(&wasm_clippy.stderr)
             ));
         }
     }
