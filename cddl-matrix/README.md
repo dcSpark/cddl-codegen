@@ -206,8 +206,9 @@ None of these are cddl-codegen bugs, and the matrix no longer sits on any of the
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
 `2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gap 6 is OPEN at that rev — it
-gates a corpus fixture's conformance-oracle half, not any matrix row); `RUST_CDDL` defaults to that build,
+cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–7 are OPEN at that rev — gap 6
+gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
+class, ledgered honestly); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
 development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
 somewhere immutable and point `RUST_CDDL` there first.
@@ -268,6 +269,16 @@ somewhere immutable and point `RUST_CDDL` there first.
    the gem's inline-composite controller parse gap — so the decode-side reference-codec
    differential is its structural check). Differential repro + prune steps:
    `draft/rust-cddl-bignint-key-validator-gap.md`.
+7. **prelude `number` rejects a float** (OPEN at `2c7548e`, NOT fork-fixed): `validate` rejects every
+   CBOR float against the built-in `number` type (`expected type number, got Float(…)`), while ints
+   against `number` — and floats against the equivalent inline `int / float` or a user alias — validate
+   fine. Root cause is a one-line asymmetry: `is_ident_float_data_type` omits `Token::NUMBER` where its
+   sibling `is_ident_integer_data_type` includes it (`number = int / float` accepts both). The decode-
+   conformance **arm-coverage floor** (§ "Decode-direction conformance" in `tests/README.md`) is the one
+   consumer that sits on this: `prelude.number`'s float arm cannot be minted through the two-oracle
+   accept gate, so its class is carried in `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`) — the floor's stale-
+   guarded exemption ledger — until a fixed rust `cddl` ships. Repro + the one-line fork-fix + prune
+   steps: `draft/rust-cddl-number-float-gap.md`.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

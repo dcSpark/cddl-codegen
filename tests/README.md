@@ -514,7 +514,27 @@ and asserts they are accepted.
   over-acceptance vectors (same-shape as the row's SPEC-VALID accepts, which now EXCLUDE over-acceptance
   from the shape-class set), and the hard-coded **seeded regression controls** — the
   absent-instance vectors (`occur.optional` holder `[0, []]`, `type2.map` holder `[0, {}]`,
-  `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style.
+  `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style. It ALSO
+  runs the **arm-coverage floor** (§ 7): the mint's `generate` is randomized, so a multi-arm CHOICE row
+  can land with a whole arm unsampled and its decode verdict silently under-claims (at HEAD
+  `prelude.number` = `int / float` carried only int-headed accepts — the float arm had zero
+  decode-direction evidence). For each active choice row whose root RHS statically resolves to arm head
+  major-classes (`resolveChoiceArmClasses` in `cddl-matrix/lib.ts` — the ONE resolver the mint's
+  resample loop shares), the floor requires ≥1 spec-valid accept vector per resolvable arm class.
+  **Majors 0/1 merge into one "int" class**, so `prelude.integer` / `prelude.unsigned` don't flag their
+  unsampled plain-uint side (nint already covers int). Two decay pins guard it: `EXPECTED_FLOOR_SCOPE`
+  pins the EXACT (row → sorted arm classes) set the resolver fires on (a silent widen/narrow fails
+  got/want), and `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`, stale-guarded) ledgers a genuinely unmintable arm
+  class with a citation. Mint side (`verify.ts mintRow`): a **resample-until-covered loop** draws extra
+  bounded `generate` batches for any missing class, keeping only two-oracle-valid candidates, and
+  **skips half-precision (`f9`) float candidates** — cbor_event 2.4.0 mis-decodes `f9` heads (ROADMAP
+  § findings), so an `f9` accept vector would replay Ok with a silently corrupted value and trip the
+  encoding-variant leg; it takes an f32/f64 float instead (prune the skip when a fixed cbor_event
+  ships). On cap exhaustion with an unledgered missing class the mint exits 1, naming the row and class.
+  At HEAD the ledger holds ONE entry — `prelude.number`'s float arm, blocked by a rust-`cddl` reference
+  bug that rejects a float against the prelude `number` alias (README § "Upstream oracle gaps" gap 7;
+  `draft/rust-cddl-number-float-gap.md`), so the two-oracle gate cannot admit a spec-valid float
+  `number` vector; the stale-guard forces a re-mint once rust is fixed.
 - **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors
   as a default-on corroborating oracle (`--no-decode-foreign` / `VERIFY_DECODE_FOREIGN=0` opt-out),
   recording an `accepts_foreign` evidence clause in the annotations. Corroboration only — it never

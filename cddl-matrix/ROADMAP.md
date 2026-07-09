@@ -43,21 +43,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Accept-vector ARM-coverage floor for choice rows.** The mint's instance generation is randomized,
-  so a multi-arm choice row can land with a whole arm unsampled — the row's decode verdict then
-  silently under-claims: at HEAD `prelude.number` (`int / float`) carries only int-headed accept
-  vectors (the float arm has ZERO decode-direction evidence — nothing shows a foreign float instance
-  decodes), and `prelude.integer`'s vectors are nint + tagged-bignum only (the plain-uint side is
-  unsampled), while `type.choice`, `prelude.unsigned`, and the choice-member null row are fully
-  arm-sampled, so the gap is real but narrow. This also couples to the replay gate's header-mutation
-  leg: its `wrong_major` ambiguity skip derives evidenced majors from the SAME sampling, so an
-  unsampled arm's major is treated as must-reject — a future re-mint that happens to sample
-  differently surfaces as a `HEADER_MUTANT_ACCEPT_SKIP` triage instead of a coverage improvement.
-  Mechanical shape: for a row whose spec root is a type choice with statically-resolvable arm head
-  major-classes (majors 0/1 merged), require ≥1 accept vector per arm class — either a
-  `project_decode_conformance.ts` check (drift-gate tier, red until the under-sampled rows are
-  re-minted with `--only=`) or a mint-side resample-until-covered loop; arms whose head major is not
-  statically resolvable stay exempt (the floor must not guess).
 
 ## 2. F4 / F5 follow-ons (only when their consumer exists)
 
@@ -92,6 +77,14 @@ The durable gotchas and the upstream-oracle-gap state are CURRENT state and live
 are ledgered here (that's what the probe/gate error messages point at).
 
 **Upstream close-outs (waiting on external releases):**
+- When a rust `cddl` release (or the fork's `local-fixes` branch) ships the prelude-`number` float-
+  validation fix (`is_ident_float_data_type` omits `Token::NUMBER` while `is_ident_integer_data_type`
+  includes it, so a bare float against `number` wrongly fails validation; one-line fix + repro in
+  `draft/rust-cddl-number-float-gap.md`): the decode-conformance arm-coverage floor can then mint a real
+  float `prelude.number` accept vector. Remove `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
+  (`cddl-matrix/lib.ts`) — or let `project_decode_conformance.ts` § 7's stale-guard force it after
+  `verify.ts --mint-decode-foreign --only=prelude.number` — then prune the README gap entry and that
+  draft.
 - When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
   README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
 - When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
