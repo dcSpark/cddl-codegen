@@ -1,0 +1,4 @@
+; cell: passthrumap x gchoice-variant
+mp = { * uint => text }
+ptm = mp
+holder = [ f0: ptm // f1: nint ]

@@ -1,0 +1,3 @@
+; cell: cenum x gchoice-variant
+fe = 0 / 1 / 2
+holder = [ f0: fe // f1: nint ]

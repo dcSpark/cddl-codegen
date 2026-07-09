@@ -1,0 +1,4 @@
+; cell: passthru x gchoice-variant
+nums = [* uint]
+pt = nums
+holder = [ f0: pt // f1: nint ]

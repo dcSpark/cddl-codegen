@@ -1,0 +1,3 @@
+; cell: palias x gchoice-variant
+pa = uint
+holder = [ f0: pa // f1: nint ]

@@ -713,7 +713,7 @@ Two consumers run it:
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~7 min (114 cells x 3 profiles)
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8 min (130 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -912,7 +912,11 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     — see the docstrings in `src/intermediate.rs`).
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`, `tchoice-variant` (the shape placed as one arm of a
-    type-choice enum — the per-variant wasm ctor emission path). Each drives distinct accessor emission
+    type-choice enum — the per-variant wasm ctor emission path via
+    `generate_type_choices_from_variants`), `gchoice-variant` (the shape placed as one named-field arm
+    of a `//` GROUP choice, `[ f0: T // f1: nint ]` — the group-choice sibling of `tchoice-variant`,
+    minting one `new_<field>` wasm ctor per arm through the DISTINCT `codegen_group_choices` emitter
+    path; array representation only, since the map-rep spelling emits byte-identical wasm). Each drives distinct accessor emission
     (`get`/`add`/`insert`/`keys`/`new_<arm>`, by-value vs by-ref). Struct roles use the **array representation** (`[field0: T]`,
     `[pre: uint, ? field0: T]`); the map representation is covered on the shape axis instead by the
     `mstruct` representative cell. Map-rep field holders (a bareword-keyed map with a mandatory or
@@ -968,9 +972,14 @@ stays a transparent `Vec`).
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
 [`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
-At HEAD the list holds a single permanent resident — `extern__array-element` (references a
+At HEAD the list holds one permanent resident — `extern__array-element` (references a
 user-supplied type, so the cell can't compile standalone; the construct is integration-tested in
-`tests/extern-deps`) — so any other red appearing is a regression to fix, not a backlog item.
+`tests/extern-deps`) — plus one ledgered emitter bug, `cborwrap__gchoice-variant` (a `.cbor`-wrapper
+shape in a group-choice arm: the wasm ctor's arg shape disagrees with the rust ctor, E0308 —
+cddl-matrix/ROADMAP.md § findings), so any OTHER red appearing is a regression to fix, not a backlog
+item. The round-trip gate carries two additional ledgered reds that COMPILE — the Record-arm cells
+`struct__gchoice-variant` and `generic__gchoice-variant`, pinned in `WASM_MATRIX_PROFILE_SKIP` (a core
+group-choice-arm deserialize-discriminant bug — same § findings).
 To close one:
 
 1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.

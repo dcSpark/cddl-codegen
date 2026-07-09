@@ -1,0 +1,4 @@
+; cell: cborwrap x gchoice-variant
+foo = [a: uint]
+fb = bytes .cbor foo
+holder = [ f0: fb // f1: nint ]

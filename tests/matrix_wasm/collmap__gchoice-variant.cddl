@@ -1,0 +1,3 @@
+; cell: collmap x gchoice-variant
+mp = { * uint => text }
+holder = [ f0: mp // f1: nint ]

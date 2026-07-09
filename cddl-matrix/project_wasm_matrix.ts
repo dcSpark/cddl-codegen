@@ -135,6 +135,25 @@ const ROLES: Record<string, Role> = {
   // and the supported fixed values (uint/text literals) overlap prim/cenum/talias arms — so neither
   // can stand in as the disjoint arm.
   "tchoice-variant": { wrap: (t) => `holder = ${t} / nint` },
+  // GROUP-choice per-variant wasm ctor emission (`codegen_group_choices` in generation.rs) — the
+  // group-choice sibling of `tchoice-variant`, exercising a DISTINCT emitter path (a `//` group choice
+  // routes through `codegen_group_choices`' per-variant wasm ctor loop, not the type-choice
+  // `generate_type_choices_from_variants` path). Each arm is a single named field, so the shape is
+  // placed as `f0` in one arm and the partner `nint` as `f1` in the other; the emitter mints one
+  // `Holder::new_<field>` wasm ctor per arm (`new_f0` for the shape, `new_f1` for the partner) — and a
+  // shape whose rust ctor is failable (e.g. `bwrap`'s `.size` bound) crosses with the matching by-ref
+  // `&Bw` + `.into()` conversion, so this pins the group-choice-arm ctor fallibility/conversion the
+  // way `tchoice-variant` pins the type-choice one. The partner arm is `nint` for the same reason as
+  // `tchoice-variant`: it is CBOR-disjoint from every shape's element type (uint/text/bytes/array/map/
+  // tag/null), so a decoder can discriminate the two 1-element arms — needed by the round-trip gate; a
+  // bool fixed-value partner PANICS generation and the supported uint/text literal fixed values overlap
+  // prim/cenum/talias arms. ARRAY representation is the single enumerated form: the map-rep spelling
+  // (`{ f0: ${t} // f1: nint }`) emits BYTE-IDENTICAL wasm (probed — the representation only changes
+  // rust-side serialization), exactly as the `struct-field` role's comment records, so a map-rep role
+  // would only duplicate cells (and a fixed-value entry in a map-rep group-choice arm panics generation
+  // — the ledgered `contain.group-choice-arm.type2.value.map` PANIC row — so some map-rep templates
+  // would not even generate).
+  "gchoice-variant": { wrap: (t) => `holder = [ f0: ${t} // f1: nint ]` },
 };
 
 // A typo'd role name in `roles`/`skipRoles` would be a silent no-op that shrinks the projected grid
@@ -157,7 +176,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 114; // 16 full shapes × 7 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 130; // 16 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
