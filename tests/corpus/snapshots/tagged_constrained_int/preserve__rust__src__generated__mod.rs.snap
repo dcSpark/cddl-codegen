@@ -1,0 +1,325 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{
+    HolderEncoding, TaggedCtlNeEncoding, TaggedRangeExclEncoding, TaggedRangeInclEncoding,
+    TaggedRangeNintEncoding, TaggedRangeUintEncoding,
+};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type CborCtlNe = i64;
+
+#[derive(Clone, Debug)]
+pub enum Garm {
+    Ga {
+        ga: i64,
+        ga_tag_encoding: Option<cbor_event::Sz>,
+        ga_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    Gb {
+        gb: String,
+        gb_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl Garm {
+    pub fn new_ga(ga: i64) -> Result<Self, DeserializeError> {
+        if ga < -10 || ga > -4 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: ga as isize,
+                min: Some(-10),
+                max: Some(-4),
+            }
+            .into());
+        }
+        Ok(Self::Ga {
+            ga,
+            ga_tag_encoding: None,
+            ga_encoding: None,
+            len_encoding: LenEncoding::default(),
+        })
+    }
+
+    pub fn new_gb(gb: String) -> Self {
+        Self::Gb {
+            gb,
+            gb_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub a: TaggedCtlNe,
+    pub b: TaggedRangeIncl,
+    pub c: TaggedRangeExcl,
+    pub d: TaggedRangeNint,
+    pub e: TaggedRangeUint,
+    pub f: Garm,
+    pub g: CborCtlNe,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(
+        a: TaggedCtlNe,
+        b: TaggedRangeIncl,
+        c: TaggedRangeExcl,
+        d: TaggedRangeNint,
+        e: TaggedRangeUint,
+        f: Garm,
+        g: CborCtlNe,
+    ) -> Result<Self, DeserializeError> {
+        if g == 1 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: g as isize,
+                min: Some(2),
+                max: Some(0),
+            }
+            .into());
+        }
+        Ok(Self {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            encodings: None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedCtlNe {
+    inner: i64,
+    pub encodings: Option<TaggedCtlNeEncoding>,
+}
+
+impl TaggedCtlNe {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner == 1 {
+            return Err(DeserializeError::new(
+                "TaggedCtlNe",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(2),
+                    max: Some(0),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<i64> for TaggedCtlNe {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        TaggedCtlNe::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRangeExcl {
+    inner: i64,
+    pub encodings: Option<TaggedRangeExclEncoding>,
+}
+
+impl TaggedRangeExcl {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -10 || inner > 9 {
+            return Err(DeserializeError::new(
+                "TaggedRangeExcl",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(9),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<i64> for TaggedRangeExcl {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        TaggedRangeExcl::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRangeIncl {
+    inner: i64,
+    pub encodings: Option<TaggedRangeInclEncoding>,
+}
+
+impl TaggedRangeIncl {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -10 || inner > 10 {
+            return Err(DeserializeError::new(
+                "TaggedRangeIncl",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(10),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<i64> for TaggedRangeIncl {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        TaggedRangeIncl::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRangeNint {
+    inner: i64,
+    pub encodings: Option<TaggedRangeNintEncoding>,
+}
+
+impl TaggedRangeNint {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
+    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -10 || inner > -4 {
+            return Err(DeserializeError::new(
+                "TaggedRangeNint",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(-4),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<i64> for TaggedRangeNint {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        TaggedRangeNint::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRangeUint {
+    inner: u64,
+    pub encodings: Option<TaggedRangeUintEncoding>,
+}
+
+impl TaggedRangeUint {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner < 3 || inner > 9 {
+            return Err(DeserializeError::new(
+                "TaggedRangeUint",
+                DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(3),
+                    max: Some(9),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<u64> for TaggedRangeUint {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        TaggedRangeUint::new(inner)
+    }
+}
+
+impl From<TaggedCtlNe> for i64 {
+    fn from(wrapper: TaggedCtlNe) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<TaggedRangeExcl> for i64 {
+    fn from(wrapper: TaggedRangeExcl) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<TaggedRangeIncl> for i64 {
+    fn from(wrapper: TaggedRangeIncl) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<TaggedRangeNint> for i64 {
+    fn from(wrapper: TaggedRangeNint) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<TaggedRangeUint> for u64 {
+    fn from(wrapper: TaggedRangeUint) -> Self {
+        wrapper.inner
+    }
+}

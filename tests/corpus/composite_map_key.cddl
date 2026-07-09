@@ -1,0 +1,10 @@
+; A table (map) whose KEY is a composite type — here an array (`[+ uint]`). Under
+; --preserve-encodings the deserialize loop inserts the key value into the key-encoding map and then
+; again into the value-encoding map; a composite key is a `Vec<u64>` (not Copy), so the second insert
+; must `.clone()` the key rather than move it. The gating predicate is the key VALUE's copy-ness
+; (`is_copy`), not its ENCODING var's copy-ness (an array's encoding var refers to the length encoding
+; and is always Copy) — pinning the fix for a preserve-only E0382 the default profile can't see (the
+; default loop has no encoding maps, so the key is moved exactly once).
+t = { [+ uint] => uint }
+; holder: embed the table so it also emits in member position.
+holder = [table: t]

@@ -1,0 +1,35 @@
+; A CBOR tag (`#6.n(...)`) wrapping a range/control-CONSTRAINED signed int. The tag wrapper is what
+; makes the inner a *signed* primitive with a residual bound the wrapper must enforce, so deserialize
+; takes the two-major-type signed path (uint arm / nint arm) under --preserve-encodings. That path
+; folds the wrapper's own tag-encoding expr (`Some(tag_enc)`) into the value tuple; a member holding
+; one destructures `(inner, inner_tag_encoding, inner_encoding)`, so both arms must emit a 3-tuple.
+; These pin that shape (a 2-tuple mis-shape here is a preserve-only E0308 the default profile can't see
+; — the default deserialize carries no tag-encoding). See tagged.cddl for why tag rules auto-wrap.
+;
+; ctl_ne: a control-constrained inner (`int .ne 1`) — the `.ne` residual keeps the signed path.
+tagged_ctl_ne = #6.11(int .ne 1)
+; incl / excl: inclusive vs exclusive range spanning both sign domains (uint arm + nint arm live).
+tagged_range_incl = #6.11(-10..10)
+tagged_range_excl = #6.11(-10...10)
+; nint_only: a range entirely in the negative domain — only the nint arm is reachable.
+tagged_range_nint = #6.11(-10...-3)
+; uint_control: a range entirely in the non-negative domain — breadth control; only the uint arm is
+;   reachable, so its 3-tuple shape is exercised independently of the nint arm.
+tagged_range_uint = #6.11(3...10)
+; A group-choice arm holding the tagged constrained int, alongside a text arm: pins that the same
+; 3-tuple shape is emitted for the constrained-int inside a choice arm (a distinct emit site).
+garm = [ ga: #6.15(-10...-3) // gb: tstr ]
+; A `bytes .cbor (...)` payload wrapping a control-constrained int: the CBORBytes wrapper pushes a
+; StringEncoding expr the same way the tag wrapper pushes its tag-encoding expr, so a member holding
+; one destructures `(a, a_bytes_encoding, a_encoding)` — same E0308 mechanism, distinct wrapper.
+cbor_ctl_ne = bytes .cbor (int .ne 1)
+; holder: embed each rule as a member so it emits a real (de)serialize impl in member position.
+holder = [
+  a: tagged_ctl_ne,
+  b: tagged_range_incl,
+  c: tagged_range_excl,
+  d: tagged_range_nint,
+  e: tagged_range_uint,
+  f: garm,
+  g: cbor_ctl_ne,
+]

@@ -1402,27 +1402,12 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
 /// DEFAULT crate compiles + round-trips, but the preserve crate fails `cargo build`). Desc-substring
 /// keyed, each citing its pin; vacuity-guarded in `recombination_preserve_crates_execute`. The shared
 /// `LAYER2_KNOWN_BAD` also applies (as an exclusion, un-guarded here).
-const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[
-    // -- E0308: a tag wrapping a range/control-constrained integer mis-shapes the preserve
-    //    deserialize tuple (2-elem destructure vs 3-elem constrained-primitive arm). ------------------
-    (
-        "outer=tag_content filler=ctl.ne",
-        "tag over a control-constrained int (`#6.11(int .ne N)`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
-    ),
-    (
-        "outer=tag_content filler=rangeop",
-        "tag over a range-constrained int/nint (`#6.11(-10...10)`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
-    ),
-    (
-        "outer=garm_arr inner=tag_content filler=rangeop",
-        "group-choice arm with a tag over a range-constrained int (`[ ga: #6.11(-10...-3) // tstr ]`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
-    ),
-    // -- E0382: a composite (array) map key moves a binding it later reuses, under preserve. ----------
-    (
-        "outer=arr_single inner=map_key filler=occur.one_or_more",
-        "a composite (array) map key (`[{ [+ uint] => uint }]`) fails preserve compilation (E0382 use of moved value); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
-    ),
-];
+// Empty: the two former compile-class families (E0308 tag/`.cbor`-wrapped constrained-int deserialize
+// tuple arity; E0382 composite map-key move-then-reuse) are both FIXED in `generate_deserialize`, and
+// their fixed behavior is pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures
+// (compile + round-trip under preserve). The freed compositions batch back into the preserve gate. New
+// preserve-only compile classes would be caught by that gate as NEW findings and re-ledgered here.
+const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the PRESERVE escalation of layer 2.
 /// Classifies every composition under `--preserve-encodings=true`, batches the preserve-ok ones,
@@ -1461,7 +1446,7 @@ fn recombination_preserve_crates_execute() {
         panic_ledger: PRESERVE_ONLY_PANIC_CLASSES,
         known_bad: LAYER2_PRESERVE_KNOWN_BAD,
         guard_shared: false,
-        // Observed baseline: 856 preserve-ok / 817 executed (39 known-bad excluded); floors ~10% under.
+        // Observed baseline: 856 preserve-ok / 827 executed (29 known-bad excluded); floors ~10% under.
         ok_floor: 770,
         executed_floor: 735,
     });

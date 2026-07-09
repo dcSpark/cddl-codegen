@@ -2964,6 +2964,18 @@ impl GenerationScope {
                                 deserializer_name
                             ));
                             if cli.preserve_encodings {
+                                // Fold the accumulated outer-wrapper encoding exprs (e.g. a Tagged
+                                // wrapper's `Some(tag_enc)`, a CBORBytes wrapper's StringEncoding)
+                                // into the value tuple — as every other primitive path does via
+                                // `final_expr`. Both arms MUST emit the same tuple shape. With an
+                                // empty `config.final_exprs` this is the byte-identical
+                                // `(x as {p}, Some(enc))`; with wrapper exprs it grows to the
+                                // 3-tuple the member-level destructure expects (else a preserve-only
+                                // E0308).
+                                let mut arm_final_exprs = config.final_exprs.clone();
+                                arm_final_exprs.push("Some(enc)".to_owned());
+                                let arm_tuple =
+                                    final_expr(arm_final_exprs, Some(format!("x as {p}")));
                                 let bounds_fn = |arm: &SignArmBounds| match sign_arm_if_block(
                                     arm, "x", false,
                                 ) {
@@ -2993,7 +3005,7 @@ impl GenerationScope {
                                         String::new()
                                     }
                                 ))
-                                .line(format!("(x as {}, Some(enc))", p))
+                                .line(&arm_tuple)
                                 .after(",");
                                 type_check.push_block(pos);
                                 // let this cover both the negative int case + error case
@@ -3016,7 +3028,7 @@ impl GenerationScope {
                                         String::new()
                                     }
                                 ))
-                                .line(format!("(x as {}, Some(enc))", p))
+                                .line(&arm_tuple)
                                 .after(",");
                                 type_check.push_block(neg);
                             } else {
@@ -3802,7 +3814,12 @@ impl GenerationScope {
                                     "{}_key_encodings.insert({}{}, {});",
                                     config.var_name,
                                     key_var_name,
-                                    if key_type.encoding_var_is_copy(types) {
+                                    // The inserted expr is the key VALUE, so gate the clone on the
+                                    // key value's copy-ness (matching the adjacent dup-check block),
+                                    // NOT its encoding var's — a composite (e.g. array) key value is
+                                    // a non-Copy Vec even though its length-encoding var is Copy, so
+                                    // moving it here then reusing it below is a preserve-only E0382.
+                                    if key_type.is_copy(types) {
                                         ""
                                     } else {
                                         ".clone()"
@@ -3817,7 +3834,10 @@ impl GenerationScope {
                                     "{}_value_encodings.insert({}{}, {});",
                                     config.var_name,
                                     key_var_name,
-                                    if key_type.encoding_var_is_copy(types) {
+                                    // Same as the key-encoding insert: the map is keyed by the key
+                                    // VALUE, so gate its clone on the value's copy-ness, not the
+                                    // encoding var's.
+                                    if key_type.is_copy(types) {
                                         ""
                                     } else {
                                         ".clone()"

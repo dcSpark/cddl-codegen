@@ -1,0 +1,587 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Garm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            Garm::Ga(ga) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_tag(15u64)?;
+                if *ga >= 0 {
+                    serializer.write_unsigned_integer(*ga as u64)
+                } else {
+                    serializer.write_negative_integer_sz(
+                        *ga as i128,
+                        cbor_event::Sz::canonical((*ga + 1).abs() as u64),
+                    )
+                }
+            }
+            Garm::Gb(gb) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_text(gb)
+            }
+        }
+    }
+}
+
+impl Deserialize for Garm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            match raw.cbor_type()? {
+                cbor_event::Type::Tag => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let ga = match raw.tag()? {
+                        15 => match raw.cbor_type()? {
+                            cbor_event::Type::UnsignedInteger => {
+                                raw.unsigned_integer()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .and_then(|x| {
+                                        if true {
+                                            Err(DeserializeFailure::RangeCheck {
+                                                found: x as isize,
+                                                min: Some(-10),
+                                                max: Some(-4),
+                                            }
+                                            .into())
+                                        } else {
+                                            Ok(x)
+                                        }
+                                    })? as i64
+                            }
+                            _ => raw
+                                .negative_integer_sz()
+                                .map_err(Into::<DeserializeError>::into)
+                                .and_then(|(x, _enc)| {
+                                    if x < -10 || x > -4 {
+                                        Err(DeserializeFailure::RangeCheck {
+                                            found: x as isize,
+                                            min: Some(-10),
+                                            max: Some(-4),
+                                        }
+                                        .into())
+                                    } else {
+                                        Ok((x, _enc))
+                                    }
+                                })
+                                .map(|(x, _enc)| x)? as i64,
+                        },
+                        tag => {
+                            return Err(DeserializeFailure::TagMismatch {
+                                found: tag,
+                                expected: 15,
+                            }
+                            .into())
+                        }
+                    };
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Garm::Ga(ga))
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let gb = raw.text()?;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Garm::Gb(gb))
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Garm"))
+    }
+}
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(7))?;
+        self.a.serialize(serializer)?;
+        self.b.serialize(serializer)?;
+        self.c.serialize(serializer)?;
+        self.d.serialize(serializer)?;
+        self.e.serialize(serializer)?;
+        self.f.serialize(serializer)?;
+        let mut g_inner_se = Serializer::new_vec();
+        if self.g >= 0 {
+            g_inner_se.write_unsigned_integer(self.g as u64)?;
+        } else {
+            g_inner_se.write_negative_integer_sz(
+                self.g as i128,
+                cbor_event::Sz::canonical((self.g + 1).abs() as u64),
+            )?;
+        }
+        let g_bytes = g_inner_se.finalize();
+        serializer.write_bytes(&g_bytes)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(7)?;
+            read_len.finish()?;
+            let a = TaggedCtlNe::deserialize(raw).map_err(|e: DeserializeError| e.annotate("a"))?;
+            let b =
+                TaggedRangeIncl::deserialize(raw).map_err(|e: DeserializeError| e.annotate("b"))?;
+            let c =
+                TaggedRangeExcl::deserialize(raw).map_err(|e: DeserializeError| e.annotate("c"))?;
+            let d =
+                TaggedRangeNint::deserialize(raw).map_err(|e: DeserializeError| e.annotate("d"))?;
+            let e =
+                TaggedRangeUint::deserialize(raw).map_err(|e: DeserializeError| e.annotate("e"))?;
+            let f = Garm::deserialize(raw).map_err(|e: DeserializeError| e.annotate("f"))?;
+            let g = (|| -> Result<_, DeserializeError> {
+                let g_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(std::io::Cursor::new(g_bytes));
+                Ok(match inner_de.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => inner_de
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x == 1 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(2),
+                                    max: Some(0),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })
+                        .and_then(|x| {
+                            if x > 9223372036854775807 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => inner_de
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x == 1 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(2),
+                                    max: Some(0),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .and_then(|(x, _enc)| {
+                            if x < -9223372036854775808 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                })
+            })()
+            .map_err(|e| e.annotate("g"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder {
+                a,
+                b,
+                c,
+                d,
+                e,
+                f,
+                g,
+            })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedCtlNe {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        if self.0 >= 0 {
+            serializer.write_unsigned_integer(self.0 as u64)
+        } else {
+            serializer.write_negative_integer_sz(
+                self.0 as i128,
+                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+            )
+        }
+    }
+}
+
+impl Deserialize for TaggedCtlNe {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.tag()? {
+                11 => match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 9223372036854775807 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -9223372036854775808 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                },
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 11,
+                    }
+                    .into())
+                }
+            };
+            if inner == 1 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(2),
+                    max: Some(0),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("TaggedCtlNe"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedRangeExcl {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        if self.0 >= 0 {
+            serializer.write_unsigned_integer(self.0 as u64)
+        } else {
+            serializer.write_negative_integer_sz(
+                self.0 as i128,
+                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+            )
+        }
+    }
+}
+
+impl Deserialize for TaggedRangeExcl {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.tag()? {
+                11 => match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 9223372036854775807 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -9223372036854775808 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                },
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 11,
+                    }
+                    .into())
+                }
+            };
+            if inner < -10 || inner > 9 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(9),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("TaggedRangeExcl"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedRangeIncl {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        if self.0 >= 0 {
+            serializer.write_unsigned_integer(self.0 as u64)
+        } else {
+            serializer.write_negative_integer_sz(
+                self.0 as i128,
+                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+            )
+        }
+    }
+}
+
+impl Deserialize for TaggedRangeIncl {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.tag()? {
+                11 => match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 9223372036854775807 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -9223372036854775808 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                },
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 11,
+                    }
+                    .into())
+                }
+            };
+            if inner < -10 || inner > 10 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(10),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("TaggedRangeIncl"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedRangeNint {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        if self.0 >= 0 {
+            serializer.write_unsigned_integer(self.0 as u64)
+        } else {
+            serializer.write_negative_integer_sz(
+                self.0 as i128,
+                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+            )
+        }
+    }
+}
+
+impl Deserialize for TaggedRangeNint {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.tag()? {
+                11 => match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => raw
+                        .unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 9223372036854775807 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })? as i64,
+                    _ => raw
+                        .negative_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(x, _enc)| {
+                            if x < -9223372036854775808 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as isize,
+                                    min: Some(-9223372036854775808),
+                                    max: Some(9223372036854775807),
+                                }
+                                .into())
+                            } else {
+                                Ok((x, _enc))
+                            }
+                        })
+                        .map(|(x, _enc)| x)? as i64,
+                },
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 11,
+                    }
+                    .into())
+                }
+            };
+            if inner < -10 || inner > -4 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(-10),
+                    max: Some(-4),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("TaggedRangeNint"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedRangeUint {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(11u64)?;
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl Deserialize for TaggedRangeUint {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.tag()? {
+                11 => raw.unsigned_integer()?,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 11,
+                    }
+                    .into())
+                }
+            };
+            if inner < 3 || inner > 9 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as isize,
+                    min: Some(3),
+                    max: Some(9),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("TaggedRangeUint"))
+    }
+}

@@ -119,7 +119,7 @@ impl Deserialize for EnumKeyHolder {
                             .into());
                         }
                         choice_keyed_value_encodings
-                            .insert(choice_keyed_key, choice_keyed_value_encoding);
+                            .insert(choice_keyed_key.clone(), choice_keyed_value_encoding);
                     }
                     Ok((
                         choice_keyed_table,
@@ -157,7 +157,8 @@ impl Deserialize for EnumKeyHolder {
                             )))
                             .into());
                         }
-                        int_keyed_value_encodings.insert(int_keyed_key, int_keyed_value_encoding);
+                        int_keyed_value_encodings
+                            .insert(int_keyed_key.clone(), int_keyed_value_encoding);
                     }
                     Ok((
                         int_keyed_table,
