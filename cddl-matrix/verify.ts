@@ -38,7 +38,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ALT_PRODUCTIONS, ROOT, grammarAltCoverage, loadMatrixInputs, stableJson } from "./lib";
+import { ALT_PRODUCTIONS, DECODE_FLOOR_ARM_EXEMPT, ROOT, grammarAltCoverage, loadMatrixInputs, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
 
 process.chdir(ROOT);
 
@@ -891,6 +891,10 @@ function decodeForeignEvidence(fo?: ForeignOutcome): string {
 }
 
 // --- D3: mint one row (returns its CatalogRow; accumulates triage/pin-break/dropped notes) -----------
+// For a choice row in the arm-coverage floor's scope (`resolveChoiceArmClasses`, shared with the drift
+// gate's § 7), a resample-until-covered loop (below) ensures the committed vectors carry >=1 spec-valid
+// accept per resolvable arm class, so a randomized draw that misses a whole arm can't under-claim the
+// row; half-precision (f9) float candidates are skipped there (cbor_event 2.4.0 mis-decode).
 function mintRow(id: string, axis: string, example: string, prev: CatalogRow | undefined,
                  triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
   const pin = (reason: string): CatalogRow => ({ id, axis, example, pinned_reason: reason, vectors: [] });
@@ -952,6 +956,57 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
     const { ruby, rust } = validateBoth(spec, c.hex);
     if (ruby === 0 && rust === 0) validatedAccept.push(c);
     else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
+  }
+
+  // --- Accept-vector ARM-COVERAGE floor (resample-until-covered) --------------------------------
+  // A multi-arm choice row can land with a whole arm UNSAMPLED (the FOREIGN_K draws above are random),
+  // silently under-claiming its decode verdict. Reuse the SAME conservative resolver the drift gate's
+  // § 7 uses (`resolveChoiceArmClasses` in lib.ts — ONE source of truth; its twin consumer is
+  // project_decode_conformance.ts). While any resolvable arm class lacks a validated spec-valid accept
+  // vector, draw extra ruby candidates (bounded) and keep the two-oracle-valid ones that cover a MISSING
+  // class. HALF-PRECISION (f9) float candidates are SKIPPED: cbor_event 2.4.0 mis-decodes f9 heads
+  // (`Special::Float(f as f64)` casts the raw 16 bits — `f9 4200` = 3.0 decodes as 16896.0;
+  // cddl-matrix/ROADMAP.md § findings, "cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats"), and
+  // ruby's diag2cbor prefers the shortest float encoding so a float sample often arrives f9 — an f9
+  // accept vector would replay Ok (accept asserts Ok only) but with a silently corrupted value, tripping
+  // the replay gate's encoding-variant leg. Take an f32/f64 (fa/fb) float instead; prune the f9 skip when
+  // a fixed cbor_event ships. On cap exhaustion with a genuinely-uncovered (unledgered) class, exit 1.
+  const floor = resolveChoiceArmClasses(example);
+  if (floor) {
+    // A genuinely-unmintable arm class (a documented oracle gap) is ledgered exempt — don't pursue it
+    // (the two-oracle gate can't admit it, so draws would just exhaust the cap). The drift gate's § 7
+    // stale-guards the same ledger, so a class that becomes mintable fails there and gets re-minted.
+    const required = new Set(floor.classes.filter(c => !Object.hasOwn(DECODE_FLOOR_ARM_EXEMPT, `${id}/${c}`)));
+    const coveredClasses = () => new Set(validatedAccept.map(c => vectorShapeClass(c.hex, mode === "holder")));
+    const missing = () => [...required].filter(c => !coveredClasses().has(c));
+    const ARM_FLOOR_EXTRA_CAP = 60;  // bounded extra `generate` draws before giving up
+    let extra = 0;
+    while (missing().length && extra < ARM_FLOOR_EXTRA_CAP) {
+      extra++;
+      const g = rubyGenDiag(spec);
+      if (g.exit !== 0) continue;
+      const hex = diagToHex(g.diag);
+      if (!hex || seen.has(hex) || excludedHex(hex)) continue;
+      seen.add(hex);
+      const cls = vectorShapeClass(hex, mode === "holder");
+      if (!missing().includes(cls)) continue;  // an already-covered (or exempt) class — don't bloat the row
+      const itemHead = parseInt((mode === "holder" ? hex.slice(4) : hex).slice(0, 2), 16);
+      if (itemHead === 0xf9) continue;          // half-precision float: cbor_event 2.4.0 mis-decode (see above)
+      const { ruby, rust } = validateBoth(spec, hex);
+      if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
+      else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
+    }
+    const stillMissing = missing();  // exempt classes already excluded from `required`
+    if (stillMissing.length) {
+      console.error(
+        `ARM-COVERAGE FLOOR: row '${id}' left arm class(es) [${stillMissing.join(", ")}] with NO spec-valid ` +
+          `accept vector after ${ARM_FLOOR_EXTRA_CAP} extra generate draws (required classes {${[...required].join(", ")}}). ` +
+          `The randomized mint could not cover the arm — investigate (resample bias, a mis-resolved arm, or a genuine ` +
+          `oracle gap) and either fix it or add a cited DECODE_FLOOR_ARM_EXEMPT entry in lib.ts. Refusing to mint an ` +
+          `under-claiming row.`,
+      );
+      process.exit(1);
+    }
   }
   // Class-aware reject re-validation (the inverse gates):
   //   class="constraint" — spec-INVALID CBOR that violates a constraint the row enforces. Keep iff

@@ -36,6 +36,25 @@
  *      range rows sat that way until the fork's `885c61c` fix) it must not carry the mint's `8200`
  *      holder preamble. If a standalone row's instances genuinely begin `[0, …]`, add an accept
  *      vector sharing the shape.
+ *   7. Accept-vector ARM-coverage floor for choice rows — a randomized mint can land a multi-arm choice
+ *      row with a whole arm UNSAMPLED, silently under-claiming the row's decode verdict (at HEAD
+ *      `prelude.number` = `int / float` carried only int-headed accepts; the float arm had ZERO
+ *      decode-direction evidence). For each ACTIVE catalog row that (a) has >=1 spec-VALID accept
+ *      vector and (b) whose matrix `example`'s root rule RHS is a type CHOICE with statically-resolvable
+ *      arm head major-classes (`resolveChoiceArmClasses` in lib.ts — the ONE resolver the mint's
+ *      resample-until-covered loop shares), require >=1 spec-valid accept vector per resolvable arm
+ *      class. Majors 0/1 merge into one "int" class (the § 6 convention — int-family instances span both
+ *      signs), so `prelude.integer`'s plain-uint-unsampled gap does NOT flag (nint covers int); only a
+ *      genuinely-unsampled DISTINCT class flags. Resolution is CONSERVATIVE (the floor must not guess):
+ *      an explicit-choice arm whose head is unresolvable is exempt per-arm; a `/=` incremental extension
+ *      or a control-op-decorated RHS is out of scope; a prelude alias resolves only when the root RHS is
+ *      EXACTLY a bare prelude choice-type name. Two decay pins guard it: EXPECTED_FLOOR_SCOPE pins the
+ *      EXACT (row id -> sorted arm classes) set the resolver fires on (a silent widen/narrow fails
+ *      got/want), and DECODE_FLOOR_ARM_EXEMPT (lib.ts, stale-guarded) ledgers a genuinely unmintable arm
+ *      class (an oracle gap) with a citation. At HEAD it holds ONE entry — `prelude.number`'s float arm,
+ *      blocked by a rust-`cddl` reference bug that mis-validates a float against the prelude `number`
+ *      alias (draft/rust-cddl-number-float-gap.md), so the two-oracle mint gate can't admit a spec-valid
+ *      float `number` vector; the stale-guard prunes the entry (forcing a re-mint) once rust is fixed.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
@@ -46,6 +65,7 @@
  *   bun run project_decode_conformance.ts   -> the drift gate (default)
  */
 import { readFileSync } from "node:fs";
+import { DECODE_FLOOR_ARM_EXEMPT, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
@@ -232,6 +252,66 @@ for (const r of rows) {
   });
 }
 
+// --- §7: accept-vector ARM-coverage floor for choice rows -----------------------------------------
+// The EXACT (row id -> sorted arm classes) set the CONSERVATIVE resolver (lib.ts, shared with the mint)
+// fires on at HEAD. Decay pin (the query_q4 EXPECTED_ENFORCE_YES pattern): a resolver change that
+// silently widens or narrows the in-scope set fails got/want here — growing/shrinking it must be a
+// conscious edit. Only `prelude.number` is under-covered at HEAD (float arm class 7 unsampled); the
+// re-mint's resample loop closes it. Classes are majors-0/1-merged ("int"); `prelude.integer` /
+// `.unsigned` therefore read {6, int} (nint covers int, tagged bignum covers 6) and do NOT flag on their
+// unsampled plain-uint side.
+const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  "contain.choice-member.prelude.null": ["3", "7"],
+  "contain.choice-member.type2.tag": ["6"],
+  "prelude.bigint": ["6"],
+  "prelude.bool": ["7"],
+  "prelude.float": ["7"],
+  "prelude.integer": ["6", "int"],
+  "prelude.number": ["7", "int"],
+  "prelude.unsigned": ["6", "int"],
+  "type.choice": ["2", "3", "int"],
+  "type.enum": ["int"],
+};
+const floorScope: Record<string, string[]> = {};       // resolver-fired set (id -> sorted classes)
+const uncoveredInScope = new Set<string>();             // "<id>/<class>" pairs genuinely uncovered
+for (const r of rows) {
+  const id = typeof r.id === "string" ? r.id : undefined;
+  if (id === undefined) continue;
+  const vectors = r.vector ?? [];
+  if (vectors.length === 0 || !supported.has(id)) continue;  // pinned/vectorless or non-live (other §§ flag)
+  const example = typeof r.example === "string" ? r.example : "";
+  const res = resolveChoiceArmClasses(example);
+  if (!res) continue;                                        // out of scope (not a resolvable choice)
+  const holder = r.mode === "holder";
+  const specValidAccepts = vectors.filter(
+    v => v.expect === "accept" && v.class !== "over-acceptance" &&
+      typeof v.hex === "string" && (v.hex as string).length >= (holder ? 6 : 2),
+  );
+  if (specValidAccepts.length === 0) continue;               // scope requires >=1 spec-valid accept vector
+  floorScope[id] = res.classes;
+  const covered = new Set(specValidAccepts.map(v => vectorShapeClass(v.hex as string, holder)));
+  for (const cls of res.classes) if (!covered.has(cls)) uncoveredInScope.add(`${id}/${cls}`);
+}
+// Scope pin: the resolver-fired set must equal EXPECTED_FLOOR_SCOPE exactly.
+const gotScope = JSON.stringify(Object.fromEntries(Object.keys(floorScope).sort().map(k => [k, floorScope[k]])));
+const wantScope = JSON.stringify(Object.fromEntries(Object.keys(EXPECTED_FLOOR_SCOPE).sort().map(k => [k, EXPECTED_FLOOR_SCOPE[k]])));
+if (gotScope !== wantScope)
+  problems.push(`arm-coverage floor scope drifted (the resolver fires on a different (row -> arm classes) set than pinned):\n    got : ${gotScope}\n    want: ${wantScope}`);
+// Coverage floor: each in-scope arm class needs >=1 spec-valid accept vector, unless ledgered exempt.
+for (const key of [...uncoveredInScope].sort()) {
+  if (Object.hasOwn(DECODE_FLOOR_ARM_EXEMPT, key)) continue;
+  const [id, cls] = key.split("/");
+  problems.push(
+    `\`${id}\`: choice arm class "${cls}" has ZERO spec-valid accept vector(s) (required {${(floorScope[id] ?? []).join(", ")}}) — ` +
+      `re-mint \`bun run verify.ts --mint-decode-foreign --only=${id}\` (resample-until-covered), or add a cited DECODE_FLOOR_ARM_EXEMPT entry for a genuine oracle gap`,
+  );
+}
+// Exemption-ledger stale guard: every ledgered (row, class) must still be a genuinely-uncovered in-scope
+// pair — an entry for a now-covered / out-of-scope pair is stale and fails the gate.
+for (const key of Object.keys(DECODE_FLOOR_ARM_EXEMPT).sort())
+  if (!uncoveredInScope.has(key))
+    problems.push(`DECODE_FLOOR_ARM_EXEMPT names \`${key}\` which is no longer a genuinely-uncovered in-scope arm class (covered now, or the row left the floor's scope) — stale ledger entry, remove it`);
+
 // Completeness §1: every supported matrix row must have a catalog row.
 for (const id of [...supported].sort())
   if (!catalogById.has(id))
@@ -270,6 +350,7 @@ if (problems.length) {
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
-    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ${supported.size} supported matrix rows`,
+    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ` +
+    `${Object.keys(floorScope).length} arm-coverage-floor rows (${Object.keys(DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class) · ${supported.size} supported matrix rows`,
 );
 process.exit(0);
