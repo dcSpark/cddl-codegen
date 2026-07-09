@@ -58,6 +58,15 @@ const NEST_FILLER_SAMPLES: usize = 2;
 /// the hazard sweep already covers name×position systematically; here it's realistic noise).
 const HAZARD_EVERY: u64 = 16;
 /// Layer 2 batching: ~this many RULES per generated crate (a composition is 1 root + its aux rules).
+///
+/// BATCH-MASKING CAVEAT: batching compiles many compositions into ONE crate, so a failure class
+/// whose symptom is a missing CRATE-GLOBAL definition (the undefined-`Int` class: `Int` is emitted
+/// iff any rule registers a reference) can be masked by a batch-mate that happens to define the
+/// global — the per-member attribution rerun only fires when the BATCH fails, so a green batch is
+/// not a per-composition guarantee for this class. Consequence: a known-bad class proven by a
+/// STANDALONE repro belongs in the ledger even if the current batch boundaries happen to compile it
+/// (the `outer=cbor_payload filler=type2.map` entry is the precedent — masked in the default gate,
+/// surfaced by the wasm leg's different batch boundaries).
 const LAYER2_RULES_PER_BATCH: usize = 40;
 
 // ---- deterministic rng ----------------------------------------------------------------------------
@@ -686,9 +695,10 @@ std::thread_local! {
 /// failures stay visible), and restore before the window closes.
 ///
 /// `extra_args` are appended to the in-process `Cli::parse_from` invocation, selecting the emission
-/// PROFILE (default = `&[]`, byte-identical to the historical hard-coded call; preserve/json/wasm
-/// pass their profile flags). The composition SET is profile-INDEPENDENT — only classification
-/// runs per profile — so the determinism assert in layer 1 keeps holding regardless of `extra_args`.
+/// PROFILE. Callers must pass the wasm mode explicitly (`--wasm=false` or `--wasm=true`) so profile
+/// classification cannot accidentally diverge from the out-of-process generation mode. The
+/// composition SET is profile-INDEPENDENT — only classification runs per profile — so the determinism
+/// assert in layer 1 keeps holding regardless of `extra_args`.
 fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
     with_thread_silenced_panics(|| {
         let prev: std::sync::Arc<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync> =
@@ -759,8 +769,6 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
                             path.to_str().unwrap(),
                             "--output",
                             "recomb_unused",
-                            "--wasm",
-                            "false",
                         ];
                         argv.extend_from_slice(extra_args);
                         let res: Vec<Outcome> = chunk
@@ -866,7 +874,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "type-choice arm with no storable representation (`any` arm); pinned by tests/robustness/choice_any_arm.cddl (recombination finding). The sibling `[group]`-arm shape (`[coords] / tstr`) is now storable — it promotes the plain group to a Record struct and generates a proper enum variant (pinned by tests/robustness/choice_group_array_arm.cddl, now an `ok` fixture)",
     ),
     (
-        "should not expose Fixed type in member",
+        "should not expose Fixed type",
         "bare fixed value under an occurrence / tagged prelude constant; pinned by tests/robustness/fixed_value_occurrence.cddl and tests/robustness/tagged_prelude_constant.cddl (recombination findings)",
     ),
 ];
@@ -885,7 +893,7 @@ fn recombination_generation_sweep() {
         "composition enumeration must be deterministic (seeded; no hash iteration order)"
     );
 
-    let outcomes = classify_all(&comps, &[]);
+    let outcomes = classify_all(&comps, &["--wasm", "false"]);
 
     let mut ok = 0usize;
     let mut graceful = 0usize;
@@ -999,6 +1007,15 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
         "outer=cbor_payload filler=memberkey.type1",
         "int-valued table under a .cbor payload dangles the undefined `Int` wrapper; cddl-matrix/ROADMAP.md § findings, `cannot find type Int` entry",
     ),
+    (
+        "outer=cbor_payload filler=type2.map",
+        "the `{ * tstr => int }` sibling of the entry above — same undefined-`Int` class, profile-independent \
+         (fails default `cargo test` standalone). First surfaced by the WASM leg's different batch \
+         boundaries because default batching MASKS it: `Int` is a crate-global extern emitted iff any \
+         rule registers a reference, so a batch-mate whose `int` usage registers it defines `Int` for \
+         the whole batch crate (the batch-masking note on `LAYER2_RULES_PER_BATCH`); \
+         cddl-matrix/ROADMAP.md § findings, `cannot find type Int` entry",
+    ),
     // -- tagged fixed value inside a map-rep group-choice arm (E0618) ------------------------------
     (
         "outer=garm_map inner=tag_content filler=type2.value",
@@ -1054,11 +1071,12 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
 struct Layer2Profile<'a> {
     /// Human profile name — labels the scratch root, the target dir, and the summary line.
     name: &'a str,
-    /// Profile flags for BOTH in-process classification (`classify_all`) and out-of-process
-    /// generation. Sourced from `crate::tests::ALL_PROFILES` by the caller (never re-hard-coded).
+    /// Profile flags applied to BOTH in-process classification (`classify_all`) and out-of-process
+    /// generation. This includes the explicit wasm mode, so the generation path being classified is
+    /// the same path later generated.
     profile_args: &'a [&'a str],
-    /// Exec-side generation flags (e.g. `--emit-tests=true --wasm=false`), appended AFTER
-    /// `profile_args` when shelling out to the generator.
+    /// Generation-only extras (for example `--emit-tests=true`), appended AFTER `profile_args` when
+    /// shelling out to the generator.
     exec_args: &'a [&'a str],
     /// Which generated crate to verify (`rust` for the emit-tests profiles, `wasm` for item 3).
     crate_subdir: &'a str,
@@ -1334,8 +1352,8 @@ fn run_layer2_profile(p: &Layer2Profile) {
 fn recombination_crates_execute() {
     run_layer2_profile(&Layer2Profile {
         name: "default",
-        profile_args: &[],
-        exec_args: &["--emit-tests=true", "--wasm=false"],
+        profile_args: &["--wasm=false"],
+        exec_args: &["--emit-tests=true"],
         crate_subdir: "rust",
         cargo_subcmd: "test",
         panic_ledger: &[],
@@ -1427,16 +1445,18 @@ fn recombination_preserve_crates_execute() {
         .iter()
         .find(|(name, _)| *name == "preserve")
         .expect("`preserve` profile missing from crate::tests::ALL_PROFILES");
+    let mut profile_args = preserve_args.to_vec();
+    profile_args.push("--wasm=false");
     run_layer2_profile(&Layer2Profile {
         name,
-        profile_args: preserve_args,
-        exec_args: &["--emit-tests=true", "--wasm=false"],
+        profile_args: &profile_args,
+        exec_args: &["--emit-tests=true"],
         crate_subdir: "rust",
         cargo_subcmd: "test",
         panic_ledger: PRESERVE_ONLY_PANIC_CLASSES,
         known_bad: LAYER2_PRESERVE_KNOWN_BAD,
         guard_shared: false,
-        // Observed baseline: 856 preserve-ok / 818 executed (38 known-bad excluded); floors ~10% under.
+        // Observed baseline: 856 preserve-ok / 817 executed (39 known-bad excluded); floors ~10% under.
         ok_floor: 770,
         executed_floor: 735,
     });
@@ -1483,17 +1503,68 @@ fn recombination_json_crates_execute() {
         .iter()
         .find(|(name, _)| *name == "json")
         .expect("`json` profile missing from crate::tests::ALL_PROFILES");
+    let mut profile_args = json_args.to_vec();
+    profile_args.push("--wasm=false");
     run_layer2_profile(&Layer2Profile {
         name,
-        profile_args: json_args,
-        exec_args: &["--emit-tests=true", "--wasm=false"],
+        profile_args: &profile_args,
+        exec_args: &["--emit-tests=true"],
         crate_subdir: "rust",
         cargo_subcmd: "test",
         panic_ledger: JSON_ONLY_PANIC_CLASSES,
         known_bad: LAYER2_JSON_KNOWN_BAD,
         guard_shared: false,
-        // Observed baseline: 927 json-ok / 898 executed (29 known-bad excluded); floors ~10% under.
+        // Observed baseline: 927 json-ok / 897 executed (30 known-bad excluded); floors ~10% under.
         ok_floor: 835,
         executed_floor: 808,
+    });
+}
+
+// ---- wasm profile: panic ledger + known-bad ledger + the escalation gate --------------------------
+/// Panic classes that appear when classifying under `--wasm=true` but are ok/graceful under the
+/// default `--wasm=false` profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` allowlist; a wasm
+/// panic matching neither is a NEW finding. Each non-empty entry must cite an existing
+/// `cddl-matrix/ROADMAP.md` § findings entry or another committed stable pin. Vacuity-guarded in
+/// `recombination_wasm_crates_check`.
+const WASM_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[(
+    "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now? @ src/generation.rs @ fn cddl_codegen::generation::codegen_table_type",
+    "a CBOR tag wrapping a table panics only during wasm generation; cddl-matrix/ROADMAP.md § findings, `A CBOR tag wrapping a table panics during wasm generation` entry",
+)];
+
+/// Wasm-profile compile known-bad classes. Desc-substring keyed, each citing its pin;
+/// vacuity-guarded in `recombination_wasm_crates_check`. The shared `LAYER2_KNOWN_BAD` also applies
+/// as an un-guarded exclusion.
+const LAYER2_WASM_KNOWN_BAD: &[(&str, &str)] = &[
+    // (The undefined-`Int` `.cbor`-payload-table class first SURFACED here, but it is
+    // profile-independent — it lives in the shared LAYER2_KNOWN_BAD with the batch-masking note.)
+    (
+        "outer=cbor_payload inner=map_key filler=prelude.bignint",
+        ".cbor payload wrapping a bignint-key table leaves the generated wasm table-wrapper alias undefined; cddl-matrix/ROADMAP.md § findings, `A .cbor payload wrapping a bignint-key table leaves the wasm wrapper alias undefined` entry",
+    ),
+];
+
+/// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the WASM escalation of layer 2.
+/// Classifies every composition under `--wasm=true`, batches the wasm-ok ones, generates
+/// `--wasm=true` without emitted tests, and `cargo check`s the generated `wasm/` crate. The wasm
+/// crate depends on the generated rust crate by path, so rust-side compile failures surface through
+/// the single check. This is a fuzz-recombination cross-check of the wasm emission path; the
+/// wasm-ABI matrix remains the systematic per-shape wasm surface owner.
+///
+/// Run: `cargo test --bin cddl-codegen recombination_wasm_crates_check -- --exact --ignored --nocapture`.
+#[test]
+#[ignore]
+fn recombination_wasm_crates_check() {
+    run_layer2_profile(&Layer2Profile {
+        name: "wasm",
+        profile_args: &["--wasm=true"],
+        exec_args: &[],
+        crate_subdir: "wasm",
+        cargo_subcmd: "check",
+        panic_ledger: WASM_ONLY_PANIC_CLASSES,
+        known_bad: LAYER2_WASM_KNOWN_BAD,
+        guard_shared: false,
+        // Observed baseline: 922 wasm-ok / 892 checked (30 known-bad excluded); floors ~10% under.
+        ok_floor: 830,
+        executed_floor: 803,
     });
 }

@@ -336,6 +336,23 @@ are ledgered here (that's what the probe/gate error messages point at).
   - **A composite (array) map key mis-compiles under preserve** (E0382: use of moved value
     `index_0_key`): `[{ [+ uint] => uint }]` — a map whose KEY is an array-of-one-or-more builds the
     key encoding by moving a binding it later reuses. Default-profile the same spec compiles + round-trips.
+- **A CBOR tag wrapping a table panics during wasm generation** (`recombination_wasm_crates_check`:
+  generation is ok under the default `--wasm=false` profile but panics under `--wasm=true` before the
+  generated wasm crate can be checked). Examples include `#6.11({ tstr => int })`,
+  `#6.11({ * tstr => int })`, and tagged map-key tables such as `#6.11({ int .ne 1 => uint })`.
+  The panic is `codegen_table_type`'s wasm-only "TODO: why is this not used anymore?" assertion.
+  The default-profile verification is explicit: the same minimized tagged-table spec exits
+  successfully with `--wasm=false` and exits 101 with `--wasm=true`. Candidate fix: route tagged
+  table wrapper generation through a wasm-exposable table representation, or reject the shape
+  gracefully before the wasm-side assertion.
+- **A `.cbor` payload wrapping a bignint-key table leaves the wasm wrapper alias undefined**
+  (`recombination_wasm_crates_check`: generation is ok under `--wasm=true`, the generated rust crate
+  checks, but the generated wasm crate fails with `cannot find type MapPreludeBignintToU64`).
+  Minimal shape: `x = bytes .cbor { bignint => uint }`. The default-profile verification is
+  explicit: the same minimized spec generates with `--wasm=false --emit-tests=true` and its rust
+  crate passes `cargo test`, so the undefined alias is a wasm wrapper emission gap rather than a
+  rust-side table serialization gap. Candidate fix: ensure generated wasm aliases for synthesized
+  map-key table wrappers are declared/imported in the scope that emits the `.cbor` payload wrapper.
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
@@ -388,7 +405,12 @@ are ledgered here (that's what the probe/gate error messages point at).
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element. Third instance from the recombination fuzzer's layer-2 run: an
   `int`-VALUED table under a `.cbor` payload (`x = bytes .cbor { tstr => int }`) dangles the same
-  undefined `Int` (held in the sweep's `LAYER2_KNOWN_BAD` ledger citing this entry).
+  undefined `Int` (held in the sweep's `LAYER2_KNOWN_BAD` ledger citing this entry), and its
+  `{ * tstr => int }` sibling is a fourth. The sibling carries a harness lesson: `Int` is a
+  crate-global extern emitted iff any rule registers a reference, so the sweep's BATCHING can mask
+  the dangle when a batch-mate registers it — the class stayed green in the default gate for that
+  reason and surfaced only under the wasm leg's different batch boundaries (the batch-masking note
+  on `LAYER2_RULES_PER_BATCH` in `src/tests/recombination_tests.rs`).
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; generics on
   plain groups rejected. Under `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
