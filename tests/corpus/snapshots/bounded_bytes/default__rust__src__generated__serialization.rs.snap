@@ -22,7 +22,7 @@ impl cbor_event::se::Serialize for Hash {
 impl Deserialize for Hash {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = raw.bytes()? as Vec<u8>;
+            let inner = raw.bytes()?;
             if inner.len() > 32 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,

@@ -42,7 +42,7 @@ impl Deserialize for ExclusiveRange {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("v"))?;
             match len {
                 cbor_event::Len::Len(_) => (),

@@ -31,8 +31,7 @@ impl Deserialize for FixedFields {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(4)?;
             read_len.finish()?;
-            let a = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
             (|| -> Result<_, DeserializeError> {
                 let b_value = raw.text()?;
                 if b_value != "marker" {

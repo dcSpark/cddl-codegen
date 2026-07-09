@@ -39,7 +39,7 @@ impl cbor_event::se::Serialize for Bar {
         };
         if let Some(field) = &self.key_5 {
             serializer.write_unsigned_integer(5u64)?;
-            serializer.write_text(&field)?;
+            serializer.write_text(field)?;
         }
         if let Some(field) = &self.baz {
             serializer.write_text("baz")?;
@@ -94,7 +94,7 @@ impl Deserialize for Bar {
                             key_1 = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     Ok(match raw.cbor_type()? != cbor_event::Type::Special {
-                                        true => Some(raw.unsigned_integer()? as u64),
+                                        true => Some(raw.unsigned_integer()?),
                                         false => {
                                             if raw.special()? != cbor_event::Special::Null {
                                                 return Err(DeserializeFailure::ExpectedNull.into());
@@ -113,7 +113,7 @@ impl Deserialize for Bar {
                             key_5 = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.text()? as String)
+                                    Ok(raw.text()?)
                                 })()
                                 .map_err(|e| e.annotate("key_5"))?,
                             );
@@ -190,7 +190,7 @@ impl Deserialize for Bar {
                             derp = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.unsigned_integer()? as u64)
+                                    Ok(raw.unsigned_integer()?)
                                 })()
                                 .map_err(|e| e.annotate("derp"))?,
                             );

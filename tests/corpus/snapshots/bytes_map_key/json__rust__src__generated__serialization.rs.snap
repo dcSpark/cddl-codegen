@@ -18,12 +18,12 @@ impl cbor_event::se::Serialize for BytesKeyHolder {
         serializer.write_array(cbor_event::Len::Len(2))?;
         serializer.write_map(cbor_event::Len::Len(self.named.len() as u64))?;
         for (key, value) in self.named.iter() {
-            serializer.write_bytes(&key)?;
+            serializer.write_bytes(key)?;
             serializer.write_unsigned_integer(*value)?;
         }
         serializer.write_map(cbor_event::Len::Len(self.inline.len() as u64))?;
         for (key, value) in self.inline.iter() {
-            serializer.write_bytes(&key)?;
+            serializer.write_bytes(key)?;
             serializer.write_unsigned_integer(*value)?;
         }
         Ok(serializer)
@@ -49,8 +49,8 @@ impl Deserialize for BytesKeyHolder {
                             break;
                         }
                     }
-                    let named_key = raw.bytes()? as Vec<u8>;
-                    let named_value = raw.unsigned_integer()? as u64;
+                    let named_key = raw.bytes()?;
+                    let named_value = raw.unsigned_integer()?;
                     if named_table.insert(named_key.clone(), named_value).is_some() {
                         return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
                             "some complicated/unsupported type",
@@ -73,8 +73,8 @@ impl Deserialize for BytesKeyHolder {
                             break;
                         }
                     }
-                    let inline_key = raw.bytes()? as Vec<u8>;
-                    let inline_value = raw.unsigned_integer()? as u64;
+                    let inline_key = raw.bytes()?;
+                    let inline_value = raw.unsigned_integer()?;
                     if inline_table
                         .insert(inline_key.clone(), inline_value)
                         .is_some()

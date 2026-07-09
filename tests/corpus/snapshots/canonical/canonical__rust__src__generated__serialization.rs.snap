@@ -96,7 +96,7 @@ impl Serialize for Bar {
                             ),
                         )?;
                         serializer.write_text_sz(
-                            &field,
+                            field,
                             self.encodings
                                 .as_ref()
                                 .map(|encs| encs.key_5_encoding.clone())
@@ -544,7 +544,7 @@ impl Serialize for DeeplyNested {
                     .unwrap_or_else(|| (None, StringEncoding::default()));
                 buf.write_tag_sz(14u64, fit_sz(14u64, data_key_tag_encoding, force_canonical))?;
                 buf.write_bytes_sz(
-                    &k,
+                    k,
                     data_key_encoding.to_str_len_sz(k.len() as u64, force_canonical),
                 )?;
                 Ok((buf.finalize(), k, v))
@@ -669,7 +669,7 @@ impl Serialize for DeeplyNested {
                                     .cloned()
                                     .unwrap_or_default();
                             serializer.write_text_sz(
-                                &element,
+                                element,
                                 data_value_value_value_elem_elem_encoding
                                     .to_str_len_sz(element.len() as u64, force_canonical),
                             )?;
@@ -877,7 +877,7 @@ impl Deserialize for DeeplyNested {
                                     .is_some()
                                 {
                                     return Err(DeserializeFailure::DuplicateKey(Key::Uint(
-                                        data_value_value_key.into(),
+                                        data_value_value_key,
                                     ))
                                     .into());
                                 }
@@ -912,7 +912,7 @@ impl Deserialize for DeeplyNested {
                                 .is_some()
                             {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Uint(
-                                    data_value_key.into(),
+                                    data_value_key,
                                 ))
                                 .into());
                             }
@@ -1885,7 +1885,7 @@ impl Serialize for TableArrMembers {
                             .cloned()
                             .unwrap_or_default();
                         serializer.write_text_sz(
-                            &value,
+                            value,
                             table_value_encoding.to_str_len_sz(value.len() as u64, force_canonical),
                         )?;
                     }
@@ -2070,7 +2070,7 @@ impl Deserialize for TableArrMembers {
                                             .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
                                         if table_table.insert(table_key, table_value).is_some() {
                                             return Err(DeserializeFailure::DuplicateKey(
-                                                Key::Uint(table_key.into()),
+                                                Key::Uint(table_key),
                                             )
                                             .into());
                                         }
@@ -2245,7 +2245,7 @@ impl Serialize for TypeChoice {
                 text,
                 text_encoding,
             } => serializer.write_text_sz(
-                &text,
+                text,
                 text_encoding.to_str_len_sz(text.len() as u64, force_canonical),
             ),
             TypeChoice::ArrU64 {

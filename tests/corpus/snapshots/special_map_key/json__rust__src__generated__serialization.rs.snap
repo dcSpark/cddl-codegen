@@ -50,7 +50,7 @@ impl Deserialize for BkeyHolder {
                         }
                     }
                     let named_key = bool::deserialize(raw)?;
-                    let named_value = raw.unsigned_integer()? as u64;
+                    let named_value = raw.unsigned_integer()?;
                     if named_table.insert(named_key, named_value).is_some() {
                         return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
                             "some complicated/unsupported type",
@@ -74,7 +74,7 @@ impl Deserialize for BkeyHolder {
                         }
                     }
                     let inline_key = bool::deserialize(raw)?;
-                    let inline_value = raw.unsigned_integer()? as u64;
+                    let inline_value = raw.unsigned_integer()?;
                     if inline_table.insert(inline_key, inline_value).is_some() {
                         return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
                             "some complicated/unsupported type",

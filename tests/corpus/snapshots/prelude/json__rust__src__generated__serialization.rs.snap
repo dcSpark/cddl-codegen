@@ -79,8 +79,8 @@ impl Deserialize for Prelude {
                 .map_err(|e: DeserializeError| e.annotate("big_i"))?;
             let unsigned = PreludeUnsigned::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("unsigned"))?;
-            let t = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("t"))?;
-            let b = Ok(raw.bytes()? as Vec<u8>).map_err(|e: DeserializeError| e.annotate("b"))?;
+            let t = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("t"))?;
+            let b = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("b"))?;
             let intg = PreludeInteger::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("intg"))?;
             let big_n = PreludeBignint::deserialize(raw)
@@ -145,7 +145,7 @@ impl Deserialize for PreludeB64legacy {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                34 => raw.text()? as String,
+                34 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -173,7 +173,7 @@ impl Deserialize for PreludeB64url {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                33 => raw.text()? as String,
+                33 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -288,7 +288,7 @@ impl Deserialize for PreludeBignint {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                3 => raw.bytes()? as Vec<u8>,
+                3 => raw.bytes()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -316,7 +316,7 @@ impl Deserialize for PreludeBiguint {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                2 => raw.bytes()? as Vec<u8>,
+                2 => raw.bytes()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -388,7 +388,7 @@ impl Deserialize for PreludeEncodedCbor {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                24 => raw.bytes()? as Vec<u8>,
+                24 => raw.bytes()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -445,7 +445,7 @@ impl Deserialize for PreludeMimeMessage {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                36 => raw.text()? as String,
+                36 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -473,7 +473,7 @@ impl Deserialize for PreludeRegexp {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                35 => raw.text()? as String,
+                35 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -501,7 +501,7 @@ impl Deserialize for PreludeTdate {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                0 => raw.text()? as String,
+                0 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -534,7 +534,7 @@ impl Deserialize for PreludeUnsigned {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => {
-                    Ok(PreludeUnsigned::U64(raw.unsigned_integer()? as u64))
+                    Ok(PreludeUnsigned::U64(raw.unsigned_integer()?))
                 }
                 cbor_event::Type::Tag => Ok(PreludeUnsigned::PreludeBiguint(
                     PreludeBiguint::deserialize(raw)?,
@@ -560,7 +560,7 @@ impl Deserialize for PreludeUri {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                32 => raw.text()? as String,
+                32 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,

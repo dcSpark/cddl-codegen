@@ -97,7 +97,7 @@ impl cbor_event::se::Serialize for Bar {
                             ),
                         )?;
                         serializer.write_text_sz(
-                            &field,
+                            field,
                             self.encodings
                                 .as_ref()
                                 .map(|encs| encs.key_5_encoding.clone())

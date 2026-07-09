@@ -29,9 +29,8 @@ impl Deserialize for PairUse {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(2)?;
             read_len.finish()?;
-            let k = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("k"))?;
-            let v = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("v"))?;
+            let k = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("k"))?;
+            let v = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("v"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -77,7 +76,7 @@ impl Deserialize for RangedContainer {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("value"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
@@ -110,8 +109,8 @@ impl Deserialize for UintContainer {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let value = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("value"))?;
+            let value =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("value"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

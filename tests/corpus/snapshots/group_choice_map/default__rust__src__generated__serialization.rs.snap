@@ -22,7 +22,7 @@ impl cbor_event::se::Serialize for FixedValueArm {
             FixedValueArm::Text(text) => {
                 serializer.write_map(cbor_event::Len::Len(1))?;
                 serializer.write_unsigned_integer(3u64)?;
-                serializer.write_text(&text)
+                serializer.write_text(text)
             }
         }
     }
@@ -62,7 +62,7 @@ impl Deserialize for FixedValueArm {
                     }
                     .into());
                 }
-                let text = raw.text()? as String;
+                let text = raw.text()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {
@@ -163,7 +163,7 @@ impl DeserializeEmbeddedGroup for FixedValueArm0 {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Uint(2)).into());
                             }
                             key_2 = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("key_2"))?,
                             );
                         }
@@ -218,7 +218,7 @@ impl cbor_event::se::Serialize for MixedKeyTypes {
             MixedKeyTypes::B(b) => {
                 serializer.write_map(cbor_event::Len::Len(1))?;
                 serializer.write_text("b")?;
-                serializer.write_text(&b)
+                serializer.write_text(b)
             }
         }
     }
@@ -241,7 +241,7 @@ impl Deserialize for MixedKeyTypes {
                         }
                         .into());
                     }
-                    let uint = raw.unsigned_integer()? as u64;
+                    let uint = raw.unsigned_integer()?;
                     match len {
                         cbor_event::Len::Len(_) => (),
                         cbor_event::Len::Indefinite => match raw.special()? {
@@ -263,7 +263,7 @@ impl Deserialize for MixedKeyTypes {
                         }
                         .into());
                     }
-                    let b = raw.text()? as String;
+                    let b = raw.text()?;
                     match len {
                         cbor_event::Len::Len(_) => (),
                         cbor_event::Len::Indefinite => match raw.special()? {
@@ -292,7 +292,7 @@ impl cbor_event::se::Serialize for MultiFieldArm {
             MultiFieldArm::B(b) => {
                 serializer.write_map(cbor_event::Len::Len(1))?;
                 serializer.write_text("b")?;
-                serializer.write_text(&b)
+                serializer.write_text(b)
             }
         }
     }
@@ -332,7 +332,7 @@ impl Deserialize for MultiFieldArm {
                     }
                     .into());
                 }
-                let b = raw.text()? as String;
+                let b = raw.text()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {
@@ -424,7 +424,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                                 );
                             }
                             a = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("a"))?,
                             );
                         }
@@ -435,8 +435,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                                 );
                             }
                             x = Some(
-                                Ok(raw.text()? as String)
-                                    .map_err(|e: DeserializeError| e.annotate("x"))?,
+                                Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("x"))?,
                             );
                         }
                         unknown_key => {
@@ -499,7 +498,7 @@ impl cbor_event::se::Serialize for TextKeyed {
             TextKeyed::B(b) => {
                 serializer.write_map(cbor_event::Len::Len(1))?;
                 serializer.write_text("b")?;
-                serializer.write_text(&b)
+                serializer.write_text(b)
             }
         }
     }
@@ -523,7 +522,7 @@ impl Deserialize for TextKeyed {
                     }
                     .into());
                 }
-                let a = raw.unsigned_integer()? as u64;
+                let a = raw.unsigned_integer()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {
@@ -554,7 +553,7 @@ impl Deserialize for TextKeyed {
                     }
                     .into());
                 }
-                let b = raw.text()? as String;
+                let b = raw.text()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {
@@ -593,7 +592,7 @@ impl cbor_event::se::Serialize for UintKeyed {
             UintKeyed::Text(text) => {
                 serializer.write_map(cbor_event::Len::Len(1))?;
                 serializer.write_unsigned_integer(2u64)?;
-                serializer.write_text(&text)
+                serializer.write_text(text)
             }
         }
     }
@@ -617,7 +616,7 @@ impl Deserialize for UintKeyed {
                     }
                     .into());
                 }
-                let uint = raw.unsigned_integer()? as u64;
+                let uint = raw.unsigned_integer()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {
@@ -648,7 +647,7 @@ impl Deserialize for UintKeyed {
                     }
                     .into());
                 }
-                let text = raw.text()? as String;
+                let text = raw.text()?;
                 match len {
                     cbor_event::Len::Len(_) => (),
                     cbor_event::Len::Indefinite => match raw.special()? {

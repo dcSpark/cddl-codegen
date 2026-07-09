@@ -61,7 +61,7 @@ impl cbor_event::se::Serialize for ArrowValueKeys {
                             ),
                         )?;
                         serializer.write_text_sz(
-                            &field,
+                            field,
                             self.encodings
                                 .as_ref()
                                 .map(|encs| encs.first_encoding.clone())

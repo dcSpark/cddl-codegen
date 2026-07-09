@@ -103,7 +103,7 @@ impl cbor_event::se::Serialize for WrappedMap {
                 .cloned()
                 .unwrap_or_default();
             serializer.write_text_sz(
-                &value,
+                value,
                 inner_value_encoding.to_str_len_sz(value.len() as u64),
             )?;
         }
@@ -138,9 +138,7 @@ impl Deserialize for WrappedMap {
                     .text_sz()
                     .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
                 if inner_table.insert(inner_key, inner_value).is_some() {
-                    return Err(
-                        DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into(),
-                    );
+                    return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key)).into());
                 }
                 inner_key_encodings.insert(inner_key, inner_key_encoding);
                 inner_value_encodings.insert(inner_key, inner_value_encoding);

@@ -38,7 +38,7 @@ impl cbor_event::se::Serialize for GroupChoice {
                 serializer.write_array_sz(len_encoding.to_len_sz(2))?;
                 serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *index_0_encoding))?;
                 serializer.write_text_sz(
-                    &index_1,
+                    index_1,
                     index_1_encoding.to_str_len_sz(index_1.len() as u64),
                 )?;
                 len_encoding.end(serializer)?;

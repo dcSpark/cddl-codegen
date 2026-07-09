@@ -30,12 +30,10 @@ impl Deserialize for Arr {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(3)?;
             read_len.finish()?;
-            let index_0 = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
-            let index_1 =
-                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
-            let index_2 =
-                Ok(raw.bytes()? as Vec<u8>).map_err(|e: DeserializeError| e.annotate("index_2"))?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let index_2 = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("index_2"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

@@ -80,7 +80,7 @@ impl cbor_event::se::Serialize for OccurrenceHolder {
                 .cloned()
                 .unwrap_or_default();
             serializer.write_text_sz(
-                &element,
+                element,
                 inline_bounded_elem_encoding.to_str_len_sz(element.len() as u64),
             )?;
         }

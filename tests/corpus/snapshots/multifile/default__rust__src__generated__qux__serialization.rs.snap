@@ -42,8 +42,7 @@ impl Deserialize for Qux {
                 Ok(())
             })()
             .map_err(|e| e.annotate("index_0"))?;
-            let index_1 =
-                Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let index_1 = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

@@ -61,7 +61,7 @@ impl Deserialize for Defaulted {
                                 );
                             }
                             a = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("a"))?,
                             );
                         }
@@ -74,7 +74,7 @@ impl Deserialize for Defaulted {
                             b = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.unsigned_integer()? as u64)
+                                    Ok(raw.unsigned_integer()?)
                                 })()
                                 .map_err(|e| e.annotate("b"))?,
                             );
@@ -88,7 +88,7 @@ impl Deserialize for Defaulted {
                             c = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.text()? as String)
+                                    Ok(raw.text()?)
                                 })()
                                 .map_err(|e| e.annotate("c"))?,
                             );

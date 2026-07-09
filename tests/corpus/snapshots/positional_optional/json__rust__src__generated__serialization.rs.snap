@@ -37,7 +37,7 @@ impl Deserialize for PositionalOptional {
             read_len.finish()?;
             let uint = (|| -> Result<_, DeserializeError> {
                 Ok(match raw.cbor_type()? != cbor_event::Type::Special {
-                    true => Some(raw.unsigned_integer()? as u64),
+                    true => Some(raw.unsigned_integer()?),
                     false => {
                         if raw.special()? != cbor_event::Special::Null {
                             return Err(DeserializeFailure::ExpectedNull.into());

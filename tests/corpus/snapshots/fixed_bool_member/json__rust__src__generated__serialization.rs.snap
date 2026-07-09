@@ -41,8 +41,7 @@ impl Deserialize for ArrMember {
                 Ok(())
             })()
             .map_err(|e| e.annotate("v"))?;
-            let x = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -118,7 +117,7 @@ impl Deserialize for MapMember {
                                 );
                             }
                             x = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("x"))?,
                             );
                         }
@@ -203,8 +202,7 @@ impl Deserialize for TaggedMembers {
                 }
             })()
             .map_err(|e| e.annotate("v2"))?;
-            let x2 = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("x2"))?;
+            let x2 = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x2"))?;
             (|| -> Result<_, DeserializeError> {
                 match raw.tag()? {
                     11 => {
@@ -226,8 +224,7 @@ impl Deserialize for TaggedMembers {
                 }
             })()
             .map_err(|e| e.annotate("v3"))?;
-            let x3 = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("x3"))?;
+            let x3 = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x3"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

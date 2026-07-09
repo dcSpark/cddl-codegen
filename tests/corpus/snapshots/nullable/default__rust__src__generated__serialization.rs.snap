@@ -18,7 +18,7 @@ impl cbor_event::se::Serialize for Holder {
         serializer.write_array(cbor_event::Len::Len(1))?;
         match &self.val {
             Some(x) => {
-                serializer.write_text(&x)?;
+                serializer.write_text(x)?;
             }
             None => {
                 serializer.write_special(cbor_event::Special::Null)?;
@@ -37,7 +37,7 @@ impl Deserialize for Holder {
             read_len.finish()?;
             let val = (|| -> Result<_, DeserializeError> {
                 Ok(match raw.cbor_type()? != cbor_event::Type::Special {
-                    true => Some(raw.text()? as String),
+                    true => Some(raw.text()?),
                     false => {
                         if raw.special()? != cbor_event::Special::Null {
                             return Err(DeserializeFailure::ExpectedNull.into());

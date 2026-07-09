@@ -19,12 +19,12 @@ impl cbor_event::se::Serialize for EnumKeyHolder {
         serializer.write_map(cbor_event::Len::Len(self.choice_keyed.len() as u64))?;
         for (key, value) in self.choice_keyed.iter() {
             key.serialize(serializer)?;
-            serializer.write_text(&value)?;
+            serializer.write_text(value)?;
         }
         serializer.write_map(cbor_event::Len::Len(self.int_keyed.len() as u64))?;
         for (key, value) in self.int_keyed.iter() {
             key.serialize(serializer)?;
-            serializer.write_text(&value)?;
+            serializer.write_text(value)?;
         }
         Ok(serializer)
     }
@@ -50,7 +50,7 @@ impl Deserialize for EnumKeyHolder {
                         }
                     }
                     let choice_keyed_key = Ikey::deserialize(raw)?;
-                    let choice_keyed_value = raw.text()? as String;
+                    let choice_keyed_value = raw.text()?;
                     if choice_keyed_table
                         .insert(choice_keyed_key.clone(), choice_keyed_value)
                         .is_some()
@@ -77,7 +77,7 @@ impl Deserialize for EnumKeyHolder {
                         }
                     }
                     let int_keyed_key = Int::deserialize(raw)?;
-                    let int_keyed_value = raw.text()? as String;
+                    let int_keyed_value = raw.text()?;
                     if int_keyed_table
                         .insert(int_keyed_key.clone(), int_keyed_value)
                         .is_some()
@@ -124,7 +124,7 @@ impl Deserialize for Ikey {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
-                cbor_event::Type::UnsignedInteger => Ok(Ikey::U64(raw.unsigned_integer()? as u64)),
+                cbor_event::Type::UnsignedInteger => Ok(Ikey::U64(raw.unsigned_integer()?)),
                 cbor_event::Type::NegativeInteger => Ok(Ikey::N64(
                     raw.negative_integer_sz()
                         .map(|(x, _enc)| (x + 1).abs() as u64)?,

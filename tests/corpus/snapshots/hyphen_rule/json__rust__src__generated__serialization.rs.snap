@@ -28,8 +28,8 @@ impl Deserialize for HyphenRule {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let index_0 = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
