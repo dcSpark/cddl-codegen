@@ -98,7 +98,21 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-4. **Small independent residuals (low).**
+4. **Retire the generated-wasm clippy burn-down (`generated_code_clippy_clean`).** The gate's wasm
+   leg carries three `-A` escapes (the gate's current shape — deny sets, profiles, the empty
+   rust-leg list — is documented in `tests/README.md`); each is a binding-emission shape to stop
+   minting, fixed at the emitter rather than the lint config, and removing the `-A` is the pin that
+   the fix landed generator-wide. Any new lint class is already hard-red, so this list only shrinks.
+   Ranked here because it is fully actionable now (no unmet trigger, no maintainer call) and each
+   fix is small and independently verifiable:
+   - **`clippy::iter_kv_map`** (default: 1, `preserve+canonical`: 0): map-key list accessors iterate
+     `(k, _v)` pairs and clone keys from the pair instead of using `.keys()`.
+   - **`clippy::map_clone`** (default: 1, `preserve+canonical`: 1): wasm map getters emit
+     `.map(|v| v.clone())` instead of `.cloned()`.
+   - **`clippy::useless_conversion`** (default: 1, `preserve+canonical`: 1): array getter returns
+     emit `.into()` where the Rust and wasm-facing value types are already the same `Vec<T>`.
+
+5. **Small independent residuals (low).**
    - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
      `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
      resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust
@@ -159,7 +173,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
      needle instance is the signal to design a detector for that flavor too, same policy.
 
-5. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
+6. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
    already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
    via pure-byte transforms harness-side, no oracle: the encoding-variant axis — spec-EQUAL
    re-encodings (indefinite framing / non-minimal widths / chunked strings / reversed maps) via the
@@ -181,7 +195,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
      reject rows and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
-6. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
+7. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
    ACCEPTS (low, but the gap is proven).** The decode-conformance catalog can only express two
    truths — "must accept" and "durably rejects" (`class="constraint"`) — so a known
    silent-acceptance bug has NO standing pin. The motivating instance is since fixed (the
@@ -199,18 +213,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    `unverified`, and the `EXPECTED_ENFORCE_UNVERIFIED` pin in `query_q4_directional.ts` (empty
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
-
-7. **Retire the generated-wasm clippy burn-down (`generated_code_clippy_clean`).** The gate's wasm
-   leg carries three `-A` escapes (the gate's current shape — deny sets, profiles, the empty
-   rust-leg list — is documented in `tests/README.md`); each is a binding-emission shape to stop
-   minting, fixed at the emitter rather than the lint config, and removing the `-A` is the pin that
-   the fix landed generator-wide. Any new lint class is already hard-red, so this list only shrinks:
-   - **`clippy::iter_kv_map`** (default: 1, `preserve+canonical`: 0): map-key list accessors iterate
-     `(k, _v)` pairs and clone keys from the pair instead of using `.keys()`.
-   - **`clippy::map_clone`** (default: 1, `preserve+canonical`: 1): wasm map getters emit
-     `.map(|v| v.clone())` instead of `.cloned()`.
-   - **`clippy::useless_conversion`** (default: 1, `preserve+canonical`: 1): array getter returns
-     emit `.into()` where the Rust and wasm-facing value types are already the same `Vec<T>`.
 
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
