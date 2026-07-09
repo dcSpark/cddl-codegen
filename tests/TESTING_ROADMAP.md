@@ -75,6 +75,21 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    `recombination_wasm_crates_check` (full tier), with cited known-class ledgers, the
    `ledger_key_shape_floor` key hygiene gate, and a promotion flow into the pinned collections).
    Residuals, in escalation order:
+   - **Embed-site leg for alias-classifying roots — two proven escapes.** A composition whose ROOT
+     rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
+     wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
+     layer-2 sweeps never compile that emission surface for alias roots (embedding exists only when
+     such a template lands INNER under another outer, e.g. the ledgered
+     `arr_mid inner=cbor_payload` case). Both escapes were preserve-only compile bugs found by
+     review/fixture-TDD in the session that fixed their ledgered `tag_content` siblings (tag rules
+     AUTO-WRAP into a struct, so those failed standalone and were ledgered; alias roots stayed
+     green), each verified standalone-green/embedded-red against its pre-fix tree: the
+     `.cbor`-payload constrained-int E0308 (dropped `final_exprs`) and the `.cbor` inline-table
+     owned-serializer `.end()` E0308 — both since fixed and pinned by the embedding holder members
+     of the `tagged_constrained_int` / `cbor_bignint_table` corpus fixtures. Mechanical shape, worth
+     building on the THIRD instance: mint each alias-classifying root also as an embedded variant
+     (`rcN_embed = [e: rcN]` — the matrix probe's embed-holder pattern), scoped to alias roots to
+     bound the layer-2 wall-clock cost.
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
@@ -151,7 +166,12 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      environment); the assert now `match`es and panics with the concrete error + raw os errno, so
      the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
      rerun); once a recurrence lands with an errno, either harden the test against that transient
-     (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding.
+     (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding. A THIRD probable
+     sighting (2026-07-09, `test` gate, local tier, under the same nested-cargo load profile) was
+     burned exactly the way this discipline warns about: the run was piped through `tail`, so no
+     `failures:` list or errno survived and two immediate full-suite reruns were green —
+     unattributable, evidence value zero. The discipline is load-bearing for one-command runners
+     too: pipe `check.ts` to a FILE, never through `tail`, even for the local tier.
    - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
      rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
      vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a
@@ -208,7 +228,11 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    could then project the stronger honest fact `enforce = no (over-accepts)` instead of
    `unverified`, and the `EXPECTED_ENFORCE_UNVERIFIED` pin in `query_q4_directional.ts` (empty
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
-   denominator" pending call made concrete — resolve them together.
+   denominator" pending call made concrete — resolve them together. Unlike at filing time, a LIVE
+   instance now exists to seed the class: the no-occurrence type-domain arrow entry widening
+   (`{ k => v }` table-detected as 0..N — `cddl-matrix/ROADMAP.md` § findings, "A no-occurrence
+   type-domain arrow entry"), whose certified-invalid vector (an empty map against the
+   exactly-once spelling) has nowhere to live until this class exists.
 
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
