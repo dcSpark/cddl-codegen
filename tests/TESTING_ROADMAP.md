@@ -149,7 +149,15 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      the full-tier gate to kill it, so it stays manual-only and unbuilt until a second instance
      justifies the cost. The invariant-softening class has no mechanical detector (a mutation sweep
      cannot distinguish "kept loud" from "absorbed"); a recurrence there is the signal to design
-     one, not evidence that review can be skipped.
+     one, not evidence that review can be skipped. The vacuity-floor class also has a first
+     on-record instance in a NEEDLE gate (a flavor the harness-scoped mutation sweep would not
+     cover): during the collapsible_if burn-down, the retargeted
+     `corpus_special_map_key_supported` needle initially counted its indefinite gates by the proxy
+     pattern `if matches!(` — any unrelated future matches-gate would pad the count and mask an
+     ungated Special peek — and review fixed it to witness the gate's own
+     `, cbor_event::Len::Indefinite)` pattern (mutation testing cannot see this flavor either: the
+     mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
+     needle instance is the signal to design a detector for that flavor too, same policy.
 
 5. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
    already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
