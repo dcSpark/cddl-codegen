@@ -75,6 +75,23 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
+   - **Batch-masking detector for the layer-2 sweeps.** The ~40-rule batching means a green batch
+     is not a per-composition guarantee for failure classes whose symptom is a missing CRATE-GLOBAL
+     definition: `Int` is a crate-global extern emitted iff any rule registers a reference, so a
+     batch-mate that registers it compiles the whole batch green. Proven instance:
+     `bytes .cbor { * tstr => int }` fails standalone under default yet rode green default batches
+     until the wasm leg's different batch boundaries isolated it — caught by review, not by any
+     gate (the filing rule + caveat now live on `LAYER2_RULES_PER_BATCH`). The mechanical layer,
+     worth building on the SECOND masked instance: run each layer-2 sweep under a second
+     DETERMINISTIC batch permutation (a different fixed grouping — determinism preserved, most
+     pair-masks broken, wall-clock ×2 on full-tier gates), or an occasional singleton mode
+     (batch size 1 — the exhaustive oracle, but hours of wall-clock). Either also owns the
+     misfiled-ledger-contradiction class (an entry claiming profile-specificity while masked in its
+     home profile — how this instance actually surfaced). Related but decided: the observed-baseline
+     comments next to each gate's floors are informational and review-maintained (a stale one
+     shipped once); if one misleads triage again, replace them with exact pinned counts asserted by
+     the gate, accepting the churn on every ingredient addition — the floors stay the enforced
+     artifact either way.
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
