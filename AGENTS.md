@@ -169,3 +169,4 @@ Additionally, `draft/` is the recommended location for scratchpads (for agents t
   limitations), `command_line_flags`, `comment_dsl`, `output_format`, `wasm_differences`.
 - `supported.cddl` and `example/` — example specs to run the tool against.
 - `GENERATING_MULTIPLATFORM_LIB.md` — an example document provided by CML - a consumer of this library
+- specifications (ex: RFCs) for CBOR and CDDL can be found here in cddl-matrix/sources/

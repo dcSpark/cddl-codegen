@@ -15,6 +15,7 @@ Retrieved: **2026-06-28**. Upstream branches move; the committed files are the p
 | `cddl-control-operators.csv` | IANA "CDDL Control Operators" registry (cross-RFC) | `www.iana.org/assignments/cddl/cddl-control-operators.csv` | `fdc273a6…d6f12aad` |
 | `appendix_a.json` | CBOR encoding examples (RFC 8949 Appendix A) | `raw.githubusercontent.com/cbor/test-vectors/master/appendix_a.json` | `80e78dc2…dc4e9f3a` |
 | `rfc8610.txt` | Base CDDL specification | `www.rfc-editor.org/rfc/rfc8610.txt` | `3713f2a5…04997089` |
+| `rfc8949.txt` | Base CBOR specification (STD 94; obsoletes RFC 7049) | `www.rfc-editor.org/rfc/rfc8949.txt` | `f1164a5b…058a214a` |
 | `rfc9090.txt` | CDDL control operators for SDNV/OID data | `www.rfc-editor.org/rfc/rfc9090.txt` | `16e606aa…0e31cb89` |
 | `rfc9165.txt` | Additional general CDDL control operators | `www.rfc-editor.org/rfc/rfc9165.txt` | `94f86116…41976774` |
 | `rfc9682.txt` | Updates to the CDDL grammar | `www.rfc-editor.org/rfc/rfc9682.txt` | `d35602e7…6cdea89c` |
@@ -35,6 +36,7 @@ a90f41b2d250f708ee5146e8aab70fc14428639ed0fd31925d10eb7fa381afea  cddl-1-1-updat
 fdc273a65beeb9cb4122616e13c50b46b5647916852b7eff4aafbb57d6f12aad  cddl-control-operators.csv
 80e78dc2f53cfdc9836094791d09e84c6818edf380f7cdd4be26a5c2dc4e9f3a  appendix_a.json
 3713f2a50e23a2bea0a6147ad6c4433605a00c3d00a868bfa86a42b204997089  rfc8610.txt
+f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a  rfc8949.txt
 16e606aa7e7d0d1f019cb67c95ece5f5e4dbada5585b5251860958c80e31cb89  rfc9090.txt
 94f86116c04fde0f11d54576465181090ec33983d78db82527c0703a41976774  rfc9165.txt
 d35602e7f784e509a5984283ea8d998adfee23f086ad0d77bd22f98c6cdea89c  rfc9682.txt
