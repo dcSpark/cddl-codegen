@@ -39,6 +39,27 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
+- **Catalog writer↔reader identity check (compose∘parse = committed bytes).** The mint's catalog
+  writer is the sole serializer of the hand-authored vector fields (`class`/`reason`/`expect_err`), and
+  a field the writer forgets to emit is stripped SILENTLY at the next re-mint — the bug class caught by
+  review in `composeCatalog` (accept-vector `class`/`reason` were emitted only under an
+  `expect === "reject"` guard, which would have stripped every over-acceptance annotation). Downstream
+  decay pins (Q4's `EXPECTED_ENFORCE_OVERACCEPTS`) fire only AFTER a re-mint corrupts the committed
+  catalog and can't name the writer as the cause. The cheap deterministic guard: extract the catalog
+  reader/writer pair into `lib.ts` and assert compose(parse(`catalog.toml`)) is byte-identical to the
+  committed file in `project_decode_conformance.ts` (drift-gate tier, pure file reads) — a writer that
+  drops or reorders any field then goes red before any mint runs.
+- **Make the rust-oracle pin mechanical (behavioral fingerprint preflight; optionally an immutable
+  copy).** `RUST_CDDL` defaults to a live development tree's `target/debug/cddl` (README § "Upstream
+  oracle gaps" names the pinned rev and warns to copy the binary before long runs — prose only), so a
+  rebuild from whatever branch happens to be checked out silently swaps the oracle mid-workflow, and
+  version strings cannot discriminate (every local branch reports 0.10.6): evidence minted against the
+  wrong oracle looks exactly like evidence minted against the pinned one. Mechanical guard: a preflight
+  fingerprint in `verify.ts` (probe AND mint paths) — a few pinned probe inputs whose accept/reject
+  exits are unique to the `local-fixes` fixes (the `2c7548e` radix literal, the `773b723`
+  array-sequence shape, the `885c61c` non-uint range) — refusing to run (HARNESS FAILURE, like the
+  existing oracle-resolution failures) on mismatch; pointing the default at an immutable copied binary
+  is a complementary hardening, but the fingerprint is the part that can't be forgotten.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -166,7 +187,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   vector asserts Ok only, and this row's preserve byte-identity leg (which would expose the f16
   re-encode) is on the replay gate's `PRESERVE_SKIP` for the unrelated float-generation gap, so
   nothing pins the wrong value. When a fixed cbor_event ships, that vector's decoded value silently
-  changes; the repro/prune steps in the local note above cover both instances. Same disposition as the length-prefix over-allocation entry below: generated crates
+  changes; the repro/prune steps in the local note above cover both instances. Containment while the
+  bug stands: **f9 item heads are banned from decode-catalog accept vectors** — the mint drops every
+  f9-headed accept candidate (logged as DROPPED) and `project_decode_conformance.ts` fails a committed
+  one — because such a vector is GREEN-but-corrupted by construction (Ok-only assert; the
+  encoding-variant mutator copies float heads verbatim; the float class is preserve-skipped), i.e.
+  decode evidence that pins nothing about the decoded value. The ban is item-HEAD-scoped, so the
+  tag-nested `prelude.time` instance above (`c1`-headed) stays ledgered here rather than lint-caught.
+  Prune the ban (mint + drift-gate sides together) with this entry when a fixed cbor_event ships. Same disposition as the length-prefix over-allocation entry below: generated crates
   depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`. Known
   upstream already: issue #16 reports the wrong data, and open PR #18 carries the exact arm fix but
   gates the crate on the nightly-only `f16` primitive, so it cannot ship for stable consumers as
@@ -473,8 +501,12 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
 
 ## Pending decision (needs a human call)
 
-- **Over-acceptance denominator:** should coverage be measured against the grammar's full superset, or only
-  realistically-implementable constructs?
+- **Over-acceptance denominator:** the `class="over-acceptance"` vector class pins each CERTIFIED
+  instance (the numerator; rows are enumerated per the "Intra-alternative variation rows" rule as
+  instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:
+  should over-acceptance coverage be measured against the grammar's full superset, or only
+  realistically-implementable constructs? (Affects only how completeness is reported — the pins and
+  their Q4 projection are denominator-independent.)
 
 (Resolved decisions — D3 corpus numerator; cddl-codegen comment-DSL as the `CDDL_CODEGEN` profile; doc
 consolidation — are recorded in the code + git history; not re-litigated here.)

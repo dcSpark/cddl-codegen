@@ -526,11 +526,15 @@ and asserts they are accepted.
   pins the EXACT (row → sorted arm classes) set the resolver fires on (a silent widen/narrow fails
   got/want), and `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`, stale-guarded) ledgers a genuinely unmintable arm
   class with a citation. Mint side (`verify.ts mintRow`): a **resample-until-covered loop** draws extra
-  bounded `generate` batches for any missing class, keeping only two-oracle-valid candidates, and
-  **skips half-precision (`f9`) float candidates** — cbor_event 2.4.0 mis-decodes `f9` heads (ROADMAP
-  § findings), so an `f9` accept vector would replay Ok with a silently corrupted value and trip the
-  encoding-variant leg; it takes an f32/f64 float instead (prune the skip when a fixed cbor_event
-  ships). On cap exhaustion with an unledgered missing class the mint exits 1, naming the row and class.
+  bounded `generate` batches for any missing class, keeping only two-oracle-valid candidates; on cap
+  exhaustion with an unledgered missing class the mint exits 1, naming the row and class. Related but
+  distinct: **half-precision (`f9`) item heads are banned from accept vectors entirely** — mint-side
+  (every accept-candidate path drops them, logged as DROPPED) and statically (the drift gate fails a
+  committed f9-headed accept). cbor_event 2.4.0 mis-decodes `f9` heads (`cddl-matrix/ROADMAP.md`
+  § findings), and an f9 accept would replay GREEN-but-CORRUPTED — the accept assert is Ok-only, the
+  encoding-variant mutator copies float heads verbatim (`encoding_variants_copy_float_heads_verbatim`),
+  and the float class is preserve-skipped — so it would pin nothing about the decoded value; the mint
+  takes an f32/f64 encoding instead. Prune the ban (both sides together) when a fixed cbor_event ships.
   At HEAD the ledger holds ONE entry — `prelude.number`'s float arm, blocked by a rust-`cddl` reference
   bug that rejects a float against the prelude `number` alias (README § "Upstream oracle gaps" gap 7;
   `draft/rust-cddl-number-float-gap.md`), so the two-oracle gate cannot admit a spec-valid float

@@ -945,11 +945,23 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   const rejectHexes = new Set(rejectPins.map(v => v.hex));
   const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
   const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
+  // f9 HALF-PRECISION item heads are banned from accept candidates (generated AND hand): cbor_event
+  // 2.4.0 mis-decodes f9 (the raw 16 bits cast to f64), and an f9 accept vector replays GREEN-but-
+  // CORRUPTED — the accept assert is Ok-only, the encoding-variant mutator copies float heads verbatim
+  // (`encoding_variants_copy_float_heads_verbatim`), and the float class is preserve-skipped — so the
+  // committed evidence would pin nothing about the decoded value. The decode-conformance drift gate
+  // bans committed f9-headed accepts the same way; prune BOTH together when a fixed cbor_event ships
+  // (cddl-matrix/ROADMAP.md § findings, the f16 entry).
+  const f9Head = (h: string) => h.length >= (mode === "holder" ? 6 : 2)
+    && parseInt((mode === "holder" ? h.slice(4) : h).slice(0, 2), 16) === 0xf9;
   const acDedup = new Map<string, { hex: string; source: string }>();
   for (const c of [
     ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
     ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
-  ]) if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
+  ]) {
+    if (f9Head(c.hex)) { dropped.push(`${id}/${c.hex} (f9 half-precision item head; cbor_event f16 mis-decode — green-but-corrupted accept evidence, skipped)`); continue; }
+    if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
+  }
 
   const validatedAccept: { hex: string; source: string }[] = [];
   for (const c of acDedup.values()) {
@@ -964,13 +976,15 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // § 7 uses (`resolveChoiceArmClasses` in lib.ts — ONE source of truth; its twin consumer is
   // project_decode_conformance.ts). While any resolvable arm class lacks a validated spec-valid accept
   // vector, draw extra ruby candidates (bounded) and keep the two-oracle-valid ones that cover a MISSING
-  // class. HALF-PRECISION (f9) float candidates are SKIPPED: cbor_event 2.4.0 mis-decodes f9 heads
-  // (`Special::Float(f as f64)` casts the raw 16 bits — `f9 4200` = 3.0 decodes as 16896.0;
-  // cddl-matrix/ROADMAP.md § findings, "cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats"), and
-  // ruby's diag2cbor prefers the shortest float encoding so a float sample often arrives f9 — an f9
-  // accept vector would replay Ok (accept asserts Ok only) but with a silently corrupted value, tripping
-  // the replay gate's encoding-variant leg. Take an f32/f64 (fa/fb) float instead; prune the f9 skip when
-  // a fixed cbor_event ships. On cap exhaustion with a genuinely-uncovered (unledgered) class, exit 1.
+  // class. HALF-PRECISION (f9) float candidates are SKIPPED (`f9Head` — the same ban the primary
+  // candidate path above applies): cbor_event 2.4.0 mis-decodes f9 heads (`Special::Float(f as f64)`
+  // casts the raw 16 bits — `f9 4200` = 3.0 decodes as 16896.0; cddl-matrix/ROADMAP.md § findings,
+  // "cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats"), and ruby's diag2cbor prefers the
+  // shortest float encoding so a float sample often arrives f9. An f9 accept vector would replay
+  // GREEN-but-CORRUPTED — Ok-only assert, float heads copied verbatim by the variant mutator,
+  // preserve-skipped float class — pinning nothing about the decoded value; take an f32/f64 (fa/fb)
+  // float instead. Prune the skip when a fixed cbor_event ships. On cap exhaustion with a
+  // genuinely-uncovered (unledgered) class, exit 1.
   const floor = resolveChoiceArmClasses(example);
   if (floor) {
     // A genuinely-unmintable arm class (a documented oracle gap) is ledgered exempt — don't pursue it
@@ -990,8 +1004,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
       seen.add(hex);
       const cls = vectorShapeClass(hex, mode === "holder");
       if (!missing().includes(cls)) continue;  // an already-covered (or exempt) class — don't bloat the row
-      const itemHead = parseInt((mode === "holder" ? hex.slice(4) : hex).slice(0, 2), 16);
-      if (itemHead === 0xf9) continue;          // half-precision float: cbor_event 2.4.0 mis-decode (see above)
+      if (f9Head(hex)) continue;  // half-precision float: cbor_event 2.4.0 mis-decode (see above)
       const { ruby, rust } = validateBoth(spec, hex);
       if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
       else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
