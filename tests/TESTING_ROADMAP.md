@@ -200,24 +200,17 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-7. **Retire the generated-wasm clippy burn-down (`generated_code_clippy_clean`).** The generated rust
-   crate is now hard-red under `clippy::all` plus the curated rustc style-lint set, with only the
-   permanent input-dependent `clippy::disallowed_names` allow. The wasm crate is covered by the same
-   gate and deny set, with these remaining binding-emission shapes ledgered as the only
-   emission-quality burn-down:
+7. **Retire the generated-wasm clippy burn-down (`generated_code_clippy_clean`).** The gate's wasm
+   leg carries three `-A` escapes (the gate's current shape — deny sets, profiles, the empty
+   rust-leg list — is documented in `tests/README.md`); each is a binding-emission shape to stop
+   minting, fixed at the emitter rather than the lint config, and removing the `-A` is the pin that
+   the fix landed generator-wide. Any new lint class is already hard-red, so this list only shrinks:
    - **`clippy::iter_kv_map`** (default: 1, `preserve+canonical`: 0): map-key list accessors iterate
      `(k, _v)` pairs and clone keys from the pair instead of using `.keys()`.
    - **`clippy::map_clone`** (default: 1, `preserve+canonical`: 1): wasm map getters emit
      `.map(|v| v.clone())` instead of `.cloned()`.
    - **`clippy::useless_conversion`** (default: 1, `preserve+canonical`: 1): array getter returns
      emit `.into()` where the Rust and wasm-facing value types are already the same `Vec<T>`.
-
-   Future work is to fix each emitted wasm shape and remove its matching `-A` from the gate; any new
-   lint class is already hard-red. The review-found shapes remain pinned individually by the
-   `snapshot_tests` emission-hygiene needle gates (`deserialize_converts_error_at_most_once`,
-   `ok_pattern_parenthesizes_only_tuples`). The doubled-`map_err` shape is the counterexample that
-   keeps the needle gates load-bearing: no rustc/clippy lint flags a repeated identity
-   error-conversion, so that one stays needle-only.
 
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
