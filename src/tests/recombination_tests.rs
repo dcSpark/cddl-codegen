@@ -1516,22 +1516,27 @@ fn recombination_json_crates_execute() {
 /// panic matching neither is a NEW finding. Each non-empty entry must cite an existing
 /// `cddl-matrix/ROADMAP.md` § findings entry or another committed stable pin. Vacuity-guarded in
 /// `recombination_wasm_crates_check`.
-const WASM_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[(
-    "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now? @ src/generation.rs @ fn cddl_codegen::generation::codegen_table_type",
-    "a CBOR tag wrapping a table panics only during wasm generation; cddl-matrix/ROADMAP.md § findings, `A CBOR tag wrapping a table panics during wasm generation` entry",
-)];
+// Empty: the former class (a CBOR tag wrapping a table panicked `codegen_table_type`'s wasm-only
+// `assert!(tag.is_none())`) is FIXED — the wasm wrapper is accessors-only and delegates ALL
+// serialization (including the tag) to the rust crate's type, so it carries no tag logic and the stale
+// assert (plus the now-unused `tag` parameter) was removed. Pinned by the `tagged_table` corpus fixture
+// (`#6.11({ * tstr => uint })`, wasm crate compiles across all profiles via `feature_corpus_compiles`;
+// rust-side tag round-trip via the tag-writing/`TagMismatch` serialization). The freed compositions
+// batch back into the wasm gate; a new wasm-only panic class would be caught there as a NEW finding.
+const WASM_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
 
 /// Wasm-profile compile known-bad classes. Desc-substring keyed, each citing its pin;
 /// vacuity-guarded in `recombination_wasm_crates_check`. The shared `LAYER2_KNOWN_BAD` also applies
 /// as an un-guarded exclusion.
-const LAYER2_WASM_KNOWN_BAD: &[(&str, &str)] = &[
-    // (The undefined-`Int` `.cbor`-payload-table class first SURFACED here, but it is
-    // profile-independent — it lives in the shared LAYER2_KNOWN_BAD with the batch-masking note.)
-    (
-        "outer=cbor_payload inner=map_key filler=prelude.bignint",
-        ".cbor payload wrapping a bignint-key table leaves the generated wasm table-wrapper alias undefined; cddl-matrix/ROADMAP.md § findings, `A .cbor payload wrapping a bignint-key table leaves the wasm wrapper alias undefined` entry",
-    ),
-];
+// Empty: the former class (a `.cbor` payload wrapping a bignint-key table emitted `pub type X = MapKToV`
+// naming a wrapper class no one minted → wasm `cannot find type MapPreludeBignintToU64`) is FIXED — the
+// wasm structural-wrapper mint loop now also walks each wasm-emitted plain-alias base type, so a Map
+// reachable ONLY through an alias (never a rust struct) gets its wrapper minted. Pinned by the
+// `cbor_bignint_table` corpus fixture (wasm crate compiles via `feature_corpus_compiles`). The freed
+// compositions batch back into the wasm gate; a new wasm-only compile class would be caught there as a
+// NEW finding. (The undefined-`Int` `.cbor`-payload-table class is unrelated and profile-independent —
+// it lives in the shared LAYER2_KNOWN_BAD with the batch-masking note.)
+const LAYER2_WASM_KNOWN_BAD: &[(&str, &str)] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the WASM escalation of layer 2.
 /// Classifies every composition under `--wasm=true`, batches the wasm-ok ones, generates
@@ -1553,7 +1558,7 @@ fn recombination_wasm_crates_check() {
         panic_ledger: WASM_ONLY_PANIC_CLASSES,
         known_bad: LAYER2_WASM_KNOWN_BAD,
         guard_shared: false,
-        // Observed baseline: 922 wasm-ok / 892 checked (30 known-bad excluded); floors ~10% under.
+        // Observed baseline: 926 wasm-ok / 897 checked (29 known-bad excluded); floors ~10% under.
         ok_floor: 830,
         executed_floor: 803,
     });

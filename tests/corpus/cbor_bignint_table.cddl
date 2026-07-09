@@ -1,0 +1,11 @@
+; A `.cbor` byte payload wrapping a table whose KEY is a bignint (`bytes .cbor { bignint => uint }`).
+; `x` is a plain `pub type` alias (not a rust struct): rust-side it is `BTreeMap<PreludeBignint, u64>`
+; carrying a cbor-bytes encoding op. Under `--wasm=true` the alias emits `pub type X = MapPreludeBignintToU64`,
+; so the `MapPreludeBignintToU64` wrapper class must be minted even though NO rust struct reaches that
+; Map — it is embedded only as `Alias(Rust(x), Map)`, which the rust-struct wrapper walk excludes.
+; This pins that the wasm-alias-target walk mints the wrapper (regression: the alias named an unminted
+; class, so the wasm crate failed with `cannot find type MapPreludeBignintToU64`). The value is `uint`
+; (not `int`) to avoid dragging in the separate undefined-`Int` extern class.
+; `holder` embeds it so the member/embed role compiles alongside the standalone alias.
+x = bytes .cbor { bignint => uint }
+holder = [payload: x]

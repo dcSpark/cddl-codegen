@@ -662,66 +662,15 @@ impl GenerationScope {
                 if cli.wasm {
                     rust_struct.visit_types_excluding(
                         types,
-                        &mut |ty| match ty {
-                            ConceptualRustType::Array(elem) => {
-                                if !ty.directly_wasm_exposable(types) {
-                                    let array_ident = elem.name_as_wasm_array(types);
-                                    if wasm_wrappers_generated.insert(array_ident.clone()) {
-                                        self.generate_array_type(
-                                            types,
-                                            *elem.clone(),
-                                            &RustIdent::new(CDDLIdent::new(array_ident)),
-                                            cli,
-                                        );
-                                    }
-                                }
-                            }
-                            ConceptualRustType::Map(k, v) => {
-                                let map_ident = ConceptualRustType::name_for_wasm_map(k, v);
-                                match table_shape_sole_owner.get(&map_ident.to_string()) {
-                                    // A single named rule owns this shape: this embedded/resolved use
-                                    // shares that rule-named class (JS-visible under the CDDL
-                                    // identifier) rather than minting an anonymous structural class.
-                                    Some(owner) => mint_sole_owner_table(
-                                        self,
-                                        types,
-                                        owner,
-                                        &map_ident,
-                                        &mut wasm_wrappers_generated,
-                                        cli,
-                                    ),
-                                    // Anonymous-only shape (or a same-shape rule pair): mint the
-                                    // structural class, whose inner is the raw map (not a rust rule).
-                                    None => {
-                                        if wasm_wrappers_generated.insert(map_ident.to_string()) {
-                                            codegen_table_type(
-                                                self,
-                                                types,
-                                                &map_ident,
-                                                *k.clone(),
-                                                *v.clone(),
-                                                None,
-                                                false,
-                                                cli,
-                                            );
-                                        }
-                                    }
-                                }
-                                if !ConceptualRustType::Array(Box::new(*k.clone()))
-                                    .directly_wasm_exposable(types)
-                                {
-                                    let keys_ident = k.name_as_wasm_array(types);
-                                    if wasm_wrappers_generated.insert(keys_ident.clone()) {
-                                        self.generate_array_type(
-                                            types,
-                                            *k.clone(),
-                                            &RustIdent::new(CDDLIdent::new(keys_ident)),
-                                            cli,
-                                        );
-                                    }
-                                }
-                            }
-                            _ => (),
+                        &mut |ty| {
+                            mint_wasm_wrapper_for_visited_type(
+                                self,
+                                types,
+                                ty,
+                                &mut wasm_wrappers_generated,
+                                &table_shape_sole_owner,
+                                cli,
+                            )
                         },
                         &mut existing_aliases,
                     );
@@ -768,7 +717,6 @@ impl GenerationScope {
                                     rust_ident,
                                     domain.clone(),
                                     range.clone(),
-                                    rust_struct.tag(),
                                     true,
                                     cli,
                                 );
@@ -854,6 +802,35 @@ impl GenerationScope {
                     }
                     RustStructType::RawBytesType => {
                         // nothing to do, user specified
+                    }
+                }
+            }
+
+            // Structural wrappers reachable ONLY through a wasm-emitted plain `pub type` alias, never
+            // through any rust struct — e.g. `x = bytes .cbor { bignint => uint }`, where `x` is a type
+            // alias (not a struct). Its `Map` target is embedded elsewhere only as `Alias(Rust(x), Map)`,
+            // and `x` sits in `existing_aliases`, so the rust-struct walk above never descends into that
+            // Map — leaving the emitted `pub type X = MapKToV` alias naming a class no one minted. Walk
+            // each wasm-alias base type through the same minting path (shared `wasm_wrappers_generated` /
+            // `existing_aliases`, so it stays idempotent with the walk above and self-referential/other
+            // named aliases are not re-descended).
+            if cli.wasm {
+                for (alias_ident, alias_info) in types.type_aliases() {
+                    if matches!(alias_ident, AliasIdent::Rust(_)) && alias_info.gen_wasm_alias {
+                        alias_info.base_type.conceptual_type.visit_types_excluding(
+                            types,
+                            &mut |ty| {
+                                mint_wasm_wrapper_for_visited_type(
+                                    self,
+                                    types,
+                                    ty,
+                                    &mut wasm_wrappers_generated,
+                                    &table_shape_sole_owner,
+                                    cli,
+                                )
+                            },
+                            &mut existing_aliases,
+                        );
                     }
                 }
             }
@@ -2233,7 +2210,11 @@ impl GenerationScope {
                         cli,
                     );
                     body.push_block(loop_block);
-                    end_len(body, serializer_use, &encoding_var, config.is_end, cli);
+                    // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
+                    // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
+                    // method-receiver form `serializer_use`. For the top-level `serializer` the two
+                    // are identical; they diverge only for the `is_local` inner-buffer overload.
+                    end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
                 }
                 SerializingRustType::Root(ConceptualRustType::Map(key, value), _cfg) => {
                     start_len(
@@ -2394,7 +2375,9 @@ impl GenerationScope {
                         ser_loop
                     };
                     body.push_block(ser_loop);
-                    end_len(body, serializer_use, &encoding_var, config.is_end, cli);
+                    // Argument to `.end()`: use the pass form (`&mut <name>` for a `.cbor`-payload
+                    // local serializer) — see the Array arm above for the rationale.
+                    end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
                 }
                 SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
                     let mut opt_block = Block::new(format!("match {expr_ref}"));
@@ -5504,6 +5487,79 @@ pub fn table_type(cli: &Cli) -> &'static str {
     }
 }
 
+/// Mint the wasm structural wrapper class for a single visited `ConceptualRustType` (the per-type body
+/// of the wasm-wrapper visit). Shared by the rust-struct walk and the wasm-alias-target walk so both
+/// reach identical minting decisions (sole-owner routing, map-key array wrappers). Idempotent via
+/// `wasm_wrappers_generated`; every class body is derived purely from the shape, so the result is
+/// iteration-order-independent.
+fn mint_wasm_wrapper_for_visited_type(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    ty: &ConceptualRustType,
+    wasm_wrappers_generated: &mut BTreeSet<String>,
+    table_shape_sole_owner: &BTreeMap<String, RustIdent>,
+    cli: &Cli,
+) {
+    match ty {
+        ConceptualRustType::Array(elem) => {
+            if !ty.directly_wasm_exposable(types) {
+                let array_ident = elem.name_as_wasm_array(types);
+                if wasm_wrappers_generated.insert(array_ident.clone()) {
+                    gen_scope.generate_array_type(
+                        types,
+                        *elem.clone(),
+                        &RustIdent::new(CDDLIdent::new(array_ident)),
+                        cli,
+                    );
+                }
+            }
+        }
+        ConceptualRustType::Map(k, v) => {
+            let map_ident = ConceptualRustType::name_for_wasm_map(k, v);
+            match table_shape_sole_owner.get(&map_ident.to_string()) {
+                // A single named rule owns this shape: this embedded/resolved use
+                // shares that rule-named class (JS-visible under the CDDL
+                // identifier) rather than minting an anonymous structural class.
+                Some(owner) => mint_sole_owner_table(
+                    gen_scope,
+                    types,
+                    owner,
+                    &map_ident,
+                    wasm_wrappers_generated,
+                    cli,
+                ),
+                // Anonymous-only shape (or a same-shape rule pair): mint the
+                // structural class, whose inner is the raw map (not a rust rule).
+                None => {
+                    if wasm_wrappers_generated.insert(map_ident.to_string()) {
+                        codegen_table_type(
+                            gen_scope,
+                            types,
+                            &map_ident,
+                            *k.clone(),
+                            *v.clone(),
+                            false,
+                            cli,
+                        );
+                    }
+                }
+            }
+            if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable(types) {
+                let keys_ident = k.name_as_wasm_array(types);
+                if wasm_wrappers_generated.insert(keys_ident.clone()) {
+                    gen_scope.generate_array_type(
+                        types,
+                        *k.clone(),
+                        &RustIdent::new(CDDLIdent::new(keys_ident)),
+                        cli,
+                    );
+                }
+            }
+        }
+        _ => (),
+    }
+}
+
 /// Mint the JS-visible class for a table shape whose SOLE owner is the named rule `owner`, plus a
 /// `pub type <structural> = <owner>;` alias so structural-name reference sites (an anonymous `Map`'s
 /// `for_wasm_member`, `@newtype` inner getters, cross-module `mark_refs` imports) still resolve —
@@ -5521,21 +5577,20 @@ fn mint_sole_owner_table(
     cli: &Cli,
 ) {
     if generated.insert(owner.to_string()) {
-        let (domain, range, tag) = {
+        let (domain, range) = {
             let owner_struct = types
                 .rust_structs()
                 .get(owner)
                 .expect("sole owner of a table shape must be a rust struct");
             match owner_struct.variant() {
-                RustStructType::Table { domain, range } => {
-                    (domain.clone(), range.clone(), owner_struct.tag())
-                }
+                RustStructType::Table { domain, range } => (domain.clone(), range.clone()),
                 _ => unreachable!("sole owner of a table shape must be a Table rust struct"),
             }
         };
         // `exists_in_rust = true`: the inner is the rust crate's `pub type <owner>` alias (exactly the
-        // struct-field role's inner), not the raw inline map.
-        codegen_table_type(gen_scope, types, owner, domain, range, tag, true, cli);
+        // struct-field role's inner), not the raw inline map. Any CBOR tag on the owner is honored by
+        // that rust type's serialization, so it is not threaded into this wasm wrapper.
+        codegen_table_type(gen_scope, types, owner, domain, range, true, cli);
     }
     // Structural alias in the SAME module as the class (`owner`'s scope). Skip a self-alias when the
     // rule ident already equals the structural name.
@@ -5553,15 +5608,16 @@ fn codegen_table_type(
     name: &RustIdent,
     key_type: RustType,
     value_type: RustType,
-    tag: Option<usize>,
     exists_in_rust: bool,
     cli: &Cli,
 ) {
     assert!(cli.wasm);
-    assert!(
-        tag.is_none(),
-        "TODO: why is this not used anymore? is it since it's only on the wasm side now so it shouldn't happen now?"
-    );
+    // No `tag` parameter: this emits ONLY the wasm wrapper class (accessors + delegation). When the
+    // shape has a CBOR tag (`#6.n({ ... })`), the tag is owned entirely by the rust crate's type,
+    // which this wrapper's single tuple field holds (via `rust_crate_struct_from_wasm` when
+    // `exists_in_rust`); that type's serialize/deserialize writes/checks the tag. The wrapper adds no
+    // serialization of its own, so it has nothing to do with the tag — hence the caller's tag is not
+    // threaded here.
     // Special-class (major type 7) keys used to be asserted away here, but the break-byte
     // ambiguity they alluded to lives in the rust-side deserialize loop, which
     // `make_deser_loop_break_check` now handles (definite lengths read exactly `n` entries; the

@@ -1,0 +1,87 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub payload: X,
+}
+
+impl Holder {
+    pub fn new(payload: X) -> Self {
+        Self { payload }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PreludeBignint(Vec<u8>);
+
+impl PreludeBignint {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for PreludeBignint {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeBignint::new(inner)
+    }
+}
+
+impl From<PreludeBignint> for Vec<u8> {
+    fn from(wrapper: PreludeBignint) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for PreludeBignint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeBignint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        hex::decode(&s).map(PreludeBignint::new).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
+        })
+    }
+}
+
+impl schemars::JsonSchema for PreludeBignint {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PreludeBignint")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+pub type X = BTreeMap<PreludeBignint, u64>;
