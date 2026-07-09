@@ -1,0 +1,147 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrMember(cddl_lib::ArrMember);
+
+#[wasm_bindgen]
+impl ArrMember {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrMember, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::ArrMember::new(x))
+    }
+}
+
+impl From<cddl_lib::ArrMember> for ArrMember {
+    fn from(native: cddl_lib::ArrMember) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrMember> for cddl_lib::ArrMember {
+    fn from(wasm: ArrMember) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrMember> for ArrMember {
+    fn as_ref(&self) -> &cddl_lib::ArrMember {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapMember(cddl_lib::MapMember);
+
+#[wasm_bindgen]
+impl MapMember {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MapMember, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::MapMember::new(x))
+    }
+}
+
+impl From<cddl_lib::MapMember> for MapMember {
+    fn from(native: cddl_lib::MapMember) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapMember> for cddl_lib::MapMember {
+    fn from(wasm: MapMember) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MapMember> for MapMember {
+    fn as_ref(&self) -> &cddl_lib::MapMember {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedMembers(cddl_lib::TaggedMembers);
+
+#[wasm_bindgen]
+impl TaggedMembers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedMembers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x2(&self) -> u64 {
+        self.0.x2
+    }
+
+    pub fn x3(&self) -> u64 {
+        self.0.x3
+    }
+
+    pub fn new(x2: u64, x3: u64) -> Self {
+        Self(cddl_lib::TaggedMembers::new(x2, x3))
+    }
+}
+
+impl From<cddl_lib::TaggedMembers> for TaggedMembers {
+    fn from(native: cddl_lib::TaggedMembers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedMembers> for cddl_lib::TaggedMembers {
+    fn from(wasm: TaggedMembers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedMembers> for TaggedMembers {
+    fn as_ref(&self) -> &cddl_lib::TaggedMembers {
+        &self.0
+    }
+}

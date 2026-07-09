@@ -2575,10 +2575,24 @@ impl GenerationScope {
                                 .line("return Err(DeserializeFailure::ExpectedNull.into());");
                             deser_code.content.push_block(special_block);
                             if cli.preserve_encodings {
+                                // A fixed null/bool contributes no encoding var of its own, but a
+                                // WRAPPING path may already have pushed exprs into final_exprs (a
+                                // CBOR tag pushes its tag-encoding expr before recursing). Split:
+                                // - final_exprs EMPTY: the block's value is the unit `()` — pass it
+                                //   explicitly, else the final expr collapses to empty and, under
+                                //   `expects_result`, emits `Ok()` (E0061) instead of `Ok(())`.
+                                //   (Non-preserve appends `Ok(())` below; preserve produces it here.)
+                                // - final_exprs NON-empty: pass None — the value is the encoding
+                                //   expr(s) alone (e.g. `Some(tag_enc)` bound to a single
+                                //   `let v_tag_encoding = ...`); inserting `()` would mis-shape it
+                                //   into `((), Some(tag_enc))` (E0308, seen with
+                                //   `[v: #6.1(null), x: uint]`).
+                                let unit_if_no_encs =
+                                    config.final_exprs.is_empty().then(|| "()".to_owned());
                                 deser_code.content.line(&format!(
                                     "{}{}{}",
                                     before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
+                                    final_expr(config.final_exprs, unit_if_no_encs),
                                     before_after.after_str(false)
                                 ));
                             }
@@ -2694,7 +2708,38 @@ impl GenerationScope {
                                 unimplemented!("preserve_encodings is not implemented for float")
                             }
                         }
-                        _ => unimplemented!(),
+                        FixedValue::Bool(b) => {
+                            // A bool special has no encoding variation (unlike int/text `_sz`
+                            // widths), so — like the Null arm — there is no encoding var to
+                            // thread; just verify. `.bool()?` is unambiguous here: statement
+                            // position binds the Ok type (bool) and the `?` converts the CBOR
+                            // error, the same shape the Uint arm's `.unsigned_integer()?` uses
+                            // (the inference hazard the `Primitive::Bool` arm documents only bites
+                            // in element/push position).
+                            deser_code.content.line(&format!(
+                                "let {}_value = {}.bool()?;",
+                                config.var_name, deserializer_name
+                            ));
+                            let mut compare_block =
+                                Block::new(format!("if {}_value != {}", config.var_name, b));
+                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Bool({}_value), expected: Key::Bool({}) }}.into());", config.var_name, b));
+                            deser_code.content.push_block(compare_block);
+                            if cli.preserve_encodings {
+                                // No encoding var for a bool special, but a wrapping tag may have
+                                // pushed into final_exprs — same empty/non-empty split as the
+                                // FixedValue::Null arm: unit `()` only when final_exprs is empty
+                                // (else `Ok()` E0061); None when non-empty (else `((), tag_enc)`
+                                // E0308).
+                                let unit_if_no_encs =
+                                    config.final_exprs.is_empty().then(|| "()".to_owned());
+                                deser_code.content.line(&format!(
+                                    "{}{}{}",
+                                    before_after.before_str(false),
+                                    final_expr(config.final_exprs, unit_if_no_encs),
+                                    before_after.after_str(false)
+                                ));
+                            }
+                        }
                     };
                     deser_code.throws = true;
                     // this block needs to evaluate to a Result even though it has no value
@@ -6148,8 +6193,15 @@ fn generate_array_struct_deserialization(
     let mut deser_ctor_fields = vec![];
     let mut encoding_struct_ctor_fields = vec![];
     for (field_index, field) in record.fields.iter().enumerate() {
-        let (before, after) = if cli.preserve_encodings {
-            let var_names_str = encoding_var_names_str(types, &field.name, &field.rust_type, cli);
+        // Under preserve-encodings a fixed value with no encoding variation (bool / null) still has
+        // NO binding target — `encoding_var_names_str` is empty — so a `let {} = ` LHS would be
+        // invalid Rust (`let  = ...`). Gate the preserve branch on a non-empty binding and let those
+        // fixed values fall through to the verify-only branch (same as non-preserve fixed values).
+        let preserve_binding = cli
+            .preserve_encodings
+            .then(|| encoding_var_names_str(types, &field.name, &field.rust_type, cli))
+            .filter(|s| !s.is_empty());
+        let (before, after) = if let Some(var_names_str) = preserve_binding {
             if cli.annotate_fields {
                 (
                     Cow::from(format!("let {var_names_str} = ")),
@@ -6917,7 +6969,12 @@ fn codegen_struct(
                             encoding_var_names_str(types, &temp_var_prefix, &field.rust_type, cli);
                         if cli.annotate_fields {
                             let (before, after) = if var_names_str.is_empty() {
-                                ("".to_owned(), "?")
+                                // empty binding == a fixed value with no encoding var (bool / null):
+                                // there is no `let X =` LHS, so the annotated deserialize is a bare
+                                // statement and needs its own terminating `;` (the non-empty branch
+                                // gets it from `?;`). Emitting just `?` drops the semicolon and the
+                                // next line (`{field}_present = true;`) fails to parse.
+                                ("".to_owned(), "?;")
                             } else {
                                 (format!("let {var_names_str} = "), "?;")
                             };

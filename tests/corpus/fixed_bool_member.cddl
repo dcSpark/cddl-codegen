@@ -1,0 +1,21 @@
+; Fixed BOOL literals in ordinary MEMBER position round-trip: serialize writes `Special::Bool`,
+; deserialize reads `raw.bool()?` and rejects a mismatch with `FixedValueMismatch`. Covers a
+; mandatory array member and a mandatory map member under every profile (default / preserve / json).
+; The OPTIONAL placements (`[x: uint, ? v: true]`, `{? k: true, x: uint}`) are deliberately absent:
+; an optional fixed value with no encoding variation is a pre-existing broken class independent of
+; bool — the serialize length emits `Len(1 + )` (empty count for the encoding-less optional) and the
+; preserve path asserts issue-205 — so they are not part of the supported bool-member surface (see
+; cddl-matrix/ROADMAP.md § findings). The panic/reject boundaries for the same literal in
+; non-member position are pinned by tests/robustness/fixed_bool_member.cddl.
+;
+; tagged_members pins the TAG-WRAPPED fixed null/bool member under --preserve-encodings: the tag
+; pushes its encoding expr into the fixed-value arm's final_exprs before recursing, so the arm's
+; final expression must be the tag encoding ALONE when final_exprs is non-empty (a hardcoded `()`
+; value mis-shapes it into `((), tag_enc)` — E0308) and the unit `()` only when empty (else `Ok()`
+; — E0061). Distinct from the top-level tagged prelude constant `t = #6.11(true)`, which stays a
+; pinned PANIC (tests/robustness/tagged_prelude_constant.cddl) — in MEMBER position the same shape
+; generates and compiles. Tag numbers avoid 2/3 (CBOR bignum tags, which the reference-codec
+; differential folds); 11 matches the robustness pin's tag.
+arr_member = [v: true, x: uint]
+map_member = {k: false, x: uint}
+tagged_members = [v2: #6.1(null), x2: uint, v3: #6.11(true), x3: uint]

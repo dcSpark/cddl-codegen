@@ -1,0 +1,48 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct ArrMember {
+    pub x: u64,
+}
+
+impl ArrMember {
+    pub fn new(x: u64) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapMember {
+    pub x: u64,
+}
+
+impl MapMember {
+    pub fn new(x: u64) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedMembers {
+    pub x2: u64,
+    pub x3: u64,
+}
+
+impl TaggedMembers {
+    pub fn new(x2: u64, x3: u64) -> Self {
+        Self { x2, x3 }
+    }
+}

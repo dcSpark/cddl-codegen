@@ -1,11 +1,16 @@
-; A fixed BOOL literal in MEMBER position (`[v: true]` / `{k: false}`) panics generation at the
-; fixed-value deserialize arm's catch-all (`generation.rs`'s `_ => unimplemented!()` — the match
-; handles Uint/Nint/Text/Float; Bool has no arm). Distinct from BOTH neighboring supported shapes:
-; fixed numeric/text members (`[v: 5]`, pinned by the matrix cells
-; `contain.array-element.value.{number,text}`) and a fixed NULL member (`[null, uint]` — null has
-; its own arm and generates fine). Also distinct from top-level `foo = true`, which is now a
-; graceful rejection (see `tests/matrix_reject/prelude.true.cddl`). The matrix has no
-; prelude-constant member containment cells (only `contain.choice-member.prelude.null`, the
-; nullable pattern), so this hand fixture is the pin until either the panic is fixed or such
-; cells land. Found incidentally during the top-level fixed-value rejection work.
+; A fixed BOOL literal in MEMBER position (`[v: true]` / `{k: false}`) is SUPPORTED: the
+; fixed-value deserialize arm has a `FixedValue::Bool` case that reads `raw.bool()?`, compares it
+; against the literal, and raises `FixedValueMismatch { found: Key::Bool, expected: Key::Bool }`
+; on a mismatch (mirroring the Uint/Text arms; serialize already wrote `Special::Bool`). This
+; fixture is the regression pin that the shape GENERATES rather than panicking the deserialize
+; catch-all; tests/corpus/fixed_bool_member.cddl additionally round-trips the mandatory array/map
+; placements and the tag-wrapped members (OPTIONAL fixed-value placements stay a pre-existing
+; generation-failure class — see cddl-matrix/ROADMAP.md § findings).
+; Distinct from neighboring shapes that stay REJECTED/PANIC: top-level `foo = true`
+; (graceful rejection, tests/matrix_reject/prelude.true.cddl), a fixed value under an occurrence
+; `[* true]` (tests/robustness/fixed_value_occurrence.cddl), a bool MAP KEY `{ true => uint }`
+; (MapKeyKind rejection), and a tagged prelude constant `#6.11(true)`
+; (tests/robustness/tagged_prelude_constant.cddl). The matrix still has no prelude-constant MEMBER
+; containment cells (only `contain.choice-member.prelude.null`), so this hand fixture remains the
+; pin until such cells land.
 arr = [v: true, x: uint]
