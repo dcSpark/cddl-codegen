@@ -3783,7 +3783,16 @@ fn ir_conformance_corpus() {
     // reason, or — the class this whole oracle exists to catch — a fork misparse minting spec-violating
     // bytes. Investigate before ledgering. A ledgered (fixture, rule) that STOPS diverging (all its
     // cases accepted) while still being swept is flagged stale, like the rust oracle's fixed_or_toothless.
-    const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[];
+    const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[(
+        "cbor_wrapped_group_array",
+        "holder",
+        "gem PARSER gap (cddl 0.12.14): a control operator whose controller is an inline composite \
+         type2 (`bytes .cbor [coords]` — equally `{…}` / `~ref`) is a parse error (exit 65), though \
+         the same construct via a named ref parses fine; the spec-parse failure poisons EVERY rule \
+         in the fixture, so the innocent sibling rule `holder`'s spec-valid `[[0, 0]]` case is \
+         rejected without being judged. Repro + upstream steps: \
+         draft/ruby-cddl-inline-composite-control-arg-gap.md",
+    )];
 
     // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;
     // floor kept well below that (same loose-headroom convention as `validated_fixtures`, 20 of 33) so
