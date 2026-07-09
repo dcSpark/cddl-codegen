@@ -1217,8 +1217,12 @@ owner; the conditional mechanical layers (built only if a class recurs) are a
   artifact — is satisfied by any regression that preserves the input (a floor counting catalog
   `expect_err` presence stays green while the emitted assert regresses to a plain `is_err`,
   leaving the pin vacuous). Derive the floor's count from the emitted/executed artifact, or place
-  an assert at the emission site itself, outside the branch being guarded. Shipped exemplar:
-  `decode_replay_run`'s CONSTRAINT_WRONG_REASON body assert.
+  an assert at the emission site itself, outside the branch being guarded. Shipped exemplars:
+  `decode_replay_run`'s CONSTRAINT_WRONG_REASON body assert, and the pipeline-boundary
+  rejection-drain assert in `api.rs` (both generation exits assert no `record_rejection` survives
+  past `finalize`'s drains — a post-drain record site would otherwise be silently swallowed with
+  the tool exiting 0; mutation-proven by injecting a post-drain record and observing the snapshot
+  suite go red).
 
 ## Coverage
 
