@@ -4227,7 +4227,7 @@
     },
     {
       "alt": "[uint] \"*\" [uint]",
-      "desc": "One-sided variation of occur.bounded: a lower-bound-only occurrence (`2*`) whose count check has NO upper arm — the entry occurs at least n times, unbounded above. A distinct enforcement surface from the two-sided `2*5` base row, per the § 4 lesson that the enforcement axis reaches only as far as row enumeration.",
+      "desc": "One-sided variation of occur.bounded: a lower-bound-only occurrence (`2*`) whose count check has NO upper arm — the entry occurs at least n times, unbounded above. A distinct enforcement surface from the two-sided `2*5` base row, per the \"Intra-alternative variation rows\" lesson that the enforcement axis reaches only as far as row enumeration.",
       "example": "g = [2* uint]",
       "id": "occur.bounded.lower",
       "production": "occur",
@@ -4240,7 +4240,7 @@
     },
     {
       "alt": "[uint] \"*\" [uint]",
-      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a `Vec` length check (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a `Vec` length check (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "g = [*5 uint]",
       "id": "occur.bounded.upper",
       "production": "occur",
@@ -4872,7 +4872,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x10]",
       "id": "value.number.hex",
       "production": "value",
@@ -4882,7 +4882,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0b1010]",
       "id": "value.number.bin",
       "production": "value",
@@ -4892,7 +4892,7 @@
     },
     {
       "alt": "number",
-      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the lexeme axis (§ findings); member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the lexeme axis (§ findings); member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x1.8p+1]",
       "id": "value.number.hexfloat",
       "production": "value",
@@ -5128,7 +5128,7 @@
     },
     {
       "alt": "\"..\"",
-      "desc": "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (§ 4) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`.",
+      "desc": "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (the \"Intra-alternative variation rows\" rule) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`.",
       "example": "t = -10..10",
       "id": "rangeop.inclusive.int",
       "production": "rangeop",
@@ -5138,7 +5138,7 @@
     },
     {
       "alt": "\"..\"",
-      "desc": "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "t = -10..-3",
       "id": "rangeop.inclusive.nint",
       "production": "rangeop",
@@ -5148,7 +5148,7 @@
     },
     {
       "alt": "\"..\"",
-      "desc": "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the § 4 lesson that the enforcement axis reaches only as far as row enumeration made concrete.",
+      "desc": "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the \"Intra-alternative variation rows\" lesson that the enforcement axis reaches only as far as row enumeration made concrete.",
       "example": "t = 0.5..10.5",
       "id": "rangeop.inclusive.float",
       "production": "rangeop",
@@ -5168,7 +5168,7 @@
     },
     {
       "alt": "\"...\"",
-      "desc": "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "t = -10...10",
       "id": "rangeop.exclusive.int",
       "production": "rangeop",
@@ -5178,7 +5178,7 @@
     },
     {
       "alt": "\"...\"",
-      "desc": "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "t = -10...-3",
       "id": "rangeop.exclusive.nint",
       "production": "rangeop",
@@ -5188,7 +5188,7 @@
     },
     {
       "alt": "\"...\"",
-      "desc": "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the § 4 lesson that the enforcement axis reaches only as far as row enumeration.",
+      "desc": "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the \"Intra-alternative variation rows\" lesson that the enforcement axis reaches only as far as row enumeration.",
       "example": "t = 0.5...10.5",
       "id": "rangeop.exclusive.float",
       "production": "rangeop",
@@ -5207,7 +5207,7 @@
       "title": "Control-operator application (.op)"
     },
     {
-      "desc": "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "x = int .ne 0",
       "id": "ctl.ne.zero",
       "production": "ne",
@@ -5216,7 +5216,7 @@
       "title": "Not-equal control at the zero boundary (.ne 0)"
     },
     {
-      "desc": "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (§ sign-partition findings). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (a closed finding). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "x = int .ne 1",
       "id": "ctl.ne.one",
       "production": "ne",
@@ -5225,7 +5225,7 @@
       "title": "Not-equal control at the one boundary (.ne 1)"
     },
     {
-      "desc": "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the § oracle-gap findings entry — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; see ROADMAP § oracle gaps). Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the uint-target oracle-gap entry (README § \"Upstream oracle gaps\") — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; the same README gap entry). Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "x = uint .size 2",
       "id": "ctl.size.uint",
       "production": "size",

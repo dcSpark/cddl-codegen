@@ -37,7 +37,7 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 > § "Directional support evidence", § "Upstream oracle gaps") — except **F8–F11, out of scope** (bottom).
 > Only still-open findings are sections below.
 
-## 1. Remaining work
+## Remaining work
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
@@ -46,7 +46,7 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
 
-## 2. F4 / F5 follow-ons (only when their consumer exists)
+## F4 / F5 follow-ons (only when their consumer exists)
 
 - **F5 (encoding precision):** the encoding axis is already major-type-dependent (no impossible cells). The
   golden_hex projection lists uncovered legal cells *globally*; the remaining work is per-*construct*
@@ -55,7 +55,7 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
   if a *tag-semantic* consumer of the master appears.
 
-## 3. Expansion (when relevant)
+## Expansion (when relevant)
 
 - **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). Add other CDDL profiles (e.g. the modules drafts) if needed, and bump cddl-codegen's

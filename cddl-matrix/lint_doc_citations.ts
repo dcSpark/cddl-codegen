@@ -2,7 +2,7 @@
 /**
  * Documentation citation lint — PURE FILE READS, no cargo, no oracles.
  *
- * Three small checks keep gap-tracking prose maintainable:
+ * Four small checks keep gap-tracking prose maintainable:
  *   1. Citation existence: in the shipped gap-tracking docs, every
  *      `pinned by` / `tracked by` / `gated by` backticked token must resolve to a real tracked path or
  *      fixed-string occurrence outside those same hand docs. Brace shorthands such as
@@ -13,6 +13,10 @@
  *      should use the unmatchable placeholder spelling `item <N>`.
  *   3. MD022: ATX headings in the same shipped hand docs must be preceded by a blank line (file start ok,
  *      fenced code blocks ignored).
+ *   4. No numbered headings in the hand docs (`## 1. Foo`): a numbered heading invites `§ <N>`
+ *      citations, which silently retarget when sections are pruned/renumbered — the rot never
+ *      dangles, so no existence check can flag it (the "§ 4 lesson" descs pointed at a section
+ *      that had been renumbered away). Titles are the stable citation form.
  *
  * Run from cddl-matrix/:
  *   bun run lint_doc_citations.ts
@@ -119,6 +123,8 @@ function md022Problems(rel: string, text: string): string[] {
     if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
     if (inFence) continue;
     if (!/^\s{0,3}#{1,6}\s+\S/.test(line)) continue;
+    if (/^\s{0,3}#{1,6}\s+\d+[.)]\s/.test(line))
+      problems.push(`${rel}:${i + 1}: numbered heading '${line.trim()}' invites positional § <N> citations that silently retarget on renumbering; use an unnumbered descriptive title`);
     if (i === 0) continue;
     if (lines[i - 1]!.trim() !== "") problems.push(`${rel}:${i + 1}: heading must be preceded by a blank line`);
   }
