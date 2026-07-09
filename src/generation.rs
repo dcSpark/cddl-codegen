@@ -1286,19 +1286,42 @@ impl GenerationScope {
 
         // optional generated-test module (reject + round-trip halves; off by default, so it
         // doesn't touch the snapshot suite)
-        if cli.emit_tests
-            && let Some(test_mod) = crate::emit_tests::emit_generated_tests(types, cli)
-        {
-            self.rust_lib().raw(&test_mod);
+        //
+        // Multifile output: each test module lands at the generated ROOT (the `raw` below) while
+        // the minted values name submodule types bare (`St`, `Bholder`) — `use super::*;` only
+        // reaches root-scope items, so the emitters glob-import each declared non-root module
+        // (`use super::a::*;`). The lists are derived from the SAME per-crate scope maps the
+        // module-declaration loops above consume (`rust_scopes`/`wasm_scopes`, minus root and
+        // non-exported extern-dep scopes), so a glob can never name an undeclared module; BTreeMap
+        // keys keep the order deterministic. Caveat: glob imports can collide (E0659) if two
+        // submodules export the same type name — no matrix cell or corpus fixture does; if a
+        // consumer ever hits it, the robust long-term shape is fully-qualified rendering (thread
+        // `types.scope(ident)` into `render_rust`/`render_wasm`) instead of globs.
+        let submodule_glob_paths = |scopes: &BTreeMap<ModuleScope, codegen::Scope>| -> Vec<String> {
+            scopes
+                .keys()
+                .filter(|scope| **scope != *ROOT_SCOPE && scope.export())
+                .map(|scope| scope.components().join("::"))
+                .collect()
+        };
+        if cli.emit_tests {
+            let rust_submodules = submodule_glob_paths(&self.rust_scopes);
+            if let Some(test_mod) =
+                crate::emit_tests::emit_generated_tests(types, cli, &rust_submodules)
+            {
+                self.rust_lib().raw(&test_mod);
+            }
         }
         // the wasm-crate counterpart: same MintValue derivation, rendered through the wrapper API +
         // the cddl_lib rust twin (cross-crate byte differential). `#[cfg(test)]` so it's inert for
         // build/check/wasm-pack — only a `cargo test` of the wasm crate compiles and runs it.
-        if cli.wasm
-            && cli.emit_tests
-            && let Some(test_mod) = crate::emit_tests_wasm::emit_generated_wasm_tests(types, cli)
-        {
-            self.wasm_lib().raw(&test_mod);
+        if cli.wasm && cli.emit_tests {
+            let wasm_submodules = submodule_glob_paths(&self.wasm_scopes);
+            if let Some(test_mod) =
+                crate::emit_tests_wasm::emit_generated_wasm_tests(types, cli, &wasm_submodules)
+            {
+                self.wasm_lib().raw(&test_mod);
+            }
         }
     }
 

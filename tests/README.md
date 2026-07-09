@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the eleven `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the twelve `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -1137,7 +1137,7 @@ rust exposed `Int::new_uint`, `Int::new_nint`, and `IntError` for `int` map keys
 only the signed `Int::new(i64)` constructor and mapped parse failures to `JsError`; wasm now emits
 the two raw-CBOR-argument constructors and a source-level `pub type IntError = JsError` counterpart.
 
-## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_compiles`)
+## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_{compiles,roundtrips}`)
 
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
 placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
@@ -1148,13 +1148,16 @@ generator-invented structural wrappers (owner-resolved for map shapes via
 `collrec` class and the remaining `issue #138` TODO), while the wrapper/alias definitions land
 wherever `types.scope(ident)` puts them — and that region had exactly one hand fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
-cells). This sweep enumerates the placement grid and compile-floors it.
+cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
+(manual, full tier).
 
-Pipeline (projection → fixtures → gate), the same shape as the wasm-ABI matrix:
+Pipeline (projection → fixtures → gates), the same two-gate shape as the wasm-ABI matrix:
 
 ```
 cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>__<mode>/{lib,a,b}.cddl  ─►  integration_tests::multifile_matrix_compiles
      enumerate {shape × ref-mode}             two-module DIRECTORY fixture per cell                     generate --wasm=true (dir input), cargo check the wasm crate
+                                                                                                    ─►  integration_tests::multifile_matrix_roundtrips (#[ignore]d)
+                                                                                                        generate --wasm=true --emit-tests=true × ALL_PROFILES, cargo test rust/ + wasm/
 ```
 
 - **The two-module template.** Each cell is a DIRECTORY fixture. `lib.cddl` (file stem `lib` ==
@@ -1184,13 +1187,46 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   emitting no serialization (`coll`/`collmap`/`nullable`); the other anon shapes' module `a` already
   emits serialization, so nothing masks their b-side verdict and a ballast variant adds no
   discrimination (their `anon` cells are green except the pinned `collrec__anon`).
-- **The gate** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs, generates each
-  with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which path-depends on
-  the rust crate, so rust-side breakage surfaces transitively). Own scratch +
+- **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
+  generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
+  path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
   once) / ~30 s warm measured at 43 cells (46 at HEAD).
-- **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
+- **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
+  **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
+  enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
+  (default / preserve / json) and `cargo test`ed, so the minted `cddl_generated_tests` /
+  `cddl_generated_wasm_tests` modules RUN the cross-module wiring — module `b`'s holder is
+  constructed from module `a`'s shape (`Bholder::new(St::new(..))`) and round-tripped, and the wasm
+  twin byte-differentials against the fully-qualified `cddl_lib::b::…`/`cddl_lib::a::…` natives.
+  BOTH generated subcrates are `cargo test`ed (`rust/` then `wasm/`): the rust crate's
+  `#[cfg(test)]` module is not compiled when it's built merely as the wasm crate's dep, and the
+  proven placement classes are rust-side. Own scratch (`cddl_codegen_multifile_rt`) +
+  `acquire_scratch_lock`, one shared `CARGO_TARGET_DIR`, each per-cell dir freed after its verdict.
+  Loud-skip contract as the wasm round-trip gate: a cell minting no test surface passes with zero
+  tests (the emitter eprintln!s the skip; the floor still pins its ABI) — and a minted-module
+  vacuity floor (each generated crate's root `generated/mod.rs` is grepped for its test module;
+  observed 138/138 rust and 138/138 wasm) bounds the aggregate so green can't quietly go vacuous.
+  The multifile `--emit-tests` emission itself (root-level test module + `use super::<m>::*;` scope
+  globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
+  in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
+  tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
+  (~4.5 min measured at 46 cells; every run is effectively cold — the scratch root, shared target
+  included, is cleared at start and end — with the deps built once up front and the remainder
+  dominated by the 138 generate + 276 nested `cargo test` invocations).
+- **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
+  reason) holds cells red in EVERY profile — seeded with the two `collrec` compile-floor carries
+  (their wasm crate never compiles, so `cargo test` can never pass; reasons cite the Array-arm
+  structural-wrapper findings entry in `cddl-matrix/ROADMAP.md`). No rustc-error-code class
+  assertion here: the compile floor's `MULTIFILE_MATRIX_SKIP` already pins each cell's exact class.
+  `MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)]` (profile, cell stem, reason) holds
+  profile-specific reds — expected EMPTY: the first full sweep was green across all three profiles
+  outside the collrec pins. Both are four-state (red+listed = expected; red+unlisted = fail;
+  green+listed = resurfaced — remove the pin; green+unlisted = pass) with up-front stale-key guards
+  (unknown stem or profile fails before any heavy work). Verify a new guard the poison way:
+  pin a green cell → resurfaced failure; drop a collrec pin → red+unlisted failure; revert.
+- **Skip ledger (compile floor).** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
   error codes, reason) holds the deliberately-red cells, four-state like `WASM_MATRIX_SKIP`:
   red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
   ROADMAP entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
@@ -1223,9 +1259,12 @@ used cross-module imports the structural wrapper from the sole owner's module
 helper the wasm emit path uses, so import and emission placement cannot disagree — the E0432
 class); and a cross-module *named* reference to a `.cbor` wrapper imports the inner named type into
 the referencing module (`mark_refs`' Alias arm recurses into the alias target so idents the inlined
-serialization names get imported — the E0433 class). The gate is a **compile floor**: a green cell
-is not semantically verified (that's follow-on work). Its four-state class-asserting verdict stays
-live so any regression re-pins with the observed error-code evidence.
+serialization names get imported — the E0433 class). The two gates split the verdict: the
+always-on **compile floor** pins that every non-pinned cell's cross-module wiring type-checks (its
+four-state class-asserting verdict stays live so any regression re-pins with the observed
+error-code evidence), and the full-tier **round-trip gate** executes that wiring across all three
+profiles — a green placement cell is semantically verified once both hold (first full sweep:
+every non-collrec cell green under default, preserve, and json).
 
 **Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
 project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never

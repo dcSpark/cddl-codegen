@@ -192,7 +192,9 @@ are ledgered here (that's what the probe/gate error messages point at).
   record element `foo` in module `a`: the wasm representation needs a generated structural wrapper
   (`FooList`) — unlike `[* uint]`, which is transparent `Vec<u64>`; that is why the original `coll`
   shape could never probe this class. Pinned by the `collrec` cells in `tests/matrix_multifile/`
-  (`MULTIFILE_MATRIX_SKIP`), enumerated AFTER review found the `SHAPES` hole (the axis-honesty rule
+  (`MULTIFILE_MATRIX_SKIP` with the exact E-codes; carried into the round-trip gate's
+  `MULTIFILE_ROUNDTRIP_SKIP` — the wasm crate never compiles, so `cargo test` can never pass),
+  enumerated AFTER review found the `SHAPES` hole (the axis-honesty rule
   below applied late — the cells were never green, so no gate had ever seen the shape):
   - `collrec__anon` (E0425): the anonymous use mints `FooList` at the crate root, and the wrapper's
     accessors name the element type `Foo` bare without importing it from `a`. Candidate fix: mint
@@ -466,14 +468,6 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (`append_raw_bytes_defs`) to ctor-arg minting; the latter needs the user macro definitions in scope
   (the `tests/wasm-macro-crate` pattern). Either close them or record compile-verdict fallback as the
   permanent posture and prune this item.
-- **Multifile placement: behavioral upgrade on top of the compile floor.**
-  `multifile_matrix_compiles` is a compile floor — a green placement cell is not semantically
-  verified. Mirror the wasm-matrix compile→round-trip upgrade: generate the placement cells
-  `--emit-tests` and run the minted module, so cross-module wiring is executed rather than only
-  type-checked. The floor is green for every cell except the two pinned `collrec` array-wrapper
-  cells (§ findings): flip those first, or start from the green cells and let the upgrade absorb
-  them when they flip — either way the upgrade must not silently skip a red cell (inherit the
-  four-state skip-ledger contract).
 
 ## Explicitly out of scope (decided, not overlooked)
 
