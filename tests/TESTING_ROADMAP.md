@@ -78,7 +78,16 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **Layer-2 profile escalation.** `recombination_crates_execute` executes the default profile
      only (the `feature_corpus_compiles` trade-off: one profile keeps wall-clock bounded). Escalate
      the batches to `--preserve-encodings` / json compile-or-execute once the default-profile
-     finding stream dries up.
+     finding stream dries up. A proven escaped-regression class raises this item's value: a
+     preserve-only E0308 on tag-wrapped fixed-value members (`[v: #6.1(null)]` — the fixed-value
+     arm's final expression mis-shaped when a wrapping tag pushes into `final_exprs`) passed every
+     default-profile gate and was caught only by review's HEAD-vs-worktree probe; the composition
+     space already mints tag-wrapped fixed members (the `#6.11(…)` role template; the layer-2
+     E0618 ledger class is the evidence), so a preserve compile batch over the SAME compositions
+     would have failed loudly on it. The escaped instance itself is now pinned by
+     `tests/corpus/fixed_bool_member.cddl`'s tag-wrapped members (two cells, not the class — the
+     class is fixed-value kinds × wrapping positions × profiles, which is exactly what this
+     escalation sweeps).
    - **wasm surface.** Layer 2 generates `--wasm=false`; the wasm emission path is only
      generation-classified indirectly. A wasm-side batch (generate `--wasm=true`, `cargo check` the
      wasm crate) is the cheap extension; the wasm-ABI matrix owns the systematic per-shape surface.

@@ -240,7 +240,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   nullable pattern (a different shape), so prelude constants (`true`/`false`) in member position have
   no matrix cell. The behaviour itself is exercised by hand fixtures
   (`tests/robustness/fixed_bool_member.cddl`, `tests/corpus/fixed_bool_member.cddl`); the enumeration
-  gap is adding those member cells so the matrix covers the role.
+  gap is adding those member cells so the matrix covers the role. The same enumeration gap extends
+  to TAG-WRAPPED fixed-value members (`[v: #6.1(null)]`): no `contain.*` cell wraps a fixed value in
+  a tag at member position, so the emission axis never probed the shape under `preserve` — which is
+  how a preserve-only E0308 regression there escaped every gate until review caught it (the corpus
+  fixture's tag-wrapped members now pin those two cells; the CLASS — fixed-value kinds × wrapping
+  positions × profiles — is owned by enumeration here plus the layer-2 preserve escalation in
+  `tests/TESTING_ROADMAP.md`). This is the "Intra-alternative variation rows" expansion rule (this
+  doc) applied to the fixed-value member role: enumerate the wrapped variants as rows BEFORE
+  trusting a green.
 - **An OPTIONAL fixed value with no encoding variation (bool / null) in member position fails
   generation** — independent of the mandatory case, which round-trips
   (`tests/corpus/fixed_bool_member.cddl`). `[x: uint, ? v: true]` / `{? k: true, x: uint}` (and the
@@ -452,6 +460,14 @@ consolidation — are recorded in the code + git history; not re-litigated here.
 
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
+
+Hand-counted prose lists in this doc (e.g. the findings ledger's "Five panic-class families" /
+"Seven compile/round-trip-class families" headers) are maintained by review: pruning or adding a
+family must update the count and keep the entry in the list whose framing matches its failure
+stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
+through review again, fold these counts into `project_status_headers.ts`'s generated-counter
+system (the same mechanism that already generates the status-header counts) instead of adding
+another review rule.
 
 ## Related
 
