@@ -357,13 +357,12 @@ impl Deserialize for Bar {
                                                     }
                                                     cbor_event::LenSz::Indefinite => true,
                                                 } {
-                                                    if let cbor_event::LenSz::Indefinite = len {
-                                                        if raw.cbor_type()?
+                                                    if matches!(len, cbor_event::LenSz::Indefinite)
+                                                        && raw.cbor_type()?
                                                             == cbor_event::Type::Special
-                                                            && raw.special_break()?
-                                                        {
-                                                            break;
-                                                        }
+                                                        && raw.special_break()?
+                                                    {
+                                                        break;
                                                     }
                                                     foo_arr.push(Foo::deserialize(raw)?);
                                                 }
@@ -445,12 +444,11 @@ impl Deserialize for Bar {
                                             }
                                             cbor_event::LenSz::Indefinite => true,
                                         } {
-                                            if let cbor_event::LenSz::Indefinite = foo_map_len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special
-                                                    && raw.special_break()?
-                                                {
-                                                    break;
-                                                }
+                                            if matches!(foo_map_len, cbor_event::LenSz::Indefinite)
+                                                && raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
                                             }
                                             let foo_map_key = Foo::deserialize(raw)?;
                                             let foo_map_value = Foo::deserialize(raw)?;

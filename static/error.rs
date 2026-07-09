@@ -124,10 +124,10 @@ impl DeserializeError {
             DeserializeFailure::MandatoryFieldMissing(key) => write!(f, "Mandatory field {} not found", key),
             DeserializeFailure::NoVariantMatched => write!(f, "No variant matched"),
             DeserializeFailure::NoVariantMatchedWithCauses(errs) => {
-                write!(f, "No variant matched. Failures:\n")?;
+                writeln!(f, "No variant matched. Failures:")?;
                 for e in errs {
                     e.fmt_indent(f, indent + 1)?;
-                    write!(f, "\n")?;
+                    writeln!(f)?;
                 }
                 Ok(())
             },

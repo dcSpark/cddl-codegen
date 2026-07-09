@@ -77,10 +77,11 @@ impl Deserialize for Tree {
                     cbor_event::LenSz::Len(n, _) => (children_arr.len() as u64) < n,
                     cbor_event::LenSz::Indefinite => true,
                 } {
-                    if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     children_arr.push(Tree::deserialize(raw)?);
                 }

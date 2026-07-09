@@ -193,7 +193,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    denominator" pending call made concrete — resolve them together.
 
 7. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
-   denies `clippy::all` on the generated rust crate but carries five `-A` escapes so the generator's
+   denies `clippy::all` on the generated rust crate but carries three `-A` escapes so the generator's
    current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
    proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).
    `clippy::disallowed_names` is NOT in this list — it is a permanent input-dependent allow (the
@@ -201,9 +201,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    retire, each
    fixed by adjusting the emitted shape rather than the lint config, with approximate default-profile
    counts:
-   - `collapsible_if` (9×) — nested `if { if … }` in emitted length/optional-field guards that
-     clippy wants joined with `&&`.
-   - `write_with_newline` (2×) — `write!(… "\n")` that should be `writeln!`.
    - `derivable_impls` (2×, preserve profile) — a hand-emitted `impl Default` clippy can derive.
    - `type_complexity` (1×, preserve profile) — a very complex inline type worth a `type` alias.
    - `unnecessary_lazy_evaluations` (1×, preserve profile) — `.unwrap_or_else(|| None)`-style closures

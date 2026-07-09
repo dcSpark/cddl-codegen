@@ -5471,12 +5471,12 @@ fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     // `cbor_type()`, which this check already calls inside the reader-type-erased type-choice
     // deserializer closures (`|raw: &mut Deserializer<_>|`), so it carries no new bound and no E0282
     // risk. The `cbor_type` guard stays load-bearing: `special_break` errors on non-Special input.
-    let mut indef = Block::new(format!("if let {} = {len_var}", cbor_event_len_indef(cli)));
-    let mut brk =
-        Block::new("if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()?");
+    let mut brk = Block::new(format!(
+        "if matches!({len_var}, {}) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()?",
+        cbor_event_len_indef(cli)
+    ));
     brk.line("break;");
-    indef.push_block(brk);
-    indef
+    brk
 }
 
 pub fn table_type(cli: &Cli) -> &'static str {
