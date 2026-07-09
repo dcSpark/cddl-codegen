@@ -15,9 +15,11 @@ round-trip/reject tests to PASS (`cargo test`), falling back to the compile verd
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->6 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->44 `class="constraint"` enforcement reject vectors over 26 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
-axis is FULLY green: every supported row with a rejectable constraint projects
-`enforce = yes (bounded-reject)`, with BOTH the green set and the (now-empty) unverified set pinned
-exactly by `query_q4_directional.ts --check`).
+axis carries NO unverified rows: every supported row with a rejectable constraint projects
+`enforce = yes (bounded-reject)`, except the one certified over-acceptance row, which projects the
+honest `enforce = no (over-accepts)` until its ledgered fix lands (§ findings); the green,
+unverified (empty), and over-accepts sets are each pinned exactly by
+`query_q4_directional.ts --check`).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
 (the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and

@@ -146,6 +146,7 @@ const SPANS: Span[] = [
   { file: README_REL, id: "readme-counts", render: () => `${featuresTotal} features and ${containmentCells} containment cells` },
   { file: README_REL, id: "readme-annotations", render: () => `${annotationsTotal} cddl-codegen support annotations` },
   { file: README_REL, id: "readme-ops", render: () => `all ${controlOps} IANA ops probed` },
+  { file: README_REL, id: "readme-enforce-green", render: () => `${enforceGreenRowCount} rows` },
 
   // 3. tests/README.md — the manual `#[ignore]`d-gate roll-call (count word + backticked name list).
   { file: TESTS_README_REL, id: "tests-ignored-gates", render: () =>
