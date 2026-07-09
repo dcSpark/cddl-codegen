@@ -1791,7 +1791,7 @@ impl cbor_event::se::Serialize for DeeplyNested {
                         data_value_value_key_encodings
                             .get(key)
                             .cloned()
-                            .unwrap_or_else(|| (None, None));
+                            .unwrap_or((None, None));
                     serializer
                         .write_tag_sz(9u64, fit_sz(9u64, data_value_value_key_tag_encoding))?;
                     serializer.write_unsigned_integer_sz(

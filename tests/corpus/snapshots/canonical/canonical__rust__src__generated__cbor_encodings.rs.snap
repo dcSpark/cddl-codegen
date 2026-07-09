@@ -32,32 +32,34 @@ pub struct CborInCborEncoding {
     pub uint_bytes_encoding: Option<cbor_event::Sz>,
 }
 
+pub type DeeplyNestedDataValueEncodings = BTreeMap<
+    Vec<u8>,
+    (
+        LenEncoding,
+        BTreeMap<u64, Option<cbor_event::Sz>>,
+        BTreeMap<
+            u64,
+            (
+                LenEncoding,
+                BTreeMap<u64, (Option<cbor_event::Sz>, Option<cbor_event::Sz>)>,
+                BTreeMap<
+                    u64,
+                    (
+                        LenEncoding,
+                        Vec<(Option<cbor_event::Sz>, LenEncoding, Vec<StringEncoding>)>,
+                    ),
+                >,
+            ),
+        >,
+    ),
+>;
+
 #[derive(Clone, Debug, Default)]
 pub struct DeeplyNestedEncoding {
     pub len_encoding: LenEncoding,
     pub data_encoding: LenEncoding,
     pub data_key_encodings: BTreeMap<Vec<u8>, (Option<cbor_event::Sz>, StringEncoding)>,
-    pub data_value_encodings: BTreeMap<
-        Vec<u8>,
-        (
-            LenEncoding,
-            BTreeMap<u64, Option<cbor_event::Sz>>,
-            BTreeMap<
-                u64,
-                (
-                    LenEncoding,
-                    BTreeMap<u64, (Option<cbor_event::Sz>, Option<cbor_event::Sz>)>,
-                    BTreeMap<
-                        u64,
-                        (
-                            LenEncoding,
-                            Vec<(Option<cbor_event::Sz>, LenEncoding, Vec<StringEncoding>)>,
-                        ),
-                    >,
-                ),
-            >,
-        ),
-    >,
+    pub data_value_encodings: DeeplyNestedDataValueEncodings,
 }
 
 #[derive(Clone, Debug, Default)]

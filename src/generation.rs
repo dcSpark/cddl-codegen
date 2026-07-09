@@ -12,7 +12,7 @@ use crate::intermediate::{
     RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType, RustType,
     RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
 };
-use crate::utils::{cbor_type_code_str, convert_to_snake_case};
+use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_case};
 
 /// The seed-once thin root written to each generated crate's `src/lib.rs` on the first export only
 /// (rust, wasm, and json-gen all share this same content). All regenerated code lives under
@@ -160,8 +160,22 @@ impl<'a> SerializeConfig<'a> {
         };
         // for clippy::redundant_closure
         if encoding_fields.len() > 1 {
+            let default_tuple = tuple_str(
+                encoding_fields
+                    .iter()
+                    .map(|enc| enc.default_expr.to_owned())
+                    .collect(),
+            );
+            // An all-trivial-literal default tuple can use `unwrap_or(..)`; keep the lazy
+            // `unwrap_or_else(|| ..)` when any element is a function call, or clippy::or_fun_call
+            // fires instead (the same tension recorded at the `default_value` deserialize site).
+            let unwrap_call = if encoding_defaults_all_trivial(encoding_fields) {
+                format!("unwrap_or({default_tuple})")
+            } else {
+                format!("unwrap_or_else(|| {default_tuple})")
+            };
             format!(
-                "let {} = {}.unwrap_or_else(|| {});",
+                "let {} = {}.{};",
                 tuple_str(
                     encoding_fields
                         .iter()
@@ -169,12 +183,7 @@ impl<'a> SerializeConfig<'a> {
                         .collect()
                 ),
                 encoding_lookup,
-                tuple_str(
-                    encoding_fields
-                        .iter()
-                        .map(|enc| enc.default_expr.to_owned())
-                        .collect()
-                )
+                unwrap_call
             )
         } else {
             format!(
@@ -6077,6 +6086,17 @@ fn tuple_str(strs: Vec<String>) -> String {
     }
 }
 
+/// True iff every encoding field's `default_expr` is a trivial literal (`None`/`false`) rather than
+/// a function call (`LenEncoding::default()`, `Vec::new()`, `BTreeMap::new()`,
+/// `StringEncoding::default()`). Trivial-literal tuple defaults may be emitted with `unwrap_or(..)`;
+/// a call-bearing default must stay behind `unwrap_or_else(|| ..)` or clippy::or_fun_call fires.
+/// Centralized so every tuple-default emission site agrees on the same decision.
+fn encoding_defaults_all_trivial(encoding_fields: &[EncodingField]) -> bool {
+    encoding_fields
+        .iter()
+        .all(|enc| matches!(enc.default_expr, "None" | "false"))
+}
+
 // generates serialization code for an array-encoded record into ser_func EXCEPT FOR array length
 fn generate_array_struct_serialization(
     gen_scope: &mut GenerationScope,
@@ -6758,6 +6778,7 @@ fn codegen_struct(
         native_new_block.line("encodings: None,");
 
         let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
+        let mut encoding_aliases: Vec<(String, String)> = Vec::new();
         encoding_struct.field("pub len_encoding", "LenEncoding");
         if tag.is_some() {
             encoding_struct.field("pub tag_encoding", "Option<cbor_event::Sz>");
@@ -6774,17 +6795,31 @@ fn codegen_struct(
                 true,
                 cli,
             ) {
-                encoding_struct.field(format!("pub {}", field_enc.field_name), field_enc.type_name);
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    name,
+                    &field_enc.field_name,
+                    &field_enc.type_name,
+                );
             }
             if record.rep == Representation::Map {
                 let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
-                encoding_struct.field(format!("pub {}", key_enc.field_name), key_enc.type_name);
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    name,
+                    &key_enc.field_name,
+                    &key_enc.type_name,
+                );
             }
         }
 
-        gen_scope
-            .cbor_encodings(types, name)
-            .push_struct(encoding_struct);
+        let enc_scope = gen_scope.cbor_encodings(types, name);
+        for (alias, target) in encoding_aliases {
+            enc_scope.push_type_alias(TypeAlias::new(&alias, &target).vis("pub").clone());
+        }
+        enc_scope.push_struct(encoding_struct);
 
         Some("len_encoding")
     } else {
@@ -9206,6 +9241,119 @@ fn make_encoding_struct(encoding_name: &str) -> codegen::Struct {
     encoding_struct
 }
 
+/// clippy's default `type-complexity-threshold`. A type in a lint-scored position (struct field, fn
+/// signature, ...) whose structural score exceeds this trips `clippy::type_complexity`. Type
+/// *aliases* are not scored by the lint, so hoisting an over-threshold encoding-struct field type
+/// into a `pub type` alias silences it without an `#[allow]` and without changing any emitted bytes
+/// or round-trip semantics.
+const TYPE_COMPLEXITY_THRESHOLD: u64 = 250;
+
+/// Reproduce clippy's `type_complexity` scoring closely enough to decide, deterministically,
+/// whether an emitted encoding field type would trip the lint. clippy walks the type and adds
+/// `10 * nest` for every path / tuple / array / slice / reference node, incrementing `nest` by one
+/// when descending into that node's children. The emitted encoding types use only paths (`Foo`,
+/// `Foo<..>`, `a::b`) and tuples (no refs/slices), so scoring those node kinds suffices.
+/// Over-estimating here is harmless (it only mints an extra alias); the clippy gate is the backstop
+/// if the real boundary ever shifts.
+fn type_complexity_score(ty: &str) -> u64 {
+    /// Split `s` on top-level `delim` (bracket depth 0 over `<>` and `()`), trimming each piece.
+    fn split_top_level(s: &str, delim: char) -> Vec<&str> {
+        let mut depth = 0i32;
+        let mut parts = Vec::new();
+        let mut start = 0;
+        for (i, c) in s.char_indices() {
+            match c {
+                '<' | '(' => depth += 1,
+                '>' | ')' => depth -= 1,
+                c if c == delim && depth == 0 => {
+                    parts.push(s[start..i].trim());
+                    start = i + c.len_utf8();
+                }
+                _ => {}
+            }
+        }
+        parts.push(s[start..].trim());
+        parts
+    }
+    /// True iff every prefix of `s` has non-negative `<>`/`()` depth and the whole is balanced —
+    /// i.e. an outermost `(...)` pair actually wraps the entire string.
+    fn is_balanced(s: &str) -> bool {
+        let mut depth = 0i32;
+        for c in s.chars() {
+            match c {
+                '<' | '(' => depth += 1,
+                '>' | ')' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+        depth == 0
+    }
+    fn score(ty: &str, nest: u64) -> u64 {
+        let ty = ty.trim();
+        // Parenthesized: a tuple (>=2 top-level elements) is one node whose elements are children;
+        // a single `(T)` grouping is just `T` (no HIR node); `()` is a unit.
+        if let Some(inner) = ty
+            .strip_prefix('(')
+            .and_then(|s| s.strip_suffix(')'))
+            .filter(|inner| is_balanced(inner))
+        {
+            let parts = split_top_level(inner, ',');
+            return if inner.trim().is_empty() {
+                1 // unit ()
+            } else if parts.len() >= 2 {
+                10 * nest + parts.iter().map(|p| score(p, nest + 1)).sum::<u64>()
+            } else {
+                score(inner, nest) // grouping, not a tuple
+            };
+        }
+        // Path with generics `Ident<..>` / `a::b::Ident<..>`: one node, generic args are children.
+        if let (Some(open), Some(close)) = (ty.find('<'), ty.rfind('>')) {
+            let args = &ty[open + 1..close];
+            return 10 * nest
+                + split_top_level(args, ',')
+                    .iter()
+                    .map(|a| score(a, nest + 1))
+                    .sum::<u64>();
+        }
+        // Plain path node (`u64`, `LenEncoding`, `cbor_event::Sz`, ...).
+        10 * nest
+    }
+    score(ty, 1)
+}
+
+/// Add one field to an encoding struct, hoisting an over-`type_complexity` field type into a
+/// deterministic `pub type <Owner><FieldCamel> = ..;` alias in the same `cbor_encodings` scope so
+/// `clippy::type_complexity` stays quiet without an `#[allow]`. Alias names can't collide with each
+/// other: `owner` (the owning encoding struct's base type name) is distinct per struct and
+/// `field_name` is distinct within a struct, so identical anonymous shapes in different rules never
+/// collide. An alias CAN in principle collide with another rule's encoding-struct name (owner `Foo`
+/// + field `bar_encoding` aliases to `FooBarEncoding`, which a rule named `foo-bar` also claims) —
+/// that needs an over-threshold field AND the exact sibling rule name, and it fails LOUD (E0428 in
+/// the generated crate, caught by every compile gate), so it is not disambiguated preemptively.
+/// Aliases are collected (not pushed) so the caller can push them into the scope alongside the
+/// struct.
+fn push_encoding_struct_field(
+    encoding_struct: &mut codegen::Struct,
+    aliases: &mut Vec<(String, String)>,
+    owner: &RustIdent,
+    field_name: &str,
+    type_name: &str,
+) {
+    let field_type = if type_complexity_score(type_name) > TYPE_COMPLEXITY_THRESHOLD {
+        let alias = format!("{}{}", owner, convert_to_camel_case(field_name));
+        aliases.push((alias.clone(), type_name.to_owned()));
+        alias
+    } else {
+        type_name.to_owned()
+    };
+    encoding_struct.field(format!("pub {field_name}"), field_type);
+}
+
 // `annotated` - true iff deser_func is the body of an `.annotate(ident)` error closure: emit
 // locationless errors and let the closure supply the name (the per-error annotate/named forms
 // would get the name prepended AGAIN by the closure, reading "Name.Name"). When false, each error
@@ -9463,15 +9611,21 @@ fn generate_wrapper_struct(
                 format!("Option<{encoding_name}>"),
             );
             let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
+            let mut encoding_aliases: Vec<(String, String)> = Vec::new();
             for field_enc in &enc_fields {
-                encoding_struct.field(
-                    format!("pub {}", field_enc.field_name),
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    type_name,
+                    &field_enc.field_name,
                     &field_enc.type_name,
                 );
             }
-            gen_scope
-                .cbor_encodings(types, type_name)
-                .push_struct(encoding_struct);
+            let enc_scope = gen_scope.cbor_encodings(types, type_name);
+            for (alias, target) in encoding_aliases {
+                enc_scope.push_type_alias(TypeAlias::new(&alias, &target).vis("pub").clone());
+            }
+            enc_scope.push_struct(encoding_struct);
         }
         Some(enc_fields)
     } else {

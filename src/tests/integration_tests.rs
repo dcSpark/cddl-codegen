@@ -2188,19 +2188,11 @@ fn generated_code_clippy_clean() {
                 "clippy::all",
                 // Input-dependent, permanent allow: the fixture's own `foo`/`bar` rule names become
                 // generated parameter names, which clippy::disallowed_names flags — not a generator
-                // defect.
+                // defect. This is the ONLY allow: the emission-quality burn-down list is fully
+                // retired, so every other clippy::all lint class (and any NEW one a generator
+                // regression might mint) is hard-red on both profiles.
                 "-A",
                 "clippy::disallowed_names",
-                // Burn-down list: emission-quality issues to fix in the generator. Each entry is
-                // ledgered in tests/TESTING_ROADMAP.md; removing it here shrinks the list as the
-                // generator stops emitting the shape. The gate stays hard-red on any NEW lint class
-                // and on clippy::no_effect regressions (which are NOT allowed below).
-                "-A",
-                "clippy::derivable_impls",
-                "-A",
-                "clippy::type_complexity",
-                "-A",
-                "clippy::unnecessary_lazy_evaluations",
             ])
             .output()
             .unwrap();
