@@ -196,6 +196,19 @@ are ledgered here (that's what the probe/gate error messages point at).
     the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
+- **A no-occurrence type-domain arrow entry (`{ k => v }`, k non-literal) table-detects to the same
+  0..N `BTreeMap` as `{ * k => v }` — the spec's exactly-once occurrence is silently widened** (an
+  over-acceptance: generation of the two spellings is byte-identical, verified by diff; the decoder
+  accepts — and `--emit-tests` mints — an empty map the spec rejects). Surfaced by
+  `ir_conformance_corpus` validating minted instances of ledger-derived corpus fixtures whose
+  minimal shapes used the no-occurrence spelling (`bytes .cbor { bignint => uint }`,
+  `{ [+ uint] => uint }`); those fixtures now spell `*` so spec and implementation agree, and their
+  header comments cite this entry. The matrix's `*_arrow_single` cells don't cover this (they are
+  LITERAL-key records, which correctly route to the struct path); the missing enumeration is a
+  non-literal-key no-occurrence arrow row with a `class="over-acceptance"`-style pin — exactly the
+  vector class `tests/TESTING_ROADMAP.md`'s "Over-acceptance pins" item proposes, and this is now a
+  second live instance for it. Candidate fix: honor exactly-once (a required single entry) or reject
+  the no-occurrence spelling gracefully, recommending `*`.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
