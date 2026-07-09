@@ -1,9 +1,10 @@
-; A GENERIC INSTANTIATION used as a member/element type (`[pair<uint, tstr>]`) panics parsing at the
-; group-entry catch-all (`not yet implemented: If you run into this please create a github issue`,
-; parsing.rs). The same instantiation as a top-level rule RHS (`x = pair<uint, tstr>`,
-; genericarg.multiple) is supported — the gap is the MEMBER position only. The matrix has no
-; (member-role x genericarg) containment cells (role.generic-arg models the reverse: types AS
-; generic args), so this hand fixture is the pin. Surfaced by the recombination sweep
-; (src/tests/recombination_tests.rs).
+; A GENERIC INSTANTIATION used as a bare member/element type (`[pair<uint, tstr>]`) is SUPPORTED:
+; the group-entry `TypeGroupname` arm routes through the shared `generic_instance_or_new_type` helper
+; (parsing.rs), registering the anonymous instance (`PairU64Text`) exactly like keyed members,
+; rule RHSes, and homogeneous array elements. This fixture pins that the member position generates
+; cleanly (regression guard against the arm reverting to its old `todo!()`). Round-trip execution of
+; the shape lives in tests/corpus/generic_call_member.cddl; the boundary neighbours (arity mismatch,
+; undefined generic, generics on plain groups) are pinned by their own robustness/matrix fixtures.
+; Surfaced originally by the recombination sweep (src/tests/recombination_tests.rs).
 pair<k, v> = [k, v]
 a = [pair<uint, tstr>]

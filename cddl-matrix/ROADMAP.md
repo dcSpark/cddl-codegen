@@ -255,7 +255,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
   `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Six panic-class families surfaced by the recombination fuzzer's first sweep**
+- **Five panic-class families surfaced by the recombination fuzzer's first sweep**
   (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
   the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
   which is itself the coverage gap the fuzzer exists to find):
@@ -263,12 +263,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     panics parsing (`group choices in inlined map types not allowed`) — a distinct, earlier site
     than the choice-free "Anonymous groups not allowed" panic. Pinned by
     `tests/robustness/inline_group_choice_member.cddl`.
-  - A generic INSTANTIATION in bare member position (`a = [pair<uint, tstr>]`) panics parsing's
-    group-entry catch-all (`not yet implemented: ... create a github issue`), while the same
-    instantiation as a rule RHS AND as a homogeneous array element (`[* pair<uint, tstr>]`, which
-    registers the anonymous instance — pinned by `tests/corpus/generic_array_element.cddl`) are both
-    supported. Only the bare member position remains. Pinned by
-    `tests/robustness/generic_call_member.cddl`.
   - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate.rs's
     `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.

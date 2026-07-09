@@ -19,7 +19,7 @@ float_table_key            error (graceful)
 float_table_key_composite  error (graceful)
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
-generic_call_member        PANIC
+generic_call_member        ok
 group_choice_map_keyless_entry error (graceful)
 inline_group_choice_member PANIC
 map_bareword_keyword_key   error (graceful)

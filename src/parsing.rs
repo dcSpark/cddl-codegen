@@ -1954,7 +1954,7 @@ fn rust_type_from_type1(
 /// With `generic_args == None` this is exactly `types.new_type(&cddl_ident, cli)`, so callers that
 /// previously did that directly stay byte-identical. With generic args present it registers an
 /// anonymous generic instance under the synthesized name `<name>_<arg-variants>` (e.g. a
-/// `pair<uint, tstr>` element becomes `pair_uint_text`) and resolves *that* instance — otherwise the
+/// `pair<uint, tstr>` element becomes the `PairU64Text` instance) and resolves *that* instance — otherwise the
 /// args are silently dropped and the emitted code references the bare, never-emitted generic base.
 ///
 /// Shared by every member/element position that can carry a generic instantiation
@@ -2236,17 +2236,21 @@ fn group_entry_to_type(
             rust_type(types, parent_visitor, &ge.entry_type, cli)
         }
         GroupEntry::TypeGroupname { ge, .. } => {
-            if ge.generic_args.is_some() {
-                // I am not sure how we end up with this kind of generic args since definitional ones
-                // and member ones are created elsewhere. I thought that if you had a field like
-                // foo: bar<uint> it would be here but it turns out it's in the ValueMemberKey
-                // variant instead.
-                todo!(
-                    "If you run into this please create a github issue and include the .cddl that caused it"
-                );
-            }
-            let cddl_ident = CDDLIdent::new(ge.name.to_string());
-            types.new_type(&cddl_ident, cli)
+            // A bare TypeGroupname member can carry generic args (`[pair<uint, tstr>]`) — route
+            // through the shared helper so the anonymous instance (`PairU64Text`) is registered
+            // and emitted instead of dropping `ge.generic_args` and referencing the never-emitted
+            // bare generic base. `generic_args == None` stays byte-identical to the previous
+            // `types.new_type(...)` call (the helper's documented contract), so non-generic
+            // TypeGroupname members are unaffected. This shares the exact registration path used by
+            // keyed members (`foo: bar<uint>` via ValueMemberKey), rule RHSes, and homogeneous array
+            // elements (`[* pair<uint, tstr>]`), so the positions cannot drift.
+            generic_instance_or_new_type(
+                types,
+                parent_visitor,
+                CDDLIdent::new(ge.name.to_string()),
+                &ge.generic_args,
+                cli,
+            )
         }
         GroupEntry::InlineGroup { .. } => panic!("inline group entries are not implemented"),
     }

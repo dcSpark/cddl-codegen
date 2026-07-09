@@ -849,10 +849,6 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "inline group-choice map as a member type; pinned by tests/robustness/inline_group_choice_member.cddl (recombination finding)",
     ),
     (
-        "not yet implemented: If you run into this please create a github issue",
-        "generic instantiation in member position; pinned by tests/robustness/generic_call_member.cddl (recombination finding)",
-    ),
-    (
         "assertion failed: self.generic_instances.contains_key(ident)",
         "`any` in member/element position; pinned by tests/robustness/any_member.cddl (recombination finding)",
     ),
@@ -924,20 +920,22 @@ fn recombination_generation_sweep() {
     );
 
     // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline
-    // (1544 swept / 919 ok / 428 panic / 197 graceful); floors sit ~10% under so real shrinkage
-    // fails loud while ingredient additions don't churn them. (Fixed BOOL literals in member
-    // position moved panic -> ok when the deserialize `FixedValue::Bool` arm landed — see the
-    // pruned `generate_deserialize` note below and tests/corpus/fixed_bool_member.cddl. Earlier, the
-    // `[coords] / tstr` choice-arm and the `gen<[coords]>` generic-arg shapes moved panic -> ok when
-    // member-position array-of-plain-group promotion landed.)
+    // (1544 swept / 927 ok / 420 panic / 197 graceful); floors sit ~10% under so real shrinkage
+    // fails loud while ingredient additions don't churn them. (Generic INSTANTIATION in bare member
+    // position moved panic -> ok when the `TypeGroupname` group-entry arm was routed through
+    // `generic_instance_or_new_type` — see tests/corpus/generic_call_member.cddl. Earlier, fixed BOOL
+    // literals in member position moved panic -> ok when the deserialize `FixedValue::Bool` arm
+    // landed — tests/corpus/fixed_bool_member.cddl — and the `[coords] / tstr` choice-arm and the
+    // `gen<[coords]>` generic-arg shapes moved panic -> ok when member-position array-of-plain-group
+    // promotion landed.)
     assert!(
         comps.len() >= 1400,
         "only {} compositions swept (floor 1400) — the composer rotted or ingredients went missing",
         comps.len()
     );
     assert!(
-        ok >= 825,
-        "only {ok} compositions generated ok (floor 825) — the ok set collapsed"
+        ok >= 835,
+        "only {ok} compositions generated ok (floor 835) — the ok set collapsed"
     );
     for (sub, cite) in KNOWN_PANIC_CLASSES {
         assert!(
