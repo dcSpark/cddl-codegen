@@ -3844,6 +3844,12 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
         String::from_utf8_lossy(&output.stderr)
     );
     if !output.status.success() {
+        // Deliberate conflation: a probe-crate BUILD failure (cargo compile error — e.g. a rev
+        // bump changed the crate's `cddl_from_str`/`validate_cbor_from_slice` API surface) lands
+        // in this same MISMATCH panic as a behavioral mismatch. Both mean "the pinned-oracle
+        // contract does not hold at this rev" and both demand the same conscious re-validation;
+        // triage which one it is from the attached cargo output below (compile errors vs the
+        // probe-name mismatch lines).
         let mut message = format!(
             "HARNESS FAILURE: rust oracle fingerprint MISMATCH — CDDL_ORACLE_DEP rev {rev} does not \
              behave like the pinned oracle. Failing probe(s):\n{combined}\nThe pinned oracle is the \
