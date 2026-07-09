@@ -50,7 +50,7 @@ impl Deserialize for SingleFieldMap {
                                 );
                             }
                             t = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("t"))?,
                             );
                         }
@@ -136,7 +136,7 @@ impl Deserialize for SingleFieldMapOpt {
                             t = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.unsigned_integer()? as u64)
+                                    Ok(raw.unsigned_integer()?)
                                 })()
                                 .map_err(|e| e.annotate("t"))?,
                             );

@@ -57,7 +57,7 @@ impl Deserialize for Tagged {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                42 => raw.text()? as String,
+                42 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,
@@ -85,7 +85,7 @@ impl Deserialize for TaggedNewtype {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
-                42 => raw.text()? as String,
+                42 => raw.text()?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,

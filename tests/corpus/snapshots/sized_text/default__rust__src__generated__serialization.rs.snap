@@ -22,7 +22,7 @@ impl cbor_event::se::Serialize for SizedText {
 impl Deserialize for SizedText {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = raw.text()? as String;
+            let inner = raw.text()?;
             if inner.len() < 1 || inner.len() > 16 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as isize,

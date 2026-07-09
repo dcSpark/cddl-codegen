@@ -26,7 +26,7 @@ impl cbor_event::se::Serialize for OccurrenceHolder {
         }
         serializer.write_array(cbor_event::Len::Len(self.inline_bounded.len() as u64))?;
         for element in self.inline_bounded.iter() {
-            serializer.write_text(&element)?;
+            serializer.write_text(element)?;
         }
         Ok(serializer)
     }
@@ -51,7 +51,7 @@ impl Deserialize for OccurrenceHolder {
                             break;
                         }
                     }
-                    o_arr.push(raw.unsigned_integer()? as u64);
+                    o_arr.push(raw.unsigned_integer()?);
                 }
                 if o_arr.len() < 1 {
                     return Err(DeserializeFailure::RangeCheck {
@@ -76,7 +76,7 @@ impl Deserialize for OccurrenceHolder {
                             break;
                         }
                     }
-                    b_arr.push(raw.unsigned_integer()? as u64);
+                    b_arr.push(raw.unsigned_integer()?);
                 }
                 if b_arr.len() < 2 || b_arr.len() > 5 {
                     return Err(DeserializeFailure::RangeCheck {
@@ -101,7 +101,7 @@ impl Deserialize for OccurrenceHolder {
                             break;
                         }
                     }
-                    inline_bounded_arr.push(raw.text()? as String);
+                    inline_bounded_arr.push(raw.text()?);
                 }
                 if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {
                     return Err(DeserializeFailure::RangeCheck {

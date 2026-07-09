@@ -28,8 +28,8 @@ impl Deserialize for UsesNoAlias {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let field = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("field"))?;
+            let field =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("field"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

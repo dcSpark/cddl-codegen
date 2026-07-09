@@ -193,20 +193,16 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    denominator" pending call made concrete — resolve them together.
 
 7. **Burn down the generated-code clippy allow-list (`generated_code_clippy_clean`).** The gate
-   denies `clippy::all` on the generated rust crate but carries eight `-A` escapes so the generator's
+   denies `clippy::all` on the generated rust crate but carries five `-A` escapes so the generator's
    current emission passes; each is an emission-quality shape to stop emitting, and every `-A` removed
    proves the fix generator-wide (the gate exercises the default and `preserve+canonical` profiles).
    `clippy::disallowed_names` is NOT in this list — it is a permanent input-dependent allow (the
-   fixture's own `foo`/`bar` rule names become generated parameter names). The eight to retire, each
+   fixture's own `foo`/`bar` rule names become generated parameter names). The remaining entries to
+   retire, each
    fixed by adjusting the emitted shape rather than the lint config, with approximate default-profile
    counts:
-   - `unnecessary_cast` (13×) — same-type `as` casts on the deserialize path (`… as u64` where the
-     source is already `u64`); emit the cast only when the source and target types differ.
    - `collapsible_if` (9×) — nested `if { if … }` in emitted length/optional-field guards that
      clippy wants joined with `&&`.
-   - `needless_borrows_for_generic_args` (5×) — a `&expr` passed where the callee takes the value by
-     a generic bound (drop the borrow).
-   - `useless_conversion` (3×) — `.into()` / `From` to the same type (`u64` → `u64`).
    - `write_with_newline` (2×) — `write!(… "\n")` that should be `writeln!`.
    - `derivable_impls` (2×, preserve profile) — a hand-emitted `impl Default` clippy can derive.
    - `type_complexity` (1×, preserve profile) — a very complex inline type worth a `type` alias.

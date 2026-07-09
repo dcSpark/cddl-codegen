@@ -29,9 +29,9 @@ impl Deserialize for Documented {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(2)?;
             read_len.finish()?;
-            let foo = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("foo"))?;
-            let bar = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("bar"))?;
+            let foo = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("foo"))?;
+            let bar =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("bar"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

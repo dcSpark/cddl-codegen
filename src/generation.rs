@@ -1901,7 +1901,7 @@ impl GenerationScope {
                         "write_bytes",
                         serializer_use,
                         &format!("{}_bytes", config.var_name),
-                        true,
+                        false,
                         line_ender,
                         &config.encoding_var(Some("bytes"), encoding_var_is_copy),
                         cli,
@@ -1982,7 +1982,7 @@ impl GenerationScope {
                             "write_text",
                             serializer_use,
                             &format!("\"{}\"", escape_rust_str(s)),
-                            false,
+                            true,
                             line_ender,
                             &encoding_var,
                             cli,
@@ -2012,7 +2012,7 @@ impl GenerationScope {
                                 "write_bytes",
                                 serializer_use,
                                 &config.expr,
-                                true,
+                                config.expr_is_ref,
                                 line_ender,
                                 &encoding_var,
                                 cli,
@@ -2024,7 +2024,7 @@ impl GenerationScope {
                                 "write_text",
                                 serializer_use,
                                 &config.expr,
-                                true,
+                                config.expr_is_ref,
                                 line_ender,
                                 &encoding_var,
                                 cli,
@@ -2143,7 +2143,7 @@ impl GenerationScope {
                                 "write_bytes",
                                 serializer_use,
                                 &format!("{}.to_raw_bytes()", config.expr),
-                                false,
+                                true,
                                 line_ender,
                                 &config.encoding_var(None, false),
                                 cli,
@@ -2905,14 +2905,20 @@ impl GenerationScope {
                                         )
                                     })
                                     .unwrap_or_default();
+                                let cast = match p {
+                                    Primitive::U64 | Primitive::Str | Primitive::Bytes => {
+                                        Cow::Borrowed("")
+                                    }
+                                    _ => Cow::Owned(format!(" as {p}")),
+                                };
                                 deser_code.content.line(&format!(
-                                    "{}{}.{}(){}{}? as {}{}",
+                                    "{}{}.{}(){}{}?{}{}",
                                     before_after.before_str(false),
                                     deserializer_name,
                                     func,
                                     bounds_fn,
                                     width_fn,
-                                    p,
+                                    cast,
                                     before_after.after_str(false)
                                 ));
                                 deser_code.throws = true;
@@ -3776,9 +3782,11 @@ impl GenerationScope {
                         let dup_key_error_key = match &key_type.conceptual_type {
                             ConceptualRustType::Primitive(Primitive::U8)
                             | ConceptualRustType::Primitive(Primitive::U16)
-                            | ConceptualRustType::Primitive(Primitive::U32)
-                            | ConceptualRustType::Primitive(Primitive::U64) => {
+                            | ConceptualRustType::Primitive(Primitive::U32) => {
                                 format!("Key::Uint({key_var_name}.into())")
+                            }
+                            ConceptualRustType::Primitive(Primitive::U64) => {
+                                format!("Key::Uint({key_var_name})")
                             }
                             ConceptualRustType::Primitive(Primitive::Str) => {
                                 format!("Key::Str({key_var_name})")
@@ -4312,9 +4320,9 @@ fn write_string_sz(
     cli: &Cli,
 ) {
     let expr_ref = if expr_is_ref {
-        Cow::from(format!("&{expr}"))
-    } else {
         Cow::from(expr)
+    } else {
+        Cow::from(format!("&{expr}"))
     };
     if cli.preserve_encodings {
         body.line(&format!(
@@ -7195,7 +7203,7 @@ fn codegen_struct(
                                 "write_text",
                                 "serializer",
                                 &format!("\"{}\"", escape_rust_str(s)),
-                                false,
+                                true,
                                 "?;",
                                 &key_encoding_var,
                                 cli,
@@ -8333,7 +8341,7 @@ fn push_map_choice_key_ser(
                 "write_text",
                 "serializer",
                 &format!("\"{}\"", escape_rust_str(s)),
-                false,
+                true,
                 "?;",
                 &format!("{variant_var}_key_encoding"),
                 cli,

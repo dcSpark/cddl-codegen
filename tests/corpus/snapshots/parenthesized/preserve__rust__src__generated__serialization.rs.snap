@@ -24,7 +24,7 @@ impl cbor_event::se::Serialize for Choice {
             Choice::Text {
                 text,
                 text_encoding,
-            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
         }
     }
 }

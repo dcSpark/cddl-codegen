@@ -168,7 +168,7 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         }
         if let Some(field) = &self.b {
             serializer.write_text_sz(
-                &field,
+                field,
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.b_encoding.clone())
@@ -188,7 +188,7 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         )?;
         if let Some(field) = &self.d {
             serializer.write_text_sz(
-                &field,
+                field,
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.d_encoding.clone())
@@ -424,7 +424,7 @@ impl cbor_event::se::Serialize for Bar {
                             ),
                         )?;
                         serializer.write_text_sz(
-                            &field,
+                            field,
                             self.encodings
                                 .as_ref()
                                 .map(|encs| encs.key_5_encoding.clone())
@@ -1150,9 +1150,7 @@ impl Deserialize for Bounds {
                         let (b_value, b_value_encoding) =
                             raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
                         if b_table.insert(b_key, b_value).is_some() {
-                            return Err(
-                                DeserializeFailure::DuplicateKey(Key::Uint(b_key.into())).into()
-                            );
+                            return Err(DeserializeFailure::DuplicateKey(Key::Uint(b_key)).into());
                         }
                         b_key_encodings.insert(b_key, b_key_encoding);
                         b_value_encodings.insert(b_key, b_value_encoding);
@@ -1309,13 +1307,11 @@ impl cbor_event::se::Serialize for BoundsTypeChoice {
             BoundsTypeChoice::Bytes {
                 bytes,
                 bytes_encoding,
-            } => {
-                serializer.write_bytes_sz(&bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64))
-            }
+            } => serializer.write_bytes_sz(bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64)),
             BoundsTypeChoice::Text {
                 text,
                 text_encoding,
-            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
         }
     }
 }
@@ -1766,7 +1762,7 @@ impl cbor_event::se::Serialize for DeeplyNested {
                 .cloned()
                 .unwrap_or_else(|| (None, StringEncoding::default()));
             serializer.write_tag_sz(14u64, fit_sz(14u64, data_key_tag_encoding))?;
-            serializer.write_bytes_sz(&key, data_key_encoding.to_str_len_sz(key.len() as u64))?;
+            serializer.write_bytes_sz(key, data_key_encoding.to_str_len_sz(key.len() as u64))?;
             let (data_value_encoding, data_value_key_encodings, data_value_value_encodings) = self
                 .encodings
                 .as_ref()
@@ -1833,7 +1829,7 @@ impl cbor_event::se::Serialize for DeeplyNested {
                                     .cloned()
                                     .unwrap_or_default();
                             serializer.write_text_sz(
-                                &element,
+                                element,
                                 data_value_value_value_elem_elem_encoding
                                     .to_str_len_sz(element.len() as u64),
                             )?;
@@ -2041,7 +2037,7 @@ impl Deserialize for DeeplyNested {
                                     .is_some()
                                 {
                                     return Err(DeserializeFailure::DuplicateKey(Key::Uint(
-                                        data_value_value_key.into(),
+                                        data_value_value_key,
                                     ))
                                     .into());
                                 }
@@ -2076,7 +2072,7 @@ impl Deserialize for DeeplyNested {
                                 .is_some()
                             {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Uint(
-                                    data_value_key.into(),
+                                    data_value_key,
                                 ))
                                 .into());
                             }
@@ -2201,7 +2197,7 @@ impl SerializeEmbeddedGroup for Ed {
         )?;
         if let Some(field) = &self.index_2 {
             serializer.write_text_sz(
-                &field,
+                field,
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.index_2_encoding.clone())
@@ -2347,7 +2343,7 @@ impl SerializeEmbeddedGroup for Ee {
         )?;
         if let Some(field) = &self.index_2 {
             serializer.write_bytes_sz(
-                &field,
+                field,
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.index_2_encoding.clone())
@@ -2487,10 +2483,8 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
                 ))?;
                 serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *index_0_encoding))?;
                 if let Some(field) = index_1 {
-                    serializer.write_text_sz(
-                        &field,
-                        index_1_encoding.to_str_len_sz(field.len() as u64),
-                    )?;
+                    serializer
+                        .write_text_sz(field, index_1_encoding.to_str_len_sz(field.len() as u64))?;
                 }
                 serializer.write_unsigned_integer_sz(5u64, fit_sz(5u64, *index_2_encoding))?;
                 len_encoding.end(serializer)?;
@@ -3841,7 +3835,7 @@ impl cbor_event::se::Serialize for NonOverlapBasicEmbed {
                 tag_encoding,
             } => {
                 serializer.write_array_sz(len_encoding.to_len_sz(2))?;
-                serializer.write_text_sz(&y, y_encoding.to_str_len_sz(y.len() as u64))?;
+                serializer.write_text_sz(y, y_encoding.to_str_len_sz(y.len() as u64))?;
                 serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *tag_encoding))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
@@ -4329,13 +4323,11 @@ impl cbor_event::se::Serialize for NonOverlappingTypeChoiceAll {
             NonOverlappingTypeChoiceAll::Text {
                 text,
                 text_encoding,
-            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
             NonOverlappingTypeChoiceAll::Bytes {
                 bytes,
                 bytes_encoding,
-            } => {
-                serializer.write_bytes_sz(&bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64))
-            }
+            } => serializer.write_bytes_sz(bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64)),
             NonOverlappingTypeChoiceAll::Helloworld {
                 helloworld_tag_encoding,
                 helloworld_encoding,
@@ -4377,7 +4369,7 @@ impl cbor_event::se::Serialize for NonOverlappingTypeChoiceAll {
                         .cloned()
                         .unwrap_or_default();
                     serializer.write_text_sz(
-                        &key,
+                        key,
                         map_text_to_u64_key_encoding.to_str_len_sz(key.len() as u64),
                     )?;
                     let map_text_to_u64_value_encoding = map_text_to_u64_value_encodings
@@ -4562,7 +4554,7 @@ impl cbor_event::se::Serialize for NonOverlappingTypeChoiceSome {
             NonOverlappingTypeChoiceSome::Text {
                 text,
                 text_encoding,
-            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
         }
     }
 }
@@ -4624,7 +4616,7 @@ impl cbor_event::se::Serialize for OverlapBasicEmbed {
             } => {
                 serializer.write_array_sz(len_encoding.to_len_sz(2))?;
                 serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *tag_encoding))?;
-                serializer.write_bytes_sz(&hash, hash_encoding.to_str_len_sz(hash.len() as u64))?;
+                serializer.write_bytes_sz(hash, hash_encoding.to_str_len_sz(hash.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }
@@ -6802,7 +6794,7 @@ impl cbor_event::se::Serialize for TableArrMembers {
                             .cloned()
                             .unwrap_or_default();
                         serializer.write_text_sz(
-                            &value,
+                            value,
                             table_value_encoding.to_str_len_sz(value.len() as u64),
                         )?;
                     }
@@ -6987,7 +6979,7 @@ impl Deserialize for TableArrMembers {
                                             .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
                                         if table_table.insert(table_key, table_value).is_some() {
                                             return Err(DeserializeFailure::DuplicateKey(
-                                                Key::Uint(table_key.into()),
+                                                Key::Uint(table_key),
                                             )
                                             .into());
                                         }
@@ -7541,7 +7533,7 @@ impl cbor_event::se::Serialize for TypeChoice {
             TypeChoice::Text {
                 text,
                 text_encoding,
-            } => serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64)),
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
             TypeChoice::ArrU64 {
                 arr_u64,
                 arr_u64_tag_encoding,
@@ -8037,9 +8029,7 @@ impl Deserialize for WrapperTable {
                 let (inner_value, inner_value_encoding) =
                     raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
                 if inner_table.insert(inner_key, inner_value).is_some() {
-                    return Err(
-                        DeserializeFailure::DuplicateKey(Key::Uint(inner_key.into())).into(),
-                    );
+                    return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key)).into());
                 }
                 inner_key_encodings.insert(inner_key, inner_key_encoding);
                 inner_value_encodings.insert(inner_key, inner_value_encoding);

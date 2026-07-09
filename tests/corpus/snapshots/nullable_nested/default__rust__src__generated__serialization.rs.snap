@@ -17,7 +17,7 @@ impl cbor_event::se::Serialize for DataEnum {
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         match self {
             DataEnum::U64(uint) => serializer.write_unsigned_integer(*uint),
-            DataEnum::Text(text) => serializer.write_text(&text),
+            DataEnum::Text(text) => serializer.write_text(text),
         }
     }
 }
@@ -26,10 +26,8 @@ impl Deserialize for DataEnum {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
-                cbor_event::Type::UnsignedInteger => {
-                    Ok(DataEnum::U64(raw.unsigned_integer()? as u64))
-                }
-                cbor_event::Type::Text => Ok(DataEnum::Text(raw.text()? as String)),
+                cbor_event::Type::UnsignedInteger => Ok(DataEnum::U64(raw.unsigned_integer()?)),
+                cbor_event::Type::Text => Ok(DataEnum::Text(raw.text()?)),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
@@ -81,7 +79,7 @@ impl Deserialize for NullableCollField {
                                     break;
                                 }
                             }
-                            c_arr.push(raw.unsigned_integer()? as u64);
+                            c_arr.push(raw.unsigned_integer()?);
                         }
                         Some(c_arr)
                     }
@@ -189,8 +187,8 @@ impl Deserialize for NullableOptionalField {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
-            let pre = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("pre"))?;
+            let pre =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("pre"))?;
             let field0 = if raw
                 .as_mut_ref()
                 .fill_buf()
@@ -207,7 +205,7 @@ impl Deserialize for NullableOptionalField {
                     Ok(match raw.cbor_type()? != cbor_event::Type::Special {
                         true => {
                             read_len.read_elems(1)?;
-                            Some(raw.unsigned_integer()? as u64)
+                            Some(raw.unsigned_integer()?)
                         }
                         false => {
                             read_len.read_elems(1)?;

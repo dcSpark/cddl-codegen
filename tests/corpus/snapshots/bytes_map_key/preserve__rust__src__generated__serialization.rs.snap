@@ -37,7 +37,7 @@ impl cbor_event::se::Serialize for BytesKeyHolder {
                 .and_then(|encs| encs.named_key_encodings.get(key))
                 .cloned()
                 .unwrap_or_default();
-            serializer.write_bytes_sz(&key, named_key_encoding.to_str_len_sz(key.len() as u64))?;
+            serializer.write_bytes_sz(key, named_key_encoding.to_str_len_sz(key.len() as u64))?;
             let named_value_encoding = self
                 .encodings
                 .as_ref()
@@ -65,7 +65,7 @@ impl cbor_event::se::Serialize for BytesKeyHolder {
                 .and_then(|encs| encs.inline_key_encodings.get(key))
                 .cloned()
                 .unwrap_or_default();
-            serializer.write_bytes_sz(&key, inline_key_encoding.to_str_len_sz(key.len() as u64))?;
+            serializer.write_bytes_sz(key, inline_key_encoding.to_str_len_sz(key.len() as u64))?;
             let inline_value_encoding = self
                 .encodings
                 .as_ref()

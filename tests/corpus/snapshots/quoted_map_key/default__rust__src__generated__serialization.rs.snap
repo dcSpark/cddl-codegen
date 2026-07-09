@@ -53,7 +53,7 @@ impl Deserialize for QuotedMapKey {
                                 );
                             }
                             a = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("a"))?,
                             );
                         }
@@ -64,8 +64,7 @@ impl Deserialize for QuotedMapKey {
                                 );
                             }
                             b = Some(
-                                Ok(raw.text()? as String)
-                                    .map_err(|e: DeserializeError| e.annotate("b"))?,
+                                Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("b"))?,
                             );
                         }
                         unknown_key => {

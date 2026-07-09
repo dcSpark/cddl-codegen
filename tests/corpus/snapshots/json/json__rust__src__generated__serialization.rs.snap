@@ -21,7 +21,7 @@ impl cbor_event::se::Serialize for BytesWrapper {
 
 impl Deserialize for BytesWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> { Ok(Self(raw.bytes()? as Vec<u8>)) })()
+        (|| -> Result<_, DeserializeError> { Ok(Self(raw.bytes()?)) })()
             .map_err(|e| e.annotate("BytesWrapper"))
     }
 }
@@ -37,7 +37,7 @@ impl cbor_event::se::Serialize for CustomWrapper {
 
 impl Deserialize for CustomWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()? as u64)) })()
+        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()?)) })()
             .map_err(|e| e.annotate("CustomWrapper"))
     }
 }
@@ -247,7 +247,7 @@ impl cbor_event::se::Serialize for StrWrapper {
 
 impl Deserialize for StrWrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> { Ok(Self(raw.text()? as String)) })()
+        (|| -> Result<_, DeserializeError> { Ok(Self(raw.text()?)) })()
             .map_err(|e| e.annotate("StrWrapper"))
     }
 }
@@ -276,7 +276,7 @@ impl cbor_event::se::Serialize for TableHolder {
         serializer.write_array(cbor_event::Len::Len(1))?;
         serializer.write_map(cbor_event::Len::Len(self.t.len() as u64))?;
         for (key, value) in self.t.iter() {
-            serializer.write_text(&key)?;
+            serializer.write_text(key)?;
             serializer.write_unsigned_integer(*value)?;
         }
         Ok(serializer)
@@ -302,8 +302,8 @@ impl Deserialize for TableHolder {
                             break;
                         }
                     }
-                    let t_key = raw.text()? as String;
-                    let t_value = raw.unsigned_integer()? as u64;
+                    let t_key = raw.text()?;
+                    let t_value = raw.unsigned_integer()?;
                     if t_table.insert(t_key.clone(), t_value).is_some() {
                         return Err(DeserializeFailure::DuplicateKey(Key::Str(t_key)).into());
                     }
@@ -335,7 +335,7 @@ impl cbor_event::se::Serialize for U64Wrapper {
 
 impl Deserialize for U64Wrapper {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()? as u64)) })()
+        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()?)) })()
             .map_err(|e| e.annotate("U64Wrapper"))
     }
 }

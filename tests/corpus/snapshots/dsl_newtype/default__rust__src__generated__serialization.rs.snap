@@ -21,7 +21,7 @@ impl cbor_event::se::Serialize for ProtocolMagic {
 
 impl Deserialize for ProtocolMagic {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()? as u64)) })()
+        (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()?)) })()
             .map_err(|e| e.annotate("ProtocolMagic"))
     }
 }

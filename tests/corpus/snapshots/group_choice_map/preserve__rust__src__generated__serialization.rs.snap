@@ -28,7 +28,7 @@ impl cbor_event::se::Serialize for FixedValueArm {
             } => {
                 serializer.write_map_sz(len_encoding.to_len_sz(1))?;
                 serializer.write_unsigned_integer_sz(3u64, fit_sz(3u64, *text_key_encoding))?;
-                serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }
@@ -334,7 +334,7 @@ impl cbor_event::se::Serialize for MixedKeyTypes {
             } => {
                 serializer.write_map_sz(len_encoding.to_len_sz(1))?;
                 serializer.write_text_sz("b", b_key_encoding.to_str_len_sz("b".len() as u64))?;
-                serializer.write_text_sz(&b, b_encoding.to_str_len_sz(b.len() as u64))?;
+                serializer.write_text_sz(b, b_encoding.to_str_len_sz(b.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }
@@ -431,7 +431,7 @@ impl cbor_event::se::Serialize for MultiFieldArm {
             } => {
                 serializer.write_map_sz(len_encoding.to_len_sz(1))?;
                 serializer.write_text_sz("b", b_key_encoding.to_str_len_sz("b".len() as u64))?;
-                serializer.write_text_sz(&b, b_encoding.to_str_len_sz(b.len() as u64))?;
+                serializer.write_text_sz(b, b_encoding.to_str_len_sz(b.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }
@@ -749,7 +749,7 @@ impl cbor_event::se::Serialize for TextKeyed {
             } => {
                 serializer.write_map_sz(len_encoding.to_len_sz(1))?;
                 serializer.write_text_sz("b", b_key_encoding.to_str_len_sz("b".len() as u64))?;
-                serializer.write_text_sz(&b, b_encoding.to_str_len_sz(b.len() as u64))?;
+                serializer.write_text_sz(b, b_encoding.to_str_len_sz(b.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }
@@ -872,7 +872,7 @@ impl cbor_event::se::Serialize for UintKeyed {
             } => {
                 serializer.write_map_sz(len_encoding.to_len_sz(1))?;
                 serializer.write_unsigned_integer_sz(2u64, fit_sz(2u64, *text_key_encoding))?;
-                serializer.write_text_sz(&text, text_encoding.to_str_len_sz(text.len() as u64))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))?;
                 len_encoding.end(serializer)?;
                 Ok(serializer)
             }

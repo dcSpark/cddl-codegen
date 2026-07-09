@@ -46,7 +46,7 @@ impl Deserialize for ComparisonControls {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("a"))?;
             let b = Ok(raw
                 .unsigned_integer()
@@ -62,7 +62,7 @@ impl Deserialize for ComparisonControls {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("b"))?;
             let c = Ok(raw
                 .unsigned_integer()
@@ -78,7 +78,7 @@ impl Deserialize for ComparisonControls {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("c"))?;
             let d = Ok(raw
                 .unsigned_integer()
@@ -94,10 +94,9 @@ impl Deserialize for ComparisonControls {
                     } else {
                         Ok(x)
                     }
-                })? as u64)
+                })?)
             .map_err(|e: DeserializeError| e.annotate("d"))?;
-            let e = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("e"))?;
+            let e = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("e"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

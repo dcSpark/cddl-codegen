@@ -26,7 +26,7 @@ impl cbor_event::se::Serialize for ArrowValueKeys {
         ))?;
         if let Some(field) = &self.first {
             serializer.write_unsigned_integer(0u64)?;
-            serializer.write_text(&field)?;
+            serializer.write_text(field)?;
         }
         if let Some(field) = &self.second {
             serializer.write_unsigned_integer(1u64)?;
@@ -57,7 +57,7 @@ impl Deserialize for ArrowValueKeys {
                             first = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.text()? as String)
+                                    Ok(raw.text()?)
                                 })()
                                 .map_err(|e| e.annotate("first"))?,
                             );
@@ -69,7 +69,7 @@ impl Deserialize for ArrowValueKeys {
                             second = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.unsigned_integer()? as u64)
+                                    Ok(raw.unsigned_integer()?)
                                 })()
                                 .map_err(|e| e.annotate("second"))?,
                             );
@@ -140,7 +140,7 @@ impl Deserialize for ValueKeys {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
                             }
                             key_1 = Some(
-                                Ok(raw.text()? as String)
+                                Ok(raw.text()?)
                                     .map_err(|e: DeserializeError| e.annotate("key_1"))?,
                             );
                         }
@@ -149,7 +149,7 @@ impl Deserialize for ValueKeys {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Uint(2)).into());
                             }
                             key_2 = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("key_2"))?,
                             );
                         }

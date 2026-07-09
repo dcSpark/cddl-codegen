@@ -38,8 +38,7 @@ impl Deserialize for OptHolder {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
-            let x = Ok(raw.unsigned_integer()? as u64)
-                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
             let f = if raw
                 .cbor_type()
                 .map(|ty| ty == cbor_event::Type::Array)
@@ -60,7 +59,7 @@ impl Deserialize for OptHolder {
                                 break;
                             }
                         }
-                        f_arr.push(raw.unsigned_integer()? as u64);
+                        f_arr.push(raw.unsigned_integer()?);
                     }
                     Ok(f_arr)
                 })()

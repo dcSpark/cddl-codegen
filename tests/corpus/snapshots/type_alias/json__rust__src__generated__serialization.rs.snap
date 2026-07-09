@@ -28,7 +28,7 @@ impl Deserialize for Holder {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let val = Ok(raw.text()? as String).map_err(|e: DeserializeError| e.annotate("val"))?;
+            let val = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("val"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

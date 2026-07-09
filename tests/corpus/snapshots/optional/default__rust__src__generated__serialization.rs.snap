@@ -25,7 +25,7 @@ impl cbor_event::se::Serialize for OptionalFields {
         serializer.write_unsigned_integer(self.a)?;
         if let Some(field) = &self.b {
             serializer.write_text("b")?;
-            serializer.write_text(&field)?;
+            serializer.write_text(field)?;
         }
         Ok(serializer)
     }
@@ -59,7 +59,7 @@ impl Deserialize for OptionalFields {
                                 );
                             }
                             a = Some(
-                                Ok(raw.unsigned_integer()? as u64)
+                                Ok(raw.unsigned_integer()?)
                                     .map_err(|e: DeserializeError| e.annotate("a"))?,
                             );
                         }
@@ -72,7 +72,7 @@ impl Deserialize for OptionalFields {
                             b = Some(
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
-                                    Ok(raw.text()? as String)
+                                    Ok(raw.text()?)
                                 })()
                                 .map_err(|e| e.annotate("b"))?,
                             );

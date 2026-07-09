@@ -73,7 +73,7 @@ impl cbor_event::se::Serialize for OptionalFields {
                                 .to_str_len_sz("b".len() as u64),
                         )?;
                         serializer.write_text_sz(
-                            &field,
+                            field,
                             self.encodings
                                 .as_ref()
                                 .map(|encs| encs.b_encoding.clone())
