@@ -57,6 +57,14 @@ note = "Multi-entry fixed-value arrow key with a sibling, pinning arrow-key reco
 example = "m = { 2 => uint, 1: uint }"
 
 [[contain]]
+id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
+role = "role.map-key"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A NON-literal (type-domain) arrow key with NO occurrence marker: `{ tstr => uint }`. RFC8610 §2.1/§3.2 — an entry with no occurrence indicator occurs EXACTLY ONCE, and §3.5.2 admits a type1 key — so this map REQUIRES exactly one `tstr => uint` entry. cddl-codegen table-detects it to the SAME 0..N BTreeMap as the `*`-marked `{ * tstr => uint }` (generation byte-identical, verified by diff), silently widening the exactly-once occurrence and wrongly accepting an EMPTY map the spec rejects — the no-occurrence type-domain arrow WIDENING finding (cddl-matrix/ROADMAP.md § findings). Enumerated WITH its boundary-violation over-acceptance vector (the empty-map instance `8200a0` = holder `[0, {}]`) per the 'Intra-alternative variation rows' expansion rule, so the certified over-acceptance is pinned rather than hidden behind a green. Contrast the literal-key `*_arrow_single` cells, which correctly route to the struct/record path."
+example = "m = { tstr => uint }"
+
+[[contain]]
 id = "contain.map-key.memberkey.value.text_colon_single"
 role = "role.map-key"
 feature = "memberkey.value"

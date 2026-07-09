@@ -411,6 +411,32 @@ and asserts they are accepted.
     accept and reject vectors must share their outer CBOR shape. § 6 enforces this mechanically
     (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
     accept-less standalone rows).
+- **The vector-class 2×2 (current decoder behavior × spec validity).** `expect` always pins CURRENT
+  behavior (what the replay asserts); `class` carries the spec-validity/triage label:
+
+  | | spec-VALID bytes | spec-INVALID bytes |
+  |---|---|---|
+  | decoder **accepts** | plain `expect="accept"` (no class) | `expect="accept"` + `class="over-acceptance"` |
+  | decoder **rejects** | `expect="reject"` + `class="bug"\|"limitation"` | `expect="reject"` + `class="constraint"` (+ `expect_err`) |
+
+  The fourth cell is `class="over-acceptance"` — certified-spec-INVALID CBOR (both oracles reject at
+  mint, the same inverse gate as `class="constraint"`) that the generated decoder CURRENTLY (wrongly)
+  ACCEPTS: a known silent-acceptance bug with no enforcing fix yet. It is `source="hand"`, requires a
+  `reason` (citing the ledgered finding + the promotion flow), is FORBIDDEN `expect_err`, survives
+  re-mints VERBATIM, and is re-validated spec-INVALID at each mint (never pruned mechanically). The
+  replay gate asserts it STILL decodes Ok ("still wrongly accepts"), so when a fix lands the pin flips
+  LOUDLY — the signal to PROMOTE it to `class="constraint"` (+ `expect_err`) and flip the row's Q4
+  projection green (the `KNOWN_SILENT_DROP` / `EXPECTED_COMPILE_FAIL` pattern applied to decode). Q4
+  projects a carrying row as the honest `enforce = no (over-accepts: M)` (dominating `yes`/`unverified`;
+  pinned by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS`). A spec-INVALID accept
+  vector NEVER counts as spec-valid decode evidence: it is excluded from the verify.ts decode-foreign
+  corroboration count, from Q4's foreign-decode count, and from the replay gate's encoding-variant /
+  header-mutation / preserve legs. The seed instance is the no-occurrence type-domain arrow widening
+  (`contain.map-key.memberkey.type1.tstr_arrow_nooccur` — `{ tstr => uint }` table-detected to 0..N,
+  its empty-map instance `8200a0` = holder `[0, {}]` wrongly accepted; `cddl-matrix/ROADMAP.md`
+  § findings). Note the deliberate symmetry: `8200a0` is ALSO the seeded-control *accept* on `type2.map`
+  (`{ * tstr => int }` — a spec-VALID empty table there), while against the no-occurrence spelling the
+  same bytes are spec-INVALID — the byte-identical generation of the two spellings IS the bug.
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~3 min): per active row it generates a crate from the committed `spec` and `cargo
   test`s it under two profiles. Oracle-free and deterministic — the bytes were spec-cross-validated
@@ -427,7 +453,12 @@ and asserts they are accepted.
     starts decoding green FAILS the gate** — a re-bless can't silently launder a bug). Each
     `class="constraint"` vector additionally asserts the error Display CONTAINS the catalog's
     `expect_err`, pinning the rejection REASON — a wrong-reason rejection fails the gate with the
-    captured Display (a vacuity floor keeps ≥ 40 reason asserts live).
+    captured Display (a vacuity floor keeps ≥ 40 reason asserts live). A `class="over-acceptance"`
+    vector emits its own `over_accept_N` test asserting the decoder STILL (wrongly) decodes it Ok; a
+    rejection is the pin FLIP (the fix landed), attributed by `classify_over_acceptance_failure` with a
+    marker naming the promotion flow, and a completeness guard asserts the emitted `over_accept_*` count
+    equals the catalog's over-acceptance vector count. These vectors are excluded from the two legs
+    below (spec-invalid bytes evidence nothing about the spec's shape).
   - *Encoding-variant leg* — each accept vector is replayed through mechanically-derived spec-EQUAL
     re-encodings (the shipped `cddl_encoding_fidelity::variants` mutator, reused harness-side:
     indefinite framing, non-minimal int/len widths, chunked strings, reversed maps): a re-encoding
@@ -459,13 +490,14 @@ and asserts they are accepted.
     the leg live.
   - *Failure attribution* — a FAILED replay test's cause is attributed by pure
     marker-classification functions (`classify_constraint_failure` / `classify_variant_failure` /
-    `classify_header_mutant_failure`) whose needles own the trailing ':' that disambiguates
-    prefix-colliding libtest names (`reject_1` vs `reject_10`); that grammar is pinned unit-side
-    (no crate build) by
+    `classify_header_mutant_failure` / `classify_over_acceptance_failure`) whose needles own the
+    trailing ':' that disambiguates prefix-colliding libtest names (`reject_1` vs `reject_10`,
+    `over_accept_1` vs `over_accept_10`); that grammar is pinned unit-side (no crate build) by
     `integration_tests::classify_constraint_failure_disambiguates_prefix_colliding_names` and its
-    variant/header-mutant siblings
+    variant/header-mutant/over-acceptance siblings
     (`classify_variant_failure_owns_the_delimiter_and_maps_each_marker`,
-    `classify_header_mutant_failure_disambiguates_prefix_colliding_names`); the header mutator
+    `classify_header_mutant_failure_disambiguates_prefix_colliding_names`,
+    `classify_over_acceptance_failure_disambiguates_prefix_colliding_names`); the header mutator
     itself is pinned by `header_mutants_pin_hand_derived_bytes`.
 
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
@@ -477,7 +509,10 @@ and asserts they are accepted.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
-  reject-pin class/reason/`expect_err` shape, and the hard-coded **seeded regression controls** — the
+  reject-pin class/reason/`expect_err` shape, accept-vector class (no class, or exactly
+  `class="over-acceptance"` with a `reason` and no `expect_err`), the § 6 shape rule extended to
+  over-acceptance vectors (same-shape as the row's SPEC-VALID accepts, which now EXCLUDE over-acceptance
+  from the shape-class set), and the hard-coded **seeded regression controls** — the
   absent-instance vectors (`occur.optional` holder `[0, []]`, `type2.map` holder `[0, {}]`,
   `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style.
 - **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors

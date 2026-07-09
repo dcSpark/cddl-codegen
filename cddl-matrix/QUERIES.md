@@ -52,6 +52,12 @@ enforce-constraint}."
   construct C" form); `--check` runs the consistency invariants + vacuity floor as a gate. It reports
   encode honestly as the round-trip half (no independent per-construct encode oracle) while decode
   carries its independent per-construct foreign vectors — the asymmetry Q4 exists to expose.
+- **enforce-constraint vocabulary:** `yes (bounded-reject: N)` (a `class="constraint"` reject vector
+  durably rejected), `unverified (no reject vector)` (an enforcement-bearing row with no vector yet),
+  `no (over-accepts: M)` (a `class="over-acceptance"` vector — certified spec-INVALID CBOR the decoder
+  wrongly accepts; DOMINATES `yes`/`unverified`, the honest fact that an enforcement claim with a
+  proven hole is not "yes"), or `n/a` (no rejectable constraint). All three non-trivial sets are pinned
+  exactly by `query_q4_directional.ts --check`.
 
 ### Q5 — Matrix self-completeness (per profile)
 "List every construct defined by CDDL profile P (grammar ∪ prelude ∪ control-op registry) that the

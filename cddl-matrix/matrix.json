@@ -1759,6 +1759,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
@@ -2693,6 +2708,14 @@
       "feature": "memberkey.type1",
       "id": "contain.map-key.memberkey.type1.uint_arrow_multi",
       "note": "Multi-entry fixed-value arrow key with a sibling, pinning arrow-key record routing beyond the single-entry case. RFC8610 §3.5.2.",
+      "role": "role.map-key",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { tstr => uint }",
+      "feature": "memberkey.type1",
+      "id": "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
+      "note": "A NON-literal (type-domain) arrow key with NO occurrence marker: `{ tstr => uint }`. RFC8610 §2.1/§3.2 — an entry with no occurrence indicator occurs EXACTLY ONCE, and §3.5.2 admits a type1 key — so this map REQUIRES exactly one `tstr => uint` entry. cddl-codegen table-detects it to the SAME 0..N BTreeMap as the `*`-marked `{ * tstr => uint }` (generation byte-identical, verified by diff), silently widening the exactly-once occurrence and wrongly accepting an EMPTY map the spec rejects — the no-occurrence type-domain arrow WIDENING finding (cddl-matrix/ROADMAP.md § findings). Enumerated WITH its boundary-violation over-acceptance vector (the empty-map instance `8200a0` = holder `[0, {}]`) per the 'Intra-alternative variation rows' expansion rule, so the certified over-acceptance is pinned rather than hidden behind a green. Contrast the literal-key `*_arrow_single` cells, which correctly route to the struct/record path.",
       "role": "role.map-key",
       "spec": "allowed"
     },

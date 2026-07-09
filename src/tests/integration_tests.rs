@@ -5283,7 +5283,21 @@ fn encoding_variants_copy_float_heads_verbatim() {
 struct ReplayVector {
     hex: String,
     accept: bool,
+    /// `class="over-acceptance"`: spec-INVALID CBOR the decoder CURRENTLY (wrongly) accepts (a certified
+    /// silent-acceptance pin, no fix yet). It is `expect="accept"` so `accept` is also true, but it is
+    /// NOT spec-valid — the base/encoding-variant/header-mutation/preserve legs must exclude it, and it
+    /// replays as its own `over_accept_{i}` test asserting the decoder STILL accepts it.
+    over_acceptance: bool,
     expect_err: Option<String>,
+}
+
+impl ReplayVector {
+    /// A spec-VALID accept vector. The encoding-variant, header-mutation, evidenced-major, and preserve
+    /// legs derive ONLY from these: an over-acceptance vector is spec-INVALID and evidences nothing about
+    /// the spec's shape (a spec-invalid instance re-encoded / header-mutated / byte-checked is meaningless).
+    fn spec_valid_accept(&self) -> bool {
+        self.accept && !self.over_acceptance
+    }
 }
 
 /// One catalog `[[row]]` with vectors, distilled to what the replay needs: `spec` (what codegen
@@ -5615,6 +5629,9 @@ const MARKER_VAR_ORIG_DECODE_FAILED: &str = "VAR_ORIG_DECODE_FAILED";
 const MARKER_HDR_MUTANT_DECODED_OK: &str = "HDR_MUTANT_DECODED_OK";
 const MARKER_HDR_MUTANT_NO_LOCATION: &str = "HDR_MUTANT_NO_LOCATION";
 const MARKER_DOUBLED_LOCATION: &str = "DOUBLED_LOCATION";
+/// An `over_accept_{i}` test's `class="over-acceptance"` vector was REJECTED by the decoder — i.e. the
+/// decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed). The pin flip signal.
+const MARKER_OVER_ACCEPT_NOW_REJECTED: &str = "OVER_ACCEPT_NOW_REJECTED";
 const DOUBLED_LOCATION_HELPER_SELF_CHECK: &str = "doubled_location_helper_self_check";
 
 /// How a FAILED `class="constraint"` reject vector's replay test attributed its cause.
@@ -5882,6 +5899,60 @@ fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
     );
 }
 
+/// How a FAILED `class="over-acceptance"` replay test (`over_accept_{i}`) attributed its cause. An
+/// over-acceptance vector asserts the decoder STILL (wrongly) accepts spec-INVALID bytes, so its ONLY
+/// failure mode is the decoder REJECTING them — the pin flip that means a fix landed.
+#[derive(Debug, PartialEq)]
+enum OverAcceptanceFailureKind {
+    /// The vector was REJECTED — the decoder no longer wrongly accepts it (promote to class="constraint").
+    NowRejected,
+    /// No known marker was found in the captured output — unexpected.
+    Unattributed,
+}
+
+/// Classify a failed over-acceptance replay test from the captured cargo output. Same prefix-collision
+/// grammar as `classify_constraint_failure` / `classify_variant_failure` / `classify_header_mutant_failure`:
+/// the needle is `"{marker} {test_name}:"` and the trailing ':' is what stops a prefix test name
+/// (`over_accept_1` is a prefix of `over_accept_10`) from stealing the attribution. This function owns
+/// that delimiter so no attribution site can forget it.
+fn classify_over_acceptance_failure(output: &str, test_name: &str) -> OverAcceptanceFailureKind {
+    if output.contains(&format!("{MARKER_OVER_ACCEPT_NOW_REJECTED} {test_name}:")) {
+        OverAcceptanceFailureKind::NowRejected
+    } else {
+        OverAcceptanceFailureKind::Unattributed
+    }
+}
+
+/// Prefix-collision pin for `classify_over_acceptance_failure`, mirroring
+/// `classify_constraint_failure_disambiguates_prefix_colliding_names`: libtest names end in decimal
+/// indices, so `over_accept_1` is a PREFIX of `over_accept_10`. Assert a marker for the longer suffix
+/// does NOT attribute to the prefix name, the marker maps to its kind, and an absent name attributes to
+/// nothing.
+#[test]
+fn classify_over_acceptance_failure_disambiguates_prefix_colliding_names() {
+    let longer =
+        "thread 'x' panicked: OVER_ACCEPT_NOW_REJECTED over_accept_10: the fix landed, promote\n";
+    assert_eq!(
+        classify_over_acceptance_failure(longer, "over_accept_1"),
+        OverAcceptanceFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_over_acceptance_failure(longer, "over_accept_10"),
+        OverAcceptanceFailureKind::NowRejected
+    );
+    assert_eq!(
+        classify_over_acceptance_failure(
+            "OVER_ACCEPT_NOW_REJECTED over_accept_0: the fix landed\n",
+            "over_accept_0"
+        ),
+        OverAcceptanceFailureKind::NowRejected
+    );
+    assert_eq!(
+        classify_over_acceptance_failure(longer, "over_accept_2"),
+        OverAcceptanceFailureKind::Unattributed
+    );
+}
+
 /// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
 /// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
 /// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
@@ -5889,6 +5960,13 @@ fn classify_header_mutant_failure_disambiguates_prefix_colliding_names() {
 /// module mirrors verify.ts's `replayInDir`: accept => `from_cbor_bytes` must be Ok; reject => must be
 /// Err; under preserve each accept ALSO asserts `to_cbor_bytes()` byte-identity (the preserve contract
 /// is itself decode-direction evidence — the decoder captured the exact input encoding).
+///
+/// A `class="over-acceptance"` vector (spec-INVALID CBOR the decoder CURRENTLY wrongly accepts) emits
+/// its OWN `over_accept_{i}` `#[test]` asserting decode STAYS Ok; a rejection panics with the
+/// grep-stable `OVER_ACCEPT_NOW_REJECTED` marker naming the promotion flow (the pin flipped — the fix
+/// landed). These vectors are default-leg only: the caller excludes them from the accept-derived
+/// encoding-variant / header-mutation / preserve legs (`ReplayVector::spec_valid_accept`), since a
+/// spec-invalid instance evidences nothing about the spec's shape.
 ///
 /// On the DEFAULT leg a reject vector WITH `expect_err` (a `class="constraint"` vector) does more than
 /// assert `is_err`: it `match`es the Result (generated types don't uniformly derive Debug, so
@@ -5933,7 +6011,27 @@ fn decode_replay_run(
     for (i, vector) in vectors.iter().enumerate() {
         let hex = &vector.hex;
         let bytes = hex_to_byte_literals(hex);
-        let (name, body) = if vector.accept {
+        let (name, body) = if vector.over_acceptance {
+            // A certified spec-INVALID vector the decoder CURRENTLY (wrongly) accepts: assert it STILL
+            // decodes Ok. A rejection is the pin flip — the fix landed. Its own test name (`over_accept_`)
+            // and grep-stable marker attribute a FAILED test distinctly, naming the promotion flow.
+            let name = format!("over_accept_{i}");
+            let body = format!(
+                "match {type_name}::from_cbor_bytes(BYTES) {{\n\
+                 \x20           Ok(_) => {{}}\n\
+                 \x20           Err(e) => panic!(\"{MARKER_OVER_ACCEPT_NOW_REJECTED} {name}: a class=over-acceptance vector was REJECTED — the decoder no longer wrongly accepts this spec-INVALID CBOR (the fix landed): promote this vector to class=\\\"constraint\\\" with an expect_err, move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, update the ROADMAP finding, re-mint — err: {{}}\", e),\n\
+                 \x20       }}"
+            );
+            // Vacuity guard at the emission site (the constraint arm's CONSTRAINT_WRONG_REASON body
+            // assert twin): the built body must carry the marker, so a drifted match can't silently emit
+            // a body that never exercises the still-accepts contract while the count floor stays green.
+            assert!(
+                body.contains(MARKER_OVER_ACCEPT_NOW_REJECTED),
+                "decode_replay_run built an over-acceptance body missing its marker ({name}) — the \
+                 over-acceptance arm regressed"
+            );
+            (name, body)
+        } else if vector.accept {
             let name = format!("accept_{i}");
             let body = if preserve {
                 format!(
@@ -6110,6 +6208,13 @@ fn decode_replay_run(
 /// the vector for a subtly WRONG reason (a stray length check, an unrelated error path) — which a bare
 /// `is_err` assert would pass. A wrong-reason rejection fails the gate with the captured Display in the
 /// output; a constraint vector that decodes Ok fails it as an enforcement gap.
+///
+/// A `class="over-acceptance"` accept vector is the inverse pin: spec-INVALID CBOR the decoder CURRENTLY
+/// (wrongly) accepts (a certified silent-acceptance bug, no fix yet). Its own `over_accept_{i}` test on
+/// the DEFAULT leg asserts the decoder STILL accepts it — so when a fix lands, the pin flips LOUDLY
+/// (`OVER_ACCEPT_NOW_REJECTED`), prompting promotion to `class="constraint"` and the Q4 enforce-green
+/// pin. It is one assertion, default-leg only: excluded from the encoding-variant, header-mutation, and
+/// preserve legs (a spec-invalid instance evidences nothing about the spec's shape).
 ///
 /// The default leg also feeds each accept vector's mechanically-derived ENCODING VARIANTS
 /// (`cddl_encoding_fidelity::variants` — indefinite framing, non-minimal widths, chunked strings,
@@ -6310,6 +6415,7 @@ fn decode_conformance_replay() {
             .map(|v| {
                 let hex = v.get("hex").and_then(|x| x.as_str()).unwrap().to_string();
                 let expect = v.get("expect").and_then(|x| x.as_str()).unwrap();
+                let class = v.get("class").and_then(|x| x.as_str());
                 let expect_err = v
                     .get("expect_err")
                     .and_then(|x| x.as_str())
@@ -6317,6 +6423,7 @@ fn decode_conformance_replay() {
                 ReplayVector {
                     hex,
                     accept: expect == "accept",
+                    over_acceptance: expect == "accept" && class == Some("over-acceptance"),
                     expect_err,
                 }
             })
@@ -6441,6 +6548,15 @@ fn decode_conformance_replay() {
     // Display contained the pinned `expect_err`). A vacuity floor below guards against this collapsing
     // to near-zero (a broken match body, or the corpus losing its constraint vectors).
     let mut constraint_reason_asserts = 0usize;
+    // How many `over_accept_{i}` tests were emitted (default leg). A completeness guard below asserts
+    // this equals the catalog's over-acceptance vector count, so an emission arm that mislabels an
+    // over-acceptance vector as a plain accept is caught even though the per-crate count is unchanged.
+    let mut over_acceptance_tests_emitted = 0usize;
+    let over_acceptance_catalog_total: usize = rows
+        .iter()
+        .flat_map(|r| &r.vectors)
+        .filter(|v| v.over_acceptance)
+        .count();
 
     for row in &rows {
         // ---- default profile: accept => Ok, reject pin => Err ----
@@ -6449,7 +6565,9 @@ fn decode_conformance_replay() {
         // and turn a panic into a loud gate failure naming row+hex rather than aborting the whole run).
         let mut variant_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
         for (i, vector) in row.vectors.iter().enumerate() {
-            if !vector.accept {
+            // SPEC-VALID accepts only — an over-acceptance vector is spec-INVALID, so re-encoding it is
+            // meaningless (there is no spec-equal re-encoding of a spec-invalid instance).
+            if !vector.spec_valid_accept() {
                 continue;
             }
             let bytes = hex_to_bytes(&vector.hex);
@@ -6485,15 +6603,19 @@ fn decode_conformance_replay() {
         // NON-ambiguous mutants (its uint vectors' 0→4 array flip) stay live against a future
         // genuine over-acceptance.
         let hdr_offset = if row.mode == "holder" { 2 } else { 0 };
+        // SPEC-VALID accepts only evidence the majors the spec accepts — an over-acceptance vector's
+        // major must NOT count as evidenced (that would let its own widening shape suppress a mutant).
         let evidenced_majors: std::collections::BTreeSet<u8> = row
             .vectors
             .iter()
-            .filter(|v| v.accept)
+            .filter(|v| v.spec_valid_accept())
             .map(|v| header_major_class(hex_to_bytes(&v.hex)[hdr_offset] >> 5))
             .collect();
         let mut header_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
         for (i, vector) in row.vectors.iter().enumerate() {
-            if !vector.accept {
+            // SPEC-VALID accepts only — header-mutating a spec-INVALID over-acceptance vector evidences
+            // nothing (the base bytes are already not spec-valid).
+            if !vector.spec_valid_accept() {
                 continue;
             }
             let bytes = hex_to_bytes(&vector.hex);
@@ -6547,11 +6669,20 @@ fn decode_conformance_replay() {
                 vectors_replayed += row.vectors.len();
                 for (i, vector) in row.vectors.iter().enumerate() {
                     let hex = &vector.hex;
-                    let name = if vector.accept {
+                    let name = if vector.over_acceptance {
+                        format!("over_accept_{i}")
+                    } else if vector.accept {
                         format!("accept_{i}")
                     } else {
                         format!("reject_{i}")
                     };
+                    // Completeness: count over-acceptance vectors whose `over_accept_{i}` test was
+                    // actually emitted (present in results). Asserted below == the catalog's
+                    // over-acceptance vector count, so an emission arm that mislabeled it as `accept_{i}`
+                    // (same total test count, so the per-crate completeness check would miss it) trips.
+                    if vector.over_acceptance && results.contains_key(&name) {
+                        over_acceptance_tests_emitted += 1;
+                    }
                     let passed = results.get(&name).copied().unwrap_or(false);
                     if passed {
                         // A constraint vector that passed did so via the `expect_err` REASON assert
@@ -6561,7 +6692,26 @@ fn decode_conformance_replay() {
                         }
                         continue;
                     }
-                    if vector.accept {
+                    if vector.over_acceptance {
+                        // An over-acceptance vector asserts the decoder STILL wrongly accepts it, so a
+                        // FAILED test means the decoder now REJECTS — the pin flip. Attribute distinctly.
+                        match classify_over_acceptance_failure(&combined, &name) {
+                            OverAcceptanceFailureKind::NowRejected => failures.push(format!(
+                                "{}: over-acceptance vector {hex} was REJECTED — the decoder no longer \
+                                 wrongly accepts this spec-INVALID CBOR (the fix landed): promote this \
+                                 vector to class=\"constraint\" with an expect_err, move the row id from \
+                                 EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in \
+                                 query_q4_directional.ts, update the ROADMAP finding, re-mint. Captured \
+                                 output:\n{combined}",
+                                row.id
+                            )),
+                            OverAcceptanceFailureKind::Unattributed => failures.push(format!(
+                                "{}: over-acceptance vector {hex} failed but emitted no known marker — \
+                                 unexpected. Captured output:\n{combined}",
+                                row.id
+                            )),
+                        }
+                    } else if vector.accept {
                         failures.push(format!(
                             "{}: default decode REJECTED a spec-valid accept vector {hex} — the \
                              decoder is over-strict (the exact class this gate exists to catch)",
@@ -6753,8 +6903,15 @@ fn decode_conformance_replay() {
         }
         let _ = std::fs::remove_dir_all(&out);
 
-        // ---- preserve profile: ACCEPT vectors only, decode-Ok AND byte-identity ----
-        let accepts: Vec<ReplayVector> = row.vectors.iter().filter(|v| v.accept).cloned().collect();
+        // ---- preserve profile: SPEC-VALID ACCEPT vectors only, decode-Ok AND byte-identity ----
+        // Over-acceptance vectors are excluded — the pin is exactly one assertion on the default leg (one
+        // flip signal, no preserve-leg noise), and byte-identity of a spec-invalid instance is meaningless.
+        let accepts: Vec<ReplayVector> = row
+            .vectors
+            .iter()
+            .filter(|v| v.spec_valid_accept())
+            .cloned()
+            .collect();
         let skip_reason = preserve_skip.get(row.id.as_str()).copied();
         let mismatch_reason = expected_mismatch.get(row.id.as_str()).copied();
 
@@ -6911,8 +7068,18 @@ fn decode_conformance_replay() {
          (expected >= 40) — the `expect_err` reason pin looks disabled or the corpus lost its \
          constraint vectors"
     );
+    // Over-acceptance completeness: the emitted `over_accept_*` test count must equal the catalog's
+    // class="over-acceptance" vector count (mirrors the constraint match-arm regression guard). A
+    // mismatch means an over-acceptance vector fell through to the plain-accept arm (or a stale count).
+    assert_eq!(
+        over_acceptance_tests_emitted, over_acceptance_catalog_total,
+        "emitted {over_acceptance_tests_emitted} over_accept_* test(s) but the catalog holds \
+         {over_acceptance_catalog_total} class=\"over-acceptance\" vector(s) — the over-acceptance \
+         emission arm regressed (a vector mislabeled as a plain accept, or the catalog parse drifted)"
+    );
     // Variant-test floor: the DEFAULT-leg encoding-variant leg must actually emit its tests (4487 from
-    // the 1052 accept vectors at HEAD). Floor set just under the measured count so ordinary corpus
+    // the 1052 accept vectors when the floor was set — an observed baseline, not a current count).
+    // Floor set just under the measured count so ordinary corpus
     // churn doesn't false-fail, while a mutator that returned empty (or a broken variant loop) that
     // emits almost nothing still trips the gate.
     assert!(

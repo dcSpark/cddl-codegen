@@ -11,7 +11,10 @@
  *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation, constraint} AND a
  *      nonempty `reason` (a class-less pin is the mint's triage-pending state — RED); a class="constraint"
  *      vector additionally carries a nonempty `expect_err` (the rejection-reason substring the rust replay
- *      gate asserts), which is forbidden on every other vector; every hex is well-formed (nonempty, even
+ *      gate asserts), which is forbidden on every other vector. An `expect="accept"` vector carries EITHER
+ *      no class (spec-VALID, correctly accepted) OR exactly `class="over-acceptance"` (spec-INVALID CBOR
+ *      the decoder wrongly accepts — a certified silent-acceptance pin) with a nonempty `reason` and NO
+ *      `expect_err`; any other class on an accept vector is a schema error. Every hex is well-formed (nonempty, even
  *      length, lowercase); `spec`/`mode`/`type_name` are present together on an active
  *      row and consistent (mode ∈ {standalone, holder}; holder ⇒ spec starts with the holder prefix and
  *      type_name === "ProbeHolder"; standalone ⇒ spec === example); a pinned row carries none of them.
@@ -19,11 +22,15 @@
  *      absent-instance TDD anchors that catch an over-strict-decoder reintroduction. These are positive
  *      controls: they must PASS today.
  *   5. Vacuity floor — >= 80 supported matrix rows, so a broken matrix read can't pass an empty check.
- *   6. Constraint-vector shape — a `class="constraint"` vector must be decodable up to the constraint
- *      itself, so the emitted range/size check is the ONLY thing that can reject it (a wrong-shape
- *      vector rejects as a TYPE mismatch first — vacuous enforcement evidence the replay gate cannot
- *      distinguish, the escape that shipped holder-wrapped `8200…` scalars on the first rangeop mint).
- *      Mechanically: its leading CBOR major type must match the row's accept vectors' (majors 0/1
+ *   6. Constraint / over-acceptance vector shape — a `class="constraint"` vector must be decodable up to
+ *      the constraint itself, so the emitted range/size check is the ONLY thing that can reject it (a
+ *      wrong-shape vector rejects as a TYPE mismatch first — vacuous enforcement evidence the replay gate
+ *      cannot distinguish, the escape that shipped holder-wrapped `8200…` scalars on the first rangeop
+ *      mint). The SAME rule guards a `class="over-acceptance"` vector: it must be a same-shape instance
+ *      the decoder wrongly accepts, not a bare type mismatch. Both share the row's SPEC-VALID accepts'
+ *      leading major-type class (over-acceptance vectors are excluded from that class set — spec-INVALID
+ *      bytes evidence nothing about the spec's shape).
+ *      Mechanically: its leading CBOR major type must match the row's spec-valid accept vectors' (majors 0/1
  *      merged — int-family instances legitimately span both signs); on a standalone row with no
  *      accepts (an oracle gap can leave a row's accept side un-mintable — the non-uint-endpoint
  *      range rows sat that way until the fork's `885c61c` fix) it must not carry the mint's `8200`
@@ -160,6 +167,15 @@ for (const r of rows) {
     const expect = v.expect;
     if (expect !== "accept" && expect !== "reject")
       problems.push(`${where}: \`expect\` must be "accept" or "reject" (got ${JSON.stringify(expect)})`);
+    // An accept vector may carry NO class (spec-VALID, correctly accepted) or EXACTLY
+    // class="over-acceptance" (spec-INVALID CBOR the decoder wrongly accepts — a certified silent-
+    // acceptance pin). Any other class on an accept vector is a schema error.
+    if (expect === "accept") {
+      if (v.class !== undefined && v.class !== "over-acceptance")
+        problems.push(`${where}: an accept vector may carry no class or class="over-acceptance" (got ${JSON.stringify(v.class)})`);
+      if (v.class === "over-acceptance" && (typeof v.reason !== "string" || v.reason.length === 0))
+        problems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\` (cite the ledgered finding + the promotion flow: flips to class="constraint" with an expect_err when the fix lands)`);
+    }
     if (expect === "reject") {
       if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
         problems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
@@ -183,24 +199,34 @@ for (const r of rows) {
     const major = parseInt(hex.slice(0, 2), 16) >> 5;
     return major <= 1 ? "int" : String(major);
   };
+  // acceptClasses is computed from SPEC-VALID accepts only — an over-acceptance vector (spec-INVALID)
+  // is not evidence of what the spec's shape is, so it must not seed the shape-class set it is checked
+  // against.
   const acceptClasses = new Set(
     vectors
-      .filter(v => v.expect === "accept" && typeof v.hex === "string" && (v.hex as string).length >= 2)
+      .filter(v => v.expect === "accept" && v.class !== "over-acceptance" && typeof v.hex === "string" && (v.hex as string).length >= 2)
       .map(v => shapeClass(v.hex as string)),
   );
   vectors.forEach((v, i) => {
-    if (v.expect !== "reject" || v.class !== "constraint") return;
+    // The same shape rule guards BOTH spec-INVALID vector kinds: a class="constraint" reject vector
+    // (must be rejectable ONLY by the constraint) and a class="over-acceptance" accept vector (must be
+    // a same-shape instance the decoder wrongly accepts, not a bare type mismatch). Both must share the
+    // row's spec-valid accepts' leading major-type class.
+    const isConstraint = v.expect === "reject" && v.class === "constraint";
+    const isOverAccept = v.expect === "accept" && v.class === "over-acceptance";
+    if (!isConstraint && !isOverAccept) return;
+    const kind = isConstraint ? "constraint" : "over-acceptance";
     const hex = typeof v.hex === "string" ? v.hex : undefined;
     if (hex === undefined || hex.length < 2) return; // hex problems already reported above
     const where = `\`${id}\` vector[${i}]`;
     if (acceptClasses.size > 0) {
       if (!acceptClasses.has(shapeClass(hex)))
         problems.push(
-          `${where}: constraint vector \`${hex}\` has leading CBOR major-type class "${shapeClass(hex)}" but the row's accept vectors are {${[...acceptClasses].sort().join(", ")}} — a wrong-shape vector rejects as a TYPE mismatch before the constraint check runs (vacuous enforcement evidence)`,
+          `${where}: ${kind} vector \`${hex}\` has leading CBOR major-type class "${shapeClass(hex)}" but the row's spec-valid accept vectors are {${[...acceptClasses].sort().join(", ")}} — a wrong-shape vector rejects as a TYPE mismatch before the ${isConstraint ? "constraint check runs (vacuous enforcement evidence)" : "row's own decode path is reached (it evidences a type mismatch, not the widening over-acceptance)"}`,
         );
     } else if (mode === "standalone" && hex.startsWith("8200")) {
       problems.push(
-        `${where}: constraint vector \`${hex}\` carries the mint's \`8200\` holder preamble on a standalone row with no accept vectors — holder-wrapped scalars reject as a TYPE mismatch, not the constraint (if the row's type genuinely begins [0, …], add an accept vector sharing the shape)`,
+        `${where}: ${kind} vector \`${hex}\` carries the mint's \`8200\` holder preamble on a standalone row with no accept vectors — holder-wrapped scalars reject as a TYPE mismatch (if the row's type genuinely begins [0, …], add an accept vector sharing the shape)`,
       );
     }
   });
@@ -228,6 +254,7 @@ if (supported.size < 80)
 const activeRows = rows.filter(r => (r.vector ?? []).length > 0);
 const pinnedRows = rows.filter(r => typeof r.pinned_reason === "string" && r.pinned_reason.length > 0);
 const allVectors = activeRows.flatMap(r => r.vector ?? []);
+const overAccepts = allVectors.filter(v => v.expect === "accept" && v.class === "over-acceptance").length;
 const accepts = allVectors.filter(v => v.expect === "accept").length;
 const rejects = allVectors.filter(v => v.expect === "reject");
 const rejectBug = rejects.filter(v => v.class === "bug").length;
@@ -242,7 +269,7 @@ if (problems.length) {
 }
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
-    `${accepts} accept, ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
+    `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
     `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ${supported.size} supported matrix rows`,
 );
 process.exit(0);
