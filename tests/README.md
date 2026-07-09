@@ -223,6 +223,11 @@ redundant emitted grouping/allocation without turning legitimate generated-code 
 emission-quality burn-down list in the gate, ledgered in `tests/TESTING_ROADMAP.md`; removing a
 wasm `-A` is the pin that the corresponding binding-emission shape stopped being generated.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
+A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's
+incremental compilation replays content-hashed lint results instead of re-checking — and any real
+content change goes Dirty and re-lints (verified by injecting a `();` `no_effect` canary into the
+generated source and watching the gate command fail). Re-prove it that way, not by timing, if the
+speed ever raises the suspicion again.
 
 Distinct from this generated-code gate, the fast-tier WORKSPACE clippy gate (check.ts's `clippy`)
 denies `clippy::all` PLUS the restriction lint `clippy::assertions_on_result_states` over the
