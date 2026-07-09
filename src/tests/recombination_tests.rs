@@ -817,10 +817,6 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "anonymous composite where a type is required; pinned by tests/matrix_panic/contain.group-choice-arm.type2.map.array.cddl and tests/matrix_panic/contain.generic-arg.type2.map.cddl",
     ),
     (
-        "not implemented @ src/generation.rs @ fn cddl_codegen::generation::GenerationScope::generate_deserialize",
-        "fixed bool member deserialize arm catch-all (bare unimplemented!); pinned by tests/robustness/fixed_bool_member.cddl. The class key now carries the panicking function symbol (see production_frame_symbol), so this entry pins ONLY the generate_deserialize bare site — the other bare unimplemented!() sites in generation.rs (key_encoding_field, the two in codegen_struct, the two in generate_wrapper_struct) yield different symbols and would surface as NEW findings. RESIDUAL boundary: the two bare sites that DO share a function (codegen_struct; generate_wrapper_struct) collapse to one key each — see the COLLAPSE BOUNDARY note on production_frame_symbol",
-    ),
-    (
         "unsupported cddl prelude type:",
         "unsupported prelude types (eb64url/eb64legacy/eb16/cbor-any/undefined); pinned by tests/matrix_panic/prelude.eb64url.cddl and siblings",
     ),
@@ -928,18 +924,20 @@ fn recombination_generation_sweep() {
     );
 
     // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline
-    // (1544 swept / 840 ok / 507 panic / 197 graceful); floors sit ~10% under so real shrinkage
-    // fails loud while ingredient additions don't churn them. (The `[coords] / tstr` choice-arm and
-    // the `gen<[coords]>` generic-arg shapes moved panic -> ok when member-position array-of-plain-
-    // group promotion landed — see the choice-arm `KNOWN_PANIC_CLASSES` note.)
+    // (1544 swept / 919 ok / 428 panic / 197 graceful); floors sit ~10% under so real shrinkage
+    // fails loud while ingredient additions don't churn them. (Fixed BOOL literals in member
+    // position moved panic -> ok when the deserialize `FixedValue::Bool` arm landed — see the
+    // pruned `generate_deserialize` note below and tests/corpus/fixed_bool_member.cddl. Earlier, the
+    // `[coords] / tstr` choice-arm and the `gen<[coords]>` generic-arg shapes moved panic -> ok when
+    // member-position array-of-plain-group promotion landed.)
     assert!(
         comps.len() >= 1400,
         "only {} compositions swept (floor 1400) — the composer rotted or ingredients went missing",
         comps.len()
     );
     assert!(
-        ok >= 750,
-        "only {ok} compositions generated ok (floor 750) — the ok set collapsed"
+        ok >= 825,
+        "only {ok} compositions generated ok (floor 825) — the ok set collapsed"
     );
     for (sub, cite) in KNOWN_PANIC_CLASSES {
         assert!(

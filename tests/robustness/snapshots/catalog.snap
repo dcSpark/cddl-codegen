@@ -13,7 +13,7 @@ duplicate_rule             error (graceful)
 empty                      ok
 empty_array                ok
 empty_group                ok
-fixed_bool_member          PANIC
+fixed_bool_member          ok
 fixed_value_occurrence     PANIC
 float_table_key            error (graceful)
 float_table_key_composite  error (graceful)

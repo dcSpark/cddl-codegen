@@ -235,15 +235,22 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
   `generation.rs:2467` (`assert_eq!(";" vs "")`). This is a new valid-CDDL surface for fixed values in a
   map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
-- A fixed BOOL literal in ordinary member position panics: `[v: true]` / `{k: false}` abort at the
-  fixed-value deserialize arm's catch-all (`generation.rs`'s `_ => unimplemented!()` — Uint/Nint/
-  Text/Float have arms, Bool doesn't; a fixed NULL member generates fine via its own arm). The
-  matrix cannot see this cell: fixed-value member coverage stops at
-  `contain.array-element.value.{number,text}` and there are no prelude-constant member containment
-  cells (`contain.choice-member.prelude.null` is the nullable pattern, a different shape). Pinned by
-  the hand fixture `tests/robustness/fixed_bool_member.cddl` (PANIC row); the candidate feature is a
-  Bool arm in the fixed-value match (and, independently, prelude-constant member cells so the matrix
-  covers the role).
+- The matrix has no prelude-constant MEMBER containment cells: fixed-value member coverage stops at
+  `contain.array-element.value.{number,text}` and `contain.choice-member.prelude.null` is the
+  nullable pattern (a different shape), so prelude constants (`true`/`false`) in member position have
+  no matrix cell. The behaviour itself is exercised by hand fixtures
+  (`tests/robustness/fixed_bool_member.cddl`, `tests/corpus/fixed_bool_member.cddl`); the enumeration
+  gap is adding those member cells so the matrix covers the role.
+- **An OPTIONAL fixed value with no encoding variation (bool / null) in member position fails
+  generation** — independent of the mandatory case, which round-trips
+  (`tests/corpus/fixed_bool_member.cddl`). `[x: uint, ? v: true]` / `{? k: true, x: uint}` (and the
+  same shapes with `? v: 5` / `? v: null`, so this is not bool-specific): the serialize length
+  emits `Len(1 + )` — an empty count because the encoding-less optional contributes no length
+  term — which rustfmt rejects, and under `--preserve-encodings` the annotate path asserts
+  issue-205 (`is_fixed_value` in the optional type-check branch). Loud either way (Err / assert),
+  never silently wrong — a GENERATION-failure class, so it lives here rather than in the layer-2
+  `LAYER2_KNOWN_BAD` family list below. Candidate fix: treat an encoding-less optional fixed value
+  as a present/absent flag in the length computation (mirroring the mandatory fixed-value handling).
 - Array-representation group-choice arm with an inline group panics:
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
   `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm

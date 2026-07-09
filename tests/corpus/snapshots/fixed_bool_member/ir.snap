@@ -1,0 +1,326 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "ArrMember",
+    ): RustStruct {
+        ident: RustIdent(
+            "ArrMember",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "v",
+                        rust_type: RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "x",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "MapMember",
+    ): RustStruct {
+        ident: RustIdent(
+            "MapMember",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [
+                    RustField {
+                        name: "k",
+                        rust_type: RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    false,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: Some(
+                            Text(
+                                "k",
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "x",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: Some(
+                            Text(
+                                "x",
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "TaggedMembers",
+    ): RustStruct {
+        ident: RustIdent(
+            "TaggedMembers",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "v2",
+                        rust_type: RustType {
+                            conceptual_type: Fixed(
+                                Null,
+                            ),
+                            encodings: [
+                                Tagged(
+                                    1,
+                                ),
+                            ],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "x2",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "v3",
+                        rust_type: RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [
+                                Tagged(
+                                    11,
+                                ),
+                            ],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "x3",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            used_as_key: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+}

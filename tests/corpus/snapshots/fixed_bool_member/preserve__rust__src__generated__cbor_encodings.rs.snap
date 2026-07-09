@@ -1,0 +1,33 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct ArrMemberEncoding {
+    pub len_encoding: LenEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MapMemberEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub k_key_encoding: StringEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+    pub x_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedMembersEncoding {
+    pub len_encoding: LenEncoding,
+    pub v2_tag_encoding: Option<cbor_event::Sz>,
+    pub x2_encoding: Option<cbor_event::Sz>,
+    pub v3_tag_encoding: Option<cbor_event::Sz>,
+    pub x3_encoding: Option<cbor_event::Sz>,
+}

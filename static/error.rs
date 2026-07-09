@@ -6,6 +6,7 @@ pub enum Key {
     Str(String),
     Uint(u64),
     Float(f64),
+    Bool(bool),
 }
 
 impl std::fmt::Display for Key {
@@ -14,6 +15,7 @@ impl std::fmt::Display for Key {
             Key::Str(x) => write!(f, "\"{}\"", x),
             Key::Uint(x) => write!(f, "{}", x),
             Key::Float(x) => write!(f, "{}", x),
+            Key::Bool(x) => write!(f, "{}", x),
         }
     }
 }
