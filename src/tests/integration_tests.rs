@@ -250,6 +250,38 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
 /// silently.
 const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 
+/// Multifile-placement cells whose ROUND-TRIP (`multifile_matrix_roundtrips`) is deliberately red
+/// in EVERY profile — `(cell stem, reason)`, the roundtrip precedent's shape (`WASM_MATRIX_SKIP`):
+/// no rustc-error-code class assertion here, because the compile floor's `MULTIFILE_MATRIX_SKIP`
+/// already pins each cell's exact failure class. The seeds are the compile-floor reds carried
+/// over: both `collrec` cells' WASM crate never compiles (the `mark_refs` Array-arm
+/// structural-wrapper placement class — ledgered in cddl-matrix/ROADMAP.md § findings, exact
+/// E-codes pinned in `MULTIFILE_MATRIX_SKIP`), so their `cargo test` can never go green. Four-state
+/// verdict + stale-key guard as the compile floor; a listed cell that starts round-tripping fails
+/// the resurfaced guard (remove the pin — a fix landed).
+const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
+    (
+        "collrec__anon",
+        "wasm crate never compiles: root-minted anonymous array wrapper names its non-root \
+         element type bare (the Array-arm structural-wrapper findings entry in \
+         cddl-matrix/ROADMAP.md; E0425 class pinned by MULTIFILE_MATRIX_SKIP)",
+    ),
+    (
+        "collrec__named",
+        "wasm crate never compiles: alias-target recursion imports the structural wrapper from \
+         root scope where a NAMED collection alias mints only its own wrapper (the Array-arm \
+         structural-wrapper findings entry in cddl-matrix/ROADMAP.md; E0432 class pinned by \
+         MULTIFILE_MATRIX_SKIP)",
+    ),
+];
+
+/// Per-profile round-trip skips for `multifile_matrix_roundtrips` ONLY — `(profile, cell stem,
+/// reason)` for cells red under a SPECIFIC profile, distinct from `MULTIFILE_ROUNDTRIP_SKIP`'s
+/// "red in every profile". Expected empty: the first full sweep found no profile-specific reds
+/// (default/preserve/json all green outside the collrec pins). Same four-state contract; an
+/// up-front stale-pin guard rejects entries naming a dead profile or cell stem.
+const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
+
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
 /// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second
 /// deletes the first's fixtures/target mid-run (observed for `ir_conformance_corpus`). An advisory
@@ -1663,6 +1695,120 @@ fn multifile_matrix_compiles() {
     );
 }
 
+/// Always-on pin for the multifile `--emit-tests` scope-import emission. For DIRECTORY input the
+/// generated test modules land at the generated ROOT of each crate (`generation.rs` raws them into
+/// `rust_lib()`/`wasm_lib()`) while the minted values name submodule types bare (`St`, `Bholder`),
+/// so each emitted header must glob-import every declared non-root module (`use super::a::*;`) —
+/// without them EVERY multifile `--emit-tests` crate fails `cargo test` with E0433 ("cannot find
+/// type `St` in this scope"): malformed emission of a shipped feature. In-process
+/// (`api::generated_strings`, no nested cargo build) so it stays cheap enough for the default
+/// suite; actually EXECUTING these modules across the matrix is `multifile_matrix_roundtrips`'
+/// job (full tier). The single-file half pins the byte-identity guard: no non-root scopes → no
+/// glob lines and no injected `#[allow(unused_imports)]`, so single-file output is unchanged.
+#[test]
+fn emit_tests_multifile_scope_imports() {
+    use clap::Parser;
+
+    let get = |files: &std::collections::BTreeMap<String, String>, key: &str| -> String {
+        files
+            .get(key)
+            .unwrap_or_else(|| {
+                panic!(
+                    "no `{key}` among generated files; got: {:?}",
+                    files.keys().collect::<Vec<_>>()
+                )
+            })
+            .clone()
+    };
+
+    // Multifile: one placement-matrix cell — module `a` holds the shape (`st`), module `b` the
+    // cross-module reference (`bholder = [field0: st]`).
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input=tests/matrix_multifile/struct__named",
+        "--output=unused_in_memory_generation",
+        "--wasm=true",
+        "--emit-tests=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap();
+    for (which, key, header) in [
+        (
+            "rust",
+            "rust/src/generated/mod.rs",
+            "mod cddl_generated_tests",
+        ),
+        (
+            "wasm",
+            "wasm/src/generated/mod.rs",
+            "mod cddl_generated_wasm_tests",
+        ),
+    ] {
+        let module = get(&files, key);
+        assert!(
+            module.contains(header),
+            "{which}: expected `{header}` in {key} (did --emit-tests stop minting for this cell?)\n{module}"
+        );
+        for glob in ["use super::a::*;", "use super::b::*;"] {
+            assert!(
+                module.contains(glob),
+                "{which}: the root-level test module names submodule types bare, so {key} must \
+                 carry `{glob}` — without it the module is E0433-uncompilable (malformed \
+                 emission)\n{module}"
+            );
+        }
+    }
+
+    // Single-file: the same shapes at root scope must stay glob-free — the emitters' non-empty
+    // guard keeps single-file `--emit-tests` output byte-identical.
+    let spec_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_emit_tests_scope_imports_{:016x}.cddl",
+        checkout_hash()
+    ));
+    std::fs::write(
+        &spec_path,
+        "st = [a: uint, b: text]\nbholder = [field0: st]\n",
+    )
+    .unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        &format!("--input={}", spec_path.to_str().unwrap()),
+        "--output=unused_in_memory_generation",
+        "--wasm=true",
+        "--emit-tests=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let _ = std::fs::remove_file(&spec_path);
+    for (which, key, header) in [
+        (
+            "rust",
+            "rust/src/generated/mod.rs",
+            "mod cddl_generated_tests",
+        ),
+        (
+            "wasm",
+            "wasm/src/generated/mod.rs",
+            "mod cddl_generated_wasm_tests",
+        ),
+    ] {
+        let module = get(&files, key);
+        assert!(
+            module.contains(header),
+            "{which}: expected `{header}` in single-file {key}\n{module}"
+        );
+        assert!(
+            !module.contains("use super::a::*;") && !module.contains("use super::b::*;"),
+            "{which}: single-file output (all types at root scope) must not grow scope glob \
+             imports — the non-empty guard regressed\n{module}"
+        );
+    }
+    let rust_mod = get(&files, "rust/src/generated/mod.rs");
+    assert!(
+        !rust_mod.contains("#[allow(unused_imports)]\nmod cddl_generated_tests"),
+        "rust: single-file output must not grow the glob-only `#[allow(unused_imports)]` — the \
+         non-empty guard regressed\n{rust_mod}"
+    );
+}
+
 /// The wasm-ABI matrix ROUND-TRIP gate — the behavioural upgrade of `wasm_matrix_compiles`. Same cell
 /// enumeration (`tests/matrix_wasm/*.cddl`), but each cell is generated with `--wasm=true
 /// --emit-tests=true` and `cargo test`ed (not `cargo check`ed): this compiles AND RUNS the emitted
@@ -1843,6 +1989,221 @@ fn wasm_matrix_roundtrips() {
     assert!(
         failures.is_empty(),
         "wasm-matrix cells failed to round-trip:\n\n{}",
+        failures.join("\n\n")
+    );
+}
+
+/// The multifile-placement matrix ROUND-TRIP gate — the behavioural upgrade of
+/// `multifile_matrix_compiles`, mirroring `wasm_matrix_roundtrips`. Same cell enumeration (the 46
+/// `tests/matrix_multifile/<shape>__<mode>/` directories), but each cell is generated with
+/// `--wasm=true --emit-tests=true` across `super::ALL_PROFILES` (default / preserve / json) and
+/// `cargo test`ed rather than `cargo check`ed — this compiles AND RUNS the emitted
+/// `cddl_generated_tests` / `cddl_generated_wasm_tests` modules, whose minted values construct the
+/// CROSS-MODULE wiring (module `b`'s holder built from module `a`'s shape, e.g.
+/// `Bholder::new(St::new(..))`; the wasm twin also byte-differentials against the fully-qualified
+/// `cddl_lib::b::Bholder`/`cddl_lib::a::St` natives). A placement cell can type-check green under
+/// the compile floor while cross-module (de)serialization misbehaves; that only surfaces when the
+/// emitted assertions RUN, which is what this gate adds.
+///
+/// BOTH generated subcrates are `cargo test`ed, `rust/` then `wasm/`: the rust crate's
+/// `#[cfg(test)]` module is NOT compiled when the crate is built merely as a dep of the wasm
+/// crate, and the proven placement classes are rust-side (`feature_corpus_compiles` is the
+/// both-crates precedent). A cell is red if EITHER crate's `cargo test` fails.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d (check.ts `full` tier) under the CI cost policy: 46 cells × 3
+/// profiles × 2 `cargo test`s is materially heavier than the always-on compile floor. Run it with
+/// `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`.
+///
+/// Two skip ledgers, both four-state (red+listed = expected; red+unlisted = fail — fix or,
+/// deliberately, pin + cddl-matrix/ROADMAP.md ledger reason; green+listed = "resurfaced — remove
+/// the pin"; green+unlisted = pass) with up-front stale-key guards: `MULTIFILE_ROUNDTRIP_SKIP`
+/// (red in EVERY profile — the collrec compile-floor carries) and
+/// `MULTIFILE_ROUNDTRIP_PROFILE_SKIP` (profile-specific reds). No rustc-error-code class assertion
+/// here — the compile floor's `MULTIFILE_MATRIX_SKIP` pins each collrec cell's exact class.
+///
+/// Vacuity floor: the sweep counts each generated crate whose root `generated/mod.rs` carries a
+/// minted test module (the `feature_corpus_compiles` counting pattern) and asserts a floor, so
+/// "all green" can't silently mean "nothing was minted". Loud-skip contract (as
+/// `wasm_matrix_roundtrips`): a cell shape minting no test surface emits no module and passes
+/// with zero tests — legitimate (the emitter eprintln!s the skip; the compile floor still pins the
+/// cell's ABI), and the floor bounds how much of that the sweep tolerates in aggregate.
+/// `multifile_matrix_compiles` stays byte-for-byte untouched as the always-on compile floor; its
+/// own scratch dir name (+ `acquire_scratch_lock`) lets this gate run beside it, and each per-cell
+/// output dir is freed after its verdict (the disk-space pattern from
+/// `feature_corpus_roundtrips_nondefault_profiles`).
+#[test]
+#[ignore]
+fn multifile_matrix_roundtrips() {
+    use std::str::FromStr;
+
+    let dir = std::path::PathBuf::from_str("tests/matrix_multifile").unwrap();
+    let mut cell_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    cell_dirs.sort();
+    assert!(
+        !cell_dirs.is_empty(),
+        "no multifile-matrix fixtures in {dir:?} (run `bun run project_multifile_matrix.ts`)"
+    );
+
+    // Up-front stale-key guards (mirror wasm_matrix_roundtrips): a listed stem/profile that no
+    // longer exists would otherwise rot silently (its resurfaced guard only fires on a
+    // (profile, cell) the sweep actually visits).
+    let cell_stems: std::collections::BTreeSet<&str> = cell_dirs
+        .iter()
+        .map(|p| p.file_name().unwrap().to_str().unwrap())
+        .collect();
+    for (stem, _reason) in MULTIFILE_ROUNDTRIP_SKIP {
+        assert!(
+            cell_stems.contains(stem),
+            "MULTIFILE_ROUNDTRIP_SKIP names cell `{stem}` that no longer exists in \
+             tests/matrix_multifile — stale pin, remove or fix it"
+        );
+    }
+    for (profile, stem, _reason) in MULTIFILE_ROUNDTRIP_PROFILE_SKIP {
+        assert!(
+            super::ALL_PROFILES.iter().any(|(name, _)| name == profile),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names unknown profile `{profile}` — stale pin, \
+             remove or fix it"
+        );
+        assert!(
+            cell_stems.contains(stem),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names cell `{stem}` that no longer exists in \
+             tests/matrix_multifile — stale pin, remove or fix it"
+        );
+    }
+
+    // Own scratch dir (distinct from multifile_matrix_compiles) + one shared target so
+    // cbor_event/wasm-bindgen/the libtest harness build once, then each tiny crate tests
+    // incrementally.
+    let scratch_name = format!("cddl_codegen_multifile_rt_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let mut failures = vec![]; // red cells NOT skip-listed — real findings
+    let mut resurfaced = vec![]; // skip-listed cells that now pass — remove them
+    // Vacuity-floor counters: (profile, cell) generations whose crate minted a test module.
+    // Counted before the verdict (skip cells still mint), so the floor tracks EMITTER coverage,
+    // not the pass rate.
+    let mut minted_rust_modules = 0usize;
+    let mut minted_wasm_modules = 0usize;
+    for input in &cell_dirs {
+        let stem = input.file_name().unwrap().to_str().unwrap();
+        // Skipped in EVERY profile.
+        let skipped_all = MULTIFILE_ROUNDTRIP_SKIP.iter().any(|(s, _)| *s == stem);
+        for (profile, extra) in super::ALL_PROFILES {
+            let label = format!("{stem}/{profile}");
+            // Skipped in EVERY profile, or in THIS specific profile.
+            let skipped = skipped_all
+                || MULTIFILE_ROUNDTRIP_PROFILE_SKIP
+                    .iter()
+                    .any(|(p, s, _)| p == profile && s == &stem);
+            let out = root.join(format!("{stem}__{profile}"));
+            let gen_out = tool_cmd("cargo")
+                .args(["run", "--"])
+                .arg(format!("--input={}", input.to_str().unwrap()))
+                .arg(format!("--output={}", out.to_str().unwrap()))
+                .arg("--wasm=true")
+                .arg("--emit-tests=true")
+                .args(*extra)
+                .output()
+                .unwrap();
+            if !gen_out.status.success() {
+                if !skipped {
+                    failures.push(format!(
+                        "{label}: generation failed\n{}",
+                        String::from_utf8_lossy(&gen_out.stderr)
+                    ));
+                }
+                let _ = std::fs::remove_dir_all(&out);
+                continue;
+            }
+            if std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
+                .unwrap_or_default()
+                .contains("mod cddl_generated_tests")
+            {
+                minted_rust_modules += 1;
+            }
+            if std::fs::read_to_string(out.join("wasm/src/generated/mod.rs"))
+                .unwrap_or_default()
+                .contains("mod cddl_generated_wasm_tests")
+            {
+                minted_wasm_modules += 1;
+            }
+            let wasm_dir = out.join("wasm");
+            if !wasm_dir.exists() {
+                // Every cell's module `b` is a composite record, so a wasm crate is always
+                // expected — a missing one silently de-gates the cell (mirror the compile floor).
+                if skipped {
+                    resurfaced.push(format!("{label} (emits no wasm crate)"));
+                } else {
+                    failures.push(format!(
+                        "{label}: generated no wasm crate (expected a wasm wrapper for every cell \
+                         — the cell is no longer being round-trip-gated)"
+                    ));
+                }
+                let _ = std::fs::remove_dir_all(&out);
+                continue;
+            }
+            // Execute BOTH generated subcrates, rust then wasm (see the gate doc); first failure
+            // is the cell's red.
+            let mut cell_red: Option<(&str, std::process::Output)> = None;
+            for crate_sub in ["rust", "wasm"] {
+                let test = tool_cmd("cargo")
+                    .arg("test")
+                    .current_dir(out.join(crate_sub))
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                if !test.status.success() {
+                    cell_red = Some((crate_sub, test));
+                    break;
+                }
+            }
+            match (skipped, cell_red) {
+                (false, Some((crate_sub, test))) => failures.push(format!(
+                    "{label} ({crate_sub}): cargo test failed (multifile round-trip red cell — \
+                     fix the emitter/generator or, deliberately, add to MULTIFILE_ROUNDTRIP_SKIP \
+                     / MULTIFILE_ROUNDTRIP_PROFILE_SKIP + a cddl-matrix/ROADMAP.md ledger \
+                     reason)\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&test.stdout),
+                    String::from_utf8_lossy(&test.stderr)
+                )),
+                (true, None) => resurfaced.push(label),
+                _ => {} // (false, None) = green as expected; (true, Some(_)) = red as expected
+            }
+            // Free the per-cell crate dir as we go (keep the shared target) — 46 cells × 3
+            // profiles of generated crates add up.
+            let _ = std::fs::remove_dir_all(&out);
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    eprintln!(
+        "multifile_matrix_roundtrips: minted test modules across the sweep — rust {minted_rust_modules}, wasm {minted_wasm_modules}"
+    );
+    // Vacuity floor, calibrated from the first green run: all 138 (46 cells × 3 profiles)
+    // generations minted BOTH modules (every cell's module `b` holder is a mintable composite
+    // record). A big drop means the emitter's multifile coverage silently shrank, not that the
+    // matrix got simpler.
+    assert!(
+        minted_rust_modules >= 130 && minted_wasm_modules >= 130,
+        "only {minted_rust_modules} rust / {minted_wasm_modules} wasm (profile, cell) generations \
+         minted a generated-test module (expected >= 130 each of 138) — emit_tests multifile \
+         coverage shrank; the sweep's green is going vacuous"
+    );
+    assert!(
+        resurfaced.is_empty(),
+        "these skip-listed multifile-matrix cells now round-trip — remove them from \
+         MULTIFILE_ROUNDTRIP_SKIP / MULTIFILE_ROUNDTRIP_PROFILE_SKIP (a fix landed):\n{}",
+        resurfaced.join("\n")
+    );
+    assert!(
+        failures.is_empty(),
+        "multifile-matrix cells failed to round-trip:\n\n{}",
         failures.join("\n\n")
     );
 }

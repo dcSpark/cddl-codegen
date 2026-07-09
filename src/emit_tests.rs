@@ -218,7 +218,16 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
 
 /// Emit the `#[cfg(test)]` generated-test module (reject + round-trip halves), or `None` if
 /// nothing at all could be minted.
-pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String> {
+///
+/// `submodules` — the crate's declared non-root module paths (multifile output; see the call site
+/// in `generation.rs` for the derivation). The module this emits lands at the generated root while
+/// its minted values name submodule types bare, so each entry contributes a `use super::<m>::*;`
+/// glob; empty (single-file output) emits nothing extra, keeping that output byte-identical.
+pub fn emit_generated_tests(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    submodules: &[String],
+) -> Option<String> {
     if !cli.to_from_bytes_methods {
         // both halves need to_cbor_bytes/from_cbor_bytes
         eprintln!(
@@ -366,8 +375,24 @@ pub fn emit_generated_tests(types: &IntermediateTypes, cli: &Cli) -> Option<Stri
     // Deserialize}); `use super::*` alone doesn't bring traits into scope in a standalone crate
     // (the integration harness happens to append `use serialization::*;` to lib.rs, which masked
     // this), so import the serialization surface explicitly.
+    //
+    // Multifile output: glob-import each declared non-root module — the minted values name
+    // submodule types bare, and `use super::*;` only reaches root-scope items (E0433 otherwise).
+    // Guarded on non-empty so single-file output stays byte-identical; the extra
+    // `#[allow(unused_imports)]` (a submodule can legitimately contribute no referenced name —
+    // e.g. its only type minted no standalone test) is injected under the same guard. E0659
+    // glob-collision caveat + the fully-qualified long-term alternative: see the call site.
+    let scope_globs: String = submodules
+        .iter()
+        .map(|path| format!("    use super::{path}::*;\n"))
+        .collect();
+    let unused_imports_allow = if scope_globs.is_empty() {
+        ""
+    } else {
+        "#[allow(unused_imports)]\n"
+    };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\nmod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{conformance_mod}{fidelity_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }

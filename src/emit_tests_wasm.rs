@@ -72,7 +72,18 @@ type ScopeMap = BTreeMap<String, String>;
 
 /// Emit the `#[cfg(test)]` generated wasm-test module, or `None` if nothing could be minted / the
 /// configuration replaces the method surface this renderer targets.
-pub fn emit_generated_wasm_tests(types: &IntermediateTypes, cli: &Cli) -> Option<String> {
+///
+/// `submodules` — the WASM crate's declared non-root module paths (multifile output; see the call
+/// site in `generation.rs` for the derivation). The module this emits lands at the generated root
+/// while its minted wrapper values name submodule types bare, so each entry contributes a
+/// `use super::<m>::*;` glob; empty (single-file output) emits nothing extra, keeping that output
+/// byte-identical. (The rust-twin side of each assertion is already fully qualified via
+/// `rust_crate_struct_from_wasm` — only the wrapper names need the globs.)
+pub fn emit_generated_wasm_tests(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    submodules: &[String],
+) -> Option<String> {
     if !cli.to_from_bytes_methods {
         eprintln!(
             "cddl-codegen --emit-tests: wasm module skipped (requires --to-from-bytes-methods, which is off)"
@@ -156,8 +167,17 @@ pub fn emit_generated_wasm_tests(types: &IntermediateTypes, cli: &Cli) -> Option
     // a method regardless of which trait provides it — `ToCBORBytes` under default flags, `Serialize`
     // under `--preserve-encodings`/`--canonical-form` (a fully-qualified `ToCBORBytes::` path fails
     // to compile under preserve, where that trait doesn't exist).
+    //
+    // Multifile output: glob-import each declared non-root module — the minted wrapper values name
+    // submodule types bare, and `use super::*;` only reaches root-scope items (E0433 otherwise).
+    // Empty for single-file output (byte-identical). E0659 glob-collision caveat + the
+    // fully-qualified long-term alternative: see the call site.
+    let scope_globs: String = submodules
+        .iter()
+        .map(|path| format!("    use super::{path}::*;\n"))
+        .collect();
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n    use cddl_lib::serialization::*;\n{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{scope_globs}    use cddl_lib::serialization::*;\n{}\n}}\n",
         fns.join("\n")
     ))
 }

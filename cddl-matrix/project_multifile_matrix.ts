@@ -14,13 +14,17 @@
  * cross-module anonymous same-shape use imports the structural name from the shape's owner module
  * (the E0432 class), a module declares `pub mod serialization;` only when it emits the file (the
  * E0583 class), and a cross-module named `.cbor` ref imports the inner type (the E0433 class).
- * Placement breakage fails loudly at `cargo check`, so a compile floor is a sufficient oracle. The
- * Rust gate `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory
- * input) and `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side
- * breakage surfaces through it), so an un-covered placement regression surfaces as a specific red
- * cell; any deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (currently:
- * the `collrec` array-structural-wrapper cells — the Array-arm placement class, enumerated after
- * review found the SHAPES hole; see the cddl-matrix/ROADMAP.md finding).
+ * Two Rust gates consume the fixtures. The always-on compile FLOOR
+ * `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory input) and
+ * `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side breakage
+ * surfaces through it) — mis-scoped placement fails loudly there as a specific red cell; any
+ * deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (currently: the
+ * `collrec` array-structural-wrapper cells — the Array-arm placement class, enumerated after review
+ * found the SHAPES hole; see the cddl-matrix/ROADMAP.md finding). The behavioural upgrade
+ * `integration_tests::multifile_matrix_roundtrips` (#[ignore]d, check.ts full tier) re-generates
+ * each cell `--emit-tests=true` across all profiles and `cargo test`s BOTH generated subcrates, so
+ * the cross-module wiring is EXECUTED (round-tripped) rather than only type-checked; its
+ * deliberately-red cells live in `MULTIFILE_ROUNDTRIP_SKIP`/`MULTIFILE_ROUNDTRIP_PROFILE_SKIP`.
  *
  * Deterministic (sorted cell order; no hash-order). Fixtures go to tests/matrix_multifile/<cell>/{lib,a,b}.cddl.
  *
