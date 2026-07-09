@@ -128,6 +128,9 @@ const EMISSION_PROFILES = extractEmissionProfiles();
 // NOTHING (neither annotations nor verify_report.json). Lets new probe code run end-to-end quickly
 // so the full run isn't its first execution (measured full-run wall time: ~11 min warm-cache on the
 // dev machine with wasm + decode-foreign on; hours cold — the shared-target warm-up dominates).
+// The `runOracleFingerprint` oracle-IDENTITY check is NOT one of the skipped harness-health guards: it
+// still runs on a --smoke run (a smoke run against the wrong oracle would mislead the developer just as
+// much as a full run), the same as the `existsSync(RUST_CDDL)` oracle-resolution check.
 const smokeArg = process.argv.find(a => a.startsWith("--smoke="));
 const SMOKE_N = smokeArg ? parseInt(smokeArg.slice("--smoke=".length), 10) : 0;
 const SMOKE = SMOKE_N > 0;
@@ -329,11 +332,82 @@ if (altCoverageResult.problems.some(p => p.includes("extraction yielded"))) {
   process.exit(2);
 }
 
+// --- ORACLE-IDENTITY FINGERPRINT (mechanical rust-oracle pin) -------------------------------------
+// `RUST_CDDL` defaults to a LIVE development tree's `target/debug/cddl` (README § "Upstream oracle
+// gaps"). Every local branch reports version 0.10.6, so a version string cannot tell the pinned
+// `local-fixes` @ 2c7548e build apart from a wrong-branch rebuild — and evidence minted against the
+// wrong oracle looks EXACTLY like evidence minted against the pinned one. This behavioral fingerprint
+// is the guard the version string can't be: a handful of pinned probe inputs whose accept/reject exits
+// are UNIQUE to the local-fixes fixes. Discriminating power (why each probe is here):
+//   • WIP branch `non-uint-ranges` (0.10.6 + the non-uint-range fix only, NOT 2c7548e/773b723) fails 1–2;
+//   • released/crates.io 0.10.x fails 1–3;
+//   • an always-accept stub fails 4–5;   • a post-fix FUTURE build fails 5.
+// It is an oracle-IDENTITY check (same category as the `existsSync(RUST_CDDL)` HARNESS FAILURE above),
+// so it runs UNCONDITIONALLY at startup on every path (normal probe, --mint-decode-foreign, --smoke),
+// before the multi-minute shared-target warm-up — a wrong oracle fails in under a second. Exits ONLY
+// zero/nonzero (no exact nonzero code pinned). No env-var escape hatch: evidence minted against a
+// non-pinned oracle must not be writable at all.
+interface FingerprintProbe {
+  name: string; spec: string; mode: "compile" | "validate"; cborHex?: string;
+  expectZeroExit: boolean; why: string;
+}
+const ORACLE_FINGERPRINT: FingerprintProbe[] = [
+  { name: "radix-literal-parse", spec: "a = 0x14", mode: "compile", expectZeroExit: true,
+    why: "radix uint literals parse (local-fixes @ 2c7548e); released 0.10.x mis-lexes 0x14 as 'Invalid hexfloat' and fails compile." },
+  { name: "control-op-array-entry", spec: "h = [x]\nx = uint .size 2", mode: "validate", cborHex: "811912b2", expectZeroExit: true,
+    why: "control-op-carrying rule as a sole array entry validates the ENTRY not the whole array (773b723); released 0.10.x checks [4786] against the rule and rejects." },
+  { name: "nonuint-range-accept", spec: "x = -10..10", mode: "validate", cborHex: "24", expectZeroExit: true,
+    why: "non-uint-endpoint range accepts an in-window instance -5 (885c61c); released 0.10.x blanket-rejects every instance of a non-uint-endpoint range." },
+  { name: "nonuint-range-reject", spec: "x = -10..10", mode: "validate", cborHex: "0b", expectZeroExit: false,
+    why: "enforcement control: 11 is out of the -10..10 window and MUST reject — guards against a stub/always-accept binary and confirms the range fix ENFORCES rather than accept-alls." },
+  { name: "prelude-number-float-rejects", spec: "x = number", mode: "validate", cborHex: "fa4048f5c3", expectZeroExit: false,
+    why: "prelude `number` still REJECTS a float (open gap #7 at 2c7548e, deliberately pinned OPEN); DECODE_FLOOR_ARM_EXEMPT['prelude.number/7'] (lib.ts) and its stale-guard depend on this gap being open, so an oracle where it is FIXED must not silently mint." },
+];
+// Hoisted so it can be called at startup before its lexical position and on every entry path. Writes its
+// own fp.cddl/fp.cbor under probeDir (created by the caller just before invocation). `exit > 0` (not
+// `!== 0`) satisfies a nonzero expectation so a timeout/signal kill (negative exit) reads as a MISMATCH,
+// the safe direction — a wrong oracle can't slip through on a transient hiccup.
+function runOracleFingerprint(dir: string): void {
+  const fpCddl = join(dir, "fp.cddl");
+  const fpCbor = join(dir, "fp.cbor");
+  const failures: string[] = [];
+  for (const p of ORACLE_FINGERPRINT) {
+    writeFileSync(fpCddl, p.spec.replace(/\n*$/, "\n"));
+    let exit: number;
+    if (p.mode === "compile") {
+      exit = runExit([RUST_CDDL, "compile-cddl", "--cddl", fpCddl]);
+    } else {
+      writeFileSync(fpCbor, Buffer.from(p.cborHex!, "hex"));
+      exit = runExit([RUST_CDDL, "--ci", "validate", "--cddl", fpCddl, "--cbor", fpCbor]);
+    }
+    const ok = p.expectZeroExit ? exit === 0 : exit > 0;
+    if (!ok) {
+      failures.push(
+        `  - probe '${p.name}': spec ${JSON.stringify(p.spec)}${p.cborHex ? ` cbor 0x${p.cborHex}` : ""}; ` +
+        `expected ${p.expectZeroExit ? "ZERO" : "NONZERO"} exit, got ${exit}. ${p.why}`,
+      );
+    }
+  }
+  if (failures.length) {
+    console.error(`HARNESS FAILURE: rust oracle fingerprint MISMATCH — RUST_CDDL='${RUST_CDDL}' does not behave like the pinned oracle. Failing probe(s):`);
+    for (const f of failures) console.error(f);
+    console.error("The pinned oracle is the fork's `local-fixes` branch @ 2c7548e in the sibling repo ~/Documents/git/cddl (README § \"Upstream oracle gaps\"). Recover by rebuilding from THAT branch (restore any WIP checkout afterwards) or by pointing RUST_CDDL at an immutable copy of the pinned build. A stock `cargo install cddl` binary is NOT accepted — its released 0.10.x gaps fail this fingerprint by design.");
+    if (failures.some(f => f.includes("prelude-number-float-rejects"))) {
+      console.error("NOTE: the 'prelude-number-float-rejects' probe pins gap #7 as OPEN on purpose. If the oracle LEGITIMATELY moved (a fixed rust `cddl` that now accepts a float against `number`), re-pin CONSCIOUSLY: update this fingerprint entry TOGETHER with the close-out steps in ROADMAP.md § findings (the prelude-`number` float entry — re-mint prelude.number via `verify.ts --mint-decode-foreign --only=prelude.number` and prune DECODE_FLOOR_ARM_EXEMPT). Do NOT just delete the probe.");
+    }
+    process.exit(2);
+  }
+  console.log(`rust oracle fingerprint OK (${ORACLE_FINGERPRINT.length} probes — local-fixes @ 2c7548e behavior)`);
+}
+
 // ==================================================================================================
 // 3. PROBE each feature's example through the three oracles.
 // ==================================================================================================
 const probeDir = mkdtempSync(join(tmpdir(), "cddl_verify_"));
 const probeFile = join(probeDir, "probe.cddl");
+// Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every path — a wrong
+// RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
+runOracleFingerprint(probeDir);
 const ccOut = join(probeDir, "cc_out");
 // Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
 // every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.

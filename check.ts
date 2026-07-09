@@ -163,7 +163,7 @@ function runVerify(o: Opts): Outcome {
   const rust = resolveRustCddl();
   const missing: string[] = [];
   if (!ruby) missing.push("ruby `cddl`   install: gem install --user-install cddl");
-  if (!rust) missing.push("rust `cddl`   install: cargo install cddl   (then set RUST_CDDL=~/.cargo/bin/cddl, or point it at your build)");
+  if (!rust) missing.push("rust `cddl`   build the pinned fork: local-fixes @ 2c7548e in the ~/Documents/git/cddl sibling checkout (or an immutable copy of it), then set RUST_CDDL to it — a stock `cargo install cddl` build is refused by verify.ts's oracle fingerprint");
   if (missing.length) {
     console.log("  oracle preflight FAILED — cddl-matrix/verify.ts needs both oracles:");
     for (const m of missing) console.log("    - " + m);

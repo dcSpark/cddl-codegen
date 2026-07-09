@@ -39,17 +39,11 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Make the rust-oracle pin mechanical (behavioral fingerprint preflight; optionally an immutable
-  copy).** `RUST_CDDL` defaults to a live development tree's `target/debug/cddl` (README § "Upstream
-  oracle gaps" names the pinned rev and warns to copy the binary before long runs — prose only), so a
-  rebuild from whatever branch happens to be checked out silently swaps the oracle mid-workflow, and
-  version strings cannot discriminate (every local branch reports 0.10.6): evidence minted against the
-  wrong oracle looks exactly like evidence minted against the pinned one. Mechanical guard: a preflight
-  fingerprint in `verify.ts` (probe AND mint paths) — a few pinned probe inputs whose accept/reject
-  exits are unique to the `local-fixes` fixes (the `2c7548e` radix literal, the `773b723`
-  array-sequence shape, the `885c61c` non-uint range) — refusing to run (HARNESS FAILURE, like the
-  existing oracle-resolution failures) on mismatch; pointing the default at an immutable copied binary
-  is a complementary hardening, but the fingerprint is the part that can't be forgotten.
+- **Extend the rust-oracle fingerprint to `ir_conformance_corpus`.** `verify.ts`'s
+  `runOracleFingerprint` now refuses a wrong `RUST_CDDL` at startup, but the rust-side conformance gate
+  `ir_conformance_corpus` (`src/tests/integration_tests.rs`) still trusts its `RUST_CDDL` oracle blind —
+  the remaining oracle-pin surface. Extend the behavioral fingerprint to that consumer (or share the
+  probe set) so a wrong-oracle conformance run fails as loudly as a wrong-oracle `verify.ts` run.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
