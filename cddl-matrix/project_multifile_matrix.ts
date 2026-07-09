@@ -54,13 +54,13 @@ interface Shape {
   defs: string[]; // named-type definitions -> module `a` (authored dependency order; CDDL is order-free)
   ty: string; // the shape's named rule, referenced cross-module by the `named` mode
   anonForm?: string; // inline anonymous same-shape spelling -> the `anon`/`anonb` modes' `b.cddl` field type
-  // `anonb` (anon + ballast) participation: the plain `anon` cell of an alias/table-only module `a`
-  // reds on E0583 FIRST (module `a` emits no serialization.rs), masking the b-side E0432
-  // anonymous-same-shape import — the CORE `mark_refs` finding. `anonb` adds a ballast record rule to
-  // `a` so it emits serialization and the b-side reference verdict surfaces. Set ONLY on the shapes
-  // whose plain `anon` cell is E0583-masked (coll, collmap, nullable); the other anon shapes
-  // (tag, bwrap, cborwrap) are GREEN in plain `anon` — module `a` already emits serialization, so a
-  // ballast variant adds no discrimination and they are excluded from `anonb`.
+  // `anonb` (anon + ballast) participation: if the phantom-`pub mod serialization;` class (E0583)
+  // ever regresses, the plain `anon` cell of an alias/table-only module `a` would red on it FIRST,
+  // masking the b-side structural-import verdict (the E0432 class). `anonb` adds a ballast record
+  // rule to `a` so it always emits serialization and the b-side reference verdict stays visible
+  // regardless. Set ONLY on the shapes whose module `a` is alias/table-only (coll, collmap,
+  // nullable); the other anon shapes' module `a` already emits serialization, so a ballast variant
+  // adds no discrimination and they are excluded from `anonb`.
   anonBallast?: boolean;
 }
 const SHAPES: Record<string, Shape> = {
@@ -97,10 +97,11 @@ const SHAPES: Record<string, Shape> = {
 // --- Axis 2: cross-module reference mode. The shape's defs go in module `a`; module `b` holds one
 // `bholder = [field0: <...>]` record. `named` references the shape's named rule cross-module; `anon`
 // embeds the shape's inline anonymous same-shape spelling (the `mark_refs` structural class); `anonb`
-// is `anon` with a ballast record rule added to module `a` (so `a` emits serialization and E0583 can't
-// mask the b-side E0432 import verdict — see `anonBallast` above); `unref` references nothing (module
-// `a` still declares the shape — this is where an alias/table-only module could mis-declare
-// `pub mod serialization;`, E0583). Root-owner direction (shape in root, referenced from a module) is
+// is `anon` with a ballast record rule added to module `a` (so `a` always emits serialization and an
+// alias-only-module E0583 regression can't mask the b-side import verdict — see `anonBallast` above);
+// `unref` references nothing (module `a` still declares the shape — the cell where an
+// alias/table-only module would mis-declare `pub mod serialization;` if the E0583 class regressed).
+// Root-owner direction (shape in root, referenced from a module) is
 // deliberately NOT enumerated: root-module owners probed fine in BOTH directions, so the
 // non-root-owner cells above are the discriminating ones. `bholder`/`field0`/`bal0` dodge the
 // `R`/`W`/`T` reader/writer/generic letters.
@@ -133,7 +134,7 @@ if (JSON.stringify(anonShapes) !== JSON.stringify(EXPECTED_ANON_SHAPES))
       `if the change is deliberate (a probe outcome changed), update EXPECTED_ANON_SHAPES in the same commit`,
   );
 
-// Same idiom for the `anonb` subset (exactly the E0583-masked plain-`anon` shapes).
+// Same idiom for the `anonb` subset (exactly the alias/table-only-module `anon` shapes — see `anonBallast`).
 const EXPECTED_ANONB_SHAPES = ["coll", "collmap", "nullable"];
 const anonbShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonBallast)
