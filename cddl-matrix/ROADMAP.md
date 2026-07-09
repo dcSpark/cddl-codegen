@@ -174,45 +174,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   written — the stable-severable decode fix to propose there, plus the standalone repro and the
   prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
   note) — bundle it with the over-allocation report in one upstream conversation.
-- **Non-root MODULE placement breaks multifile compilation across a whole class of shapes** — the
-  `issue #138` TODOs at the `mark_refs` map/array arms in intermediate.rs are this exact placement
-  question. The systematic catcher now EXISTS: the multifile placement sweep
-  (`cddl-matrix/project_multifile_matrix.ts` → `tests/matrix_multifile/<shape>__<mode>/` →
-  `integration_tests::multifile_matrix_compiles`, shape × {named, anon, anonb, unref} cross-module
-  reference, compile-floored — `tests/README.md` § "multifile placement matrix"), whose
-  `MULTIFILE_MATRIX_SKIP` ledger pins the known-broken cells so the gate is green while a fix
-  flips them. 24 of 43 cells are red, in three error classes; ALL fail loudly at `cargo check` of
-  the generated crate (never a silent miscompile):
-  - **E0583 (21 cells)** — a non-root module whose rules emit NO `serialization.rs` (any transparent
-    `pub type` alias — scalar/collection/table — or a c-style enum whose serialization lives
-    elsewhere) still unconditionally declares `pub mod serialization;` in its `mod.rs`. Broader than
-    the single named-table probe first suggested: it is the alias-only-module class in general.
-    Candidate fix: skip (or emit) the per-module serialization stub for a module that owns no
-    serialization impl. Pins to flip: `{palias,talias,coll,collmap,passthru,passthrumap,chain,
-    nullable,cenum}__{named,unref}` plus `{coll,collmap,nullable}__anon`.
-  - **E0432 (1 cell, `collmap__anonb`)** — the CORE anonymous-same-shape import the original probe
-    named: an OTHER module's anonymous same-shape use imports the structural name from the root scope
-    via `mark_refs`' hard-coded `ROOT_SCOPE` (`unresolved import crate::generated::MapU64ToText`)
-    while the shape lives in the owner's module. Pinned live by the `anonb` mode (anon + a ballast
-    record rule in module `a`, so `a` emits `serialization.rs` and E0583 can't fire first).
-    `coll__anonb` / `nullable__anonb` are GREEN — an exposable array is a transparent `Vec<T>` and
-    `uint / null` an `Option<u64>`, neither needing a generated wrapper import — so the table
-    structural wrapper is the discriminating cell. Candidate fix: make `mark_refs` resolve the
-    anonymous-map import from the sole owner's scope (the ownership map generation.rs now computes).
-    In the plain-`anon` cells (shape alone in `a`) this class stays MASKED: `a` is alias/table-only
-    and its E0583 fires first, so the `mark_refs` fix alone is necessary but NOT sufficient to flip
-    `collmap__anon`/`coll__anon` green — the alias-only-module E0583 stub must go too. The ledger's
-    class assertion makes the mask lift LOUDLY: those cells pin `{E0583}` (each pin carries its
-    expected rustc error codes, set-equality-matched against the captured stderr — `tests/README.md`
-    § "multifile placement matrix"), so a stub fix that unmasks the E0432 turns them into "failure
-    class changed — re-triage" gate failures rather than silently-still-red cells.
-  - **E0433 (2 cells, `cborwrap__named` / `cborwrap2__named`)** — a cross-module NAMED reference to a
-    `.cbor` wrapper (`fb = bytes .cbor foo` in module `a`, referenced by name from `b`) emits
-    `Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from
-    the owner scope (`cannot find type Foo`). The anon `.cbor` form (`cborwrap__anon`) imports it
-    correctly, so this is a named-ref emission gap the fix should close by importing the inner type
-    into the referencing module's serialization scope.
-  Root-module owners are fine in both directions, so the sweep does not enumerate that direction.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
@@ -484,12 +445,13 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (`append_raw_bytes_defs`) to ctor-arg minting; the latter needs the user macro definitions in scope
   (the `tests/wasm-macro-crate` pattern). Either close them or record compile-verdict fallback as the
   permanent posture and prune this item.
-- **Multifile placement: behavioral upgrade after the pin-flipping fixes.** `multifile_matrix_compiles`
-  is a compile floor — a green placement cell is not semantically verified. Once the pinned
-  E0583/E0432/E0433 classes are fixed (the fix queue: § findings, "Non-root MODULE placement breaks
-  multifile compilation"), mirror the wasm-matrix compile→round-trip upgrade: generate the placement
-  cells `--emit-tests` and run the minted module, so cross-module wiring is executed rather than only
-  type-checked.
+- **Multifile placement: behavioral upgrade on top of the (now-green) compile floor.**
+  `multifile_matrix_compiles` is a compile floor — a green placement cell is not semantically
+  verified. Its three historical module-placement error classes (E0583 alias/table-only
+  serialization stub, E0432 anonymous same-shape table import scope, E0433 cross-module named `.cbor`
+  inner-type import) are all fixed, so every cell now compiles and this upgrade is unblocked: mirror
+  the wasm-matrix compile→round-trip upgrade — generate the placement cells `--emit-tests` and run
+  the minted module, so cross-module wiring is executed rather than only type-checked.
 
 ## Explicitly out of scope (decided, not overlooked)
 

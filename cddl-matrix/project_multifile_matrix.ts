@@ -7,18 +7,18 @@
  * wasm-bindgen boundary, this individuates the axis EVERY other construct gate is blind to: MODULE
  * PLACEMENT. The corpus gates, the wasm-ABI matrix and the parity differential all feed the generator
  * SINGLE-file specs, so every construct is only ever verified in root scope. Multifile emission
- * branches on scope — notably `mark_refs` (intermediate.rs, the `issue #138` TODOs) hard-codes
- * ROOT_SCOPE as the import source for the generator-invented structural wrappers (`XList`/`MapKToV`),
- * while the wrapper/alias definitions land wherever `types.scope(ident)` puts them. The proven break
- * (cddl-matrix/ROADMAP.md § findings, "Non-root MODULE placement breaks multifile compilation"): a shape
- * declared in a non-root module and used anonymously in ANOTHER module imports the structural name
- * from root scope though it now lives in the owner's module (E0432); the rust-side sibling is a module
- * of only table/alias rules declaring `pub mod serialization;` without emitting the file (E0583).
- * All fail loudly at `cargo check`, so a compile floor is a sufficient oracle. The Rust gate
- * `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory input) and
- * `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side breakage
- * surfaces through it), so an un-covered placement cell surfaces as a specific red cell; the
- * known-broken classes go into that gate's `MULTIFILE_MATRIX_SKIP` ledger.
+ * branches on scope: `mark_refs` (intermediate.rs) resolves the import source for the
+ * generator-invented structural wrappers (`XList`/`MapKToV`), and each per-module `mod.rs` declares
+ * only the submodules whose files it actually emits. This matrix is the systematic catcher for that
+ * axis; it once held three loud `cargo check` failure classes, all now fixed: a non-root module using
+ * a shape anonymously from ANOTHER module imported the structural name from root scope though it lives
+ * in the owner's module (E0432); a module of only table/alias rules declared `pub mod serialization;`
+ * without emitting the file (E0583); and a cross-module named `.cbor` ref omitted the inner-type
+ * import (E0433). All fail loudly at `cargo check`, so a compile floor is a sufficient oracle. The
+ * Rust gate `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory
+ * input) and `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side
+ * breakage surfaces through it), so an un-covered placement regression surfaces as a specific red
+ * cell; any deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (now empty).
  *
  * Deterministic (sorted cell order; no hash-order). Fixtures go to tests/matrix_multifile/<cell>/{lib,a,b}.cddl.
  *
@@ -86,11 +86,11 @@ const SHAPES: Record<string, Shape> = {
 // embeds the shape's inline anonymous same-shape spelling (the `mark_refs` structural class); `anonb`
 // is `anon` with a ballast record rule added to module `a` (so `a` emits serialization and E0583 can't
 // mask the b-side E0432 import verdict — see `anonBallast` above); `unref` references nothing (module
-// `a` still declares the shape — this is where an alias/table-only module mis-declares
+// `a` still declares the shape — this is where an alias/table-only module could mis-declare
 // `pub mod serialization;`, E0583). Root-owner direction (shape in root, referenced from a module) is
-// deliberately NOT enumerated: it probed fine in BOTH directions per the ROADMAP findings entry
-// ("Root-module owners are fine in both directions"), so the non-root-owner cells above are the
-// discriminating ones. `bholder`/`field0`/`bal0` dodge the `R`/`W`/`T` reader/writer/generic letters.
+// deliberately NOT enumerated: root-module owners probed fine in BOTH directions, so the
+// non-root-owner cells above are the discriminating ones. `bholder`/`field0`/`bal0` dodge the
+// `R`/`W`/`T` reader/writer/generic letters.
 interface Mode {
   // returns module `b`'s content, or null if the shape does not participate in this mode
   b: (s: Shape) => string | null;

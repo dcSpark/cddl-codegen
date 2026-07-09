@@ -275,6 +275,30 @@ impl<'a> IntermediateTypes<'a> {
             .collect()
     }
 
+    /// Which named `Table` rule solely owns each structural wasm-map shape, keyed by the structural
+    /// `name_for_wasm_map` string (that string IS the shape identity). A shape owned by EXACTLY ONE
+    /// table rule has its wasm class plus the structural `pub type MapKToV = <Owner>;` alias minted in
+    /// that owner's module (`mint_sole_owner_table` in generation.rs); zero-owner (anonymous-only) and
+    /// multi-owner (same-shape rule pair) shapes keep the structural fallback class at the crate root.
+    /// Both the wasm emit path AND `scope_references`'s Map arm consult this single helper so import
+    /// placement and emission placement CANNOT disagree. Iterates `rust_structs()` (a BTreeMap) so the
+    /// result depends only on the SET of table rules, never on visit order.
+    pub fn table_shape_sole_owners(&self) -> BTreeMap<String, RustIdent> {
+        let mut owners: BTreeMap<String, Vec<RustIdent>> = BTreeMap::new();
+        for (ident, rust_struct) in self.rust_structs() {
+            if let RustStructType::Table { domain, range } = rust_struct.variant() {
+                let structural = ConceptualRustType::name_for_wasm_map(domain, range).to_string();
+                owners.entry(structural).or_default().push(ident.clone());
+            }
+        }
+        owners
+            .into_iter()
+            .filter_map(|(structural, mut owners)| {
+                (owners.len() == 1).then(|| (structural, owners.pop().unwrap()))
+            })
+            .collect()
+    }
+
     /// For each scope, which other scopes are referenced, and which structs are referenced
     pub fn scope_references(
         &self,
@@ -283,6 +307,10 @@ impl<'a> IntermediateTypes<'a> {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
         let mut refs = BTreeMap::new();
+        // Resolve wasm-map wrapper imports to the SAME module emission places them: a shape with a
+        // sole owner is minted (class + structural alias) in that owner's module, everything else
+        // falls back to the crate root. Computed once via the shared helper so the two sites can't drift.
+        let table_shape_sole_owners = self.table_shape_sole_owners();
         fn set_ref(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
@@ -302,14 +330,27 @@ impl<'a> IntermediateTypes<'a> {
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
+            sole_owners: &BTreeMap<String, RustIdent>,
             current_scope: &ModuleScope,
             ty: &RustType,
         ) {
             match &ty.conceptual_type {
-                ConceptualRustType::Alias(alias_ident, _alias_ty) => {
+                ConceptualRustType::Alias(alias_ident, alias_ty) => {
                     if let AliasIdent::Rust(rust_ident) = alias_ident {
                         set_ref(refs, types, current_scope, rust_ident);
                     }
+                    // Also import idents the serialization INLINED through this transparent alias
+                    // will name. A cross-module NAMED `.cbor` ref (`fb = bytes .cbor foo` in module
+                    // `a`, referenced by name from `b`) resolves the alias to its target
+                    // (`pub type Fb = Foo;`), and `b`'s serialization emits `Foo::deserialize(..)`
+                    // while only `Fb` was imported — E0433 `cannot find type Foo`. `set_ref` records
+                    // only CROSS-scope idents, so single-module output is byte-identical; an
+                    // occasionally-unneeded cross-module import is harmless (generated code
+                    // legitimately over-imports; `unused_imports` is deliberately not denied).
+                    // Only the conceptual type drives ref-marking, so wrap the alias target (a bare
+                    // `ConceptualRustType`) in a throwaway `RustType`.
+                    let alias_target = RustType::new((**alias_ty).clone());
+                    mark_refs(refs, types, wasm, sole_owners, current_scope, &alias_target);
                 }
                 ConceptualRustType::Rust(rust_ident) => {
                     set_ref(refs, types, current_scope, rust_ident)
@@ -330,7 +371,7 @@ impl<'a> IntermediateTypes<'a> {
                             .or_default()
                             .insert(arr_wrapper_ident);
                     } else {
-                        mark_refs(refs, types, wasm, current_scope, elem_ty);
+                        mark_refs(refs, types, wasm, sole_owners, current_scope, elem_ty);
                     }
                 }
                 ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => {
@@ -338,55 +379,108 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 ConceptualRustType::Map(key, value) => {
                     if wasm && *current_scope != *ROOT_SCOPE {
-                        // TODO: we should be doing map wrappers where they are declared or used,
-                        // but for the former what if the key/value types are in different modules,
-                        // and for the latter, what to do if multiple places use it? default to lib?
-                        // issue: https://github.com/dcSpark/cddl-codegen/issues/138
+                        // Resolve the map wrapper's import scope the SAME way emission decides
+                        // placement (`table_shape_sole_owners` / `mint_sole_owner_table`): a shape
+                        // with a sole named owner has its class + structural `pub type MapKToV`
+                        // alias minted in the OWNER's module, so import it from there; zero-owner
+                        // (anonymous-only) and multi-owner (same-shape rule pair) shapes keep the
+                        // structural fallback class at the crate root. Fixes E0432 for an anonymous
+                        // same-shape table used cross-module from a non-owner scope.
+                        // (The Array arm's owner-resolution is still a TODO — no red cell pins it —
+                        // issue: https://github.com/dcSpark/cddl-codegen/issues/138)
                         let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
-                        refs.entry(current_scope.to_owned())
-                            .or_default()
-                            .entry(ROOT_SCOPE.clone())
-                            .or_default()
-                            .insert(map_wrapper_ident);
+                        let import_scope = sole_owners
+                            .get(&map_wrapper_ident.to_string())
+                            .map_or_else(|| ROOT_SCOPE.clone(), |owner| types.scope(owner).clone());
+                        if import_scope != *current_scope {
+                            refs.entry(current_scope.to_owned())
+                                .or_default()
+                                .entry(import_scope)
+                                .or_default()
+                                .insert(map_wrapper_ident);
+                        }
                     } else {
-                        mark_refs(refs, types, wasm, current_scope, key);
-                        mark_refs(refs, types, wasm, current_scope, value);
+                        mark_refs(refs, types, wasm, sole_owners, current_scope, key);
+                        mark_refs(refs, types, wasm, sole_owners, current_scope, value);
                     }
                 }
                 ConceptualRustType::Optional(inner_ty) => {
-                    mark_refs(refs, types, wasm, current_scope, inner_ty)
+                    mark_refs(refs, types, wasm, sole_owners, current_scope, inner_ty)
                 }
             }
         }
         for rust_struct in self.rust_structs().values() {
             let current_scope = self.scope(&rust_struct.ident);
             match rust_struct.variant() {
-                RustStructType::Array { element_type, .. } => {
-                    mark_refs(&mut refs, self, wasm, current_scope, element_type)
-                }
+                RustStructType::Array { element_type, .. } => mark_refs(
+                    &mut refs,
+                    self,
+                    wasm,
+                    &table_shape_sole_owners,
+                    current_scope,
+                    element_type,
+                ),
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants, .. } => {
                     variants.iter().for_each(|ev| match &ev.data {
-                        EnumVariantData::RustType(ty) => {
-                            mark_refs(&mut refs, self, wasm, current_scope, ty)
-                        }
+                        EnumVariantData::RustType(ty) => mark_refs(
+                            &mut refs,
+                            self,
+                            wasm,
+                            &table_shape_sole_owners,
+                            current_scope,
+                            ty,
+                        ),
                         EnumVariantData::Inlined(record) => {
                             record.fields.iter().for_each(|field| {
-                                mark_refs(&mut refs, self, wasm, current_scope, &field.rust_type)
+                                mark_refs(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    current_scope,
+                                    &field.rust_type,
+                                )
                             })
                         }
                     })
                 }
                 RustStructType::Record(record) => record.fields.iter().for_each(|field| {
-                    mark_refs(&mut refs, self, wasm, current_scope, &field.rust_type)
+                    mark_refs(
+                        &mut refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        current_scope,
+                        &field.rust_type,
+                    )
                 }),
                 RustStructType::Table { domain, range } => {
-                    mark_refs(&mut refs, self, wasm, current_scope, domain);
-                    mark_refs(&mut refs, self, wasm, current_scope, range);
+                    mark_refs(
+                        &mut refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        current_scope,
+                        domain,
+                    );
+                    mark_refs(
+                        &mut refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        current_scope,
+                        range,
+                    );
                 }
-                RustStructType::Wrapper { wrapped, .. } => {
-                    mark_refs(&mut refs, self, wasm, current_scope, wrapped)
-                }
+                RustStructType::Wrapper { wrapped, .. } => mark_refs(
+                    &mut refs,
+                    self,
+                    wasm,
+                    &table_shape_sole_owners,
+                    current_scope,
+                    wrapped,
+                ),
                 RustStructType::Extern | RustStructType::RawBytesType => {
                     // impossible to know what this refers to - will have to be done afterwards by user
                 }

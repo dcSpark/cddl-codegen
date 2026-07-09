@@ -200,158 +200,22 @@ For more information about this error, try `rustc --explain E0583`.\n";
 }
 
 /// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
-/// do NOT compile — the known-broken module-placement classes the sweep pins while landing green.
-/// Each `(cell stem, expected rustc error codes, reason)` names the error class and the
-/// `cddl-matrix/ROADMAP.md` § findings entry the future `mark_refs`/E0583 fix must flip. Four-state
-/// verdict in `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the
-/// observed rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set,
-/// or the cell's failure CLASS changed and the pin is re-triaged loudly; red+unlisted = failure (fix
-/// the emitter or, deliberately, pin + ledger); green+listed = "resurfaced — remove the pin (a fix
-/// landed)"; green+unlisted = pass. A skip cell whose GENERATION aborts (no rustc compile error at all)
-/// is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from the
-/// projected fixture set, so the list can't rot silently.
-const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
-    // --- E0583: a non-root MODULE that emits NO `serialization.rs` (all its rules compile to a
-    // transparent `pub type` alias — scalar/collection/table alias — or a c-style enum whose
-    // serialization is emitted elsewhere) still unconditionally declares `pub mod serialization;` in
-    // its `mod.rs`. The rust-side sibling of the ROADMAP § findings "Non-root MODULE placement
-    // breaks multifile compilation" class; broader than the table-only probe (any alias-only non-root module).
-    // For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower E0432
-    // anonymous-same-shape import (module `b`) the finding named — cargo aborts on the missing module
-    // file first — so fixing `mark_refs` alone will not flip these; the alias-only-module stub must go too.
-    (
-        "cenum__named",
-        &["E0583"],
-        "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "cenum__unref",
-        &["E0583"],
-        "E0583: alias/enum-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "chain__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "chain__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "coll__anon",
-        &["E0583"],
-        "E0583: alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
-    ),
-    (
-        "coll__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "coll__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "collmap__anon",
-        &["E0583"],
-        "E0583: table-alias-only non-root module `a` (masks the E0432 anon-same-shape in `b`)",
-    ),
-    (
-        "collmap__named",
-        &["E0583"],
-        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "collmap__unref",
-        &["E0583"],
-        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "nullable__anon",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "nullable__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "nullable__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "palias__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "palias__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "passthru__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "passthru__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "passthrumap__named",
-        &["E0583"],
-        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "passthrumap__unref",
-        &["E0583"],
-        "E0583: table-alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "talias__named",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    (
-        "talias__unref",
-        &["E0583"],
-        "E0583: alias-only non-root module declares `pub mod serialization;` w/o the file",
-    ),
-    // --- E0432: the CORE `mark_refs` finding, unmasked by the `anonb` mode (anon + a ballast record
-    // rule in module `a`, so `a` emits serialization.rs and E0583 can't fire first): module `b`'s
-    // anonymous same-shape table use imports the structural name from the root scope (`mark_refs`'
-    // hard-coded ROOT_SCOPE — `unresolved import crate::generated::MapU64ToText`) while the shape
-    // lives in the owner module `a`. `coll__anonb`/`nullable__anonb` are GREEN (an exposable array is
-    // a transparent `Vec<T>` and `uint / null` an `Option<u64>` — neither needs a generated wrapper
-    // import), so the table structural wrapper is the discriminating cell.
-    (
-        "collmap__anonb",
-        &["E0432"],
-        "E0432: anon same-shape table in `b` imports the structural name from root scope (mark_refs)",
-    ),
-    // --- E0433: a cross-module NAMED reference to a `.cbor` wrapper (`fb = bytes .cbor foo` in module
-    // `a`, referenced by name from module `b`) emits `Foo::deserialize(...)` in `b`'s serialization
-    // without importing the inner named type `Foo` from the owner scope (`cannot find type Foo`). The
-    // anon `.cbor` form (`cborwrap__anon`) imports it correctly, so this is a named-ref emission gap.
-    // New multifile-placement finding, ledgered in cddl-matrix/ROADMAP.md § findings.
-    (
-        "cborwrap__named",
-        &["E0433"],
-        "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
-    ),
-    (
-        "cborwrap2__named",
-        &["E0433"],
-        "E0433: cross-module named `.cbor` ref omits the inner-type import in module `b`",
-    ),
-];
+/// do NOT compile. Each `(cell stem, expected rustc error codes, reason)` names the error class the
+/// sweep pins while landing green. CURRENTLY EMPTY: every cell compiles — the three module-placement
+/// error classes it once held (E0583 alias/enum-only non-root module declaring `pub mod
+/// serialization;` without the file; E0432 anonymous same-shape table importing the structural name
+/// from root scope instead of the sole owner's module; E0433 cross-module named `.cbor` ref omitting
+/// the inner-type import) are all fixed in `generation.rs`'s module-declaration loop and
+/// `intermediate.rs`'s `scope_references`/`mark_refs`. The four-state verdict below is the gate's
+/// contract and stays live so a future regression re-pins with evidence. Four-state verdict in
+/// `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the observed
+/// rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set, or the
+/// cell's failure CLASS changed and the pin is re-triaged loudly; red+unlisted = failure (fix the
+/// emitter or, deliberately, pin + ledger); green+listed = "resurfaced — remove the pin (a fix
+/// landed)"; green+unlisted = pass. A skip cell whose GENERATION aborts (no rustc compile error at
+/// all) is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from
+/// the projected fixture set, so the list can't rot silently.
+const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
@@ -1625,13 +1489,17 @@ fn wasm_matrix_compiles() {
 ///
 /// Each cell is generated with DIRECTORY input (`--input=tests/matrix_multifile/<cell>`) `--wasm=true`,
 /// then only the WASM crate is `cargo check`ed — like `wasm_matrix_compiles`, the wasm crate pulls the
-/// rust crate in as a path dep, so rust-side breakage (E0583: an alias/table-only module declaring
-/// `pub mod serialization;` without emitting the file) surfaces transitively through the wasm check;
-/// one crate keeps the wall-clock bounded.
+/// rust crate in as a path dep, so rust-side breakage (e.g. an alias/table-only module declaring
+/// `pub mod serialization;` without emitting the file, or a cross-module structural/inner-type import
+/// landing in the wrong scope) surfaces transitively through the wasm check; one crate keeps the
+/// wall-clock bounded.
 ///
-/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells (the known-broken module-placement classes
-/// tracked in `cddl-matrix/ROADMAP.md` § findings — E0432 anonymous-same-shape import from root scope,
-/// E0583 alias/table-only serialization stub). Four-state verdict per cell: red+listed = expected —
+/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells; it is CURRENTLY EMPTY — every cell
+/// compiles, the three historical module-placement error classes (E0583 alias/table-only
+/// serialization stub, E0432 anonymous same-shape table importing the structural name from root scope,
+/// E0433 cross-module named `.cbor` ref omitting the inner-type import) are all fixed. The four-state
+/// verdict stays the gate's contract so any regression re-pins with evidence. Four-state verdict per
+/// cell: red+listed = expected —
 /// but ADDITIONALLY the observed rustc error-code set (extracted from the captured cargo stderr) must
 /// EQUAL the pin's declared codes; red-with-the-wrong-class is a loud "the cell's failure class
 /// changed — re-triage the pin" (a skip cell whose GENERATION aborts, producing no rustc error at all,
