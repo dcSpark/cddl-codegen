@@ -253,7 +253,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   shape); no row places a named RECORD type as an arm member (`t = [ a: st // b: tstr ]`, `st` a
   record). Enumerate that row per the "Intra-alternative variation rows" rule so the rust-side failure
   carries a serialization-axis pin directly (expected to mint red/limitation while the bug stands),
-  rather than only the wasm-matrix cells.
+  rather than only the wasm-matrix cells. The recombination layer-2 ledger's
+  `[ ga: gen<nil> // tstr ]` `NoVariantMatched` class (held in `LAYER2_KNOWN_BAD`; its ledger entry
+  below) is a confirmed instance of this same class — identical repro signature, the record-carrying
+  variant rejecting while the record itself round-trips — so a fix here must flip that vacuity-guarded
+  ledger entry loudly too.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **A no-occurrence type-domain arrow entry (`{ k => v }`, k non-literal) table-detects to the same
@@ -368,11 +372,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   - **The `--emit-tests` minter does not respect `.ne` on a table key domain**: for
     `gen<{ int .ne 0 => uint }>` it mints key `0`, which the (correct) emitted decoder rejects
     with a `RangeCheck` — a minter-side gap, not a decoder bug.
-  - **Two emitted-test baseline decode failures on nested shapes** to minimize when picked up: a
+  - **Two emitted-test baseline decode failures on nested shapes**: a
     `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
-    following field — a `.cbor` float payload mis-frames the buffer), and
-    `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` (a `[null]`-carrying arm never matches its
-    own serialization).
+    following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
+    up), and `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` — attribution done: a confirmed
+    instance of the Record-arm group-choice discriminant class (this doc's findings entry pinned by
+    `struct__gchoice-variant`/`generic__gchoice-variant`; repro signature identical — the
+    record-carrying variant rejects while the record itself round-trips), so the discriminant fix
+    should flip this ledgered class together with those pinned cells.
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
