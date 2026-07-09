@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the eight `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the nine `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -1212,8 +1212,18 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   compositions because preserve generation panics for that class earlier — the shared ledger's guard
   stays in the default gate). NAMING GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
-  path so cargo's substring selection can't cross-select. The json/wasm legs are future work
-  (`tests/TESTING_ROADMAP.md`), plugging into the same runner.
+  path so cargo's substring selection can't cross-select.
+- `recombination_json_crates_execute` (`#[ignore]`, check.ts full tier): the JSON escalation of
+  layer 2, using `ALL_PROFILES["json"]` (`--json-serde-derives=true
+  --json-schema-export=true`) plus `--emit-tests=true --wasm=false`, then `cargo test` on the
+  generated `rust/` crate. This is the broad shape gate for serde derive / schemars derive compile
+  failures while still executing the emitted CBOR tests. `--json-schema-export=true --wasm=false`
+  also emits an independent `wasm/json-gen/` crate; this recombination leg deliberately leaves that
+  crate to the existing json profile compile/schema gates rather than running it per batch. First
+  clean baseline: 1544 classified compositions (`ok=927`, `graceful=197`, `panic=420`), 26 batches /
+  898 executed / 29 shared known-bad exclusions in ~54 s; no json-only panic or layer-2 known-bad
+  ledger entries were needed. The wasm leg remains future work (`tests/TESTING_ROADMAP.md`),
+  plugging into the same runner.
 
 Adding a member kind / role template / construct shape extends the swept surface; re-tune the
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled

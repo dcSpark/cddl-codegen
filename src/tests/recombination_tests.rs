@@ -1142,11 +1142,14 @@ fn run_layer2_profile(p: &Layer2Profile) {
     let mut panic_findings: Vec<String> = Vec::new();
     let mut observed_panic_classes: BTreeSet<&str> = BTreeSet::new();
     let mut ok_comps: Vec<&Composition> = Vec::new();
+    let mut graceful = 0usize;
+    let mut panics = 0usize;
     for (c, o) in comps.iter().zip(outcomes.iter()) {
         match o {
             Outcome::Ok => ok_comps.push(c),
-            Outcome::Graceful(_) => {}
+            Outcome::Graceful(_) => graceful += 1,
             Outcome::Panic(msg) => {
+                panics += 1;
                 // Shared allowlist is applied but not vacuity-guarded in profile runs; the profile's
                 // own panic ledger is guarded (observed set below).
                 if let Some((sub, _)) = p.panic_ledger.iter().find(|(sub, _)| msg.contains(sub)) {
@@ -1293,8 +1296,11 @@ fn run_layer2_profile(p: &Layer2Profile) {
     let _ = std::fs::remove_dir_all(&root);
 
     println!(
-        "recombination {} layer 2: {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
+        "recombination {} layer 2: classified ok={} graceful={} panic={}; {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
         p.name,
+        ok_comps.len(),
+        graceful,
+        panics,
         batches.len(),
         executed,
         ok_comps.len() - executable.len(),
@@ -1433,5 +1439,61 @@ fn recombination_preserve_crates_execute() {
         // Observed baseline: 856 preserve-ok / 818 executed (38 known-bad excluded); floors ~10% under.
         ok_floor: 770,
         executed_floor: 735,
+    });
+}
+
+// ---- json profile: panic ledger + known-bad ledger + the escalation gate --------------------------
+/// Panic classes that appear when classifying under
+/// `--json-serde-derives=true --json-schema-export=true` but are ok/graceful under the default
+/// profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` allowlist; a json panic matching neither
+/// is a NEW finding. Each non-empty entry must cite an existing `cddl-matrix/ROADMAP.md` § findings
+/// entry or another committed stable pin. Vacuity-guarded in
+/// `recombination_json_crates_execute`.
+const JSON_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
+
+/// Json-profile compile/round-trip known-bad classes. Desc-substring keyed, each citing its pin;
+/// vacuity-guarded in `recombination_json_crates_execute`. The shared `LAYER2_KNOWN_BAD` also
+/// applies (as an exclusion, un-guarded here).
+const LAYER2_JSON_KNOWN_BAD: &[(&str, &str)] = &[];
+
+/// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the JSON escalation of layer 2.
+/// Classifies every composition under the `json` profile from `crate::tests::ALL_PROFILES`
+/// (`--json-serde-derives=true --json-schema-export=true`), batches the json-ok ones, generates
+/// `--json-serde-derives=true --json-schema-export=true --emit-tests=true --wasm=false`, and
+/// `cargo test`s the generated rust crate. This catches rust-crate failures that only appear once
+/// serde derives / schemars schema derives are emitted, while also executing the emitted CBOR tests.
+///
+/// With `--json-schema-export=true --wasm=false`, generation also emits an independent
+/// `wasm/json-gen` crate outside the rust crate (`rust/` and `wasm/json-gen/` output directories).
+/// This leg deliberately does not `cargo check` or run that crate: the profile's layer-2 oracle is
+/// rust-crate serde/schemars compilation plus emitted-test execution, and the json-gen crate is
+/// covered by the existing json profile compile/schema gates (`feature_corpus_compiles`,
+/// `json`/`json_float`, and the package-json pipeline) rather than by this recombination gate.
+/// Profile flags are sourced by name (asserted found), never re-hard-coded.
+///
+/// NAMING/SELECTION GOTCHA: this name must NOT contain the `recombination_crates_execute` needle
+/// (cargo's substring test selection would cross-select) — hence `recombination_json_crates_execute`.
+/// The check.ts gate passes `--exact` for all layer-2 gates.
+///
+/// Run: `cargo test --bin cddl-codegen recombination_json_crates_execute -- --exact --ignored --nocapture`.
+#[test]
+#[ignore]
+fn recombination_json_crates_execute() {
+    let (name, json_args) = crate::tests::ALL_PROFILES
+        .iter()
+        .find(|(name, _)| *name == "json")
+        .expect("`json` profile missing from crate::tests::ALL_PROFILES");
+    run_layer2_profile(&Layer2Profile {
+        name,
+        profile_args: json_args,
+        exec_args: &["--emit-tests=true", "--wasm=false"],
+        crate_subdir: "rust",
+        cargo_subcmd: "test",
+        panic_ledger: JSON_ONLY_PANIC_CLASSES,
+        known_bad: LAYER2_JSON_KNOWN_BAD,
+        guard_shared: false,
+        // Observed baseline: 927 json-ok / 898 executed (29 known-bad excluded); floors ~10% under.
+        ok_floor: 835,
+        executed_floor: 808,
     });
 }
