@@ -1,0 +1,175 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PairU64Text(cddl_lib::PairU64Text);
+
+#[wasm_bindgen]
+impl PairU64Text {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PairU64Text, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<PairU64Text, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::PairU64Text::new(a, b))
+    }
+}
+
+impl From<cddl_lib::PairU64Text> for PairU64Text {
+    fn from(native: cddl_lib::PairU64Text) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PairU64Text> for cddl_lib::PairU64Text {
+    fn from(wasm: PairU64Text) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PairU64Text> for PairU64Text {
+    fn as_ref(&self) -> &cddl_lib::PairU64Text {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct X(cddl_lib::X);
+
+#[wasm_bindgen]
+impl X {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<X, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<X, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn pair(&self) -> PairU64Text {
+        self.0.pair.clone().into()
+    }
+
+    pub fn new(pair: &PairU64Text) -> Self {
+        Self(cddl_lib::X::new(pair.clone().into()))
+    }
+}
+
+impl From<cddl_lib::X> for X {
+    fn from(native: cddl_lib::X) -> Self {
+        Self(native)
+    }
+}
+
+impl From<X> for cddl_lib::X {
+    fn from(wasm: X) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::X> for X {
+    fn as_ref(&self) -> &cddl_lib::X {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Y(Vec<cddl_lib::PairU64Text>);
+
+#[wasm_bindgen]
+impl Y {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> PairU64Text {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &PairU64Text) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::PairU64Text>> for Y {
+    fn from(native: Vec<cddl_lib::PairU64Text>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Y> for Vec<cddl_lib::PairU64Text> {
+    fn from(wasm: Y) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::PairU64Text>> for Y {
+    fn as_ref(&self) -> &Vec<cddl_lib::PairU64Text> {
+        &self.0
+    }
+}

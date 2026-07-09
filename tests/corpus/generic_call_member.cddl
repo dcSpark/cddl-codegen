@@ -1,0 +1,11 @@
+pair<a, b> = [a, b]
+; A generic instantiation used as a bare MEMBER type (`[pair<uint, tstr>]`): the anonymous instance
+; (`PairU64Text`) must be registered + emitted, and the enclosing record's field bound to it, not
+; dropped so the member dangles on a bare, never-emitted `Pair`. This is the last position of the
+; generic-instantiation family to be closed (keyed members, rule RHSes, and homogeneous array
+; elements already worked) — see tests/corpus/generic_array_element.cddl for the element position.
+x = [pair<uint, tstr>]
+; The SAME instantiation ALSO used under an occurrence (`[* pair<uint, tstr>]`): the member and the
+; element positions register the identical instance ident (emitted as `PairU64Text`); this pins that the
+; double registration is deterministic and yields one shared emitted struct.
+y = [* pair<uint, tstr>]

@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PairU64Text {
+    pub a: u64,
+    pub b: String,
+}
+
+impl PairU64Text {
+    pub fn new(a: u64, b: String) -> Self {
+        Self { a, b }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct X {
+    pub pair: PairU64Text,
+}
+
+impl X {
+    pub fn new(pair: PairU64Text) -> Self {
+        Self { pair }
+    }
+}
+
+pub type Y = Vec<PairU64Text>;
