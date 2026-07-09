@@ -1063,11 +1063,13 @@ the two raw-CBOR-argument constructors and a source-level `pub type IntError = J
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
 placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
 generator SINGLE-file specs, so every construct is only ever verified in root scope. Multifile
-emission branches on scope — `mark_refs` (`intermediate.rs`, the `issue #138` TODOs) hard-codes
-`ROOT_SCOPE` as the import source for the generator-invented structural wrappers (`XList`/`MapKToV`),
-while the wrapper/alias definitions land wherever `types.scope(ident)` puts them — and that region
-had exactly one hand fixture (`tests/multifile`, which covers NAMED cross-module refs but no
-structural-wrapper-ownership cells). This sweep enumerates the placement grid and compile-floors it.
+emission branches on scope — `mark_refs` (`intermediate.rs`) resolves the import source for the
+generator-invented structural wrappers (owner-resolved for map shapes via
+`IntermediateTypes::table_shape_sole_owners`; still root-hard-coded for arrays, the pinned
+`collrec` class and the remaining `issue #138` TODO), while the wrapper/alias definitions land
+wherever `types.scope(ident)` puts them — and that region had exactly one hand fixture
+(`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
+cells). This sweep enumerates the placement grid and compile-floors it.
 
 Pipeline (projection → fixtures → gate), the same shape as the wasm-ABI matrix:
 
@@ -1079,30 +1081,33 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 - **The two-module template.** Each cell is a DIRECTORY fixture. `lib.cddl` (file stem `lib` ==
   `ROOT_SCOPE`) is the root — one trivial rule (`rt = [uint]`), constant across cells; `a.cddl` (scope
   `a`) holds the shape's defs; `b.cddl` (scope `b`) holds the reference. Root-owner direction (shape
-  in root, referenced from a module) is deliberately NOT enumerated — it probed fine in both
-  directions (`cddl-matrix/ROADMAP.md` § findings), so the non-root-owner cells are the discriminating
-  ones.
+  in root, referenced from a module) is deliberately NOT enumerated — root-module owners probed fine
+  in both directions, so the non-root-owner cells are the discriminating ones.
 - **Axis 1 — type-shape** (`SHAPES`, copied verbatim from `project_wasm_matrix.ts` with a provenance
-  comment; NOT imported — that module projects on import). Every self-contained shape that HAS defs is
+  comment; NOT imported — that module projects on import; plus the multifile-specific `collrec`,
+  `[* <record>]` — the structural array wrapper only needs placement cross-module, so the wasm
+  matrix's root-scope grid cannot probe it). Every self-contained shape that HAS defs is
   included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
   types, can't compile standalone) are excluded with header comments.
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
   (`bholder = [field0: <ty>]`); `anon` — `b` embeds the shape's inline anonymous same-shape spelling
   (the `mark_refs` structural class); `anonb` — `anon` plus a ballast record rule in `a`
-  (`ballast = [bal0: uint]`), so `a` emits `serialization.rs` and the alias-only-module E0583 can't
-  mask the b-side import verdict — the mode that surfaces the CORE `mark_refs` E0432; `unref` — `b`
+  (`ballast = [bal0: uint]`), so `a` emits `serialization.rs` and an alias-only-module abort can't
+  mask the b-side import verdict (the discrimination that isolates structural-import placement
+  regressions); `unref` — `b`
   references nothing (`[field0: uint]`), so an alias/table-only module `a` still gets emitted.
   `named`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
   `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
   would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
-  (the controls are throwaway, not committed). All 6 candidates
-  (`coll`/`collmap`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green. `anonb` applies to exactly the
-  anon shapes whose plain `anon` cell is E0583-masked (`coll`/`collmap`/`nullable`); the other three
-  are green in plain `anon` (module `a` already emits serialization), so a ballast variant adds no
-  discrimination.
+  (the controls are throwaway, not committed). All 7 candidates
+  (`coll`/`collmap`/`collrec`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green. `anonb` applies to
+  exactly the anon shapes whose plain `anon` cell would be masked by an alias-only module `a`
+  emitting no serialization (`coll`/`collmap`/`nullable`); the other anon shapes' module `a` already
+  emits serialization, so nothing masks their b-side verdict and a ballast variant adds no
+  discrimination (their `anon` cells are green except the pinned `collrec__anon`).
 - **The gate** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs, generates each
   with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which path-depends on
-  the rust crate, so rust-side breakage — E0583 — surfaces transitively). Own scratch +
+  the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
   once) / ~30 s warm measured at 43 cells (46 at HEAD).
@@ -1128,21 +1133,20 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 **What it pins today.** The two `collrec` cells (`collrec__anon` E0425, `collrec__named` E0432) —
 the ARRAY structural-wrapper placement class (`[* <record>]`, the only array whose wasm
 representation needs a generated `FooList`-style wrapper; `mark_refs`' Array arm still hard-codes
-ROOT_SCOPE — the remaining issue-138 half; fix queue in `cddl-matrix/ROADMAP.md` § findings). The
-shape was enumerated AFTER review found the `SHAPES` hole, so its cells were never green. The three
-module-placement error classes the ledger originally held are all fixed: **E0583** (was 21 cells) — a non-root
-module whose rules emit no `serialization.rs` (any transparent `pub type` alias, or a c-style enum
-whose serialization lives elsewhere) no longer declares `pub mod serialization;` without the file
-(the module-declaration loop in `generation.rs` conditions the decl on `serialize_scopes`, mirroring
-the file-write); **E0432** (was 1 cell, `collmap__anonb`) — an anonymous same-shape table used
-cross-module now imports the structural wrapper from the sole owner's module rather than a hard-coded
-root scope (`scope_references`/`mark_refs` consult `IntermediateTypes::table_shape_sole_owners`, the
-same helper the wasm emit path uses, so import and emission placement can't disagree); **E0433** (was
-2 cells, `cborwrap{,2}__named`) — a cross-module *named* reference to a `.cbor` wrapper now imports
-the inner named type into the referencing module (`mark_refs`' Alias arm recurses into the alias
-target so idents the inlined serialization names get imported). The gate is a **compile floor**: a
-green cell is not semantically verified (that's follow-on work). Its four-state class-asserting
-verdict stays live so any regression re-pins with the observed error-code evidence.
+ROOT_SCOPE as the wrapper's import source; fix queue in `cddl-matrix/ROADMAP.md` § findings). The
+shape was enumerated from a review-found `SHAPES` hole, so neither cell has ever compiled. Every
+other cell is green, and greenness rests on three emitter invariants this matrix guards: a module
+declares `pub mod serialization;` only when that file is written (the module-declaration loop in
+`generation.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only
+non-root module cannot declare a phantom module — the E0583 class); an anonymous same-shape table
+used cross-module imports the structural wrapper from the sole owner's module
+(`scope_references`/`mark_refs` consult `IntermediateTypes::table_shape_sole_owners`, the same
+helper the wasm emit path uses, so import and emission placement cannot disagree — the E0432
+class); and a cross-module *named* reference to a `.cbor` wrapper imports the inner named type into
+the referencing module (`mark_refs`' Alias arm recurses into the alias target so idents the inlined
+serialization names get imported — the E0433 class). The gate is a **compile floor**: a green cell
+is not semantically verified (that's follow-on work). Its four-state class-asserting verdict stays
+live so any regression re-pins with the observed error-code evidence.
 
 **Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
 project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never

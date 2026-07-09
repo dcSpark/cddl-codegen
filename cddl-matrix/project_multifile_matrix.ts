@@ -10,11 +10,11 @@
  * branches on scope: `mark_refs` (intermediate.rs) resolves the import source for the
  * generator-invented structural wrappers (`XList`/`MapKToV`), and each per-module `mod.rs` declares
  * only the submodules whose files it actually emits. This matrix is the systematic catcher for that
- * axis; it once held three loud `cargo check` failure classes, all now fixed: a non-root module using
- * a shape anonymously from ANOTHER module imported the structural name from root scope though it lives
- * in the owner's module (E0432); a module of only table/alias rules declared `pub mod serialization;`
- * without emitting the file (E0583); and a cross-module named `.cbor` ref omitted the inner-type
- * import (E0433). All fail loudly at `cargo check`, so a compile floor is a sufficient oracle. The
+ * axis; the emitter invariants it guards (each once a loud `cargo check` failure class): a
+ * cross-module anonymous same-shape use imports the structural name from the shape's owner module
+ * (the E0432 class), a module declares `pub mod serialization;` only when it emits the file (the
+ * E0583 class), and a cross-module named `.cbor` ref imports the inner type (the E0433 class).
+ * Placement breakage fails loudly at `cargo check`, so a compile floor is a sufficient oracle. The
  * Rust gate `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory
  * input) and `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side
  * breakage surfaces through it), so an un-covered placement regression surfaces as a specific red
@@ -35,13 +35,16 @@ const DIR = `${HERE}/../tests/matrix_multifile`;
 const CHECK = process.argv.includes("--check");
 
 // --- Axis 1: type-shapes. Defs + `ty` copied verbatim (provenance) from project_wasm_matrix.ts's
-// `SHAPES` — do NOT import it (that module runs projection on import). Included: every shape that HAS
+// `SHAPES` — do NOT import it (that module runs projection on import) — plus `collrec`, which is
+// multifile-SPECIFIC (the structural array wrapper only needs placement cross-module; at the wasm
+// matrix's root scope the class cannot bite). Included: every shape that HAS
 // defs and is self-contained (can compile standalone). `anonForm` is the shape's inline anonymous
 // same-shape spelling (the `mark_refs` structural-wrapper class); present iff the anon holder
 // `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once during
-// construction (throwaway generate + `cargo check` rust+wasm). All 6 anon-cell candidates
-// probed green (coll/collmap/tag/nullable/bwrap/cborwrap), so all 6 admit an anon cell; a red there
-// would be a single-file limitation, not a placement finding, and the shape would carry no `anonForm`.
+// construction (throwaway generate + `cargo check` rust+wasm). All 7 anon-cell candidates
+// probed green (coll/collmap/collrec/tag/nullable/bwrap/cborwrap), so all 7 admit an anon cell; a red
+// there would be a single-file limitation, not a placement finding, and the shape would carry no
+// `anonForm`.
 //
 // Excluded shapes (present in the wasm matrix, deliberately absent here):
 //   - `prim` (`ty: uint`, no defs) — nothing to PLACE in a module; a module needs at least one rule.
