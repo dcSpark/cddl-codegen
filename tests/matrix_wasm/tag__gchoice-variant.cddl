@@ -1,0 +1,3 @@
+; cell: tag x gchoice-variant
+tg = #6.10(uint)
+holder = [ f0: tg // f1: nint ]

@@ -1,0 +1,2 @@
+; cell: prim x gchoice-variant
+holder = [ f0: uint // f1: nint ]

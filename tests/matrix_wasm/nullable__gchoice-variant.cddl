@@ -1,0 +1,3 @@
+; cell: nullable x gchoice-variant
+opt = uint / null
+holder = [ f0: opt // f1: nint ]

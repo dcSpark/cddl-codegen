@@ -1,0 +1,3 @@
+; cell: talias x gchoice-variant
+ta = text
+holder = [ f0: ta // f1: nint ]
