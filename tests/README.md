@@ -141,8 +141,9 @@ emitted bytes don't *change*, not that they satisfy an invariant; a violation ju
   that justifies struct `*List` wrappers doesn't apply), so no anonymous `TextList` wrapper may be
   emitted.
 
-The emission-hygiene gates pin specific shapes found by review; the systematic axis (denying a
-curated rustc style-lint set on generated code) is a `TESTING_ROADMAP` item.
+The emission-hygiene gates pin specific shapes found by review; `generated_code_clippy_clean`
+provides the systematic lint axis, while needle gates remain for source-shape classes no rustc or
+clippy lint can see.
 
 `canonical` is a serialization sub-mode of `preserve` (differs only where maps/sets exist), so it's
 covered at whole-program scale rather than duplicated per feature.
@@ -203,21 +204,25 @@ path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emi
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
 
-`generated_code_clippy_clean` runs `cargo clippy -- -D clippy::all` over the generated *rust* crate
-for two representative profiles (default flags, and `--preserve-encodings --canonical-form`),
-generated from the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it
-can't race the fixtures' reused `tests/<dir>/export` outputs). What it proves: the emitted source is
-clippy-clean per profile, modulo the commented `-A` allow-list in the gate — the emission-quality
-class that snapshots and round-trip suites are blind to (they pin bytes and behavior, not
-idiomatic-ness; a degenerate `();` statement compiles and round-trips green but degrades every
-consumer's `cargo clippy`). What it can't prove: semantic correctness — a wrong-but-idiomatic
-deserializer passes. One allow is permanent and input-dependent: `clippy::disallowed_names` (the
-fixture's own `foo`/`bar` rule names become generated parameter names — not a generator defect).
-The rest are a burn-down list of shapes the generator still mints, ledgered per-lint in
-`tests/TESTING_ROADMAP.md`'s clippy allow-list burn-down item; removing an `-A` is the pin that the
-fix landed generator-wide. The deny is `clippy::all` only, never `-D warnings` — generated code
-legitimately over-imports (see `tool_cmd`'s doc comment). Rust crate only (`--wasm=false`);
-extending to the wasm crate is a ledgered roadmap follow-up.
+`generated_code_clippy_clean` runs `cargo clippy` over the generated rust and wasm crates for two
+representative profiles (default flags, and `--preserve-encodings --canonical-form`), generated from
+the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it can't race the
+fixtures' reused `tests/<dir>/export` outputs). What it proves: emitted source is lint-clean for
+the covered profiles, modulo the gate's commented allow lists — the emission-quality class that
+snapshots and round-trip suites are blind to (they pin bytes and behavior, not idiomatic-ness; a
+degenerate `();` statement compiles and round-trips green but degrades every consumer's `cargo
+clippy`). What it can't prove: semantic correctness — a wrong-but-idiomatic deserializer passes.
+
+The rust crate is denied under `clippy::all` with an empty emission-quality burn-down; its only
+allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own `foo`/`bar`
+rule names become generated parameter names — not a generator defect). The gate also denies a
+curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that catches
+redundant emitted grouping/allocation without turning legitimate generated-code warnings such as
+`unused_imports` or `unused_variables` into failures; it is intentionally not `-D warnings` (see
+`tool_cmd`'s doc comment). The wasm crate uses the same deny set, plus its own commented
+emission-quality burn-down list in the gate, ledgered in `tests/TESTING_ROADMAP.md`; removing a
+wasm `-A` is the pin that the corresponding binding-emission shape stopped being generated.
+Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 
 Distinct from this generated-code gate, the fast-tier WORKSPACE clippy gate (check.ts's `clippy`)
 denies `clippy::all` PLUS the restriction lint `clippy::assertions_on_result_states` over the

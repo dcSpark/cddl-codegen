@@ -192,36 +192,24 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
    denominator" pending call made concrete — resolve them together.
 
-7. **Extend the generated-code clippy gate's axes (`generated_code_clippy_clean`).** The gate denies
-   `clippy::all` on the generated rust crate for both the default and `preserve+canonical` profiles.
-   Its emission-quality burn-down `-A` list is fully retired: the only remaining allow is
-   `clippy::disallowed_names`, a permanent input-dependent allow (the fixture's own `foo`/`bar` rule
-   names become generated parameter names — not a generator defect). With the list empty, every
-   `clippy::all` class — and any NEW one a generator regression mints — is hard-red on both profiles;
-   there is no longer a "shrink the list" pin to reach for, so future regressions must be fixed at the
-   emitted shape, not re-allowed. Two follow-on axes remain, each broadening what the gate covers:
-   - **wasm-crate axis.** The gate generates with `--wasm=false`, so the wasm-binding emission path
-     has no lint gate at all (the same "compiles green but lint-worthy" class the rust half exists to
-     catch). Extend it to `cargo clippy` the generated wasm crate, with its own commented `-A`
-     burn-down list for whatever classes the wasm emission currently mints (ledgered here, mirroring
-     how the rust list was), the deliverable being the AXIS — hard-red on new wasm classes — not a
-     zero-warning wasm crate. Watch warm wall-clock: if adding the wasm leg pushes the gate over the
-     ~90s plain-`#[test]` threshold, split it into an `#[ignore]`d test wired into check.ts, never
-     into `fast`.
-   - **rustc style-lint axis.** Deny a curated **rustc** style-lint set (`-D unused_parens`, plus
-     safe `unused`-group candidates like `unused_braces`/`unused_allocation`) alongside `clippy::all`.
-     A blanket `-D warnings` is out (generated code legitimately over-imports, so `unused_imports`
-     must stay a warning), but per-lint denies don't have that problem, and the class is real: a
-     redundant-parens emission (`Ok((x))` on a single-binding match pattern) shipped and was caught by
-     review, not by any gate — rustc's `unused_parens` would have flagged it. Add each lint only if
-     currently green on both profiles; document the curated set + rationale as a gate comment.
+7. **Retire the generated-wasm clippy burn-down (`generated_code_clippy_clean`).** The generated rust
+   crate is now hard-red under `clippy::all` plus the curated rustc style-lint set, with only the
+   permanent input-dependent `clippy::disallowed_names` allow. The wasm crate is covered by the same
+   gate and deny set, with these remaining binding-emission shapes ledgered as the only
+   emission-quality burn-down:
+   - **`clippy::iter_kv_map`** (default: 1, `preserve+canonical`: 0): map-key list accessors iterate
+     `(k, _v)` pairs and clone keys from the pair instead of using `.keys()`.
+   - **`clippy::map_clone`** (default: 1, `preserve+canonical`: 1): wasm map getters emit
+     `.map(|v| v.clone())` instead of `.cloned()`.
+   - **`clippy::useless_conversion`** (default: 1, `preserve+canonical`: 1): array getter returns
+     emit `.into()` where the Rust and wasm-facing value types are already the same `Vec<T>`.
 
-   The review-found shapes are pinned individually by the `snapshot_tests` emission-hygiene needle
-   gates (`deserialize_converts_error_at_most_once`, `ok_pattern_parenthesizes_only_tuples`); the
-   style-lint axis is what would catch the *next* shape in the class without a needle per bug. The
-   doubled-`map_err` shape is the counterexample that keeps the needle gates load-bearing even after
-   the lint axis lands: no rustc/clippy lint flags a repeated identity error-conversion, so that one
-   stays needle-only.
+   Future work is to fix each emitted wasm shape and remove its matching `-A` from the gate; any new
+   lint class is already hard-red. The review-found shapes remain pinned individually by the
+   `snapshot_tests` emission-hygiene needle gates (`deserialize_converts_error_at_most_once`,
+   `ok_pattern_parenthesizes_only_tuples`). The doubled-`map_err` shape is the counterexample that
+   keeps the needle gates load-bearing: no rustc/clippy lint flags a repeated identity
+   error-conversion, so that one stays needle-only.
 
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
