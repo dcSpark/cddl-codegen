@@ -69,9 +69,12 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
 
 3. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
-   `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) +
-   `recombination_crates_execute` (full tier), with cited known-class ledgers and a promotion flow
-   into the pinned collections). Residuals, in escalation order:
+   `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
+   profile-parameterized layer-2 gates `recombination_crates_execute` /
+   `recombination_preserve_crates_execute` / `recombination_json_crates_execute` /
+   `recombination_wasm_crates_check` (full tier), with cited known-class ledgers, the
+   `ledger_key_shape_floor` key hygiene gate, and a promotion flow into the pinned collections).
+   Residuals, in escalation order:
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
