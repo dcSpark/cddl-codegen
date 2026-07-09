@@ -234,6 +234,15 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         );
         let mut gen_scope = GenerationScope::new();
         gen_scope.generate(types, cli);
+        // `finalize` short-circuits on pending rejections before this closure runs, then drains
+        // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
+        // outside guarded branches; every snapshot-corpus fixture exercises this seam.
+        assert!(
+            !types.has_rejections(),
+            "pipeline-boundary rejection-drain invariant violated: a rejection was recorded after \
+             finalize's drains and would be silently swallowed; move the record site before \
+             finalize or add a new drain"
+        );
         gen_scope.export(types, export_raw_bytes_encoding_trait, cli)?;
         types.print_info();
         gen_scope.print_structs_without_deserialize();
@@ -250,6 +259,15 @@ pub fn generated_strings(
     with_types(cli, |types, raw_bytes| {
         let mut gen_scope = GenerationScope::new();
         gen_scope.generate(types, cli);
+        // `finalize` short-circuits on pending rejections before this closure runs, then drains
+        // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
+        // outside guarded branches; every snapshot-corpus fixture exercises this seam.
+        assert!(
+            !types.has_rejections(),
+            "pipeline-boundary rejection-drain invariant violated: a rejection was recorded after \
+             finalize's drains and would be silently swallowed; move the record site before \
+             finalize or add a new drain"
+        );
         gen_scope.generated_files(types, raw_bytes, cli)
     })?
     .map_err(Into::into)
