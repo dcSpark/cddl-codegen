@@ -196,7 +196,8 @@ None of these are cddl-codegen bugs, and the matrix no longer sits on any of the
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
 `2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for all five; `RUST_CDDL` defaults to that build,
+cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gap 6 is OPEN at that rev — it
+gates a corpus fixture's conformance-oracle half, not any matrix row); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
 development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
 somewhere immutable and point `RUST_CDDL` there first.
@@ -247,6 +248,16 @@ somewhere immutable and point `RUST_CDDL` there first.
    positions (occurrence bounds, tag heads, simple values) is broken
    (`draft/radix-oracle-deviations-verdict.md`), so future radix-position rows can't lean on ruby.
    Repro + fix provenance: `draft/rust-cddl-radix-int-literal-gap.md`.
+6. **bignint-keyed map validation over-rejection** (OPEN at `local-fixes` @ `2c7548e`, the pinned
+   rev): `validate_cbor_from_slice` rejects EVERY map whose KEY domain is the prelude `bignint`
+   ("expected object value of type bignint, got object") — empty or not, spec-valid entries or not,
+   `.cbor`-wrapped or bare; bignint VALUES validate fine, so the gap is specific to the key-domain
+   position. No matrix row sits on it (no bignint-key-domain cell exists), but it blinds the
+   generated-crate conformance oracle for `tests/corpus/cbor_bignint_table.cddl`, which therefore
+   rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (its ruby half is separately unjudgeable —
+   the gem's inline-composite controller parse gap — so the decode-side reference-codec
+   differential is its structural check). Differential repro + prune steps:
+   `draft/rust-cddl-bignint-key-validator-gap.md`.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

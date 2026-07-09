@@ -121,11 +121,17 @@ are ledgered here (that's what the probe/gate error messages point at).
 - When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
   upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
-  `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entry for `cbor_wrapped_group_array` (its
-  stale-ledger guard flips red by itself once the divergence disappears) and prune that draft.
+  `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
+  `cbor_bignint_table` (their stale-ledger guards flip red by themselves once the divergence
+  disappears) and prune that draft.
   Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
   controller type — same caveat class as the ruby radix-position deviations
   (`draft/radix-oracle-deviations-verdict.md`).
+- When a rust `cddl` fix ships bignint-keyed map validation (README gap #6 — OPEN at the pinned
+  `2c7548e` rev; differential repro + prune steps in
+  `draft/rust-cddl-bignint-key-validator-gap.md`): remove `cbor_bignint_table` from
+  `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (re-arming its rust conformance half), prune README
+  gap #6, and delete that draft.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
