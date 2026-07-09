@@ -118,6 +118,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
   mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
   text, cite it in the `current_capacities.mdx` note.
+- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
+  — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
+  upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
+  `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entry for `cbor_wrapped_group_array` (its
+  stale-ledger guard flips red by itself once the divergence disappears) and prune that draft.
+  Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
+  controller type — same caveat class as the ruby radix-position deviations
+  (`draft/radix-oracle-deviations-verdict.md`).
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
