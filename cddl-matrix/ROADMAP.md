@@ -246,7 +246,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   `Array`, not its first field) — reconcile the discriminant with the serializer's nested-array output
   (or, if embedding was intended, serialize the record embedded so `[a, b]` discriminates on `a`).
   Shares a root with the `cborwrap` entry above: the group-choice arm path mishandles composite arms
-  whose wire form differs from a shallow conceptual resolution.
+  whose wire form differs from a shallow conceptual resolution. Because the bug is rust-side, it also
+  exposes a CONTAINMENT enumeration gap: the grid's group-choice-arm rows stop at primitive members
+  (`contain.group-choice-arm.grpent.member.array`) and plain-group splices
+  (`contain.group-choice-arm.grpent.groupname.array` — a plain group EMBEDS by spec, so it is not this
+  shape); no row places a named RECORD type as an arm member (`t = [ a: st // b: tstr ]`, `st` a
+  record). Enumerate that row per the "Intra-alternative variation rows" rule so the rust-side failure
+  carries a serialization-axis pin directly (expected to mint red/limitation while the bug stands),
+  rather than only the wasm-matrix cells.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **A no-occurrence type-domain arrow entry (`{ k => v }`, k non-literal) table-detects to the same
