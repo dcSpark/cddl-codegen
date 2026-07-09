@@ -1183,8 +1183,11 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   hand → pin as a matrix row if the matrix can express the cell, else a `tests/robustness/*.cddl`
   fixture → ledger it in `cddl-matrix/ROADMAP.md` § findings → add the ledger entry citing the
   pin). Every ledger entry cites a committed pin AND is asserted actually observed (stale-pin
-  guard); graceful rejections are the designed boundary, tallied but never findings. Vacuity floors
-  (swept count, ok count) are derived from the executed artifact.
+  guard), and key SHAPE is floor-gated (`ledger_key_shape_floor`, always-on): panic-ledger keys must
+  lead with message text — a file/function-only key would silently absorb every future distinct
+  panic class at that site — and layer-2 known-bad keys must carry a desc-axis label so a generic
+  word cannot absorb unrelated compositions. Graceful rejections are the designed boundary, tallied
+  but never findings. Vacuity floors (swept count, ok count) are derived from the executed artifact.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): batches the sweep's `ok` compositions (~40 rules/batch; per-composition `rc<num>_` rule
   prefixes make names collision-free by construction), generates each batch with
@@ -1193,6 +1196,12 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   emitted round-trip/reject tests, not just compiling. A failing batch is re-attributed by rerunning
   members individually; a failing member outside the cited `LAYER2_KNOWN_BAD` ledger (desc-substring
   keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow.
+  BATCH-MASKING CAVEAT (applies to every layer-2 leg): a green batch is not a per-composition
+  guarantee for failure classes whose symptom is a missing CRATE-GLOBAL definition — a batch-mate
+  can define the global (the note on `LAYER2_RULES_PER_BATCH`; proven instance: the undefined-`Int`
+  `.cbor`-payload-table cell). Consequence: a known-bad class proven by a STANDALONE repro is
+  ledgered even when current batch boundaries compile it green; the mechanical detector (a second
+  deterministic batch permutation / singleton mode) is a `tests/TESTING_ROADMAP.md` item.
 - `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation
   of layer 2, driven by the SAME shared runner (`run_layer2_profile`) parameterized with a different
   `Layer2Profile`. Its profile flags are sourced from `src/tests/mod.rs`'s `ALL_PROFILES` by name
@@ -1219,18 +1228,19 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   generated `rust/` crate. This is the broad shape gate for serde derive / schemars derive compile
   failures while still executing the emitted CBOR tests. `--json-schema-export=true --wasm=false`
   also emits an independent `wasm/json-gen/` crate; this recombination leg deliberately leaves that
-  crate to the existing json profile compile/schema gates rather than running it per batch. First
-  clean baseline: 1544 classified compositions (`ok=927`, `graceful=197`, `panic=420`), 26 batches /
-  897 executed / 30 shared known-bad exclusions in ~54 s; no json-only panic or layer-2 known-bad
-  ledger entries were needed.
+  crate to the existing json profile compile/schema gates rather than running it per batch. Both
+  json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
+  derives do not rewire the panic surface, so classification matches the default profile exactly.
+  Observed baseline: 1544 classified compositions (`ok=927`, `graceful=197`, `panic=420`),
+  26 batches / 897 executed / 30 shared known-bad exclusions in ~54 s.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
   crate, which depends on the generated `rust/` crate by path, so rust-side compile failures surface
-  through the same command. Unlike the json leg, its first sweep was NOT clean: it minted a
-  wasm-only tagged-table generation-panic class plus two known-bad compile cells
-  (`cddl-matrix/ROADMAP.md` § findings), one of which exposed the batch-masking caveat now
-  recorded on `LAYER2_RULES_PER_BATCH`. First baseline: 1544 classified compositions (`ok=922`,
+  through the same command. Classifying under `--wasm=true` panics for a class that is ok under
+  default (a CBOR tag wrapping a table — `WASM_ONLY_PANIC_CLASSES`), and its compile known-bad
+  ledger holds a wasm wrapper-alias cell (`LAYER2_WASM_KNOWN_BAD`); both are candidate fixes in
+  `cddl-matrix/ROADMAP.md` § findings. Observed baseline: 1544 classified compositions (`ok=922`,
   `graceful=197`, `panic=425`), 26 batches / 892 checked / 30 known-bad exclusions in ~73 s. This is
   a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
   systematic per-shape wasm surface owner.

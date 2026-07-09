@@ -27,12 +27,17 @@
 //!      normalized message matches no `KNOWN_PANIC_CLASSES` entry is a NEW finding and fails the
 //!      test with the spec + message + promotion instructions. Budget ~20 s (classification is
 //!      parallelized across worker threads; the composition SET is unaffected by thread count).
-//!   2. `recombination_crates_execute` (`#[ignore]`, check.ts `full` tier) — batch the `ok`
-//!      compositions (~`LAYER2_RULES_PER_BATCH` rules/batch; names are collision-free by
-//!      construction), generate each batch with `--emit-tests=true --wasm=false` (default profile),
-//!      `cargo test` the generated rust crate (shared `CARGO_TARGET_DIR`). Any batch failure is
-//!      re-attributed by rerunning members individually; a failing member whose desc matches no
-//!      `LAYER2_KNOWN_BAD` entry is a NEW finding. Target < 10 min.
+//!   2. The layer-2 gates (`#[ignore]`, check.ts `full` tier), one per emission profile through the
+//!      shared `run_layer2_profile` runner — `recombination_crates_execute` (default),
+//!      `recombination_preserve_crates_execute`, `recombination_json_crates_execute` (both
+//!      `cargo test` the emitted-tests rust crate under their `ALL_PROFILES` flags), and
+//!      `recombination_wasm_crates_check` (`--wasm=true`, `cargo check` the wasm crate) — batch the
+//!      profile's `ok` compositions (~`LAYER2_RULES_PER_BATCH` rules/batch; names are collision-free
+//!      by construction; per-profile scratch + `CARGO_TARGET_DIR`). Any batch failure is
+//!      re-attributed by rerunning members individually; a failing member whose desc matches neither
+//!      the shared `LAYER2_KNOWN_BAD` nor the profile's own ledger is a NEW finding, and a
+//!      classification panic outside `KNOWN_PANIC_CLASSES` ∪ the profile's panic ledger likewise.
+//!      Target < 10 min per gate.
 //!
 //! Determinism: a fixed seed + splitmix64; enumeration is a systematic cross-product where cheap
 //! and seeded sampling where the product explodes (budget constants below). The sweep asserts two

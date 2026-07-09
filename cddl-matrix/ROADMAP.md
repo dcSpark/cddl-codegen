@@ -462,7 +462,9 @@ Current state — the grid, the three always-on axes (compile floor, round-trip,
 parity) with their emission-profile sweeps, the minted wasm test surface and its loud-skip list, and
 the multifile placement sweep — is documented in `tests/README.md` (§ "wasm-ABI matrix", § "wasm-crate
 test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus `README.md` §
-annotations (`verify.ts`'s default-on `--wasm` probe). What remains:
+annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer's wasm leg
+(`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
+composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
