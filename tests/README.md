@@ -741,19 +741,24 @@ the same `__cddl_oracle_root = <rule>` trick aims it). The gem is **harness-side
 dep, so shipped output stays ruby-free. Teeth and posture:
 
 - **`RUBY_EXPECTED_FAIL`** — `(fixture, rule, reason)` triples the gem diverges on for a documented,
-  non-bug reason (a gem construct gap the fork legitimately supports). Empty at HEAD, but still
-  checked for stale fixture/rule keys when populated. Ledgering is **per (fixture, rule)**, not per
+  non-bug reason (a gem construct gap the fork legitimately supports). Two at HEAD —
+  `(cbor_wrapped_group_array, holder)` and `(cbor_bignint_table, holder)`, both the gem's
+  inline-composite `.cbor`-controller parse gap (exit 65 poisons the whole spec;
+  `draft/ruby-cddl-inline-composite-control-arg-gap.md`). Ledgering is **per (fixture, rule)**, not per
   fixture: a fixture may have one rule the gem can't judge while its *other* rules must still be
   sound. A divergence is *signal*: an unledgered one is either a gem gap to record here **with a
   reason**, or — the class this oracle exists to catch — a fork misparse minting spec-violating bytes.
   **Investigate before ledgering.** A ledgered `(fixture, rule)` that stops diverging while still
   being swept turns the gate RED (stale entry), mirroring `EXPECTED_FAIL`.
 - **`GEN_SKIP` vs `RUST_ORACLE_SKIP`** — two distinct exclusions. `GEN_SKIP` (e.g. `dsl_custom`) can't
-  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` is empty at HEAD; when a
-  future fixture has a *rust*-validator gap but still generates, round-trips, and dumps fine, it can be
-  generated **without** `--emit-tests-conformance` (rust validate half off) while its minted bytes are
-  **still** swept by the ruby gem. A rust-validator blind spot must not cost the decorrelated oracle its
-  coverage.
+  be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` holds fixtures with a
+  *rust*-validator gap that still generate, round-trip, and dump fine: they are generated **without**
+  `--emit-tests-conformance` (rust validate half off) while their minted bytes are **still** swept by
+  the ruby gem — a rust-validator blind spot must not cost the decorrelated oracle its coverage. One
+  resident at HEAD: `cbor_bignint_table` (the validator rejects any bignint-KEYED map, even spec-valid
+  instances — `cddl-matrix/README.md` § "Upstream oracle gaps" gap #6,
+  `draft/rust-cddl-bignint-key-validator-gap.md`; its ruby half is separately on `RUBY_EXPECTED_FAIL`
+  above, so the decode-side reference-codec differential below is its structural check).
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops
@@ -1234,7 +1239,13 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   the shared `LAYER2_KNOWN_BAD` ∪ the profile's own `LAYER2_PRESERVE_KNOWN_BAD`; only the profile's
   own ledger is vacuity-guarded here (a shared entry can legitimately match zero preserve-ok
   compositions because preserve generation panics for that class earlier — the shared ledger's guard
-  stays in the default gate). NAMING GOTCHA: the name deliberately does NOT contain the
+  stays in the default gate). `LAYER2_PRESERVE_KNOWN_BAD` is empty at HEAD — the escalation's first
+  sweep's two preserve-only compile classes (tag/`.cbor`-wrapped constrained-int deserialize tuple
+  arity; composite map-key move-then-reuse) are fixed, with their preserve compile + round-trip
+  pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures — so a preserve-only
+  compile failure surfaces as a NEW finding. Observed baseline: 1544 classified compositions
+  (`ok=856`, `graceful=203`, `panic=485`), 24 batches / 827 executed / 29 shared known-bad
+  exclusions in ~45 s. NAMING GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
   path so cargo's substring selection can't cross-select.
 - `recombination_json_crates_execute` (`#[ignore]`, check.ts full tier): the JSON escalation of
@@ -1252,11 +1263,12 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
   crate, which depends on the generated `rust/` crate by path, so rust-side compile failures surface
-  through the same command. Classifying under `--wasm=true` panics for a class that is ok under
-  default (a CBOR tag wrapping a table — `WASM_ONLY_PANIC_CLASSES`), and its compile known-bad
-  ledger holds a wasm wrapper-alias cell (`LAYER2_WASM_KNOWN_BAD`); both are candidate fixes in
-  `cddl-matrix/ROADMAP.md` § findings. Observed baseline: 1544 classified compositions (`ok=922`,
-  `graceful=197`, `panic=425`), 26 batches / 892 checked / 30 known-bad exclusions in ~73 s. This is
+  through the same command. Both wasm-only ledgers (`WASM_ONLY_PANIC_CLASSES`,
+  `LAYER2_WASM_KNOWN_BAD`) are empty at HEAD — tagged tables and alias-only-reachable table wrappers
+  generate and check (pinned by the `tagged_table` / `cbor_bignint_table` corpus fixtures) — so a
+  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline: 1544 classified
+  compositions (`ok=926`, `graceful=197`, `panic=421`), 26 batches / 897 checked / 29 known-bad
+  exclusions in ~50 s. This is
   a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
   systematic per-shape wasm surface owner.
 
