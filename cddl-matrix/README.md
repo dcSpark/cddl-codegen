@@ -280,12 +280,16 @@ somewhere-immutable-and-point-`RUST_CDDL`-there practice prevents.
    CBOR float against the built-in `number` type (`expected type number, got Float(…)`), while ints
    against `number` — and floats against the equivalent inline `int / float` or a user alias — validate
    fine. Root cause is a one-line asymmetry: `is_ident_float_data_type` omits `Token::NUMBER` where its
-   sibling `is_ident_integer_data_type` includes it (`number = int / float` accepts both). The decode-
-   conformance **arm-coverage floor** (§ "Decode-direction conformance" in `tests/README.md`) is the one
-   consumer that sits on this: `prelude.number`'s float arm cannot be minted through the two-oracle
-   accept gate, so its class is carried in `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`) — the floor's stale-
-   guarded exemption ledger — until a fixed rust `cddl` ships. Repro + the one-line fork-fix + prune
-   steps: `draft/rust-cddl-number-float-gap.md`.
+   sibling `is_ident_integer_data_type` includes it (`number = int / float` accepts both). TWO
+   consumers sit on this gap: the decode-conformance **arm-coverage floor** (§ "Decode-direction
+   conformance" in `tests/README.md`) — `prelude.number`'s float arm cannot be minted through the
+   two-oracle accept gate, so its class is carried in `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`), the floor's
+   stale-guarded exemption ledger — and the oracle fingerprint's `prelude-number-float-rejects` probe
+   (`ORACLE_FINGERPRINT`, `verify.ts`), which deliberately pins the gap OPEN so an oracle where it is
+   silently fixed cannot mint against the stale exemption. Both flip together via the close-out steps
+   in `ROADMAP.md` § findings (fingerprint probe first — a fixed oracle is refused at startup until
+   it is consciously re-pinned). Repro + the one-line fork-fix + prune steps:
+   `draft/rust-cddl-number-float-gap.md`.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

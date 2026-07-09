@@ -35,7 +35,7 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 > § "Directional support evidence", § "Upstream oracle gaps") — except **F8–F11, out of scope** (bottom).
 > Only still-open findings are sections below.
 
-## 1. Remaining work — projections & queries
+## 1. Remaining work
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
@@ -86,7 +86,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   validation fix (`is_ident_float_data_type` omits `Token::NUMBER` while `is_ident_integer_data_type`
   includes it, so a bare float against `number` wrongly fails validation; one-line fix + repro in
   `draft/rust-cddl-number-float-gap.md`): the decode-conformance arm-coverage floor can then mint a real
-  float `prelude.number` accept vector. Remove `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
+  float `prelude.number` accept vector. FIRST flip the `prelude-number-float-rejects` probe in
+  `verify.ts`'s `ORACLE_FINGERPRINT` (it deliberately pins this gap OPEN, so the fixed oracle is
+  refused at startup — its HARNESS FAILURE note points back here; no `verify.ts` invocation below can
+  run before this). Then remove `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
   (`cddl-matrix/lib.ts`) — or let `project_decode_conformance.ts` § 7's stale-guard force it after
   `verify.ts --mint-decode-foreign --only=prelude.number` — then prune the README gap entry and that
   draft.
