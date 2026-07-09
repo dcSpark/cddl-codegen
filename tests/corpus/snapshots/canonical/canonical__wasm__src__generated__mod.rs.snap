@@ -235,7 +235,7 @@ impl Data {
     }
 
     pub fn keys(&self) -> BytesList {
-        BytesList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        BytesList(self.0.keys().cloned().collect::<Vec<_>>())
     }
 }
 
@@ -606,7 +606,7 @@ impl MapU64ToText {
     }
 
     pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<u64> {
@@ -846,7 +846,7 @@ impl TableArrMembers {
 
     pub fn new(arr: Vec<U32>, arr2: &FooList, table: &MapU64ToText) -> Self {
         Self(cddl_lib::TableArrMembers::new(
-            arr.into(),
+            arr,
             arr2.clone().into(),
             table.clone().into(),
         ))

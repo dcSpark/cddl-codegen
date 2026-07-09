@@ -208,20 +208,20 @@ crate); that combination is rejected in `api::with_types` and pinned by
 representative profiles (default flags, and `--preserve-encodings --canonical-form`), generated from
 the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it can't race the
 fixtures' reused `tests/<dir>/export` outputs). What it proves: emitted source is lint-clean for
-the covered profiles, modulo the gate's commented allow lists — the emission-quality class that
-snapshots and round-trip suites are blind to (they pin bytes and behavior, not idiomatic-ness; a
-degenerate `();` statement compiles and round-trips green but degrades every consumer's `cargo
-clippy`). What it can't prove: semantic correctness — a wrong-but-idiomatic deserializer passes.
+the covered profiles, modulo the permanent input-dependent allow described below — the
+emission-quality class that snapshots and round-trip suites are blind to (they pin bytes and
+behavior, not idiomatic-ness; a degenerate `();` statement compiles and round-trips green but
+degrades every consumer's `cargo clippy`). What it can't prove: semantic correctness — a
+wrong-but-idiomatic deserializer passes.
 
-The rust crate is denied under `clippy::all` with an empty emission-quality burn-down; its only
-allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own `foo`/`bar`
-rule names become generated parameter names — not a generator defect). The gate also denies a
-curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that catches
-redundant emitted grouping/allocation without turning legitimate generated-code warnings such as
-`unused_imports` or `unused_variables` into failures; it is intentionally not `-D warnings` (see
-`tool_cmd`'s doc comment). The wasm crate uses the same deny set, plus its own commented
-emission-quality burn-down list in the gate, ledgered in `tests/TESTING_ROADMAP.md`; removing a
-wasm `-A` is the pin that the corresponding binding-emission shape stopped being generated.
+Both generated crates are denied under `clippy::all` with an empty emission-quality burn-down; the
+only allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own
+`foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
+denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that
+catches redundant emitted grouping/allocation without turning legitimate generated-code warnings
+such as `unused_imports` or `unused_variables` into failures; it is intentionally not `-D warnings`
+(see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
+`clippy::all` lint class is hard-red on both profiles and both generated crates.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's
 incremental compilation replays content-hashed lint results instead of re-checking — and any real

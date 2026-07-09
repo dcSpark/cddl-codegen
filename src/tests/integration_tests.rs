@@ -2160,20 +2160,6 @@ fn generated_code_clippy_clean() {
         "unused_allocation",
     ];
     const PERMANENT_ALLOWS: &[&str] = &["-A", "clippy::disallowed_names"];
-    const WASM_BURN_DOWN_ALLOWS: &[&str] = &[
-        // default: 1, preserve+canonical: 0. Map-key list accessors iterate `(k, _v)` pairs where
-        // `.keys()` would express the generated binding shape directly.
-        "-A",
-        "clippy::iter_kv_map",
-        // default: 1, preserve+canonical: 1. WASM map getters clone through `.map(|v| v.clone())`
-        // instead of `.cloned()`.
-        "-A",
-        "clippy::map_clone",
-        // default: 1, preserve+canonical: 1. Array getter returns emit `.into()` where the Rust and
-        // WASM-facing value types are already the same `Vec<T>`.
-        "-A",
-        "clippy::useless_conversion",
-    ];
     let input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
     let cases: &[(&str, &[&str])] = &[
         ("default", &[][..]),
@@ -2235,10 +2221,8 @@ fn generated_code_clippy_clean() {
             .args(["--", "-D", "clippy::all"])
             .args(RUSTC_STYLE_DENIES)
             .args(PERMANENT_ALLOWS)
-            // WASM emission-quality burn-down: these are the current real lint classes minted by
-            // the binding crate. Any new clippy::all class is hard-red; removing an `-A` here is the
-            // pin that the corresponding emitted shape stopped being generated.
-            .args(WASM_BURN_DOWN_ALLOWS)
+            // The wasm crate's emission-quality burn-down list is fully retired too. New
+            // clippy::all lint classes are hard-red on both profiles and both generated crates.
             .output()
             .unwrap();
         if !wasm_clippy.status.success() {

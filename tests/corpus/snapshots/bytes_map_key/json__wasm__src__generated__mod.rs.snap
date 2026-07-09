@@ -36,7 +36,7 @@ impl Bkeys {
     }
 
     pub fn keys(&self) -> BytesList {
-        BytesList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        BytesList(self.0.keys().cloned().collect::<Vec<_>>())
     }
 }
 

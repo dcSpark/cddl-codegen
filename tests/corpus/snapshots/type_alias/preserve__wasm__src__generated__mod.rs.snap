@@ -34,7 +34,7 @@ impl Holder {
     }
 
     pub fn new(val: TextAlias) -> Self {
-        Self(cddl_lib::Holder::new(val.clone().into()))
+        Self(cddl_lib::Holder::new(val.clone()))
     }
 }
 

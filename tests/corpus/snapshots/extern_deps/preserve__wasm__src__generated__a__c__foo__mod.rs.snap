@@ -38,7 +38,7 @@ impl Foo {
 
     pub fn new(uint_typedef: UintTypedef, index_1: String, index_2: Vec<u8>) -> Self {
         Self(cddl_lib::a::c::foo::Foo::new(
-            uint_typedef.into(),
+            uint_typedef,
             index_1,
             index_2,
         ))

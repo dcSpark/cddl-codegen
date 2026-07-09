@@ -101,7 +101,7 @@ impl Bkeys {
     }
 
     pub fn keys(&self) -> BoolList {
-        BoolList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        BoolList(self.0.keys().copied().collect::<Vec<_>>())
     }
 }
 

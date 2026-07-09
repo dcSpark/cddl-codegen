@@ -82,11 +82,11 @@ impl EnumKeyed {
     }
 
     pub fn get(&self, key: &Ikey) -> Option<String> {
-        self.0.get(key.as_ref()).map(|v| v.clone())
+        self.0.get(key.as_ref()).cloned()
     }
 
     pub fn keys(&self) -> IkeyList {
-        IkeyList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        IkeyList(self.0.keys().cloned().collect::<Vec<_>>())
     }
 }
 
@@ -304,11 +304,11 @@ impl IntKeyed {
     }
 
     pub fn get(&self, key: &Int) -> Option<String> {
-        self.0.get(key.as_ref()).map(|v| v.clone())
+        self.0.get(key.as_ref()).cloned()
     }
 
     pub fn keys(&self) -> IntList {
-        IntList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        IntList(self.0.keys().cloned().collect::<Vec<_>>())
     }
 }
 
