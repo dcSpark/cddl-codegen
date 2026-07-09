@@ -4958,52 +4958,47 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200f96624"
+hex = "8200fa868abf31"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9d02d"
+hex = "8200fa96bde78a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa39a5c6d0"
+hex = "8200fa9816cc5f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa3b683383"
+hex = "8200fafd0d1e84"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa6fa7d2f9"
+hex = "8200fb02e31eee9c20c976"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200faddaa0802"
+hex = "8200fb2b46110f87df3e47"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fae6e06601"
+hex = "8200fb525c2494acfe04e1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb3abe3e1b49fd2940"
+hex = "8200fb59496183503c4ced"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb75a12983a61cd33d"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200fbd28d861faedc4040"
+hex = "8200fb8c95c7affb44ac7f"
 source = "ruby-generate"
 expect = "accept"
 

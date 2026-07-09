@@ -14,7 +14,10 @@
  *      gate asserts), which is forbidden on every other vector. An `expect="accept"` vector carries EITHER
  *      no class (spec-VALID, correctly accepted) OR exactly `class="over-acceptance"` (spec-INVALID CBOR
  *      the decoder wrongly accepts — a certified silent-acceptance pin) with a nonempty `reason` and NO
- *      `expect_err`; any other class on an accept vector is a schema error. Every hex is well-formed (nonempty, even
+ *      `expect_err`; any other class on an accept vector is a schema error. An accept vector must not have
+ *      an f9 half-precision ITEM head (cbor_event 2.4.0 mis-decodes f9, so it would be green-but-corrupted
+ *      decode evidence — the ban and its prune condition live with the mint's draw-side skip; ROADMAP
+ *      § findings, the f16 entry). Every hex is well-formed (nonempty, even
  *      length, lowercase); `spec`/`mode`/`type_name` are present together on an active
  *      row and consistent (mode ∈ {standalone, holder}; holder ⇒ spec starts with the holder prefix and
  *      type_name === "ProbeHolder"; standalone ⇒ spec === example); a pinned row carries none of them.
@@ -195,6 +198,19 @@ for (const r of rows) {
         problems.push(`${where}: an accept vector may carry no class or class="over-acceptance" (got ${JSON.stringify(v.class)})`);
       if (v.class === "over-acceptance" && (typeof v.reason !== "string" || v.reason.length === 0))
         problems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\` (cite the ledgered finding + the promotion flow: flips to class="constraint" with an expect_err when the fix lands)`);
+      // f9 HALF-PRECISION item-head ban on accept vectors (mode-aware: the holder preamble is stripped
+      // before classifying). cbor_event 2.4.0 mis-decodes f9 heads (the raw 16 bits cast to f64), so an
+      // f9-headed accept replays GREEN-but-CORRUPTED: the accept assert is Ok-only, the encoding-variant
+      // mutator copies float heads verbatim (`encoding_variants_copy_float_heads_verbatim`), and the
+      // float class is preserve-skipped — the committed evidence pins nothing about the decoded value.
+      // The mint enforces the same ban draw-side; prune BOTH together when a fixed cbor_event ships
+      // (cddl-matrix/ROADMAP.md § findings, the f16 entry). Reject vectors stay allowed (e.g. the NaN
+      // range-boundary constraint vectors — their rejection is the assertion, not the decoded value).
+      if (typeof hex === "string" && hex.length >= (mode === "holder" ? 6 : 2)) {
+        const itemHead = parseInt((mode === "holder" ? hex.slice(4) : hex).slice(0, 2), 16);
+        if (itemHead === 0xf9)
+          problems.push(`${where}: accept vector \`${hex}\` has an f9 half-precision item head — cbor_event 2.4.0 mis-decodes f9, so this is green-but-corrupted decode evidence (re-mint the row; the mint skips f9 accept candidates). Prune this ban when a fixed cbor_event ships (ROADMAP § findings, the f16 entry)`);
+      }
     }
     if (expect === "reject") {
       if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
