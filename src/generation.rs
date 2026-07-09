@@ -648,33 +648,13 @@ impl GenerationScope {
                 },
             );
 
-            // Which named table rule(s) declare each structural wasm-map shape. Keyed by the
-            // structural name string (`name_for_wasm_map`) — that string IS the shape identity the
-            // JS-class-name collision is about. Built up front over ALL table rules so the result is
-            // iteration-order-independent: it depends only on the SET of table rules, never on which
-            // struct the emit loop visits first.
-            let mut table_shape_owners: BTreeMap<String, Vec<RustIdent>> = BTreeMap::new();
-            for (owner_ident, owner_struct) in types.rust_structs() {
-                if let RustStructType::Table { domain, range } = owner_struct.variant() {
-                    let structural =
-                        ConceptualRustType::name_for_wasm_map(domain, range).to_string();
-                    table_shape_owners
-                        .entry(structural)
-                        .or_default()
-                        .push(owner_ident.clone());
-                }
-            }
-            // Shapes owned by EXACTLY ONE named rule: their embedded/resolved uses share the
+            // Shapes owned by EXACTLY ONE named table rule: their embedded/resolved uses share the
             // rule-named class (a real `#[wasm_bindgen]` class under the CDDL identifier), and the
             // structural `MapKToV` name becomes a `pub type` alias to it. Same-shape rule PAIRS (2+
-            // owners) are absent here — they keep the structural fallback for embedded uses while
-            // each named rule still gets its own class.
-            let table_shape_sole_owner: BTreeMap<String, RustIdent> = table_shape_owners
-                .into_iter()
-                .filter_map(|(structural, mut owners)| {
-                    (owners.len() == 1).then(|| (structural, owners.pop().unwrap()))
-                })
-                .collect();
+            // owners) and anonymous-only shapes are absent — they keep the structural fallback class
+            // at the crate root. Shared with `scope_references`'s Map arm (import placement) via the
+            // one helper so emission and import placement CANNOT disagree.
+            let table_shape_sole_owner = types.table_shape_sole_owners();
 
             let mut wasm_wrappers_generated = BTreeSet::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
@@ -956,13 +936,21 @@ impl GenerationScope {
             self.rust_lib().raw(format!("pub mod {scope};"));
         }
 
-        // declare common modules in each module (struct files). cbor_encodings is declared only
-        // where a cbor_encodings.rs is actually emitted (mirror the condition in generated_files):
-        // a scope with no encoding structs (e.g. a root of only c-style enums) emits no such file,
-        // and declaring the module anyway yields a `pub mod cbor_encodings;` with no backing file
-        // (E0583, uncompilable).
+        // declare common modules in each module (struct files). serialization / cbor_encodings are
+        // each declared only where the corresponding .rs is actually emitted (mirror the conditions
+        // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
+        // is E0583, uncompilable.
+        //   - serialization.rs: the root always materializes one (the static prelude is prepended
+        //     unconditionally — merge_scopes_to_strings always writes the root file), and a non-root
+        //     scope only when it has generated serialize impls (`serialize_scopes`). An alias/enum-only
+        //     non-root module (scalar/collection/table alias, or a c-style enum whose serialization is
+        //     emitted elsewhere) produces no serialization.rs, so an unconditional decl was E0583.
+        //   - cbor_encodings.rs: a scope with no encoding structs (e.g. a root of only c-style enums)
+        //     emits no such file, so the decl is conditioned on `cbor_encodings_scopes` the same way.
         for (scope, content) in self.rust_scopes.iter_mut() {
-            content.raw("pub mod serialization;");
+            if *scope == *ROOT_SCOPE || self.serialize_scopes.contains_key(scope) {
+                content.raw("pub mod serialization;");
+            }
             if cli.preserve_encodings
                 && scope.export()
                 && self.cbor_encodings_scopes.contains_key(scope)

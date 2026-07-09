@@ -1125,23 +1125,20 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today** (the known-broken module-placement classes; the `mark_refs`/E0583 FIX flips
-these): 24 of 43 cells are red. **E0583** (21 cells) — a non-root module whose rules emit NO
-`serialization.rs` (any transparent `pub type` alias — scalar/collection/table — or a c-style enum
-whose serialization lives elsewhere) still unconditionally declares `pub mod serialization;` in its
-`mod.rs`. Broader than the table-only probe in the ROADMAP finding: it is the alias-only-module class
-in general. For the `collmap`/`coll` `anon` cells this E0583 in module `a` MASKS the narrower **E0432**
-anonymous-same-shape import the finding named (cargo aborts on the missing module file first), so
-fixing `mark_refs` alone won't flip them — the alias-only-module stub must go too. **E0432** (1 cell,
-`collmap__anonb`) — that core `mark_refs` class pinned LIVE via the ballast mode: module `b`'s
-anonymous same-shape table use imports the structural name from root scope (`unresolved import
-crate::generated::MapU64ToText`) while it lives in module `a`; `coll__anonb`/`nullable__anonb` are
-green (transparent `Vec<T>` / `Option<u64>` need no generated wrapper import), so the table
-structural wrapper is the discriminating cell. **E0433** (2 cells,
-`cborwrap{,2}__named`) — a NEW finding: a cross-module *named* reference to a `.cbor` wrapper emits
-`Foo::deserialize(...)` in `b`'s serialization without importing the inner named type `Foo` from the
-owner scope; the anon `.cbor` form imports it fine, so it is a named-ref emission gap. The gate is a
-**compile floor**: a green cell is not semantically verified (that's follow-on work).
+**What it pins today.** Nothing — `MULTIFILE_MATRIX_SKIP` is empty; all 43 cells compile. The three
+module-placement error classes it once held are all fixed: **E0583** (was 21 cells) — a non-root
+module whose rules emit no `serialization.rs` (any transparent `pub type` alias, or a c-style enum
+whose serialization lives elsewhere) no longer declares `pub mod serialization;` without the file
+(the module-declaration loop in `generation.rs` conditions the decl on `serialize_scopes`, mirroring
+the file-write); **E0432** (was 1 cell, `collmap__anonb`) — an anonymous same-shape table used
+cross-module now imports the structural wrapper from the sole owner's module rather than a hard-coded
+root scope (`scope_references`/`mark_refs` consult `IntermediateTypes::table_shape_sole_owners`, the
+same helper the wasm emit path uses, so import and emission placement can't disagree); **E0433** (was
+2 cells, `cborwrap{,2}__named`) — a cross-module *named* reference to a `.cbor` wrapper now imports
+the inner named type into the referencing module (`mark_refs`' Alias arm recurses into the alias
+target so idents the inlined serialization names get imported). The gate is a **compile floor**: a
+green cell is not semantically verified (that's follow-on work). Its four-state class-asserting
+verdict stays live so any regression re-pins with the observed error-code evidence.
 
 **Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
 project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never
