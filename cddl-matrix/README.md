@@ -113,8 +113,9 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > **Editing this README or `ROADMAP.md`?** They are themselves linted: the sibling script
 > `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
 > tsc coverage) asserts every "pinned by/tracked by/gated by `name`" citation in the hand docs still
-> resolves in the tree, bans positional "…item `<N>`" citations, and requires a blank line before
-> headings.
+> resolves in the tree, bans positional "…item `<N>`" citations, bans numbered section headings in
+> the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
+> renumbering), and requires a blank line before headings.
 
 Why this shape: the (construct × variation × nesting × encoding) cross-product is intractable and mostly
 meaningless. Normalizing keeps each fact in one place — e.g. "tags are supported but **nested** tags are

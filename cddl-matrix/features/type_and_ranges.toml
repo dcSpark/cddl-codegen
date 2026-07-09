@@ -69,7 +69,8 @@ example = "t = 0..10"
 # --- rangeop head-type × sign variation rows (inclusive) ---
 # The base rangeop rows above are verdicted from a uint-headed, non-negative window (`0..10`) alone.
 # These specialize the SAME production/alt on the (head-type × sign) axis — the variation that stayed
-# invisible until enumerated: because the enforcement axis reaches only as far as row enumeration (§ 4),
+# invisible until enumerated: because the enforcement axis reaches only as far as row enumeration (the
+# "Intra-alternative variation rows" rule, ROADMAP.md),
 # a missing row is an enforcement blind spot, which is exactly how the float-range silent-acceptance
 # hole hid from the matrix and was caught only by manual probing.
 [[feature]]
@@ -79,7 +80,7 @@ alt = '".."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
 profile = "RFC8610"
 title = "Inclusive range, signed-int head spanning both CBOR sign arms (a..b)"
-desc = "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (§ 4) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`."
+desc = "Head-type × sign variation of rangeop.inclusive: a sign-spanning signed-int window (`-10..10`) constrains BOTH CBOR sign arms (uint + nint), exercising the per-arm bound partition. Distinct from the uint-headed base row because the enforcement axis reaches only as far as row enumeration (the \"Intra-alternative variation rows\" rule) — a window that crosses zero is a separate enforcement surface, not implied by `0..10`."
 example = "t = -10..10"
 
 [[feature]]
@@ -89,7 +90,7 @@ alt = '".."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
 profile = "RFC8610"
 title = "Inclusive range, all-negative head (uint arm empty) (a..b)"
-desc = "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Head-type × sign variation of rangeop.inclusive: an all-negative window (`-10..-3`) leaves the uint CBOR sign arm EMPTY (every uint is out of range), exercising the arm-empty reject path. A distinct enforcement surface the uint-headed base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "t = -10..-3"
 
 [[feature]]
@@ -99,7 +100,7 @@ alt = '".."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"..\""
 profile = "RFC8610"
 title = "Inclusive range, float head (a..b)"
-desc = "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the § 4 lesson that the enforcement axis reaches only as far as row enumeration made concrete."
+desc = "Head-type × sign variation of rangeop.inclusive: a float-headed window (`0.5..10.5`) enforces a dense float interval (NaN-safe, both endpoints included). Its absence as a row is precisely why float-range non-enforcement was silently accepted until manual probing — the \"Intra-alternative variation rows\" lesson that the enforcement axis reaches only as far as row enumeration made concrete."
 example = "t = 0.5..10.5"
 
 # --- rangeop = "..." ---
@@ -116,7 +117,8 @@ example = "t = 0...10"
 # --- rangeop head-type × sign variation rows (exclusive) ---
 # The exclusive-range twins of the inclusive variation rows above: same (head-type × sign) axis, but on
 # the half-open `...` interval whose excluded upper endpoint is its own enforcement surface. Enumerated
-# for the same § 4 reason — a variation with no row is an enforcement blind spot.
+# for the same "Intra-alternative variation rows" reason — a variation with no row is an enforcement
+# blind spot.
 [[feature]]
 id = "rangeop.exclusive.int"
 production = "rangeop"
@@ -124,7 +126,7 @@ alt = '"..."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
 profile = "RFC8610"
 title = "Exclusive range, signed-int head spanning both CBOR sign arms (a...b)"
-desc = "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Head-type × sign variation of rangeop.exclusive: a sign-spanning signed-int window (`-10...10`) constrains BOTH CBOR sign arms with the upper endpoint EXCLUDED. Distinct enforcement surface from the uint-headed base row, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "t = -10...10"
 
 [[feature]]
@@ -134,7 +136,7 @@ alt = '"..."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
 profile = "RFC8610"
 title = "Exclusive range, all-negative head (uint arm empty) (a...b)"
-desc = "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Head-type × sign variation of rangeop.exclusive: an all-negative half-open window (`-10...-3`) leaves the uint CBOR sign arm EMPTY and excludes the upper endpoint. A distinct enforcement surface the uint-headed base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "t = -10...-3"
 
 [[feature]]
@@ -144,7 +146,7 @@ alt = '"..."'
 rfc = "RFC8610 §2.2.2.1; ABNF rangeop / \"...\""
 profile = "RFC8610"
 title = "Exclusive range, float head (a...b)"
-desc = "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the § 4 lesson that the enforcement axis reaches only as far as row enumeration."
+desc = "Head-type × sign variation of rangeop.exclusive: a float-headed half-open window (`0.5...10.5`) enforces a dense float interval with the upper endpoint EXCLUDED (NaN-safe). Enumerated to close the same enforcement blind spot as rangeop.inclusive.float — the \"Intra-alternative variation rows\" lesson that the enforcement axis reaches only as far as row enumeration."
 example = "t = 0.5...10.5"
 
 # --- type1 = type2 ctlop type2  (control-operator application) ---
@@ -160,9 +162,10 @@ example = "t = tstr .size 4"
 
 # --- control-op controller-VALUE variation rows (.ne boundary values, .size over uint) ---
 # The base `ctl.*` rows (control_examples.toml) probe one controller value per op. These enumerate the
-# controller-VALUE variations whose absence is an enforcement blind spot (§ 4): the variation axis here
+# controller-VALUE variations whose absence is an enforcement blind spot (the "Intra-alternative
+# variation rows" rule): the variation axis here
 # is the controller value, not an ABNF alternative, so `alt` is omitted — the production resolves to the
-# IANA control-op registry (`resolveSource` → control-op). Enumerated per the § 4 lesson that the
+# IANA control-op registry (`resolveSource` → control-op). Enumerated per that same lesson that the
 # enforcement axis reaches only as far as row/example enumeration, so a boundary the base example misses
 # is a blind spot, not just missing coverage.
 [[feature]]
@@ -171,7 +174,7 @@ production = "ne"
 rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne"
 profile = "RFC8610"
 title = "Not-equal control at the zero boundary (.ne 0)"
-desc = "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Controller-value variation of ctl.ne: the excluded value 0, where the sign-partition NE encoding (min>max = exclude min-1, i.e. the pair `(1,-1)`) must route WHOLE to the single CBOR sign arm the excluded value lives in, never split per side. A distinct enforcement surface the base `.ne 5` example cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "x = int .ne 0"
 
 [[feature]]
@@ -180,7 +183,7 @@ production = "ne"
 rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne"
 profile = "RFC8610"
 title = "Not-equal control at the one boundary (.ne 1)"
-desc = "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (§ sign-partition findings). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Controller-value variation of ctl.ne: the excluded value 1, whose degenerate encoding `(2,0)` is the exact class the historical `.ne 1` mis-check hid in — it partitioned `(2,0)` into `x < 2` and wrongly rejected 0 (a closed finding). The Rust-side `sign_bounds` fixtures sweep this boundary; the matrix example did not, and closing that asymmetry is what this row does — per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "x = int .ne 1"
 
 [[feature]]
@@ -189,7 +192,7 @@ production = "size"
 rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .size"
 profile = "RFC8610"
 title = "Size control over a uint target (.size over uint)"
-desc = "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the § oracle-gap findings entry — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; see ROADMAP § oracle gaps). Enumerated per the § 4 lesson that enforcement reaches only as far as row enumeration."
+desc = "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the uint-target oracle-gap entry (README § \"Upstream oracle gaps\") — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; the same README gap entry). Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "x = uint .size 2"
 
 # --- rule incremental-extension operators (assignt = "=" / "/=", assigng = "=" / "//=") ---
