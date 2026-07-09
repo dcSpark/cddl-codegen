@@ -1,0 +1,52 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub payload: X,
+}
+
+impl Holder {
+    pub fn new(payload: X) -> Self {
+        Self { payload }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PreludeBignint(Vec<u8>);
+
+impl PreludeBignint {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u8>> for PreludeBignint {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeBignint::new(inner)
+    }
+}
+
+impl From<PreludeBignint> for Vec<u8> {
+    fn from(wrapper: PreludeBignint) -> Self {
+        wrapper.0
+    }
+}
+
+pub type X = BTreeMap<PreludeBignint, u64>;

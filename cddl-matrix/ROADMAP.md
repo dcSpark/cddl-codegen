@@ -299,23 +299,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     following field — a `.cbor` float payload mis-frames the buffer), and
     `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` (a `[null]`-carrying arm never matches its
     own serialization).
-- **A CBOR tag wrapping a table panics during wasm generation** (`recombination_wasm_crates_check`:
-  generation is ok under the default `--wasm=false` profile but panics under `--wasm=true` before the
-  generated wasm crate can be checked). Examples include `#6.11({ tstr => int })`,
-  `#6.11({ * tstr => int })`, and tagged map-key tables such as `#6.11({ int .ne 1 => uint })`.
-  The panic is `codegen_table_type`'s wasm-only "TODO: why is this not used anymore?" assertion.
-  The default-profile verification is explicit: the same minimized tagged-table spec exits
-  successfully with `--wasm=false` and exits 101 with `--wasm=true`. Candidate fix: route tagged
-  table wrapper generation through a wasm-exposable table representation, or reject the shape
-  gracefully before the wasm-side assertion.
-- **A `.cbor` payload wrapping a bignint-key table leaves the wasm wrapper alias undefined**
-  (`recombination_wasm_crates_check`: generation is ok under `--wasm=true`, the generated rust crate
-  checks, but the generated wasm crate fails with `cannot find type MapPreludeBignintToU64`).
-  Minimal shape: `x = bytes .cbor { bignint => uint }`. The default-profile verification is
-  explicit: the same minimized spec generates with `--wasm=false --emit-tests=true` and its rust
-  crate passes `cargo test`, so the undefined alias is a wasm wrapper emission gap rather than a
-  rust-side table serialization gap. Candidate fix: ensure generated wasm aliases for synthesized
-  map-key table wrappers are declared/imported in the scope that emits the `.cbor` payload wrapper.
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but

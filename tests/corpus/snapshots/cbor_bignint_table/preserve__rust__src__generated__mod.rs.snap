@@ -1,0 +1,75 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{HolderEncoding, PreludeBignintEncoding};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub payload: X,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(payload: X) -> Self {
+        Self {
+            payload,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct PreludeBignint {
+    inner: Vec<u8>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<PreludeBignintEncoding>,
+}
+
+impl PreludeBignint {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<u8>> for PreludeBignint {
+    fn from(inner: Vec<u8>) -> Self {
+        PreludeBignint::new(inner)
+    }
+}
+
+impl From<PreludeBignint> for Vec<u8> {
+    fn from(wrapper: PreludeBignint) -> Self {
+        wrapper.inner
+    }
+}
+
+pub type X = OrderedHashMap<PreludeBignint, u64>;
