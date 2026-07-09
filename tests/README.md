@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the nine `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the ten `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -1221,9 +1221,19 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   also emits an independent `wasm/json-gen/` crate; this recombination leg deliberately leaves that
   crate to the existing json profile compile/schema gates rather than running it per batch. First
   clean baseline: 1544 classified compositions (`ok=927`, `graceful=197`, `panic=420`), 26 batches /
-  898 executed / 29 shared known-bad exclusions in ~54 s; no json-only panic or layer-2 known-bad
-  ledger entries were needed. The wasm leg remains future work (`tests/TESTING_ROADMAP.md`),
-  plugging into the same runner.
+  897 executed / 30 shared known-bad exclusions in ~54 s; no json-only panic or layer-2 known-bad
+  ledger entries were needed.
+- `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
+  layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
+  generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
+  crate, which depends on the generated `rust/` crate by path, so rust-side compile failures surface
+  through the same command. Unlike the json leg, its first sweep was NOT clean: it minted a
+  wasm-only tagged-table generation-panic class plus two known-bad compile cells
+  (`cddl-matrix/ROADMAP.md` § findings), one of which exposed the batch-masking caveat now
+  recorded on `LAYER2_RULES_PER_BATCH`. First baseline: 1544 classified compositions (`ok=922`,
+  `graceful=197`, `panic=425`), 26 batches / 892 checked / 30 known-bad exclusions in ~73 s. This is
+  a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
+  systematic per-shape wasm surface owner.
 
 Adding a member kind / role template / construct shape extends the swept surface; re-tune the
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled

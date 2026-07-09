@@ -75,9 +75,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
-   - **wasm surface.** Layer 2 generates `--wasm=false`; the wasm emission path is only
-     generation-classified indirectly. A wasm-side batch (generate `--wasm=true`, `cargo check` the
-     wasm crate) is the cheap extension; the wasm-ABI matrix owns the systematic per-shape surface.
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
