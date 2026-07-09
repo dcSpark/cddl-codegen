@@ -515,6 +515,13 @@ and asserts they are accepted.
   from the shape-class set), and the hard-coded **seeded regression controls** — the
   absent-instance vectors (`occur.optional` holder `[0, []]`, `type2.map` holder `[0, {}]`,
   `occur.zero_or_more` holder `[0, []]`) that anchor the over-strict-decoder class TDD-style. It ALSO
+  runs the **writer↔reader identity check** (§ 8): `composeCatalog` (in `cddl-matrix/lib.ts`) is the
+  SOLE serializer of the hand-authored vector fields, so the gate asserts `compose(parse(catalog.toml))`
+  is byte-identical to the committed file — a writer that drops or reorders a field (the silent-strip
+  bug class: `class`/`reason` once emitted only under an `expect === "reject"` guard, which would have
+  stripped every over-acceptance annotation) goes red before any re-mint corrupts the catalog. A
+  synthetic all-fields sample round-trips through `parse∘compose` in the same section, so a dropped
+  field is caught even when the committed catalog does not currently exercise it. It ALSO
   runs the **arm-coverage floor** (§ 7): the mint's `generate` is randomized, so a multi-arm CHOICE row
   can land with a whole arm unsampled and its decode verdict silently under-claims (at HEAD
   `prelude.number` = `int / float` carried only int-headed accepts — the float arm had zero

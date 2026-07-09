@@ -58,6 +58,16 @@
  *      blocked by a rust-`cddl` reference bug that mis-validates a float against the prelude `number`
  *      alias (draft/rust-cddl-number-float-gap.md), so the two-oracle mint gate can't admit a spec-valid
  *      float `number` vector; the stale-guard prunes the entry (forcing a re-mint) once rust is fixed.
+ *   8. Catalog writer↔reader identity — compose(parse(catalog.toml)) must be byte-identical to the
+ *      committed file. `composeCatalog` (lib.ts) is the SOLE serializer of the hand-authored vector
+ *      fields (class/reason/expect_err); a field the writer forgets to emit is stripped SILENTLY at the
+ *      next re-mint (the bug class caught once by review: accept-vector class/reason were emitted only
+ *      under an `expect === "reject"` guard, which would have stripped every over-acceptance
+ *      annotation). This pure round-trip of the committed bytes goes red BEFORE any mint runs and also
+ *      catches unknown/extra keys (the reader drops them, so the recompose omits them → mismatch). A
+ *      synthetic all-fields sample (constructed in-code, exercising EVERY schema field) additionally
+ *      round-trips through parse∘compose independent of what the committed catalog happens to exercise,
+ *      so a writer that drops a field currently unused by the committed rows still fails.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
@@ -68,7 +78,8 @@
  *   bun run project_decode_conformance.ts   -> the drift gate (default)
  */
 import { readFileSync } from "node:fs";
-import { DECODE_FLOOR_ARM_EXEMPT, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
+import type { CatalogRow } from "./lib";
+import { DECODE_FLOOR_ARM_EXEMPT, composeCatalog, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
@@ -121,7 +132,8 @@ interface CatRow {
   id?: unknown; axis?: unknown; example?: unknown; pinned_reason?: unknown;
   spec?: unknown; mode?: unknown; type_name?: unknown; vector?: CatVector[];
 }
-const catalog = Bun.TOML.parse(readFileSync(`${HERE}/../${CATALOG_REL}`, "utf8")) as { row?: CatRow[] };
+const catalogText = readFileSync(`${HERE}/../${CATALOG_REL}`, "utf8");
+const catalog = Bun.TOML.parse(catalogText) as { row?: CatRow[] };
 const rows = catalog.row ?? [];
 
 const problems: string[] = [];
@@ -345,6 +357,83 @@ for (const c of SEEDED_CONTROLS) {
 // Vacuity floor §5.
 if (supported.size < 80)
   problems.push(`only ${supported.size} supported matrix rows (expected >= 80) — matrix read looks broken/empty`);
+
+// --- §8: catalog writer↔reader identity -----------------------------------------------------------
+// compose(parse(committed bytes)) must reproduce the committed file exactly. `composeCatalog` is the
+// SOLE serializer of the hand-authored vector fields; a field it forgets to emit is stripped silently
+// at the next re-mint. Round-tripping the ALREADY-READ bytes (no second file read) makes that loud
+// here, before any mint runs. Also catches unknown/extra keys (the reader drops them → recompose omits
+// them → mismatch).
+{
+  const recomposed = composeCatalog([...parseCatalogContent(catalogText).values()]);
+  if (recomposed !== catalogText) {
+    const a = catalogText.split("\n");
+    const b = recomposed.split("\n");
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    problems.push(
+      `catalog writer↔reader identity: compose(parse(catalog.toml)) is NOT byte-identical to the committed file — ` +
+        `first divergence at line ${i + 1}:\n` +
+        `    committed  : ${a[i] === undefined ? "<EOF>" : JSON.stringify(a[i])}\n` +
+        `    recomposed : ${b[i] === undefined ? "<EOF>" : JSON.stringify(b[i])}\n` +
+        `    Either \`composeCatalog\` dropped/reordered a field (fix the writer — the silent-strip bug class), ` +
+        `or a hand edit is not writer-canonical (match the writer's field order and JSON-style string escaping, ` +
+        `or re-mint that row with \`bun run verify.ts --mint-decode-foreign --only=<id>\`). ` +
+        `Unknown/extra keys also trip this (the reader drops them, so the recompose omits them).`,
+    );
+  }
+}
+
+// §8 (cont.): synthetic all-fields roundtrip. The committed-bytes identity above only exercises the
+// fields the committed catalog currently uses. This in-code sample covers EVERY schema field, so a
+// writer that silently drops a field unused by the committed rows still fails. Construction is
+// order-insensitive (composeCatalog sorts rows by id and vectors by hex); we deep-compare per key.
+{
+  const sample: CatalogRow[] = [
+    { id: "synthetic.pinned", axis: "synthetic", example: "x = uint", pinned_reason: "synthetic pin — names the cause", vectors: [] },
+    {
+      id: "synthetic.standalone", axis: "synthetic", example: "x = uint", mode: "standalone", spec: "x = uint", type_name: "X",
+      vectors: [
+        { hex: "00", source: "spec", expect: "accept" },
+        { hex: "01", source: "hand", expect: "accept", class: "over-acceptance", reason: "synthetic over-acceptance — ledgered finding + promotion flow" },
+        { hex: "02", source: "spec", expect: "reject", class: "bug", reason: "synthetic bug — spec-valid wrongly rejected" },
+        { hex: "03", source: "spec", expect: "reject", class: "limitation", reason: "synthetic limitation — known gap" },
+        { hex: "04", source: "hand", expect: "reject", class: "constraint", reason: "synthetic constraint — violated bound", expect_err: "out of range" },
+        { hex: "05", source: "hand", expect: "accept" },
+      ],
+    },
+    {
+      id: "synthetic.holder", axis: "synthetic", example: "y = uint", mode: "holder", spec: "__probe_holder = [0, y]", type_name: "ProbeHolder",
+      vectors: [
+        { hex: "820006", source: "spec", expect: "accept" },
+        { hex: "820007", source: "hand", expect: "reject", class: "constraint", reason: "synthetic holder constraint", expect_err: "too large" },
+      ],
+    },
+  ];
+  const back = parseCatalogContent(composeCatalog(sample));
+  const vKey = (v: { hex: string }) => v.hex;
+  const vEq = (x: any, y: any) =>
+    x.hex === y.hex && x.source === y.source && x.expect === y.expect &&
+    x.class === y.class && x.reason === y.reason && x.expect_err === y.expect_err;
+  if (back.size !== sample.length)
+    problems.push(`catalog synthetic roundtrip: parse∘compose produced ${back.size} rows, expected ${sample.length} — the writer dropped/merged a row`);
+  for (const row of sample) {
+    const got = back.get(row.id);
+    if (!got) { problems.push(`catalog synthetic roundtrip: row \`${row.id}\` vanished through parse∘compose — the writer dropped it`); continue; }
+    for (const f of ["axis", "example", "pinned_reason", "spec", "mode", "type_name"] as const)
+      if (row[f] !== got[f])
+        problems.push(`catalog synthetic roundtrip: row \`${row.id}\` field \`${f}\` did not survive parse∘compose (${JSON.stringify(row[f])} -> ${JSON.stringify(got[f])}) — the writer dropped/mangled it`);
+    const wantV = [...row.vectors].sort((p, q) => (vKey(p) < vKey(q) ? -1 : 1));
+    const gotV = [...got.vectors].sort((p, q) => (vKey(p) < vKey(q) ? -1 : 1));
+    if (wantV.length !== gotV.length)
+      problems.push(`catalog synthetic roundtrip: row \`${row.id}\` has ${gotV.length} vectors after parse∘compose, expected ${wantV.length} — the writer dropped a vector`);
+    else
+      wantV.forEach((v, i) => {
+        if (!vEq(v, gotV[i]))
+          problems.push(`catalog synthetic roundtrip: row \`${row.id}\` vector \`${v.hex}\` lost a field through parse∘compose (${JSON.stringify(v)} -> ${JSON.stringify(gotV[i])}) — the writer silently strips it (the class/reason/expect_err emission bug class)`);
+      });
+  }
+}
 
 // --- report ---------------------------------------------------------------------------------------
 const activeRows = rows.filter(r => (r.vector ?? []).length > 0);

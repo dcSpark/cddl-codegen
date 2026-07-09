@@ -39,16 +39,6 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Catalog writer↔reader identity check (compose∘parse = committed bytes).** The mint's catalog
-  writer is the sole serializer of the hand-authored vector fields (`class`/`reason`/`expect_err`), and
-  a field the writer forgets to emit is stripped SILENTLY at the next re-mint — the bug class caught by
-  review in `composeCatalog` (accept-vector `class`/`reason` were emitted only under an
-  `expect === "reject"` guard, which would have stripped every over-acceptance annotation). Downstream
-  decay pins (Q4's `EXPECTED_ENFORCE_OVERACCEPTS`) fire only AFTER a re-mint corrupts the committed
-  catalog and can't name the writer as the cause. The cheap deterministic guard: extract the catalog
-  reader/writer pair into `lib.ts` and assert compose(parse(`catalog.toml`)) is byte-identical to the
-  committed file in `project_decode_conformance.ts` (drift-gate tier, pure file reads) — a writer that
-  drops or reorders any field then goes red before any mint runs.
 - **Make the rust-oracle pin mechanical (behavioral fingerprint preflight; optionally an immutable
   copy).** `RUST_CDDL` defaults to a live development tree's `target/debug/cddl` (README § "Upstream
   oracle gaps" names the pinned rev and warns to copy the binary before long runs — prose only), so a

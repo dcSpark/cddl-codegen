@@ -38,7 +38,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ALT_PRODUCTIONS, DECODE_FLOOR_ARM_EXEMPT, ROOT, grammarAltCoverage, loadMatrixInputs, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
+import { ALT_PRODUCTIONS, CatalogRow, CatalogVector, DECODE_FLOOR_ARM_EXEMPT, ROOT, composeCatalog, grammarAltCoverage, loadMatrixInputs, parseCatalog, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
 
 process.chdir(ROOT);
 
@@ -659,19 +659,11 @@ function derive(featureId: string, profile: string, rubyExit: number, rustExit: 
 // corroboration. All helpers are hoisted `function`s so the mint (called right after the warm-up) and
 // the probe loops (below) can share them regardless of textual order.
 // ==================================================================================================
-interface CatalogVector { hex: string; source: string; expect: string; class?: string; reason?: string; expect_err?: string }
-interface CatalogRow {
-  id: string; axis: string; example: string;
-  pinned_reason?: string;                             // set => the row has no vectors (names the cause)
-  spec?: string; mode?: string; type_name?: string;   // set together when NOT pinned
-  vectors: CatalogVector[];
-}
+// CatalogVector / CatalogRow, parseCatalog and composeCatalog (with its private foreignTomlStr helper)
+// live in ./lib so the drift gate can round-trip the catalog without importing this whole gate module.
 interface ForeignOutcome { accepts_foreign?: boolean; foreign_vectors?: number }
 interface ReplayVec { hex: string; name: string; expectOk: boolean }
 
-// JSON string escaping is a valid TOML basic string (same trick as the annotation writer's `tomlStr`,
-// but hoisted so the mint can use it BEFORE that `const` is initialized).
-function foreignTomlStr(s: string): string { return JSON.stringify(s); }
 // A matrix row id (`occur.optional`, `ctl.size`) -> a valid, unique Rust test-fn ident fragment.
 function foreignIdent(id: string): string { return id.replace(/[^A-Za-z0-9]/g, "_"); }
 
@@ -686,99 +678,6 @@ function toCamelCase(ident: string): string {
     else { out += upper ? c.toUpperCase() : c; upper = false; }
   }
   return out;
-}
-
-function parseCatalog(path: string): Map<string, CatalogRow> {
-  const doc = Bun.TOML.parse(readFileSync(path, "utf8")) as { row?: any[] };
-  const map = new Map<string, CatalogRow>();
-  for (const r of doc.row ?? []) {
-    const vectors: CatalogVector[] = (r.vector ?? []).map((v: any) => ({
-      hex: String(v.hex), source: String(v.source), expect: String(v.expect),
-      class: v.class !== undefined ? String(v.class) : undefined,
-      reason: v.reason !== undefined ? String(v.reason) : undefined,
-      expect_err: v.expect_err !== undefined ? String(v.expect_err) : undefined,
-    }));
-    map.set(String(r.id), {
-      id: String(r.id), axis: String(r.axis), example: String(r.example),
-      pinned_reason: r.pinned_reason !== undefined ? String(r.pinned_reason) : undefined,
-      spec: r.spec !== undefined ? String(r.spec) : undefined,
-      mode: r.mode !== undefined ? String(r.mode) : undefined,
-      type_name: r.type_name !== undefined ? String(r.type_name) : undefined,
-      vectors,
-    });
-  }
-  return map;
-}
-
-// Compose the catalog TOML deterministically (rows by id, vectors by hex) so a re-mint of any `--only`
-// subset re-emits every other row byte-identically. Header mirrors annotations/cddl_codegen.toml's style.
-function composeCatalog(rows: CatalogRow[]): string {
-  const L: string[] = [
-    "# Decode-conformance catalog. MACHINE-PRODUCED by the mint:",
-    "#   bun run verify.ts --mint-decode-foreign            # full refresh",
-    "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
-    "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
-    "# cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated",
-    '# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
-    "# supplement vectors (both re-validated mechanically at the next mint).",
-    "#",
-    "# mode: standalone = a nominal `impl Deserialize for <type_name>` decodes the vector directly;",
-    "#       holder = the rule is a transparent alias / named table / c-enum with no standalone decoder,",
-    "#       so vectors are instances of `__probe_holder = [0, <rule>]` and decode routes through the",
-    "#       GENERATED field-decode code (cbor_event's blanket impl would otherwise make it vacuous).",
-    "# vector.expect: accept (decoder must Ok) | reject (decoder must Err). A reject vector carries a",
-    "#       class + reason. Two kinds, opposite spec-validity:",
-    "#         bug | limitation = spec-VALID CBOR the decoder WRONGLY rejects (a known gap); re-validated",
-    "#           spec-VALID at each mint and PRUNED when the gap closes. A class-less reject is the mint's",
-    "#           triage-pending state — the drift gate stays RED until a human classifies it.",
-    "#         constraint = spec-INVALID CBOR (source=\"hand\") that VIOLATES a constraint the row enforces",
-    "#           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the",
-    "#           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)",
-    "#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's",
-    "#           `enforce = yes (bounded-reject)` evidence. A constraint vector ALSO carries a required",
-    "#           `expect_err`: a substring the generated decoder's error Display must contain when it",
-    "#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it",
-    "#           rejects (a stray length check / unrelated error path would decode-reject but mis-name).",
-    "#       An accept vector may ALSO carry a class, but ONLY class=\"over-acceptance\": spec-INVALID CBOR",
-    "#       (source=\"hand\") that the generated decoder CURRENTLY (wrongly) ACCEPTS — a certified silent-",
-    "#       acceptance bug with no fix yet. Both oracles REJECT it (re-validated spec-INVALID at each mint,",
-    "#       the same inverse gate as class=\"constraint\"); the replay gate asserts the decoder STILL",
-    "#       accepts it, so the pin flips LOUDLY when a fix lands — the signal to promote it to",
-    "#       class=\"constraint\" (+ expect_err) and flip the row's Q4 enforce projection green. Never pruned",
-    "#       mechanically; `reason` cites the ledgered finding + the promotion flow. A plain accept vector",
-    "#       (spec-VALID, correctly accepted) carries NO class.",
-    "# pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.",
-    "",
-  ];
-  for (const row of [...rows].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    L.push("[[row]]");
-    L.push(`id = ${foreignTomlStr(row.id)}`);
-    L.push(`axis = ${foreignTomlStr(row.axis)}`);
-    L.push(`example = ${foreignTomlStr(row.example)}`);
-    if (row.pinned_reason !== undefined) {
-      L.push(`pinned_reason = ${foreignTomlStr(row.pinned_reason)}`);
-    } else {
-      L.push(`spec = ${foreignTomlStr(row.spec ?? "")}`);
-      L.push(`mode = ${foreignTomlStr(row.mode ?? "")}`);
-      L.push(`type_name = ${foreignTomlStr(row.type_name ?? "")}`);
-      for (const v of [...row.vectors].sort((a, b) => (a.hex < b.hex ? -1 : a.hex > b.hex ? 1 : 0))) {
-        L.push("");
-        L.push("[[row.vector]]");
-        L.push(`hex = ${foreignTomlStr(v.hex)}`);
-        L.push(`source = ${foreignTomlStr(v.source)}`);
-        L.push(`expect = ${foreignTomlStr(v.expect)}`);
-        // class/reason/expect_err are emitted whenever present — reject pins (bug/limitation/constraint)
-        // AND class="over-acceptance" accept vectors both carry them. A plain accept vector has none, so
-        // its output is unchanged. (Guarding on `expect === "reject"` would silently strip the class and
-        // reason from an over-acceptance vector on re-mint.)
-        if (v.class !== undefined) L.push(`class = ${foreignTomlStr(v.class)}`);
-        if (v.reason !== undefined) L.push(`reason = ${foreignTomlStr(v.reason)}`);
-        if (v.expect_err !== undefined) L.push(`expect_err = ${foreignTomlStr(v.expect_err)}`);
-      }
-    }
-    L.push("");
-  }
-  return L.join("\n").replace(/\s+$/, "") + "\n";
 }
 
 // Generate the crate from `spec` (default flags, no --wasm, no --emit-tests — replay needs only the lib).
