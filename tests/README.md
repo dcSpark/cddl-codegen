@@ -1105,7 +1105,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   the rust crate, so rust-side breakage — E0583 — surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm for the 43 cells.
+  once) / ~30 s warm measured at 43 cells (46 at HEAD).
 - **Skip ledger.** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
   error codes, reason) holds the deliberately-red cells, four-state like `WASM_MATRIX_SKIP`:
   red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
@@ -1125,8 +1125,12 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** Nothing — `MULTIFILE_MATRIX_SKIP` is empty; all 43 cells compile. The three
-module-placement error classes it once held are all fixed: **E0583** (was 21 cells) — a non-root
+**What it pins today.** The two `collrec` cells (`collrec__anon` E0425, `collrec__named` E0432) —
+the ARRAY structural-wrapper placement class (`[* <record>]`, the only array whose wasm
+representation needs a generated `FooList`-style wrapper; `mark_refs`' Array arm still hard-codes
+ROOT_SCOPE — the remaining issue-138 half; fix queue in `cddl-matrix/ROADMAP.md` § findings). The
+shape was enumerated AFTER review found the `SHAPES` hole, so its cells were never green. The three
+module-placement error classes the ledger originally held are all fixed: **E0583** (was 21 cells) — a non-root
 module whose rules emit no `serialization.rs` (any transparent `pub type` alias, or a c-style enum
 whose serialization lives elsewhere) no longer declares `pub mod serialization;` without the file
 (the module-declaration loop in `generation.rs` conditions the decl on `serialize_scopes`, mirroring

@@ -18,7 +18,9 @@
  * Rust gate `integration_tests::multifile_matrix_compiles` generates each `--wasm=true` (directory
  * input) and `cargo check`s the wasm crate (which pulls the rust crate as a path dep, so rust-side
  * breakage surfaces through it), so an un-covered placement regression surfaces as a specific red
- * cell; any deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (now empty).
+ * cell; any deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (currently:
+ * the `collrec` array-structural-wrapper cells — the Array-arm placement class, enumerated after
+ * review found the SHAPES hole; see the cddl-matrix/ROADMAP.md finding).
  *
  * Deterministic (sorted cell order; no hash-order). Fixtures go to tests/matrix_multifile/<cell>/{lib,a,b}.cddl.
  *
@@ -71,6 +73,14 @@ const SHAPES: Record<string, Shape> = {
   // ref embedded in an anonymous `.cbor` wrapper. It still individuates the anon-placement class (the
   // `.cbor` wrapper resolution under module scope) and its single-file control is green, so it is kept.
   cborwrap: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo"], ty: "fb", anonForm: "bytes .cbor foo" },
+  // Collection of NON-exposable elements: the array whose wasm representation needs a generated
+  // structural wrapper (`FooList`), i.e. the Array-arm sibling of `collmap`'s structural-map class —
+  // `mark_refs`' Array arm still hard-codes ROOT_SCOPE as the wrapper's import source (the remaining
+  // issue-138 half). `coll` ([* uint]) is transparent `Vec<u64>` and can never probe this. Both
+  // reference modes are known-red (see MULTIFILE_MATRIX_SKIP + the cddl-matrix/ROADMAP.md finding);
+  // the shape was enumerated AFTER review found the hole — the single-file anon control is green
+  // (like cborwrap, the anon form references the named `foo` cross-module).
+  collrec: { defs: ["foo = [a0: uint]", "recs = [* foo]"], ty: "recs", anonForm: "[* foo]" },
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg", anonForm: "#6.10(uint)" },
   bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw", anonForm: "bytes .size (0..32)" },
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
@@ -110,7 +120,7 @@ const MODES: Record<string, Mode> = {
 // `anonForm` key would silently drop a shape from `anon` (TS excess-property check catches an unknown
 // key at the literal, but not a value dropped by a downstream filter) — pin the derived set so any
 // grid shrink/growth is an explicit reviewed edit, exactly like EXPECTED_CELLS below.
-const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "nullable", "tag"];
+const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "nullable", "tag"];
 const anonShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonForm)
   .sort();
@@ -161,7 +171,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 43; // 17 shapes × {named, unref} = 34 + 6 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 43
+const EXPECTED_CELLS = 46; // 18 shapes × {named, unref} = 36 + 7 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 46
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

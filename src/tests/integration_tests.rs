@@ -201,13 +201,17 @@ For more information about this error, try `rustc --explain E0583`.\n";
 
 /// Multifile-placement matrix cells (`tests/matrix_multifile/<shape>__<mode>/`) that deliberately
 /// do NOT compile. Each `(cell stem, expected rustc error codes, reason)` names the error class the
-/// sweep pins while landing green. CURRENTLY EMPTY: every cell compiles — the three module-placement
-/// error classes it once held (E0583 alias/enum-only non-root module declaring `pub mod
-/// serialization;` without the file; E0432 anonymous same-shape table importing the structural name
-/// from root scope instead of the sole owner's module; E0433 cross-module named `.cbor` ref omitting
-/// the inner-type import) are all fixed in `generation.rs`'s module-declaration loop and
-/// `intermediate.rs`'s `scope_references`/`mark_refs`. The four-state verdict below is the gate's
-/// contract and stays live so a future regression re-pins with evidence. Four-state verdict in
+/// sweep pins while landing green. The three module-placement error classes it originally held
+/// (E0583 alias/enum-only non-root module declaring `pub mod serialization;` without the file;
+/// E0432 anonymous same-shape table importing the structural name from root scope instead of the
+/// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
+/// fixed in `generation.rs`'s module-declaration loop and `intermediate.rs`'s
+/// `scope_references`/`mark_refs`. What it holds now is the ARRAY structural-wrapper placement
+/// class (the `collrec` shape, `[* <record>]` — the only SHAPES entry whose wasm representation
+/// needs a generated `FooList`-style array wrapper): `mark_refs`' Array arm still hard-codes
+/// ROOT_SCOPE (the remaining issue-138 half). Enumerated as cells AFTER review found the SHAPES
+/// hole; the fix queue is the cddl-matrix/ROADMAP.md § findings array-wrapper entry. Four-state
+/// verdict in
 /// `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the observed
 /// rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set, or the
 /// cell's failure CLASS changed and the pin is re-triaged loudly; red+unlisted = failure (fix the
@@ -215,7 +219,26 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// landed)"; green+unlisted = pass. A skip cell whose GENERATION aborts (no rustc compile error at
 /// all) is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from
 /// the projected fixture set, so the list can't rot silently.
-const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[];
+const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
+    // --- The ARRAY structural-wrapper placement class (`mark_refs`' Array arm still hard-codes
+    // ROOT_SCOPE — the remaining issue-138 half; ledgered in cddl-matrix/ROADMAP.md § findings).
+    // `collrec` = `recs = [* foo]` with record element `foo` in module `a`. These cells were NEVER
+    // green: before the mark_refs alias-recursion (E0433) fix the named cell failed RUST-side with
+    // the same inlined-alias-import class; what is pinned here is the class that remains after it.
+    (
+        "collrec__anon",
+        &["E0425"],
+        "E0425: root-minted anonymous array wrapper (`FooList`) names its non-root element type \
+         `Foo` bare, without importing it from the element's module",
+    ),
+    (
+        "collrec__named",
+        &["E0432"],
+        "E0432: alias-target recursion imports the structural `FooList` from root scope, but a \
+         NAMED collection alias mints only its own wrapper (`Recs`) — the structural name exists \
+         nowhere",
+    ),
+];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
@@ -1494,11 +1517,11 @@ fn wasm_matrix_compiles() {
 /// landing in the wrong scope) surfaces transitively through the wasm check; one crate keeps the
 /// wall-clock bounded.
 ///
-/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells; it is CURRENTLY EMPTY — every cell
-/// compiles, the three historical module-placement error classes (E0583 alias/table-only
-/// serialization stub, E0432 anonymous same-shape table importing the structural name from root scope,
-/// E0433 cross-module named `.cbor` ref omitting the inner-type import) are all fixed. The four-state
-/// verdict stays the gate's contract so any regression re-pins with evidence. Four-state verdict per
+/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells — currently the two `collrec`
+/// array-structural-wrapper cells (the `mark_refs` Array-arm placement class; see the const's doc).
+/// The three historical module-placement error classes (E0583 alias/table-only serialization stub,
+/// E0432 anonymous same-shape table importing the structural name from root scope, E0433
+/// cross-module named `.cbor` ref omitting the inner-type import) are all fixed. Four-state verdict per
 /// cell: red+listed = expected —
 /// but ADDITIONALLY the observed rustc error-code set (extracted from the captured cargo stderr) must
 /// EQUAL the pin's declared codes; red-with-the-wrong-class is a loud "the cell's failure class
