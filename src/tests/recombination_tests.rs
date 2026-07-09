@@ -684,7 +684,12 @@ std::thread_local! {
 /// `production_frame_symbol`) into each REGISTERED worker's
 /// thread-local, delegating any other thread's panic to the hook we replaced (unrelated test
 /// failures stay visible), and restore before the window closes.
-fn classify_all(comps: &[Composition]) -> Vec<Outcome> {
+///
+/// `extra_args` are appended to the in-process `Cli::parse_from` invocation, selecting the emission
+/// PROFILE (default = `&[]`, byte-identical to the historical hard-coded call; preserve/json/wasm
+/// pass their profile flags). The composition SET is profile-INDEPENDENT — only classification
+/// runs per profile — so the determinism assert in layer 1 keeps holding regardless of `extra_args`.
+fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
     with_thread_silenced_panics(|| {
         let prev: std::sync::Arc<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync> =
             std::sync::Arc::from(std::panic::take_hook());
@@ -746,19 +751,23 @@ fn classify_all(comps: &[Composition]) -> Vec<Outcome> {
                             "cddl_codegen_recomb_sweep_{}_{wi}.cddl",
                             std::process::id()
                         ));
+                        // Identical per composition within a worker (only the spec file content
+                        // changes), so build the argv once; `extra_args` selects the profile.
+                        let mut argv: Vec<&str> = vec![
+                            "cddl-codegen",
+                            "--input",
+                            path.to_str().unwrap(),
+                            "--output",
+                            "recomb_unused",
+                            "--wasm",
+                            "false",
+                        ];
+                        argv.extend_from_slice(extra_args);
                         let res: Vec<Outcome> = chunk
                             .iter()
                             .map(|c| {
                                 std::fs::write(&path, &c.spec).unwrap();
-                                let cli = Cli::parse_from([
-                                    "cddl-codegen",
-                                    "--input",
-                                    path.to_str().unwrap(),
-                                    "--output",
-                                    "recomb_unused",
-                                    "--wasm",
-                                    "false",
-                                ]);
+                                let cli = Cli::parse_from(argv.iter().copied());
                                 LAST_PANIC.with(|p| *p.borrow_mut() = None);
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     crate::api::generated_strings(&cli)
@@ -876,7 +885,7 @@ fn recombination_generation_sweep() {
         "composition enumeration must be deterministic (seeded; no hash iteration order)"
     );
 
-    let outcomes = classify_all(&comps);
+    let outcomes = classify_all(&comps, &[]);
 
     let mut ok = 0usize;
     let mut graceful = 0usize;
@@ -1035,47 +1044,177 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     ),
 ];
 
-/// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): batch layer 1's ok compositions into
-/// ~`LAYER2_RULES_PER_BATCH`-rule specs, generate each with `--emit-tests=true --wasm=false`
-/// (default profile), and `cargo test` the generated rust crate (shared `CARGO_TARGET_DIR`, the
-/// `feature_corpus_compiles` pattern). A batch failure is re-attributed by rerunning its members
-/// individually; a failing member not matching `LAYER2_KNOWN_BAD` is a NEW finding.
-///
-/// Run: `cargo test --bin cddl-codegen recombination_crates_execute -- --ignored --nocapture`.
-#[test]
-#[ignore]
-fn recombination_crates_execute() {
+// ---- generalized layer-2 runner (shared by every emission profile) --------------------------------
+/// A layer-2 execution profile. One runner (`run_layer2_profile`) drives the whole shape:
+/// classify under the profile in-process, batch the ok compositions, generate each batch with the
+/// profile's flags, run the profile's cargo verb on the profile's generated crate, re-attribute
+/// batch failures per member. Items 2/3 (json / wasm) plug in by building a different `Layer2Profile`
+/// — no runner change — which is why the exec step is data-driven (`exec_args`/`crate_subdir`/
+/// `cargo_subcmd`) rather than a hard-coded rust-`test` path.
+struct Layer2Profile<'a> {
+    /// Human profile name — labels the scratch root, the target dir, and the summary line.
+    name: &'a str,
+    /// Profile flags for BOTH in-process classification (`classify_all`) and out-of-process
+    /// generation. Sourced from `crate::tests::ALL_PROFILES` by the caller (never re-hard-coded).
+    profile_args: &'a [&'a str],
+    /// Exec-side generation flags (e.g. `--emit-tests=true --wasm=false`), appended AFTER
+    /// `profile_args` when shelling out to the generator.
+    exec_args: &'a [&'a str],
+    /// Which generated crate to verify (`rust` for the emit-tests profiles, `wasm` for item 3).
+    crate_subdir: &'a str,
+    /// The cargo verb run in that crate (`test` executes emitted round-trips; `check` compile-only).
+    cargo_subcmd: &'a str,
+    /// Panic classes expected under THIS profile beyond the shared `KNOWN_PANIC_CLASSES` (which is
+    /// always an allowlist here, never re-vacuity-guarded). Vacuity-guarded within this run.
+    panic_ledger: &'a [(&'a str, &'a str)],
+    /// Compile/execute known-bad classes specific to this profile. Vacuity-guarded within this run.
+    known_bad: &'a [(&'a str, &'a str)],
+    /// Whether to vacuity-guard the SHARED `LAYER2_KNOWN_BAD` in this run. TRUE only for the default
+    /// profile (its home): a shared entry can legitimately match zero of a non-default profile's
+    /// ok compositions because that profile's generation may PANIC for the class earlier, so the
+    /// shared ledger is applied (as an exclusion) but not guarded in profile runs.
+    guard_shared: bool,
+    /// Ok-count floor, ~10% under the observed baseline for this profile.
+    ok_floor: usize,
+    /// Executed-count floor, ~10% under the observed baseline for this profile.
+    executed_floor: usize,
+}
+
+/// Generate `spec` with the profile's generation flags, then run the profile's cargo verb on the
+/// profile's generated crate. `Err(reason)` on any stage.
+fn gen_and_exec(
+    spec: &str,
+    out: &std::path::Path,
+    target_dir: &std::path::Path,
+    profile_args: &[&str],
+    exec_args: &[&str],
+    crate_subdir: &str,
+    cargo_subcmd: &str,
+) -> Result<(), String> {
+    let spec_path = out.with_extension("cddl");
+    std::fs::create_dir_all(out.parent().unwrap()).ok();
+    std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", spec_path.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .args(profile_args)
+        .args(exec_args)
+        .output()
+        .unwrap();
+    if !gen_out.status.success() {
+        return Err(format!(
+            "generation failed\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        ));
+    }
+    let crate_dir = out.join(crate_subdir);
+    if !crate_dir.exists() {
+        return Err(format!("no {crate_subdir} crate at {crate_dir:?}"));
+    }
+    let run = tool_cmd("cargo")
+        .arg(cargo_subcmd)
+        .current_dir(&crate_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .output()
+        .unwrap();
+    if run.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo {cargo_subcmd} failed\n{}\n{}",
+            String::from_utf8_lossy(&run.stdout),
+            String::from_utf8_lossy(&run.stderr)
+        ))
+    }
+}
+
+/// The shared layer-2 body: classify → panic-ledger check → batch → generate+exec → re-attribute →
+/// floors. Behaviour for a profile is entirely the `Layer2Profile` it is handed.
+fn run_layer2_profile(p: &Layer2Profile) {
     let t0 = std::time::Instant::now();
     let comps = compositions();
-    let outcomes = classify_all(&comps);
-    let ok_comps: Vec<&Composition> = comps
-        .iter()
-        .zip(outcomes.iter())
-        .filter(|(_, o)| **o == Outcome::Ok)
-        .map(|(c, _)| c)
-        .collect();
+    let outcomes = classify_all(&comps, p.profile_args);
+
+    // Classification under a non-default profile PANICS for classes that are ok/graceful under
+    // default. Every panic must be in `KNOWN_PANIC_CLASSES` (allowlist) OR the profile's own
+    // `panic_ledger`; anything else is a NEW finding. The profile ledger is vacuity-guarded.
+    let mut panic_findings: Vec<String> = Vec::new();
+    let mut observed_panic_classes: BTreeSet<&str> = BTreeSet::new();
+    let mut ok_comps: Vec<&Composition> = Vec::new();
+    for (c, o) in comps.iter().zip(outcomes.iter()) {
+        match o {
+            Outcome::Ok => ok_comps.push(c),
+            Outcome::Graceful(_) => {}
+            Outcome::Panic(msg) => {
+                // Shared allowlist is applied but not vacuity-guarded in profile runs; the profile's
+                // own panic ledger is guarded (observed set below).
+                if let Some((sub, _)) = p.panic_ledger.iter().find(|(sub, _)| msg.contains(sub)) {
+                    observed_panic_classes.insert(sub);
+                } else if !KNOWN_PANIC_CLASSES.iter().any(|(sub, _)| msg.contains(sub)) {
+                    panic_findings.push(format!(
+                        "NEW panic class under {} profile — composition {} ({}):\n--- spec ---\n{}--- panic ---\n{msg}\n\
+                         Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
+                         tests/corpus/) or cite an existing ROADMAP § findings entry; ledger it in \
+                         cddl-matrix/ROADMAP.md § findings; add a profile panic-ledger entry citing the pin.",
+                        p.name, c.id, c.desc, c.spec
+                    ));
+                }
+            }
+        }
+    }
     assert!(
-        ok_comps.len() >= 750,
-        "only {} ok compositions reached layer 2 (floor 750)",
-        ok_comps.len()
+        panic_findings.is_empty(),
+        "recombination {} layer 2 surfaced {} NEW panic class(es):\n\n{}",
+        p.name,
+        panic_findings.len(),
+        panic_findings.join("\n\n")
+    );
+    for (sub, cite) in p.panic_ledger {
+        assert!(
+            observed_panic_classes.contains(sub),
+            "{} panic-ledger entry `{sub}` matched no composition (pin: {cite}) — stale entry",
+            p.name
+        );
+    }
+    assert!(
+        ok_comps.len() >= p.ok_floor,
+        "only {} ok compositions reached {} layer 2 (floor {})",
+        ok_comps.len(),
+        p.name,
+        p.ok_floor
     );
 
-    // Split out the known-bad classes (cited above), with a stale-pin guard per entry.
-    let mut known_bad_hits: BTreeMap<&str, usize> = BTreeMap::new();
+    // Exclusion set = shared LAYER2_KNOWN_BAD ∪ profile's own known_bad. The shared ledger is
+    // guarded only for the default profile (`guard_shared`); the profile's own ledger always is.
+    let mut shared_hits: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut profile_hits: BTreeMap<&str, usize> = BTreeMap::new();
     let mut executable: Vec<&Composition> = Vec::new();
     for c in &ok_comps {
-        match LAYER2_KNOWN_BAD
+        if let Some((sub, _)) = LAYER2_KNOWN_BAD
             .iter()
             .find(|(sub, _)| c.desc.contains(sub))
         {
-            Some((sub, _)) => *known_bad_hits.entry(sub).or_default() += 1,
-            None => executable.push(c),
+            *shared_hits.entry(sub).or_default() += 1;
+        } else if let Some((sub, _)) = p.known_bad.iter().find(|(sub, _)| c.desc.contains(sub)) {
+            *profile_hits.entry(sub).or_default() += 1;
+        } else {
+            executable.push(c);
         }
     }
-    for (sub, cite) in LAYER2_KNOWN_BAD {
+    if p.guard_shared {
+        for (sub, cite) in LAYER2_KNOWN_BAD {
+            assert!(
+                shared_hits.contains_key(sub),
+                "LAYER2_KNOWN_BAD entry `{sub}` matched no ok composition (pin: {cite}) — stale entry"
+            );
+        }
+    }
+    for (sub, cite) in p.known_bad {
         assert!(
-            known_bad_hits.contains_key(sub),
-            "LAYER2_KNOWN_BAD entry `{sub}` matched no ok composition (pin: {cite}) — stale entry"
+            profile_hits.contains_key(sub),
+            "{} known-bad entry `{sub}` matched no ok composition (pin: {cite}) — stale entry",
+            p.name
         );
     }
 
@@ -1095,74 +1234,48 @@ fn recombination_crates_execute() {
         batches.push(cur);
     }
 
-    let root = std::env::temp_dir().join(format!("cddl_codegen_recomb_{:016x}", checkout_hash()));
+    // Per-profile scratch root + target dir: keeps profiles from clobbering each other and (for the
+    // serde/schemars-pulling json profile) stops feature-resolution thrash invalidating the default
+    // cache.
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_recomb_{}_{:016x}",
+        p.name,
+        checkout_hash()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
 
-    /// Generate `spec` with --emit-tests and `cargo test` the rust crate. Err(reason) on any stage.
-    fn gen_and_test(
-        spec: &str,
-        out: &std::path::Path,
-        target_dir: &std::path::Path,
-    ) -> Result<(), String> {
-        let spec_path = out.with_extension("cddl");
-        std::fs::create_dir_all(out.parent().unwrap()).ok();
-        std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
-            .arg(format!("--input={}", spec_path.to_str().unwrap()))
-            .arg(format!("--output={}", out.to_str().unwrap()))
-            .arg("--wasm=false")
-            .arg("--emit-tests=true")
-            .output()
-            .unwrap();
-        if !gen_out.status.success() {
-            return Err(format!(
-                "generation failed\n{}",
-                String::from_utf8_lossy(&gen_out.stderr)
-            ));
-        }
-        let crate_dir = out.join("rust");
-        if !crate_dir.exists() {
-            return Err(format!("no rust crate at {crate_dir:?}"));
-        }
-        let test = tool_cmd("cargo")
-            .arg("test")
-            .current_dir(&crate_dir)
-            .env("CARGO_TARGET_DIR", target_dir)
-            .output()
-            .unwrap();
-        if test.status.success() {
-            Ok(())
-        } else {
-            Err(format!(
-                "cargo test failed\n{}\n{}",
-                String::from_utf8_lossy(&test.stdout),
-                String::from_utf8_lossy(&test.stderr)
-            ))
-        }
-    }
-
     let mut findings: Vec<String> = Vec::new();
     let mut executed = 0usize;
+    let run_batch = |spec: &str, out: &std::path::Path| {
+        gen_and_exec(
+            spec,
+            out,
+            &target_dir,
+            p.profile_args,
+            p.exec_args,
+            p.crate_subdir,
+            p.cargo_subcmd,
+        )
+    };
     for (bi, batch) in batches.iter().enumerate() {
         let spec: String = batch.iter().map(|c| c.spec.as_str()).collect();
         let out = root.join(format!("batch{bi:03}"));
-        match gen_and_test(&spec, &out, &target_dir) {
+        match run_batch(&spec, &out) {
             Ok(()) => executed += batch.len(),
             Err(batch_reason) => {
                 // Attribute: rerun each member individually.
                 let mut attributed = false;
                 for c in batch {
                     let mout = root.join(format!("batch{bi:03}_{}", c.id));
-                    if let Err(reason) = gen_and_test(&c.spec, &mout, &target_dir) {
+                    if let Err(reason) = run_batch(&c.spec, &mout) {
                         attributed = true;
                         findings.push(format!(
-                            "NEW layer-2 finding — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
+                            "NEW layer-2 finding under {} profile — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
                              Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
                              tests/corpus/); ledger it in cddl-matrix/ROADMAP.md § findings; add a \
-                             LAYER2_KNOWN_BAD entry citing the pin.",
-                            c.id, c.desc, c.spec
+                             profile known-bad entry citing the pin.",
+                            p.name, c.id, c.desc, c.spec
                         ));
                     } else {
                         executed += 1;
@@ -1180,7 +1293,8 @@ fn recombination_crates_execute() {
     let _ = std::fs::remove_dir_all(&root);
 
     println!(
-        "recombination layer 2: {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
+        "recombination {} layer 2: {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
+        p.name,
         batches.len(),
         executed,
         ok_comps.len() - executable.len(),
@@ -1188,13 +1302,136 @@ fn recombination_crates_execute() {
     );
     assert!(
         findings.is_empty(),
-        "recombination layer 2 surfaced {} finding(s):\n\n{}",
+        "recombination {} layer 2 surfaced {} finding(s):\n\n{}",
+        p.name,
         findings.len(),
         findings.join("\n\n")
     );
-    // Executed-artifact floor: the batches must actually run compositions.
     assert!(
-        executed >= 700,
-        "only {executed} compositions executed in layer 2 (floor 700) — batching rotted"
+        executed >= p.executed_floor,
+        "only {executed} compositions executed in {} layer 2 (floor {}) — batching rotted",
+        p.name,
+        p.executed_floor
     );
+}
+
+/// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): batch layer 1's ok compositions into
+/// ~`LAYER2_RULES_PER_BATCH`-rule specs, generate each with `--emit-tests=true --wasm=false`
+/// (default profile), and `cargo test` the generated rust crate (shared `CARGO_TARGET_DIR`, the
+/// `feature_corpus_compiles` pattern). A batch failure is re-attributed by rerunning its members
+/// individually; a failing member not matching `LAYER2_KNOWN_BAD` is a NEW finding. This is the
+/// DEFAULT profile's thin call into the shared `run_layer2_profile` runner.
+///
+/// Run: `cargo test --bin cddl-codegen recombination_crates_execute -- --exact --ignored --nocapture`.
+#[test]
+#[ignore]
+fn recombination_crates_execute() {
+    run_layer2_profile(&Layer2Profile {
+        name: "default",
+        profile_args: &[],
+        exec_args: &["--emit-tests=true", "--wasm=false"],
+        crate_subdir: "rust",
+        cargo_subcmd: "test",
+        panic_ledger: &[],
+        known_bad: &[],
+        guard_shared: true,
+        ok_floor: 750,
+        executed_floor: 700,
+    });
+}
+
+// ---- preserve profile: panic ledger + known-bad ledger + the escalation gate ----------------------
+/// Panic classes that appear when classifying under `--preserve-encodings=true` but are ok/graceful
+/// under the default profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` (which stays the
+/// allowlist); a preserve panic matching neither is a NEW finding. Each entry cites an existing
+/// `cddl-matrix/ROADMAP.md` § findings entry (stable title, never a position). Vacuity-guarded in
+/// `recombination_preserve_crates_execute`.
+const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
+    (
+        "preserve_encodings is not implemented for float",
+        "native float in member / element / tag / choice-arm position under --preserve-encodings \
+         (the deserialize path has no encoding metadata for f16/f32/f64); cddl-matrix/ROADMAP.md § \
+         findings, `float16 / float-choice aliases unsupported ... Under --preserve-encodings the float gap is positional` entry",
+    ),
+    (
+        "!cli.preserve_encodings @ src/generation.rs @ fn cddl_codegen::generation::generate_enum",
+        "a CBOR tag over a type-choice / enum / group-choice (`#6.11(int / tstr)`, `#6.11(<enum>)`) hits \
+         the tagged-enum serialize path's explicit `assert!(!cli.preserve_encodings)` — the per-variant \
+         encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
+         `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings` entry",
+    ),
+    (
+        "called `Option::unwrap()` on a `None` value @ src/generation.rs @ fn cddl_codegen::generation::encoding_fields_impl",
+        "a CBOR tag wrapping `any` reaches generation under --preserve-encodings (unlike bare `[any]` / \
+         `{k: any}`, which panic earlier at the shared `generic_instances` assert) and unwraps None \
+         building the tag's encoding field — `any` carries no encoding metadata; cddl-matrix/ROADMAP.md \
+         § findings, `A CBOR tag wrapping any panics generation under --preserve-encodings` entry",
+    ),
+];
+
+/// Preserve-profile compile/round-trip known-bad classes (generation is ok under preserve, the
+/// DEFAULT crate compiles + round-trips, but the preserve crate fails `cargo build`). Desc-substring
+/// keyed, each citing its pin; vacuity-guarded in `recombination_preserve_crates_execute`. The shared
+/// `LAYER2_KNOWN_BAD` also applies (as an exclusion, un-guarded here).
+const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[
+    // -- E0308: a tag wrapping a range/control-constrained integer mis-shapes the preserve
+    //    deserialize tuple (2-elem destructure vs 3-elem constrained-primitive arm). ------------------
+    (
+        "outer=tag_content filler=ctl.ne",
+        "tag over a control-constrained int (`#6.11(int .ne N)`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
+    ),
+    (
+        "outer=tag_content filler=rangeop",
+        "tag over a range-constrained int/nint (`#6.11(-10...10)`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
+    ),
+    (
+        "outer=garm_arr inner=tag_content filler=rangeop",
+        "group-choice arm with a tag over a range-constrained int (`[ ga: #6.11(-10...-3) // tstr ]`) fails preserve compilation (E0308 tag deserialize tuple arity); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
+    ),
+    // -- E0382: a composite (array) map key moves a binding it later reuses, under preserve. ----------
+    (
+        "outer=arr_single inner=map_key filler=occur.one_or_more",
+        "a composite (array) map key (`[{ [+ uint] => uint }]`) fails preserve compilation (E0382 use of moved value); cddl-matrix/ROADMAP.md § findings, recombination PRESERVE layer-2 entry",
+    ),
+];
+
+/// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the PRESERVE escalation of layer 2.
+/// Classifies every composition under `--preserve-encodings=true`, batches the preserve-ok ones,
+/// generates `--preserve-encodings=true --emit-tests=true --wasm=false`, and `cargo test`s the rust
+/// crate — the leg that would have caught the preserve-only E0308 on tag-wrapped fixed-value members
+/// (`[v: #6.1(null)]`) that passed every default-profile gate and was found only by review.
+///
+/// Preserve panics for classes that are ok/graceful under default (floats as members; tag over a
+/// type-choice enum; tag wrapping `any`) — those are in `PRESERVE_ONLY_PANIC_CLASSES` and never
+/// reach execution; a NEW preserve panic fails loudly. (The ledgered optional encoding-less
+/// fixed-value preserve assert — cddl-matrix/ROADMAP.md § findings — is NOT here: the composition
+/// set has no optional-FIXED member kind, so that class cannot fire; adding one is the
+/// extended-member-kind residual in tests/TESTING_ROADMAP.md.) Profile flags are sourced from
+/// `crate::tests::ALL_PROFILES` by name (asserted found), never re-hard-coded.
+///
+/// NAMING/SELECTION GOTCHA: this name must NOT contain the `recombination_crates_execute` needle
+/// (cargo's substring test selection would cross-select) — hence `recombination_preserve_crates_execute`.
+/// The check.ts gate passes `--exact` for both gates.
+///
+/// Run: `cargo test --bin cddl-codegen recombination_preserve_crates_execute -- --exact --ignored --nocapture`.
+#[test]
+#[ignore]
+fn recombination_preserve_crates_execute() {
+    let (name, preserve_args) = crate::tests::ALL_PROFILES
+        .iter()
+        .find(|(name, _)| *name == "preserve")
+        .expect("`preserve` profile missing from crate::tests::ALL_PROFILES");
+    run_layer2_profile(&Layer2Profile {
+        name,
+        profile_args: preserve_args,
+        exec_args: &["--emit-tests=true", "--wasm=false"],
+        crate_subdir: "rust",
+        cargo_subcmd: "test",
+        panic_ledger: PRESERVE_ONLY_PANIC_CLASSES,
+        known_bad: LAYER2_PRESERVE_KNOWN_BAD,
+        guard_shared: false,
+        // Observed baseline: 856 preserve-ok / 818 executed (38 known-bad excluded); floors ~10% under.
+        ok_floor: 770,
+        executed_floor: 735,
+    });
 }
