@@ -75,18 +75,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
-   - **Layer-2 profile escalation — json leg.** The shared runner (`run_layer2_profile`) is
-     profile-parameterized: the preserve leg (`recombination_preserve_crates_execute`) ships,
-     classifying + executing the composition set under `--preserve-encodings`. The json leg is the
-     next reuse: build a `Layer2Profile` sourced from `ALL_PROFILES["json"]`
-     (`--json-serde-derives=true --json-schema-export=true`), `--emit-tests=true --wasm=false`,
-     `cargo test` the rust crate (catching the serde-derive / schemars compile class, e.g. the
-     historical JSON-schema turbofish bug), with `JSON_ONLY_PANIC_CLASSES` / `LAYER2_JSON_KNOWN_BAD`
-     ledgers as the sweep surfaces classes. Decision to record in the test's doc comment: whether to
-     also `cargo check` the emitted json-schema surface if it lives outside the rust crate's `cargo
-     test` reach. Keeping one profile per gate is the `feature_corpus_compiles` wall-clock trade-off;
-     each profile carries its own scratch root + `CARGO_TARGET_DIR` so the serde/schemars feature
-     set doesn't thrash the default cache.
    - **wasm surface.** Layer 2 generates `--wasm=false`; the wasm emission path is only
      generation-classified indirectly. A wasm-side batch (generate `--wasm=true`, `cargo check` the
      wasm crate) is the cheap extension; the wasm-ABI matrix owns the systematic per-shape surface.
