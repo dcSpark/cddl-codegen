@@ -1568,3 +1568,54 @@ fn recombination_wasm_crates_check() {
         executed_floor: 803,
     });
 }
+
+// ---- ledger hygiene ---------------------------------------------------------------------------------
+/// Ledger-key SHAPE floor — the mechanical guard for a review-caught class: a panic-ledger key that
+/// pins ONLY the panicking file/function with no message component (a bare
+/// `fn cddl_codegen::generation::<symbol>` substring) silently absorbs every FUTURE distinct panic
+/// class in that function, because the normalized panic format is `<msg> @ <file> @ fn <symbol>`
+/// and a symbol-only substring matches all of them. Panic-ledger keys must therefore lead with
+/// message text (a message-only key is fine — it is the original convention; message+file+fn is the
+/// tightest). Layer-2 known-bad keys have the analogous hazard in the desc space: a key with no
+/// desc-axis label (`shape=`/`outer=`/`inner=`/`filler=`) could absorb unrelated compositions.
+/// Cheap and always-on; vacuity-immune (empty profile ledgers simply contribute no keys).
+#[test]
+fn ledger_key_shape_floor() {
+    let panic_ledgers: &[(&str, &[(&str, &str)])] = &[
+        ("KNOWN_PANIC_CLASSES", KNOWN_PANIC_CLASSES),
+        ("PRESERVE_ONLY_PANIC_CLASSES", PRESERVE_ONLY_PANIC_CLASSES),
+        ("JSON_ONLY_PANIC_CLASSES", JSON_ONLY_PANIC_CLASSES),
+        ("WASM_ONLY_PANIC_CLASSES", WASM_ONLY_PANIC_CLASSES),
+    ];
+    for (name, ledger) in panic_ledgers {
+        for (key, cite) in *ledger {
+            let k = key.trim_start();
+            assert!(
+                !k.is_empty()
+                    && !k.starts_with("fn ")
+                    && !k.starts_with("src/")
+                    && !k.starts_with('@'),
+                "{name} key `{key}` pins only a file/function (no message component) — it would \
+                 absorb every future distinct panic class at that site; lead with the message text \
+                 (cite: {cite})"
+            );
+        }
+    }
+    let known_bad_ledgers: &[(&str, &[(&str, &str)])] = &[
+        ("LAYER2_KNOWN_BAD", LAYER2_KNOWN_BAD),
+        ("LAYER2_PRESERVE_KNOWN_BAD", LAYER2_PRESERVE_KNOWN_BAD),
+        ("LAYER2_JSON_KNOWN_BAD", LAYER2_JSON_KNOWN_BAD),
+        ("LAYER2_WASM_KNOWN_BAD", LAYER2_WASM_KNOWN_BAD),
+    ];
+    for (name, ledger) in known_bad_ledgers {
+        for (key, cite) in *ledger {
+            assert!(
+                ["shape=", "outer=", "inner=", "filler="]
+                    .iter()
+                    .any(|axis| key.contains(axis)),
+                "{name} key `{key}` carries no desc-axis label (shape=/outer=/inner=/filler=) — \
+                 too generic, could absorb unrelated compositions (cite: {cite})"
+            );
+        }
+    }
+}
