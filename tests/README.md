@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the ten `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the eleven `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -305,11 +305,14 @@ rev: the current ledger is `cddl-matrix/README.md` § "Upstream oracle gaps"; e.
 does not enforce control ops over a `uint` target) AND it is *not fully decorrelated*: it parses
 the `.cddl` with the same dcSpark `cddl` fork at the same pinned rev as the generator's own front end
 (`CDDL_ORACLE_DEP`), so a **fork-level misparse** (grammar/AST bug that corrupts generator IR and this
-oracle's spec-interpretation identically) escapes it. That specific gap is now covered by a *lineage*-
-decorrelated second sweep — the harness-side ruby `cddl` gem in `ir_conformance_corpus` (below), which
-shares no parser with the fork — but this rust oracle's own caveat still holds: it remains a *second*
-oracle, never the sole one. Because the validator validates against a spec's first type rule only, the
-helper prepends a synthetic root aliasing the rule under test.
+oracle's spec-interpretation identically) escapes it. `CDDL_ORACLE_DEP` is behaviorally checked before
+the corpus gate by `rust_oracle_fingerprint_preflight`, using the same
+`cddl-matrix/oracle_fingerprint.json` probe set that `verify.ts` uses for the `RUST_CDDL` binary; a
+wrong rev, a stale gap pin, or an emptied probe file fails as a harness error before fixture generation.
+That still does not decorrelate parser lineage, so the specific fork-misparse class is covered by the
+harness-side ruby `cddl` gem in `ir_conformance_corpus` (below), which shares no parser with the fork.
+Because the validator validates against a spec's first type rule only, the helper prepends a synthetic
+root aliasing the rule under test.
 
 It's wired into the `preserve-encodings` fixture (the richest hand-written round-trip surface, and the
 one whose whole point — irregular definite/indefinite encodings — most needs an independent structural
@@ -746,16 +749,21 @@ out of even the local tier's `cargo test` because it adds the heavy `cddl` dep t
 
 ```sh
 cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture   # ~1 min
+cargo test --bin cddl-codegen rust_oracle_fingerprint -- --ignored --nocapture # preflight only
 ```
 
-For every `tests/corpus/*.cddl` it generates with `--emit-tests --emit-tests-conformance`, appends
+Before the corpus loop, the gate generates a tiny `fingerprint_probe` crate under the same scratch root,
+injects `CDDL_ORACLE_DEP`, and executes every shared fingerprint probe through the exact parser and
+validator entrypoints the conformance oracle trusts. A mismatch panics with the failing probe names and
+the same special note for `prelude-number-float-rejects` as the matrix verifier. Then, for every
+`tests/corpus/*.cddl`, it generates with `--emit-tests --emit-tests-conformance`, appends
 `CDDL_ORACLE_DEP` + the shared oracle helpers, copies the fixture in as
 `cddl_conformance_source.cddl`, and `cargo test`s the crate under one shared `CARGO_TARGET_DIR` (so
-`cddl` compiles once). The scratch root is keyed by checkout path and wiped at start, so the gate
-holds an advisory lock (`acquire_scratch_lock`) for its whole run: a second invocation from the same
-checkout waits for the first (printing a grep-stable "waiting for it to finish" message) rather than
-`remove_dir_all`ing its crates mid-run — same-checkout concurrent runs serialize while the shared
-target cache is preserved. Two curated lists, each empirically justified:
+`cddl` compiles once). The scratch root is keyed by checkout path and wiped at start, so the gate holds
+an advisory lock (`acquire_scratch_lock`) for its whole run: a second invocation from the same checkout
+waits for the first (printing a grep-stable "waiting for it to finish" message) rather than
+`remove_dir_all`ing its crates mid-run — same-checkout concurrent runs serialize while the shared target
+cache is preserved. Two curated lists, each empirically justified:
 
 - **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
   `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed

@@ -41,11 +41,6 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Extend the rust-oracle fingerprint to `ir_conformance_corpus`.** `verify.ts`'s
-  `runOracleFingerprint` now refuses a wrong `RUST_CDDL` at startup, but the rust-side conformance gate
-  `ir_conformance_corpus` (`src/tests/integration_tests.rs`) still trusts its `RUST_CDDL` oracle blind —
-  the remaining oracle-pin surface. Extend the behavioral fingerprint to that consumer (or share the
-  probe set) so a wrong-oracle conformance run fails as loudly as a wrong-oracle `verify.ts` run.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
@@ -89,9 +84,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   includes it, so a bare float against `number` wrongly fails validation; one-line fix + repro in
   `draft/rust-cddl-number-float-gap.md`): the decode-conformance arm-coverage floor can then mint a real
   float `prelude.number` accept vector. FIRST flip the `prelude-number-float-rejects` probe in
-  `verify.ts`'s `ORACLE_FINGERPRINT` (it deliberately pins this gap OPEN, so the fixed oracle is
-  refused at startup — its HARNESS FAILURE note points back here; no `verify.ts` invocation below can
-  run before this). Then remove `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
+  `cddl-matrix/oracle_fingerprint.json` (it deliberately pins this gap OPEN, and the shared file gates
+  both `verify.ts`'s `RUST_CDDL` binary preflight and `ir_conformance_corpus`'s `CDDL_ORACLE_DEP` crate
+  preflight, so a fixed oracle is refused before either consumer can run stale). Then remove
+  `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
   (`cddl-matrix/lib.ts`) — or let `project_decode_conformance.ts` § 7's stale-guard force it after
   `verify.ts --mint-decode-foreign --only=prelude.number` — then prune the README gap entry and that
   draft.

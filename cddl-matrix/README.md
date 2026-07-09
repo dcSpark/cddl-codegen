@@ -210,15 +210,17 @@ cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–7 are
 gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
 class, ledgered honestly); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
-version string cannot tell the pinned build apart from a wrong-branch rebuild, so `verify.ts` refuses to
-run against a wrong oracle via the startup behavioral fingerprint `runOracleFingerprint` (const
-`ORACLE_FINGERPRINT`): a handful of pinned probe inputs whose accept/reject exits are unique to the
-local-fixes fixes, checked before the probe loop on every path (normal probe, `--mint-decode-foreign`,
-`--smoke`). A wrong-branch rebuild — or a stock `cargo install cddl` — therefore fails loudly at startup
-(`HARNESS FAILURE`) in under a second instead of minting mixed evidence. The fingerprint runs at STARTUP
-only, so **pin the oracle to an immutable copy for a long run**: a rebuild MID-run still swaps the oracle
-silently (that default path is an ACTIVE development tree), which is exactly what the `cp`-the-binary-
-somewhere-immutable-and-point-`RUST_CDDL`-there practice prevents.
+version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
+behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`
+checks the `RUST_CDDL` binary at startup (const `ORACLE_FINGERPRINT`), and
+`ir_conformance_corpus` checks the generated-crate `CDDL_ORACLE_DEP` crate before corpus work. The
+file holds a handful of pinned probe inputs whose accept/reject exits are unique to the local-fixes
+fixes; a gap close-out flips one probe file and both consumers refuse a stale or unexpectedly fixed
+oracle consistently. A wrong-branch rebuild — or a stock `cargo install cddl` — therefore fails loudly
+at startup (`HARNESS FAILURE`) in under a second instead of minting mixed evidence. The binary
+fingerprint runs at STARTUP only, so **pin the oracle to an immutable copy for a long run**: a rebuild
+MID-run still swaps the oracle silently (that default path is an ACTIVE development tree), which is
+exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there practice prevents.
 
 1. **uint-target control-op under-enforcement** (released 0.10.x): `validate` does not enforce
    control operators over a `uint` target — it accepts a boundary violation like `0x0b` (11) against
@@ -284,11 +286,12 @@ somewhere-immutable-and-point-`RUST_CDDL`-there practice prevents.
    consumers sit on this gap: the decode-conformance **arm-coverage floor** (§ "Decode-direction
    conformance" in `tests/README.md`) — `prelude.number`'s float arm cannot be minted through the
    two-oracle accept gate, so its class is carried in `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`), the floor's
-   stale-guarded exemption ledger — and the oracle fingerprint's `prelude-number-float-rejects` probe
-   (`ORACLE_FINGERPRINT`, `verify.ts`), which deliberately pins the gap OPEN so an oracle where it is
-   silently fixed cannot mint against the stale exemption. Both flip together via the close-out steps
-   in `ROADMAP.md` § findings (fingerprint probe first — a fixed oracle is refused at startup until
-   it is consciously re-pinned). Repro + the one-line fork-fix + prune steps:
+   stale-guarded exemption ledger — and the shared oracle fingerprint's
+   `prelude-number-float-rejects` probe (`cddl-matrix/oracle_fingerprint.json`), which deliberately
+   pins the gap OPEN so an oracle where it is silently fixed cannot mint against the stale exemption.
+   Both flip together via the close-out steps in `ROADMAP.md` § findings (fingerprint probe first — a
+   fixed oracle is refused by both consumers until it is consciously re-pinned). Repro + the one-line
+   fork-fix + prune steps:
    `draft/rust-cddl-number-float-gap.md`.
 
 ## Gotchas (read before touching the support seam or probe examples)
