@@ -470,13 +470,14 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (`append_raw_bytes_defs`) to ctor-arg minting; the latter needs the user macro definitions in scope
   (the `tests/wasm-macro-crate` pattern). Either close them or record compile-verdict fallback as the
   permanent posture and prune this item.
-- **Multifile placement: behavioral upgrade on top of the (now-green) compile floor.**
+- **Multifile placement: behavioral upgrade on top of the compile floor.**
   `multifile_matrix_compiles` is a compile floor — a green placement cell is not semantically
-  verified. Its three historical module-placement error classes (E0583 alias/table-only
-  serialization stub, E0432 anonymous same-shape table import scope, E0433 cross-module named `.cbor`
-  inner-type import) are all fixed, so every cell now compiles and this upgrade is unblocked: mirror
-  the wasm-matrix compile→round-trip upgrade — generate the placement cells `--emit-tests` and run
-  the minted module, so cross-module wiring is executed rather than only type-checked.
+  verified. Mirror the wasm-matrix compile→round-trip upgrade: generate the placement cells
+  `--emit-tests` and run the minted module, so cross-module wiring is executed rather than only
+  type-checked. The floor is green for every cell except the two pinned `collrec` array-wrapper
+  cells (§ findings): flip those first, or start from the green cells and let the upgrade absorb
+  them when they flip — either way the upgrade must not silently skip a red cell (inherit the
+  four-state skip-ledger contract).
 
 ## Explicitly out of scope (decided, not overlooked)
 
