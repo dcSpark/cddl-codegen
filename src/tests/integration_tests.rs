@@ -3335,6 +3335,194 @@ fn cddl_oracle_dep_rev_matches_cargo_toml() {
     );
 }
 
+fn cddl_oracle_dep_rev() -> &'static str {
+    CDDL_ORACLE_DEP
+        .split("rev = \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("CDDL_ORACLE_DEP must contain a rev")
+}
+
+fn rust_source_string_literal(s: &str) -> String {
+    format!("{s:?}")
+}
+
+fn oracle_fingerprint_probe_string<'a>(probe: &'a serde_json::Value, field: &str) -> &'a str {
+    probe
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_else(|| panic!("oracle_fingerprint.json probe has missing/invalid `{field}`"))
+}
+
+fn oracle_fingerprint_probe_bool(probe: &serde_json::Value, field: &str) -> bool {
+    probe
+        .get(field)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| panic!("oracle_fingerprint.json probe has missing/invalid `{field}`"))
+}
+
+fn oracle_fingerprint_hex_bytes(name: &str, hex: &str) -> Vec<u8> {
+    assert!(
+        hex.len().is_multiple_of(2),
+        "oracle_fingerprint.json probe `{name}` has odd-length cborHex `{hex}`"
+    );
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or_else(|e| {
+                panic!("oracle_fingerprint.json probe `{name}` has invalid cborHex `{hex}`: {e}")
+            })
+        })
+        .collect()
+}
+
+fn oracle_fingerprint_byte_slice_literal(bytes: &[u8]) -> String {
+    let items = bytes
+        .iter()
+        .map(|b| format!("0x{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("&[{items}]")
+}
+
+fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir: &std::path::Path) {
+    let fingerprint_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("cddl-matrix/oracle_fingerprint.json");
+    let fingerprint_text = std::fs::read_to_string(&fingerprint_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", fingerprint_path.display()));
+    let fingerprint: serde_json::Value = serde_json::from_str(&fingerprint_text)
+        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", fingerprint_path.display()));
+    let probes = fingerprint
+        .get("probes")
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or_else(|| panic!("{} must contain a probes array", fingerprint_path.display()));
+    assert!(
+        probes.len() >= 5,
+        "{} contains only {} probe(s); the oracle fingerprint anti-vacuity floor is 5",
+        fingerprint_path.display(),
+        probes.len()
+    );
+
+    let crate_dir = scratch_root.join("fingerprint_probe");
+    let _ = std::fs::remove_dir_all(&crate_dir);
+    std::fs::create_dir_all(crate_dir.join("src"))
+        .unwrap_or_else(|e| panic!("cannot create {}: {e}", crate_dir.join("src").display()));
+    std::fs::write(
+        crate_dir.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"cddl_oracle_fingerprint_probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\n{}",
+            CDDL_ORACLE_DEP
+        ),
+    )
+    .unwrap_or_else(|e| panic!("cannot write probe Cargo.toml: {e}"));
+
+    let rev = cddl_oracle_dep_rev();
+    let mut main_rs =
+        String::from("fn main() {\n    let mut failures: Vec<String> = Vec::new();\n");
+    for probe in probes {
+        let name = oracle_fingerprint_probe_string(probe, "name");
+        let spec = oracle_fingerprint_probe_string(probe, "spec");
+        let mode = oracle_fingerprint_probe_string(probe, "mode");
+        let expect_ok = oracle_fingerprint_probe_bool(probe, "expectOk");
+        let why = oracle_fingerprint_probe_string(probe, "why");
+        let expected = if expect_ok { "OK" } else { "ERR" };
+        match mode {
+            "compile" => {
+                main_rs.push_str(&format!(
+                    "    let observed = cddl::parser::cddl_from_str({}, false).is_ok();\n",
+                    rust_source_string_literal(spec)
+                ));
+                main_rs.push_str(&format!(
+                    "    if observed != {expect_ok} {{\n        failures.push(format!(\"  - probe '{{}}': spec {{:?}}; expected {expected}, observed {{}}. {{}}\", {}, {}, if observed {{ \"OK\" }} else {{ \"ERR\" }}, {}));\n    }}\n",
+                    rust_source_string_literal(name),
+                    rust_source_string_literal(spec),
+                    rust_source_string_literal(why)
+                ));
+            }
+            "validate" => {
+                let cbor_hex = probe
+                    .get("cborHex")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| {
+                        panic!("oracle_fingerprint.json validate probe `{name}` is missing cborHex")
+                    });
+                let bytes = oracle_fingerprint_hex_bytes(name, cbor_hex);
+                main_rs.push_str(&format!(
+                    "    let bytes: &[u8] = {};\n    let observed = cddl::validate_cbor_from_slice({}, bytes, None).is_ok();\n",
+                    oracle_fingerprint_byte_slice_literal(&bytes),
+                    rust_source_string_literal(spec)
+                ));
+                main_rs.push_str(&format!(
+                    "    if observed != {expect_ok} {{\n        failures.push(format!(\"  - probe '{{}}': spec {{:?}} cbor 0x{{}}; expected {expected}, observed {{}}. {{}}\", {}, {}, {}, if observed {{ \"OK\" }} else {{ \"ERR\" }}, {}));\n    }}\n",
+                    rust_source_string_literal(name),
+                    rust_source_string_literal(spec),
+                    rust_source_string_literal(cbor_hex),
+                    rust_source_string_literal(why)
+                ));
+            }
+            other => panic!("oracle_fingerprint.json probe `{name}` has unknown mode `{other}`"),
+        }
+    }
+    main_rs.push_str(&format!(
+        "    if failures.is_empty() {{\n        println!(\"rust cddl crate fingerprint OK ({{}} probes - CDDL_ORACLE_DEP rev {})\", {});\n    }} else {{\n        eprintln!(\"rust cddl crate fingerprint MISMATCH - failing probe(s):\");\n        for failure in failures {{ eprintln!(\"{{failure}}\"); }}\n        std::process::exit(1);\n    }}\n}}\n",
+        rev,
+        probes.len()
+    ));
+    std::fs::write(crate_dir.join("src/main.rs"), main_rs)
+        .unwrap_or_else(|e| panic!("cannot write probe main.rs: {e}"));
+
+    let output = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&crate_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to run rust oracle fingerprint probe crate: {e}"));
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output.status.success() {
+        let mut message = format!(
+            "HARNESS FAILURE: rust oracle fingerprint MISMATCH — CDDL_ORACLE_DEP rev {rev} does not \
+             behave like the pinned oracle. Failing probe(s):\n{combined}\nThe pinned oracle is the \
+             fork's `local-fixes` branch @ 2c7548e, injected through CDDL_ORACLE_DEP. Recover by \
+             updating CDDL_ORACLE_DEP only after consciously re-validating the shared probe set in \
+             cddl-matrix/oracle_fingerprint.json."
+        );
+        if combined.contains("prelude-number-float-rejects") {
+            message.push_str(
+                "\nNOTE: the 'prelude-number-float-rejects' probe pins gap #7 as OPEN on purpose. \
+                 If the oracle LEGITIMATELY moved (a fixed rust `cddl` that now accepts a float \
+                 against `number`), re-pin CONSCIOUSLY: update cddl-matrix/oracle_fingerprint.json \
+                 TOGETHER with the close-out steps in cddl-matrix/ROADMAP.md findings (the \
+                 prelude-`number` float entry — re-mint prelude.number via `verify.ts \
+                 --mint-decode-foreign --only=prelude.number` and prune DECODE_FLOOR_ARM_EXEMPT). \
+                 Do NOT just delete the probe.",
+            );
+        }
+        panic!("{message}");
+    }
+    print!("{combined}");
+}
+
+#[test]
+#[ignore = "manual oracle-crate fingerprint preflight: cargo test --bin cddl-codegen rust_oracle_fingerprint -- --ignored --nocapture"]
+fn rust_oracle_fingerprint() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!(
+        "cddl_codegen_rust_oracle_fingerprint_{:016x}",
+        checkout_hash()
+    );
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+    rust_oracle_fingerprint_preflight(&root, &target_dir);
+}
+
 #[test]
 fn preserve_encodings() {
     use std::str::FromStr;
@@ -3612,6 +3800,15 @@ fn ir_conformance_corpus() {
         return;
     }
 
+    let scratch_name = format!("cddl_codegen_ir_conformance_{:016x}", checkout_hash());
+    // Hold this for the whole gate: same-checkout concurrent runs serialize on it instead of
+    // deleting each other's crates via the `remove_dir_all` below.
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+    rust_oracle_fingerprint_preflight(&root, &target_dir);
+
     // Fixtures whose known IR bug makes the minted value spec-violating: the oracle MUST reject it.
     // (Empirically verified — see this gate's docs and tests/README.md § "IR-bug conformance oracle".)
     //
@@ -3807,14 +4004,6 @@ fn ir_conformance_corpus() {
     }
 
     let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
-
-    let scratch_name = format!("cddl_codegen_ir_conformance_{:016x}", checkout_hash());
-    // Hold this for the whole gate: same-checkout concurrent runs serialize on it instead of
-    // deleting each other's crates via the `remove_dir_all` below.
-    let _scratch_lock = acquire_scratch_lock(&scratch_name);
-    let root = std::env::temp_dir().join(&scratch_name);
-    let _ = std::fs::remove_dir_all(&root);
-    let target_dir = root.join("target");
 
     // The oracle's distinctive panic message (assert_cddl_conforms) — proves an expected-fail
     // fixture failed *for the right reason*, not via some unrelated compile/test break.

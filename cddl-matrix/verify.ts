@@ -337,8 +337,10 @@ if (altCoverageResult.problems.some(p => p.includes("extraction yielded"))) {
 // gaps"). Every local branch reports version 0.10.6, so a version string cannot tell the pinned
 // `local-fixes` @ 2c7548e build apart from a wrong-branch rebuild — and evidence minted against the
 // wrong oracle looks EXACTLY like evidence minted against the pinned one. This behavioral fingerprint
-// is the guard the version string can't be: a handful of pinned probe inputs whose accept/reject exits
-// are UNIQUE to the local-fixes fixes. Discriminating power (why each probe is here):
+// is the guard the version string can't be: a handful of pinned probe inputs from
+// oracle_fingerprint.json whose accept/reject exits are UNIQUE to the local-fixes fixes. The same JSON
+// is consumed by `integration_tests::rust_oracle_fingerprint` for the generated-crate
+// `CDDL_ORACLE_DEP` crate preflight. Discriminating power (why each probe is here):
 //   • WIP branch `non-uint-ranges` (0.10.6 + the non-uint-range fix only, NOT 2c7548e/773b723) fails 1–2;
 //   • released/crates.io 0.10.x fails 1–3;
 //   • an always-accept stub fails 4–5;   • a post-fix FUTURE build fails 5.
@@ -351,18 +353,55 @@ interface FingerprintProbe {
   name: string; spec: string; mode: "compile" | "validate"; cborHex?: string;
   expectZeroExit: boolean; why: string;
 }
-const ORACLE_FINGERPRINT: FingerprintProbe[] = [
-  { name: "radix-literal-parse", spec: "a = 0x14", mode: "compile", expectZeroExit: true,
-    why: "radix uint literals parse (local-fixes @ 2c7548e); released 0.10.x mis-lexes 0x14 as 'Invalid hexfloat' and fails compile." },
-  { name: "control-op-array-entry", spec: "h = [x]\nx = uint .size 2", mode: "validate", cborHex: "811912b2", expectZeroExit: true,
-    why: "control-op-carrying rule as a sole array entry validates the ENTRY not the whole array (773b723); released 0.10.x checks [4786] against the rule and rejects." },
-  { name: "nonuint-range-accept", spec: "x = -10..10", mode: "validate", cborHex: "24", expectZeroExit: true,
-    why: "non-uint-endpoint range accepts an in-window instance -5 (885c61c); released 0.10.x blanket-rejects every instance of a non-uint-endpoint range." },
-  { name: "nonuint-range-reject", spec: "x = -10..10", mode: "validate", cborHex: "0b", expectZeroExit: false,
-    why: "enforcement control: 11 is out of the -10..10 window and MUST reject — guards against a stub/always-accept binary and confirms the range fix ENFORCES rather than accept-alls." },
-  { name: "prelude-number-float-rejects", spec: "x = number", mode: "validate", cborHex: "fa4048f5c3", expectZeroExit: false,
-    why: "prelude `number` still REJECTS a float (open gap #7 at 2c7548e, deliberately pinned OPEN); DECODE_FLOOR_ARM_EXEMPT['prelude.number/7'] (lib.ts) and its stale-guard depend on this gap being open, so an oracle where it is FIXED must not silently mint." },
-];
+
+function loadOracleFingerprint(): FingerprintProbe[] {
+  const path = join(ROOT, "oracle_fingerprint.json");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    console.error(`HARNESS FAILURE: rust oracle fingerprint probe set could not be read from '${path}': ${e}`);
+    process.exit(2);
+  }
+  const fail = (msg: string): never => {
+    console.error(`HARNESS FAILURE: rust oracle fingerprint probe set invalid (${path}): ${msg}`);
+    process.exit(2);
+  };
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { probes?: unknown }).probes)) {
+    fail("top-level object must contain a probes array");
+  }
+  const loaded: FingerprintProbe[] = [];
+  for (const [i, p] of (raw as { probes: unknown[] }).probes.entries()) {
+    if (!p || typeof p !== "object") fail(`probe[${i}] must be an object`);
+    const probe = p as Record<string, unknown>;
+    const name = probe.name;
+    const spec = probe.spec;
+    const mode = probe.mode;
+    const cborHex = probe.cborHex;
+    const expectOk = probe.expectOk;
+    const why = probe.why;
+    if (typeof name !== "string" || name.length === 0) fail(`probe[${i}] has missing/invalid name`);
+    if (typeof spec !== "string") fail(`probe '${name}' has missing/invalid spec`);
+    if (mode !== "compile" && mode !== "validate") fail(`probe '${name}' has unknown mode ${JSON.stringify(mode)}`);
+    if (mode === "validate" && typeof cborHex !== "string") fail(`probe '${name}' is validate mode but missing cborHex`);
+    if (cborHex !== undefined && typeof cborHex !== "string") fail(`probe '${name}' has non-string cborHex`);
+    if (typeof expectOk !== "boolean") fail(`probe '${name}' has missing/invalid expectOk`);
+    if (typeof why !== "string") fail(`probe '${name}' has missing/invalid why`);
+    const parsedMode = mode as "compile" | "validate";
+    loaded.push({
+      name: name as string,
+      spec: spec as string,
+      mode: parsedMode,
+      cborHex: cborHex as string | undefined,
+      expectZeroExit: expectOk as boolean,
+      why: why as string,
+    });
+  }
+  if (loaded.length < 5) fail(`probe count ${loaded.length} is below anti-vacuity floor 5`);
+  return loaded;
+}
+
+const ORACLE_FINGERPRINT: FingerprintProbe[] = loadOracleFingerprint();
 // Hoisted so it can be called at startup before its lexical position and on every entry path. Writes its
 // own fp.cddl/fp.cbor under probeDir (created by the caller just before invocation). `exit > 0` (not
 // `!== 0`) satisfies a nonzero expectation so a timeout/signal kill (negative exit) reads as a MISMATCH,
