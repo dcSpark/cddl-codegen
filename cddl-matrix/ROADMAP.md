@@ -318,6 +318,24 @@ are ledgered here (that's what the probe/gate error messages point at).
     following field — a `.cbor` float payload mis-frames the buffer), and
     `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` (a `[null]`-carrying arm never matches its
     own serialization).
+- **Two compile-class families remaining from the recombination fuzzer's PRESERVE layer-2 sweep**
+  (`recombination_preserve_crates_execute`: generation is ok under `--preserve-encodings=true`, the
+  DEFAULT-profile crate compiles + round-trips, but the preserve crate fails `cargo build`). These
+  are preserve-ONLY compile bugs, invisible to the default layer-2 gate; each is held in the sweep's
+  `LAYER2_PRESERVE_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded) with THIS entry as its pin,
+  and each is a candidate cddl-codegen fix:
+  - **A CBOR tag wrapping a range/control-constrained integer mis-shapes the preserve deserialize
+    tuple** (E0308: `expected a tuple with 2 elements, found one with 3`): `#6.11(int .ne 1)`,
+    `#6.11(-10...10)` / `#6.11(-10..10)` and their nint variants, and the same inside a group-choice
+    arm (`[ ga: #6.11(-10...-3) // tstr ]`). The tag-content deserialize destructures a 2-tuple
+    `(value, Option<Sz>)` but the constrained-primitive arm returns the 3-tuple `(value,
+    inner_tag_encoding, inner_encoding)` under preserve. Same E0308 tag-deserialize family as the
+    review-caught preserve-only regression on tag-wrapped fixed-value members (`[v: #6.1(null)]`,
+    pinned by `tests/corpus/fixed_bool_member.cddl`) — this is the range/control-constrained cell of
+    that class, which is exactly what the preserve escalation sweeps.
+  - **A composite (array) map key mis-compiles under preserve** (E0382: use of moved value
+    `index_0_key`): `[{ [+ uint] => uint }]` — a map whose KEY is an array-of-one-or-more builds the
+    key encoding by moving a binding it later reuses. Default-profile the same spec compiles + round-trips.
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
@@ -386,6 +404,16 @@ are ledgered here (that's what the probe/gate error messages point at).
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
   float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
   hitting the same native-float-under-preserve `unimplemented!`).
+- **A CBOR tag wrapping `any` panics generation under `--preserve-encodings`** — `t = #6.11(any)`
+  reaches generation (unlike bare `[any]` / `{ k: any }`, which panic earlier at the shared
+  `generic_instances` assert in intermediate.rs under both profiles) and unwraps `None` in
+  `encoding_fields_impl` (generation.rs) building the tag's encoding field, because `any` carries no
+  encoding metadata to attach one. Default-profile the same spec panics at that earlier
+  `generic_instances` assert (the any-in-member family, pinned by `tests/robustness/any_member.cddl`),
+  so this is a preserve-only divergence surfaced by the recombination fuzzer's preserve layer-2 sweep
+  (held in its `PRESERVE_ONLY_PANIC_CLASSES` ledger citing this entry; the `any` construct is
+  unsupported in these positions regardless). Candidate fix belongs with the broader `any`-support
+  question, not the preserve path specifically.
 - Two float-adjacent **deliberate graceful rejections — boundaries to keep, not gaps to close
   blindly**: `.ne` over a float (the integer min>max exclusion hack has no principled float
   encoding) and a decimal bound on an integer-primitive head (`uint .le 10.5` — silently flooring

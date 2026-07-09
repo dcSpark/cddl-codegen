@@ -289,9 +289,15 @@ export const REGISTRY: Gate[] = [
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "identifier_hazard_crates_compile", "--", "--ignored"],
     ignoredTest: "identifier_hazard_crates_compile", desc: "identifier-hazard sweep standalone compile gate (manual, #[ignore]d)" },
   { id: "recombination_crates_execute", tier: "full", kind: "cmd",
-    cmd: ["cargo", "test", "--bin", "cddl-codegen", "recombination_crates_execute", "--", "--ignored", "--nocapture"],
+    // Full module path + `--exact`: the sibling `recombination_preserve_crates_execute` gate must not
+    // cross-select under cargo's default substring matching (and vice versa).
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_crates_execute", "--", "--exact", "--ignored", "--nocapture"],
     ignoredTest: "recombination_crates_execute",
-    desc: "recombination fuzzer layer 2: batched --emit-tests execution of the ok compositions (manual, #[ignore]d)" },
+    desc: "recombination fuzzer layer 2 (default profile): batched --emit-tests execution of the ok compositions (manual, #[ignore]d)" },
+  { id: "recombination_preserve_crates_execute", tier: "full", kind: "cmd",
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_preserve_crates_execute", "--", "--exact", "--ignored", "--nocapture"],
+    ignoredTest: "recombination_preserve_crates_execute",
+    desc: "recombination fuzzer layer 2 (preserve profile): --preserve-encodings escalation of the ok compositions (manual, #[ignore]d)" },
   { id: "ir_conformance_corpus", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
     ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },

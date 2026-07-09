@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the seven `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the eight `#[ignore]`d gates `wasm_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `ir_conformance_corpus` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -1193,6 +1193,27 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   emitted round-trip/reject tests, not just compiling. A failing batch is re-attributed by rerunning
   members individually; a failing member outside the cited `LAYER2_KNOWN_BAD` ledger (desc-substring
   keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow.
+- `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation
+  of layer 2, driven by the SAME shared runner (`run_layer2_profile`) parameterized with a different
+  `Layer2Profile`. Its profile flags are sourced from `src/tests/mod.rs`'s `ALL_PROFILES` by name
+  (asserted found, never re-hard-coded), so `classify_all` runs the composition set under
+  `--preserve-encodings=true`; the batches then generate `--preserve-encodings=true
+  --emit-tests=true --wasm=false` and `cargo test`. Motivation is a proven escaped regression: a
+  preserve-only E0308 on tag-wrapped fixed-value members (`[v: #6.1(null)]`) passed every
+  default-profile gate and was caught only by review — a preserve batch over the same compositions
+  fails loudly on it. Classifying under preserve PANICS for classes that are ok/graceful under
+  default (native floats as members; a tag over a type-choice/enum; a tag wrapping `any`); those live
+  in `PRESERVE_ONLY_PANIC_CLASSES` (checked after the shared `KNOWN_PANIC_CLASSES` allowlist, each
+  citing a `cddl-matrix/ROADMAP.md` § findings entry, vacuity-guarded), and a preserve panic matching
+  neither ledger is a NEW finding. Per-profile scratch root + `CARGO_TARGET_DIR`
+  (`cddl_codegen_recomb_<profile>_<hash>`) keep profiles from clobbering each other. Exclusion set =
+  the shared `LAYER2_KNOWN_BAD` ∪ the profile's own `LAYER2_PRESERVE_KNOWN_BAD`; only the profile's
+  own ledger is vacuity-guarded here (a shared entry can legitimately match zero preserve-ok
+  compositions because preserve generation panics for that class earlier — the shared ledger's guard
+  stays in the default gate). NAMING GOTCHA: the name deliberately does NOT contain the
+  `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
+  path so cargo's substring selection can't cross-select. The json/wasm legs are future work
+  (`tests/TESTING_ROADMAP.md`), plugging into the same runner.
 
 Adding a member kind / role template / construct shape extends the swept surface; re-tune the
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled
