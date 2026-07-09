@@ -205,7 +205,7 @@ impl MapFooToFoo {
     }
 
     pub fn keys(&self) -> FooList {
-        FooList(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+        FooList(self.0.keys().cloned().collect::<Vec<_>>())
     }
 }
 

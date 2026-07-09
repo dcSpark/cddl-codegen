@@ -997,7 +997,7 @@ impl EmbeddedTable {
     }
 
     pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<u64> {
@@ -1042,7 +1042,7 @@ impl EmbeddedText {
     }
 
     pub fn get(&self, key: String) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -1896,7 +1896,7 @@ impl MapTextToText {
     }
 
     pub fn get(&self, key: String) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -2029,7 +2029,7 @@ impl MapWithDefaults {
     }
 
     pub fn set_key_1(&mut self, key_1: DefaultUint) {
-        self.0.key_1 = key_1.into()
+        self.0.key_1 = key_1
     }
 
     pub fn key_1(&self) -> DefaultUint {
@@ -3652,7 +3652,7 @@ impl StandaloneTable {
     }
 
     pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<u64> {
@@ -3697,7 +3697,7 @@ impl StandaloneText {
     }
 
     pub fn get(&self, key: String) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -3767,10 +3767,10 @@ impl StructWithCustomSerialization {
         tagged2: u64,
     ) -> Self {
         Self(cddl_lib::StructWithCustomSerialization::new(
-            custom_bytes.clone().into(),
+            custom_bytes.clone(),
             field,
-            overridden.clone().into(),
-            tagged1.clone().into(),
+            overridden.clone(),
+            tagged1.clone(),
             tagged2,
         ))
     }
@@ -3813,7 +3813,7 @@ impl Table {
     }
 
     pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<u64> {

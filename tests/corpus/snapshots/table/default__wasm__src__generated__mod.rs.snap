@@ -34,7 +34,7 @@ impl Table {
     }
 
     pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).map(|v| v.clone())
+        self.0.get(&key).cloned()
     }
 
     pub fn keys(&self) -> Vec<u64> {

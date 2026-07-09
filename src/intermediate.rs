@@ -2207,10 +2207,18 @@ impl ConceptualRustType {
                 AliasIdent::Rust(_) if matches!(&**ty, Self::Optional(_)) => {
                     ty.from_wasm_boundary_clone(types, expr, can_fail)
                 }
-                AliasIdent::Rust(_) => vec![
-                    ToWasmBoundaryOperations::Code(expr_cloned),
-                    ToWasmBoundaryOperations::Into,
-                ],
+                AliasIdent::Rust(_) => {
+                    if self.directly_wasm_exposable(types)
+                        && matches!(ty.resolve_alias_shallow(), Self::Primitive(_))
+                    {
+                        vec![ToWasmBoundaryOperations::Code(expr_cloned)]
+                    } else {
+                        vec![
+                            ToWasmBoundaryOperations::Code(expr_cloned),
+                            ToWasmBoundaryOperations::Into,
+                        ]
+                    }
+                }
             },
             Self::Optional(ty) => ty
                 .conceptual_type

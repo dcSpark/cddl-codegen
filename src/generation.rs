@@ -5655,12 +5655,12 @@ fn codegen_table_type(
         // not directly exposable) THROUGH the Option, yielding `Option<Option<Wrapper>>` which the
         // trailing `value_flatten` collapses to `Option<Wrapper>`.
         if value_nullable_inner_exposable {
-            ".map(|v| v.clone())"
+            ".cloned()"
         } else {
             ".map(|v| v.clone().map(Into::into))"
         }
     } else if value_type.directly_wasm_exposable(types) {
-        ".map(|v| v.clone())"
+        ".cloned()"
     } else {
         ".map(|v| v.clone().into())"
     };
@@ -5734,16 +5734,16 @@ fn codegen_table_type(
     keys.arg_ref_self()
         .ret(keys_type.for_wasm_return(types))
         .vis("pub");
+    let key_clone = if key_type.is_copy(types) {
+        ".keys().copied()"
+    } else {
+        ".keys().cloned()"
+    };
     if keys_type.directly_wasm_exposable(types) {
-        let key_clone = if key_type.is_copy(types) {
-            ".keys().copied()"
-        } else {
-            ".keys().cloned()"
-        };
         keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
     } else {
         keys.line(format!(
-            "{}(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())",
+            "{}(self.0{key_clone}.collect::<Vec<_>>())",
             keys_type.for_wasm_return(types)
         ));
     }
