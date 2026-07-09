@@ -460,6 +460,23 @@ composition-space cross-check that complements this matrix's curated per-shape g
   representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
   alias recursion could reach — now enumerated as the `collrec` cells (red, pinned; § findings).
+- **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
+  SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
+  flag-gated emission surface can still be built against single-file assumptions and break only
+  under DIRECTORY input, invisible to every single-file gate. Proven instance: the `--emit-tests`
+  test modules landed at the generated root naming submodule types bare, so EVERY multifile
+  `--emit-tests` crate was E0433-uncompilable — no standing gate generated that flag under
+  directory input, so the class surfaced only when the round-trip upgrade's recon exercised it
+  (fixed; pinned always-on by `emit_tests_multifile_scope_imports`, executed at matrix breadth by
+  `multifile_matrix_roundtrips`). The rule going forward: a NEW flag-gated emission surface must
+  state its input-mode posture in the same change — exercised under directory input, or recorded
+  single-file-only with the reason. Known surfaces never generated under directory input today, to
+  exercise (a multifile cell/profile) or record as a deliberate posture when next touched:
+  `--emit-tests-conformance` (the corpus fixtures are all single-file), the `--wasm-*-macro` modes
+  (their compile gates use single-file inputs), `--common-import-override` (the `extern_deps` pins
+  are single-file), and EXECUTION of the generated json-gen crate (`wasm/json-gen`) against
+  cross-module types (the multifile `json`-profile sweep compiles rust+wasm; the json-gen runner
+  gate is single-file-only).
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
