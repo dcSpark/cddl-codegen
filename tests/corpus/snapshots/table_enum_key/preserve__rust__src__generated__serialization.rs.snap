@@ -99,12 +99,11 @@ impl Deserialize for EnumKeyHolder {
                         cbor_event::LenSz::Len(n, _) => (choice_keyed_table.len() as u64) < n,
                         cbor_event::LenSz::Indefinite => true,
                     } {
-                        if let cbor_event::LenSz::Indefinite = choice_keyed_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special
-                                && raw.special_break()?
-                            {
-                                break;
-                            }
+                        if matches!(choice_keyed_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
                         }
                         let choice_keyed_key = Ikey::deserialize(raw)?;
                         let (choice_keyed_value, choice_keyed_value_encoding) = raw
@@ -139,12 +138,11 @@ impl Deserialize for EnumKeyHolder {
                         cbor_event::LenSz::Len(n, _) => (int_keyed_table.len() as u64) < n,
                         cbor_event::LenSz::Indefinite => true,
                     } {
-                        if let cbor_event::LenSz::Indefinite = int_keyed_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special
-                                && raw.special_break()?
-                            {
-                                break;
-                            }
+                        if matches!(int_keyed_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
                         }
                         let int_keyed_key = Int::deserialize(raw)?;
                         let (int_keyed_value, int_keyed_value_encoding) = raw

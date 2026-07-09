@@ -714,12 +714,11 @@ impl Deserialize for DeeplyNested {
                         cbor_event::LenSz::Len(n, _) => (data_table.len() as u64) < n,
                         cbor_event::LenSz::Indefinite => true,
                     } {
-                        if let cbor_event::LenSz::Indefinite = data_len {
-                            if raw.cbor_type()? == cbor_event::Type::Special
-                                && raw.special_break()?
-                            {
-                                break;
-                            }
+                        if matches!(data_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
                         }
                         let (data_key, data_key_tag_encoding, data_key_encoding) =
                             match raw.tag_sz()? {
@@ -743,12 +742,11 @@ impl Deserialize for DeeplyNested {
                             cbor_event::LenSz::Len(n, _) => (data_value_table.len() as u64) < n,
                             cbor_event::LenSz::Indefinite => true,
                         } {
-                            if let cbor_event::LenSz::Indefinite = data_value_len {
-                                if raw.cbor_type()? == cbor_event::Type::Special
-                                    && raw.special_break()?
-                                {
-                                    break;
-                                }
+                            if matches!(data_value_len, cbor_event::LenSz::Indefinite)
+                                && raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                             let (data_value_key, data_value_key_encoding) =
                                 raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
@@ -763,12 +761,11 @@ impl Deserialize for DeeplyNested {
                                 }
                                 cbor_event::LenSz::Indefinite => true,
                             } {
-                                if let cbor_event::LenSz::Indefinite = data_value_value_len {
-                                    if raw.cbor_type()? == cbor_event::Type::Special
-                                        && raw.special_break()?
-                                    {
-                                        break;
-                                    }
+                                if matches!(data_value_value_len, cbor_event::LenSz::Indefinite)
+                                    && raw.cbor_type()? == cbor_event::Type::Special
+                                    && raw.special_break()?
+                                {
+                                    break;
                                 }
                                 let (
                                     data_value_value_key,
@@ -796,12 +793,11 @@ impl Deserialize for DeeplyNested {
                                     }
                                     cbor_event::LenSz::Indefinite => true,
                                 } {
-                                    if let cbor_event::LenSz::Indefinite = len {
-                                        if raw.cbor_type()? == cbor_event::Type::Special
-                                            && raw.special_break()?
-                                        {
-                                            break;
-                                        }
+                                    if matches!(len, cbor_event::LenSz::Indefinite)
+                                        && raw.cbor_type()? == cbor_event::Type::Special
+                                        && raw.special_break()?
+                                    {
+                                        break;
                                     }
                                     let (
                                         data_value_value_value_elem,
@@ -822,12 +818,11 @@ impl Deserialize for DeeplyNested {
                                                 }
                                                 cbor_event::LenSz::Indefinite => true,
                                             } {
-                                                if let cbor_event::LenSz::Indefinite = len {
-                                                    if raw.cbor_type()? == cbor_event::Type::Special
-                                                        && raw.special_break()?
-                                                    {
-                                                        break;
-                                                    }
+                                                if matches!(len, cbor_event::LenSz::Indefinite)
+                                                    && raw.cbor_type()? == cbor_event::Type::Special
+                                                    && raw.special_break()?
+                                                {
+                                                    break;
                                                 }
                                                 let (
                                                     data_value_value_value_elem_elem,
@@ -1961,12 +1956,11 @@ impl Deserialize for TableArrMembers {
                                             }
                                             cbor_event::LenSz::Indefinite => true,
                                         } {
-                                            if let cbor_event::LenSz::Indefinite = len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special
-                                                    && raw.special_break()?
-                                                {
-                                                    break;
-                                                }
+                                            if matches!(len, cbor_event::LenSz::Indefinite)
+                                                && raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
                                             }
                                             let (arr_elem, arr_elem_encoding) = raw
                                                 .unsigned_integer_sz()
@@ -2014,12 +2008,11 @@ impl Deserialize for TableArrMembers {
                                             }
                                             cbor_event::LenSz::Indefinite => true,
                                         } {
-                                            if let cbor_event::LenSz::Indefinite = len {
-                                                if raw.cbor_type()? == cbor_event::Type::Special
-                                                    && raw.special_break()?
-                                                {
-                                                    break;
-                                                }
+                                            if matches!(len, cbor_event::LenSz::Indefinite)
+                                                && raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
                                             }
                                             arr2_arr.push(Foo::deserialize(raw)?);
                                         }
@@ -2055,12 +2048,11 @@ impl Deserialize for TableArrMembers {
                                         }
                                         cbor_event::LenSz::Indefinite => true,
                                     } {
-                                        if let cbor_event::LenSz::Indefinite = table_len {
-                                            if raw.cbor_type()? == cbor_event::Type::Special
-                                                && raw.special_break()?
-                                            {
-                                                break;
-                                            }
+                                        if matches!(table_len, cbor_event::LenSz::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
                                         }
                                         let (table_key, table_key_encoding) = raw
                                             .unsigned_integer_sz()
@@ -2369,12 +2361,11 @@ impl Deserialize for TypeChoice {
                             cbor_event::LenSz::Len(n, _) => (arr_u64_arr.len() as u64) < n,
                             cbor_event::LenSz::Indefinite => true,
                         } {
-                            if let cbor_event::LenSz::Indefinite = len {
-                                if raw.cbor_type()? == cbor_event::Type::Special
-                                    && raw.special_break()?
-                                {
-                                    break;
-                                }
+                            if matches!(len, cbor_event::LenSz::Indefinite)
+                                && raw.cbor_type()? == cbor_event::Type::Special
+                                && raw.special_break()?
+                            {
+                                break;
                             }
                             let (arr_u64_elem, arr_u64_elem_encoding) =
                                 raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;

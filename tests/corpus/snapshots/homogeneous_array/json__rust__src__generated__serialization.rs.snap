@@ -38,10 +38,11 @@ impl Deserialize for BoolHolder {
                     cbor_event::Len::Len(n) => (b_arr.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     b_arr.push(bool::deserialize(raw)?);
                 }

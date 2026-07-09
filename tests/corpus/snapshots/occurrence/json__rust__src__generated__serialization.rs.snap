@@ -46,10 +46,11 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::Len::Len(n) => (o_arr.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     o_arr.push(raw.unsigned_integer()?);
                 }
@@ -71,10 +72,11 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::Len::Len(n) => (b_arr.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     b_arr.push(raw.unsigned_integer()?);
                 }
@@ -96,10 +98,11 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::Len::Len(n) => (inline_bounded_arr.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     inline_bounded_arr.push(raw.text()?);
                 }

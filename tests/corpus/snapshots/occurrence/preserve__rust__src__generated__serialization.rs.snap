@@ -114,10 +114,11 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::LenSz::Len(n, _) => (o_arr.len() as u64) < n,
                     cbor_event::LenSz::Indefinite => true,
                 } {
-                    if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     let (o_elem, o_elem_encoding) =
                         raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
@@ -144,10 +145,11 @@ impl Deserialize for OccurrenceHolder {
                     cbor_event::LenSz::Len(n, _) => (b_arr.len() as u64) < n,
                     cbor_event::LenSz::Indefinite => true,
                 } {
-                    if let cbor_event::LenSz::Indefinite = len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     let (b_elem, b_elem_encoding) =
                         raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
@@ -175,12 +177,11 @@ impl Deserialize for OccurrenceHolder {
                         cbor_event::LenSz::Len(n, _) => (inline_bounded_arr.len() as u64) < n,
                         cbor_event::LenSz::Indefinite => true,
                     } {
-                        if let cbor_event::LenSz::Indefinite = len {
-                            if raw.cbor_type()? == cbor_event::Type::Special
-                                && raw.special_break()?
-                            {
-                                break;
-                            }
+                        if matches!(len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
                         }
                         let (inline_bounded_elem, inline_bounded_elem_encoding) = raw
                             .text_sz()

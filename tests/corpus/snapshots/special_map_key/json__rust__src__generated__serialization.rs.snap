@@ -44,10 +44,11 @@ impl Deserialize for BkeyHolder {
                     cbor_event::Len::Len(n) => (named_table.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = named_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(named_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     let named_key = bool::deserialize(raw)?;
                     let named_value = raw.unsigned_integer()?;
@@ -68,10 +69,11 @@ impl Deserialize for BkeyHolder {
                     cbor_event::Len::Len(n) => (inline_table.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
-                    if let cbor_event::Len::Indefinite = inline_len {
-                        if raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
-                            break;
-                        }
+                    if matches!(inline_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
                     }
                     let inline_key = bool::deserialize(raw)?;
                     let inline_value = raw.unsigned_integer()?;

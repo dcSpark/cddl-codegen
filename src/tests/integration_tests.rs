@@ -2196,10 +2196,6 @@ fn generated_code_clippy_clean() {
                 // generator stops emitting the shape. The gate stays hard-red on any NEW lint class
                 // and on clippy::no_effect regressions (which are NOT allowed below).
                 "-A",
-                "clippy::collapsible_if",
-                "-A",
-                "clippy::write_with_newline",
-                "-A",
                 "clippy::derivable_impls",
                 "-A",
                 "clippy::type_complexity",
@@ -3194,11 +3190,14 @@ fn corpus_special_map_key_supported() {
         "special_map_key snapshot no longer deserializes the bool key through the element path"
     );
     // every Special peek in the map loops must be gated on the indefinite case — an ungated
-    // `raw.cbor_type()? == cbor_event::Type::Special` check would eat definite-length bool keys
+    // `raw.cbor_type()? == cbor_event::Type::Special` check would eat definite-length bool keys.
+    // The RHS counts the gate by its indefinite PATTERN (always on one line with its comma —
+    // rustfmt wraps the `&&` chain, never the `matches!` args), not by a bare `if matches!(`,
+    // so an unrelated future matches-gate can't pad the count.
     assert_eq!(
-        ser.matches("if raw.cbor_type()? == cbor_event::Type::Special")
+        ser.matches("raw.cbor_type()? == cbor_event::Type::Special")
             .count(),
-        ser.matches("if let cbor_event::Len::Indefinite = ").count(),
+        ser.matches(", cbor_event::Len::Indefinite)").count(),
         "special_map_key snapshot has a Special-class peek not gated on an indefinite length — \
          the break-interception bug on definite-length special keys is back"
     );
