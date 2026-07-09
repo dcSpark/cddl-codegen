@@ -23,6 +23,14 @@
 #           `expect_err`: a substring the generated decoder's error Display must contain when it
 #           rejects the vector — the rust replay gate pins the rejection REASON, not just that it
 #           rejects (a stray length check / unrelated error path would decode-reject but mis-name).
+#       An accept vector may ALSO carry a class, but ONLY class="over-acceptance": spec-INVALID CBOR
+#       (source="hand") that the generated decoder CURRENTLY (wrongly) ACCEPTS — a certified silent-
+#       acceptance bug with no fix yet. Both oracles REJECT it (re-validated spec-INVALID at each mint,
+#       the same inverse gate as class="constraint"); the replay gate asserts the decoder STILL
+#       accepts it, so the pin flips LOUDLY when a fix lands — the signal to promote it to
+#       class="constraint" (+ expect_err) and flip the row's Q4 enforce projection green. Never pruned
+#       mechanically; `reason` cites the ledgered finding + the promotion flow. A plain accept vector
+#       (spec-VALID, correctly accepted) carries NO class.
 # pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.
 
 [[row]]
@@ -1365,6 +1373,71 @@ expect = "accept"
 
 [[row.vector]]
 hex = "a1616b1910d1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
+axis = "containment"
+example = "m = { tstr => uint }"
+spec = "__probe_holder = [0, m]\nm = { tstr => uint }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "hand"
+expect = "accept"
+class = "over-acceptance"
+reason = "A no-occurrence type-domain arrow entry (`{ tstr => uint }`) requires EXACTLY ONE entry (RFC8610 §2.1/§3.2 — no occurrence indicator = exactly once), but cddl-codegen table-detects it to the same 0..N BTreeMap as the `* tstr => uint` spelling (generation byte-identical, verified by diff), so the generated decoder WRONGLY ACCEPTS this holder-wrapped EMPTY map `[0, {}]` (= 8200a0) that both oracles reject; ledgered in cddl-matrix/ROADMAP.md § findings, \"A no-occurrence type-domain arrow entry\". Promotion flow: when exactly-once is honored (a required single entry), the decoder will REJECT this — the replay pin flips loudly — so promote this vector to class=\"constraint\" with an expect_err and move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts; when the no-occurrence spelling is instead rejected at generation, the row flips unsupported and this catalog row is dropped."
+
+[[row.vector]]
+hex = "8200a165527562696b190f30"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16662656c69656619063f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16756696c6e697573190ea7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a168626f676579696e671904ad"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a169696e63657373616e7419025e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16973696d756c61746564190f99"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16a746162756c6174696e671902ed"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16b696e646967657374696f6e191172"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16c70616c696d707365737427731908d2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16c72616365636f757273652773190af4"
 source = "ruby-generate"
 expect = "accept"
 

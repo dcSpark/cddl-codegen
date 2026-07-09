@@ -27,10 +27,13 @@
  *   - **decode**  — two tiers, catalog is the strong source: `expect="accept"` vectors ⇒
  *     `yes (foreign: N)` (the encoder-INDEPENDENT signal, the whole point of Q4); else a round-tripping
  *     row is `yes (via round-trip)` (weak — conflated with encode); else mirrors round-trip.
- *   - **enforce-constraint** — `class="constraint"` reject vectors ⇒ `yes (bounded-reject: N)`; else a
- *     supported enforcement-bearing row (`ctl.*` except `ctl.default`, plus `memberkey.cut` — Q4's prose
- *     names `.size`/cut enforcement) is `unverified (no reject vector)` — an honest gap, NOT `yes`; else
- *     `n/a` (the construct carries no rejectable constraint — e.g. `ctl.default` governs an absent field).
+ *   - **enforce-constraint** — a `class="over-acceptance"` accept vector DOMINATES ⇒ `no (over-accepts: M)`
+ *     (a certified spec-INVALID instance the decoder wrongly accepts — an enforcement claim with a proven
+ *     hole is not "yes", and it beats both `yes` and `unverified`); else `class="constraint"` reject
+ *     vectors ⇒ `yes (bounded-reject: N)`; else a supported enforcement-bearing row (`ctl.*` except
+ *     `ctl.default`, plus `memberkey.cut` — Q4's prose names `.size`/cut enforcement) is
+ *     `unverified (no reject vector)` — an honest gap, NOT `yes`; else `n/a` (the construct carries no
+ *     rejectable constraint — e.g. `ctl.default` governs an absent field).
  *
  * THE ENCODE/DECODE ASYMMETRY (the honest label — read before trusting a column):
  *   - **decode** has INDEPENDENT per-construct evidence: the `catalog.toml` foreign vectors are CBOR our
@@ -104,17 +107,26 @@ const acceptVecById = new Map<string, number>();
 // wrong-rejection pin, pruned when fixed); they are NOT enforcement evidence and must not project
 // enforce=yes (the conflation this query previously carried).
 const constraintVecById = new Map<string, number>();
+// overAcceptVecById: ONLY class="over-acceptance" accept vectors — spec-INVALID CBOR the decoder
+// CURRENTLY (wrongly) accepts (a certified silent-acceptance pin, no fix yet). This is NOT foreign
+// decode evidence (so it is excluded from acceptVecById), and it DOMINATES the enforce projection: a
+// row carrying one projects `enforce = no (over-accepts)`, the honest fact that an enforcement claim
+// with a certified hole is not "yes".
+const overAcceptVecById = new Map<string, number>();
 for (const r of catalog.row ?? []) {
   const id = typeof r.id === "string" ? r.id : undefined;
   if (id === undefined) continue;
   let accepts = 0;
   let constraints = 0;
+  let overAccepts = 0;
   for (const v of r.vector ?? []) {
-    if (v.expect === "accept") accepts++;
+    if (v.expect === "accept" && v.class === "over-acceptance") overAccepts++;
+    else if (v.expect === "accept") accepts++;
     else if (v.expect === "reject" && v.class === "constraint") constraints++;
   }
   if (accepts) acceptVecById.set(id, accepts);
   if (constraints) constraintVecById.set(id, constraints);
+  if (overAccepts) overAcceptVecById.set(id, overAccepts);
 }
 const anyConstraintVectors = constraintVecById.size > 0;
 
@@ -190,7 +202,10 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // silently truncated via a bare `as u16` cast, so its boundary vector decoded cleanly. The decode
 // path now width-guards every narrowing cast and the row carries its committed constraint vector,
 // so it projects `enforce = yes` like the rest; the episode is kept in README.md § "Gotchas" (the
-// over-acceptance gotcha) as the motivating example for an over-acceptance vector class.)
+// over-acceptance gotcha) as the motivating example for the SHIPPED over-acceptance vector class.)
+// A row carrying a class="over-acceptance" vector (a CERTIFIED, unfixed silent-acceptance bug — the
+// no-occurrence type-domain arrow widening) projects the stronger honest fact `no (over-accepts: M)`
+// (deriveEnforce, dominating) instead of hiding the hole as `unverified`.
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
@@ -198,6 +213,10 @@ function carriesConstraint(id: string): boolean {
 }
 
 function deriveEnforce(id: string, status: string): string {
+  // Over-acceptance DOMINATES: a certified spec-INVALID instance the decoder wrongly accepts is a
+  // proven enforcement hole, so it wins over `yes (bounded-reject)` and over `unverified`.
+  const over = overAcceptVecById.get(id);
+  if (over) return `no (over-accepts: ${over})`;
   const n = constraintVecById.get(id);
   if (n) return `yes (bounded-reject: ${n})`;
   if (carriesConstraint(id) && status === "supported") return "unverified (no reject vector)";
@@ -241,6 +260,10 @@ function invariantProblems(rs: Directional[]): string[] {
     // enforce = yes ⇒ the id has ≥1 class="constraint" reject vector (the only enforcement evidence).
     if (r.enforce.startsWith("yes") && !(constraintVecById.get(r.id)! > 0))
       problems.push(`\`${r.id}\`: enforce=${JSON.stringify(r.enforce)} but the catalog has no class="constraint" reject vector for it`);
+    // A row must never project enforce=yes while carrying an over-acceptance vector — an enforcement
+    // claim with a certified hole is not "yes" (the over-acceptance dominance rule in deriveEnforce).
+    if (r.enforce.startsWith("yes") && (overAcceptVecById.get(r.id) ?? 0) > 0)
+      problems.push(`\`${r.id}\`: enforce=${JSON.stringify(r.enforce)} but the row carries a class="over-acceptance" vector — a certified over-acceptance hole must project \`no (over-accepts)\`, never \`yes\``);
     // decode foreign:N (the independent signal) ⇒ the id is a `supported` matrix row (else stale catalog).
     if (r.decode.startsWith("yes (foreign") && statusById.get(r.id) !== "supported")
       problems.push(`\`${r.id}\`: decode reads foreign vectors but the matrix row is \`${statusById.get(r.id)}\`, not \`supported\` — the catalog is stale (re-mint or drop)`);
@@ -348,6 +371,14 @@ function vacuityProblems(rs: Directional[]): string[] {
   // member decode width-guards the narrowing cast and the row's constraint vector is committed —
   // so every supported enforcement-bearing row is green. The pin stays as the decay gate.
   const EXPECTED_ENFORCE_UNVERIFIED: string[] = [];
+  // The over-accepts set is pinned the SAME way: a row carrying a class="over-acceptance" vector
+  // projects `enforce = no (over-accepts: M)` — the SHIPPED over-acceptance vector class (catalog pin
+  // + rust replay leg asserting "still wrongly accepts" + this projection). One entry today: the
+  // no-occurrence type-domain arrow row, whose empty-map instance the decoder widens exactly-once to
+  // 0..N (cddl-matrix/ROADMAP.md § findings, "A no-occurrence type-domain arrow entry"). When the
+  // decoder is fixed the replay pin flips loudly, the vector is promoted to class="constraint", and
+  // the row id moves from here to EXPECTED_ENFORCE_YES.
+  const EXPECTED_ENFORCE_OVERACCEPTS = ["contain.map-key.memberkey.type1.tstr_arrow_nooccur"];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);
@@ -360,6 +391,14 @@ function vacuityProblems(rs: Directional[]): string[] {
     if (JSON.stringify(unverifiedSet) !== JSON.stringify(wantUnverified))
       problems.push(`enforce=unverified set drifted:\n    got : ${JSON.stringify(unverifiedSet)}\n    want: ${JSON.stringify(wantUnverified)}\n    (a new supported enforcement-bearing row must land WITH its reject vector — or be consciously pinned here with a reason, like ctl.size.uint's verified truncation gap)`);
   }
+  // The over-accepts set is asserted UNCONDITIONALLY (not gated on constraint vectors): it has its own
+  // committed vector class, so a broken catalog read (empty set) fails against the non-empty pin, and a
+  // NEW certified over-acceptance landing (or the seed's replay pin flipping to a fix) must be a
+  // conscious edit here, exactly like the green/unverified sets.
+  const overAcceptSet = rs.filter(r => r.enforce.startsWith("no (over-accepts")).map(r => r.id).sort();
+  const wantOverAccept = [...EXPECTED_ENFORCE_OVERACCEPTS].sort();
+  if (JSON.stringify(overAcceptSet) !== JSON.stringify(wantOverAccept))
+    problems.push(`enforce=no (over-accepts) set drifted:\n    got : ${JSON.stringify(overAcceptSet)}\n    want: ${JSON.stringify(wantOverAccept)}\n    (a certified over-acceptance pin lands WITH its class="over-acceptance" catalog vector; when the fix lands and the replay pin flips, promote the vector to class="constraint" and move the row id to EXPECTED_ENFORCE_YES)`);
   return problems;
 }
 
@@ -384,10 +423,12 @@ if (isCheck) {
   const foreignDecode = rows.filter(r => r.decode.startsWith("yes (foreign")).length;
   const enforceYes = rows.filter(r => r.enforce.startsWith("yes")).length;
   const enforceUnverified = rows.filter(r => r.enforce.startsWith("unverified")).length;
+  const enforceOverAccepts = rows.filter(r => r.enforce.startsWith("no (over-accepts")).length;
   console.log(
     `Q4 directional gate OK — ${rows.length} constructs projected · ` +
       `${foreignDecode} decode=foreign (independent) · ` +
-      `${enforceYes} enforce=yes (bounded-reject), ${enforceUnverified} enforce=unverified (enforcement axis, no reject vector yet)`,
+      `${enforceYes} enforce=yes (bounded-reject), ${enforceUnverified} enforce=unverified (no reject vector yet), ` +
+      `${enforceOverAccepts} enforce=no (over-accepts, certified over-acceptance pin)`,
   );
   process.exit(0);
 }

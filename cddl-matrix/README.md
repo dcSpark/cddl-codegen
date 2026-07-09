@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 82 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->222 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 83 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->223 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -187,6 +187,16 @@ discriminatingly (the released 0.10.x CLI misvalidates any control-op-carrying r
 an array entry — gap #4 below; that fork fix is also what let the row's accept side mint).
 `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
+**A certified over-acceptance projects `enforce = no (over-accepts: M)`** — the fifth enforce value,
+dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"` accept vector:
+spec-INVALID CBOR (both oracles reject at mint, the same inverse gate as `class="constraint"`) the
+generated decoder CURRENTLY (wrongly) ACCEPTS. One row carries it today —
+`contain.map-key.memberkey.type1.tstr_arrow_nooccur` (the no-occurrence type-domain arrow widening,
+ROADMAP § findings) — asserted exactly by `query_q4_directional.ts --check`'s
+`EXPECTED_ENFORCE_OVERACCEPTS` pin, the decay twin of the green/unverified sets. When the decoder is
+fixed the replay pin flips, the vector is promoted to `class="constraint"`, and the row moves to the
+green set.
+
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
 
@@ -313,9 +323,16 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   rejection instead of silently mis-decoding it) and the float range/control windows (NaN-safe
   accept-form checks + bounds-enforcing wrapper newtypes for top-level ranges, pinned by the
   `float_bounds` / `top_level_float_ranges` fixtures and the `rangeop.*.float` constraint vectors).
-  The systemic over-acceptance vector class stays an open `tests/TESTING_ROADMAP.md` item, cited by
-  its exact title: "Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder
-  wrongly ACCEPTS".
+  For a CERTIFIED-but-unfixed silent-acceptance bug (no enforcing fix yet), the catalog's
+  `class="over-acceptance"` vector class is the standing pin: spec-INVALID CBOR (both oracles reject)
+  the decoder CURRENTLY wrongly accepts, replayed by `decode_conformance_replay`'s over-acceptance leg
+  as "still wrongly accepts" (`over_accept_N`) so the pin flips LOUDLY when a fix lands, and projected
+  by `query_q4_directional.ts` as the honest `enforce = no (over-accepts: M)` (dominating `yes`/
+  `unverified`) instead of hiding the hole. The seed instance is the no-occurrence type-domain arrow
+  widening (`contain.map-key.memberkey.type1.tstr_arrow_nooccur` — `{ tstr => uint }` table-detected
+  to 0..N, its empty-map instance `8200a0` wrongly accepted; § "Directional support evidence (Q4)",
+  ROADMAP § findings). When the fix lands the vector is promoted to `class="constraint"` (+ `expect_err`)
+  and the row moves to Q4's enforce-green pin.
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped

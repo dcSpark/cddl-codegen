@@ -211,29 +211,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
      reject rows and unsupported-row decode catalog absence), so depth is not the current bottleneck.
 
-6. **Over-acceptance pins: a catalog vector class for spec-INVALID CBOR the decoder wrongly
-   ACCEPTS (low, but the gap is proven).** The decode-conformance catalog can only express two
-   truths — "must accept" and "durably rejects" (`class="constraint"`) — so a known
-   silent-acceptance bug has NO standing pin. The motivating instance is since fixed (the
-   `uint .size 2` member decode truncating 65536 to 0 via a bare `as u16` — every narrowing cast on
-   the deserialize path is now width-guarded, pinned by `signed_ints_width_rejects` /
-   `width_collapse_rejects` and the row's committed constraint vector; ROADMAP § findings), but the
-   SYSTEMIC gap it exposed stands: while that bug was live, the catalog had nowhere to hold the
-   certified-invalid vector, so the row's projection collapsed to `enforce = unverified` —
-   indistinguishable at the Q4 level from "vector not yet minted" — and the bug was held only in
-   prose. The missing system is the `KNOWN_SILENT_DROP` / `EXPECTED_COMPILE_FAIL` pattern applied
-   to decode: a pinned vector class (e.g. `class="over-acceptance"`) for certified-spec-invalid
-   bytes the decoder CURRENTLY accepts, replayed as "still wrongly accepts" so the pin flips loudly
-   when a fix lands (prompting promotion to `class="constraint"` and the Q4 enforce-green pin). Q4
-   could then project the stronger honest fact `enforce = no (over-accepts)` instead of
-   `unverified`, and the `EXPECTED_ENFORCE_UNVERIFIED` pin in `query_q4_directional.ts` (empty
-   today) would hold genuinely-unminted rows only. This is also the F10 "over-acceptance
-   denominator" pending call made concrete — resolve them together. Unlike at filing time, a LIVE
-   instance now exists to seed the class: the no-occurrence type-domain arrow entry widening
-   (`{ k => v }` table-detected as 0..N — `cddl-matrix/ROADMAP.md` § findings, "A no-occurrence
-   type-domain arrow entry"), whose certified-invalid vector (an empty map against the
-   exactly-once spelling) has nowhere to live until this class exists.
-
 - (very very very low priority) MSRV declaration / OS matrix for GENERATED code: the templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer

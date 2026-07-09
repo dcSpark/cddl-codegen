@@ -739,6 +739,14 @@ function composeCatalog(rows: CatalogRow[]): string {
     "#           `expect_err`: a substring the generated decoder's error Display must contain when it",
     "#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it",
     "#           rejects (a stray length check / unrelated error path would decode-reject but mis-name).",
+    "#       An accept vector may ALSO carry a class, but ONLY class=\"over-acceptance\": spec-INVALID CBOR",
+    "#       (source=\"hand\") that the generated decoder CURRENTLY (wrongly) ACCEPTS — a certified silent-",
+    "#       acceptance bug with no fix yet. Both oracles REJECT it (re-validated spec-INVALID at each mint,",
+    "#       the same inverse gate as class=\"constraint\"); the replay gate asserts the decoder STILL",
+    "#       accepts it, so the pin flips LOUDLY when a fix lands — the signal to promote it to",
+    "#       class=\"constraint\" (+ expect_err) and flip the row's Q4 enforce projection green. Never pruned",
+    "#       mechanically; `reason` cites the ledgered finding + the promotion flow. A plain accept vector",
+    "#       (spec-VALID, correctly accepted) carries NO class.",
     "# pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.",
     "",
   ];
@@ -759,11 +767,13 @@ function composeCatalog(rows: CatalogRow[]): string {
         L.push(`hex = ${foreignTomlStr(v.hex)}`);
         L.push(`source = ${foreignTomlStr(v.source)}`);
         L.push(`expect = ${foreignTomlStr(v.expect)}`);
-        if (v.expect === "reject") {
-          if (v.class !== undefined) L.push(`class = ${foreignTomlStr(v.class)}`);
-          if (v.reason !== undefined) L.push(`reason = ${foreignTomlStr(v.reason)}`);
-          if (v.expect_err !== undefined) L.push(`expect_err = ${foreignTomlStr(v.expect_err)}`);
-        }
+        // class/reason/expect_err are emitted whenever present — reject pins (bug/limitation/constraint)
+        // AND class="over-acceptance" accept vectors both carry them. A plain accept vector has none, so
+        // its output is unchanged. (Guarding on `expect === "reject"` would silently strip the class and
+        // reason from an over-acceptance vector on re-mint.)
+        if (v.class !== undefined) L.push(`class = ${foreignTomlStr(v.class)}`);
+        if (v.reason !== undefined) L.push(`reason = ${foreignTomlStr(v.reason)}`);
+        if (v.expect_err !== undefined) L.push(`expect_err = ${foreignTomlStr(v.expect_err)}`);
       }
     }
     L.push("");
@@ -857,7 +867,10 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
   if (!row || row.pinned_reason !== undefined || row.spec === undefined || row.type_name === undefined)
     return { foreign_vectors: 0 };                                  // no usable committed entry
   if (row.example !== matrixExample) return { foreign_vectors: 0 };  // stale entry (D6 hard-gates drift)
-  const accepts = row.vectors.filter(v => v.expect === "accept");
+  // EXCLUDE class="over-acceptance" accept vectors: they are spec-INVALID CBOR the decoder wrongly
+  // accepts, NOT spec-valid foreign decode evidence. Corroboration is spec-valid decode evidence only,
+  // and Q4 cross-checks N against the catalog's spec-valid accept count, so both sides exclude alike.
+  const accepts = row.vectors.filter(v => v.expect === "accept" && v.class !== "over-acceptance");
   const rejects = row.vectors.filter(v => v.expect === "reject");
   if (accepts.length === 0) return { foreign_vectors: 0 };
   if (foreignGenCrate(ccOutForeign, row.spec) !== 0) return { accepts_foreign: false, foreign_vectors: accepts.length };
@@ -915,15 +928,23 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   }
   const handVecs = (prev?.vectors ?? []).filter(v => v.source === "hand");
   const rejectPins = (prev?.vectors ?? []).filter(v => v.expect === "reject");
+  // class="over-acceptance" pins: spec-INVALID CBOR (source="hand") the decoder wrongly ACCEPTS. Held
+  // separately from ordinary accept candidates — they are RE-VALIDATED spec-INVALID (both oracles
+  // reject, the class="constraint" inverse gate) and committed VERBATIM, never routed through the
+  // accept two-oracle gate (which would drop them as "spec-invalid") nor pruned mechanically.
+  const overAcceptPins = (prev?.vectors ?? []).filter(v => v.expect === "accept" && v.class === "over-acceptance");
   if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0)
     return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})`);
 
-  // Two-oracle validate. Reject-intended pins take precedence over accept-intended for a shared hex.
+  // Two-oracle validate. Reject-intended and over-acceptance pins take precedence over accept-intended
+  // for a shared hex (both are spec-INVALID; an accept candidate must not shadow them).
   const rejectHexes = new Set(rejectPins.map(v => v.hex));
+  const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
+  const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
   const acDedup = new Map<string, { hex: string; source: string }>();
   for (const c of [
-    ...candidates.filter(h => !rejectHexes.has(h)).map(h => ({ hex: h, source: "ruby-generate" })),
-    ...handVecs.filter(v => v.expect === "accept" && !rejectHexes.has(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
+    ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
+    ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
   ]) if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
 
   const validatedAccept: { hex: string; source: string }[] = [];
@@ -955,7 +976,16 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
       else dropped.push(`${id}/${p.hex} (reject pin no longer spec-valid; ruby ${ruby} rust ${rust})`);
     }
   }
-  if (validatedAccept.length === 0 && validatedRejectPins.length === 0) {
+  // over-acceptance pins — the class="constraint" inverse gate (both oracles must still REJECT the
+  // spec-INVALID bytes). Kept VERBATIM (class/reason/source preserved); dropped only if it has become
+  // spec-VALID (a fix upstream / spec drift), which the log surfaces for human review.
+  const validatedOverAccept: CatalogVector[] = [];
+  for (const p of overAcceptPins) {
+    const { ruby, rust } = validateBoth(spec, p.hex);
+    if (ruby !== 0 && rust !== 0) validatedOverAccept.push(p);
+    else dropped.push(`${id}/${p.hex} (over-acceptance vector is no longer spec-INVALID per both oracles — upstream spec drift/fix; ruby ${ruby} rust ${rust})`);
+  }
+  if (validatedAccept.length === 0 && validatedRejectPins.length === 0 && validatedOverAccept.length === 0) {
     // Every candidate was contested (an oracle rejected its own generator's output, or the two
     // disagree) — an oracle-artifact class, not a decoder verdict: nothing validated ever reached our
     // decoder, so there is no vector to commit and no triage to run. Pin mechanically; the per-vector
@@ -966,6 +996,8 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   const vecs: ReplayVec[] = [
     ...validatedAccept.map((c, i) => ({ hex: c.hex, name: `${foreignIdent(id)}_a${i}`, expectOk: true })),
     ...validatedRejectPins.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_r${i}`, expectOk: false })),
+    // over-acceptance vectors: the decoder is EXPECTED to (still wrongly) accept them — expectOk true.
+    ...validatedOverAccept.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_o${i}`, expectOk: true })),
   ];
   const res = replayInDir(ccOut, vecs, decodeType);
   if (res === null) { console.error(`HARNESS FAILURE: replay crate for '${id}' failed to compile (decodeType=${decodeType}, mode=${mode}) — detection bug; refusing to mint.`); process.exit(2); }
@@ -984,6 +1016,11 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
       pinBreak.push(p.class === "constraint"
         ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
         : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+  });
+  validatedOverAccept.forEach((p, i) => {
+    outVecs.push(p);  // committed VERBATIM (class="over-acceptance", reason, source preserved)
+    if (res.get(`${foreignIdent(id)}_o${i}`) !== true)
+      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err), move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, and update the ROADMAP § findings entry`);
   });
   return { id, axis, example, spec, mode, type_name: decodeType, vectors: outVecs };
 }
