@@ -263,7 +263,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
   `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Five panic-class families surfaced by the recombination fuzzer's first sweep**
+- **Five panic-class families remaining from the recombination fuzzer's sweeps**
   (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
   the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
   which is itself the coverage gap the fuzzer exists to find):
