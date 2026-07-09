@@ -18,6 +18,7 @@ fetch https://raw.githubusercontent.com/cbor-wg/cddl/master/cddl.prelude        
 fetch https://www.iana.org/assignments/cddl/cddl-control-operators.csv                             cddl-control-operators.csv
 fetch https://raw.githubusercontent.com/cbor/test-vectors/master/appendix_a.json                   appendix_a.json
 fetch https://www.rfc-editor.org/rfc/rfc8610.txt                                                   rfc8610.txt
+fetch https://www.rfc-editor.org/rfc/rfc8949.txt                                                   rfc8949.txt
 fetch https://www.rfc-editor.org/rfc/rfc9090.txt                                                   rfc9090.txt
 fetch https://www.rfc-editor.org/rfc/rfc9165.txt                                                   rfc9165.txt
 fetch https://www.rfc-editor.org/rfc/rfc9682.txt                                                   rfc9682.txt

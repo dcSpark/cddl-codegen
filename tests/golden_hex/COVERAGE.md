@@ -9,8 +9,8 @@ Tracks which RFC 8949 Appendix A vectors the golden-vector test exercises, vs th
 encoding grid. Each ✅ asserts **both** directions (`to_cbor_bytes()` == spec bytes, and spec bytes
 round-trip back). They catch a *symmetric* encode+decode bug that round-trip tests structurally can't.
 
-Reference: RFC 8949 Appendix A — <https://www.rfc-editor.org/rfc/rfc8949#appendix-A>. For offline
-use: `curl -O https://www.rfc-editor.org/rfc/rfc8949.txt` (or the pinned `cddl-matrix/sources/appendix_a.json`).
+Reference: RFC 8949 Appendix A — <https://www.rfc-editor.org/rfc/rfc8949#appendix-A>. Both are pinned
+offline under `cddl-matrix/sources/`: the full text as `rfc8949.txt`, the vectors as `appendix_a.json`.
 
 **Framing nuance:** cddl-codegen only emits serialization for *named composite types*, so each
 primitive vector is tested as the single element of a one-element array record (`foo = [v: <prim>]`)
