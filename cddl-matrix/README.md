@@ -209,9 +209,16 @@ what "certified" means per vector family (§ Q4 above) and what the close-out st
 cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–7 are OPEN at that rev — gap 6
 gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
 class, ledgered honestly); `RUST_CDDL` defaults to that build,
-giving `verify.ts` runs an enforcing oracle. **Pin the oracle to an immutable copy for a long run** — that default path is an ACTIVE
-development tree; a rebuild mid-probe-loop would mint mixed-oracle evidence, so `cp` the binary
-somewhere immutable and point `RUST_CDDL` there first.
+giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
+version string cannot tell the pinned build apart from a wrong-branch rebuild, so `verify.ts` refuses to
+run against a wrong oracle via the startup behavioral fingerprint `runOracleFingerprint` (const
+`ORACLE_FINGERPRINT`): a handful of pinned probe inputs whose accept/reject exits are unique to the
+local-fixes fixes, checked before the probe loop on every path (normal probe, `--mint-decode-foreign`,
+`--smoke`). A wrong-branch rebuild — or a stock `cargo install cddl` — therefore fails loudly at startup
+(`HARNESS FAILURE`) in under a second instead of minting mixed evidence. The fingerprint runs at STARTUP
+only, so **pin the oracle to an immutable copy for a long run**: a rebuild MID-run still swaps the oracle
+silently (that default path is an ACTIVE development tree), which is exactly what the `cp`-the-binary-
+somewhere-immutable-and-point-`RUST_CDDL`-there practice prevents.
 
 1. **uint-target control-op under-enforcement** (released 0.10.x): `validate` does not enforce
    control operators over a `uint` target — it accepts a boundary violation like `0x0b` (11) against
@@ -373,10 +380,12 @@ numbers** — same robustness rule as the COVERAGE.md docs.
   `verify.ts`'s oracles resolve as: ruby `cddl` (`gem install --user-install cddl`; auto-resolved at
   `Gem.user_dir/bin/cddl`) and a rust `cddl` CLI via `RUST_CDDL` (defaults to the `local-fixes`
   sibling checkout — § "Upstream oracle gaps" explains why, and why to pin an immutable copy before a
-  multi-probe run; `cargo install cddl` + pointing `RUST_CDDL` at `~/.cargo/bin/cddl` works on a
-  machine without the checkout, at the cost of the five released-CLI gaps). Its generated-crate
-  compile gate reuses `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time
-  dep warm-up).
+  multi-probe run). Evidence-writing verify runs REQUIRE the pinned-behavior oracle: a stock
+  `cargo install cddl` build is refused at startup by the `runOracleFingerprint` behavioral fingerprint
+  (its five released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
+  `~/.cargo/bin/cddl` no longer produces a degraded-but-workable run — supply the `local-fixes` @
+  `2c7548e` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
+  `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time dep warm-up).
 
 ## Scope (v1)
 RFC 8610 backbone in its authoritative current form: 9682 grammar + 8610 prelude + the IANA control-op
