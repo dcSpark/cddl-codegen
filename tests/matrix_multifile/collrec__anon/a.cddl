@@ -1,0 +1,3 @@
+; cell: collrec x anon (shape defs, module a)
+foo = [a0: uint]
+recs = [* foo]

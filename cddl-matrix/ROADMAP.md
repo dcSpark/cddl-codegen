@@ -174,6 +174,26 @@ are ledgered here (that's what the probe/gate error messages point at).
   written — the stable-severable decode fix to propose there, plus the standalone repro and the
   prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
   note) — bundle it with the over-allocation report in one upstream conversation.
+- **Cross-module ARRAY structural-wrapper placement breaks both reference modes of a
+  collection-of-records shape** — the Array-arm half of the issue-138 TODO in `mark_refs`
+  (intermediate.rs), left in place when the Map arm went sole-owner-aware. `recs = [* foo]` with
+  record element `foo` in module `a`: the wasm representation needs a generated structural wrapper
+  (`FooList`) — unlike `[* uint]`, which is transparent `Vec<u64>`; that is why the original `coll`
+  shape could never probe this class. Pinned by the `collrec` cells in `tests/matrix_multifile/`
+  (`MULTIFILE_MATRIX_SKIP`), enumerated AFTER review found the `SHAPES` hole (the axis-honesty rule
+  below applied late — the cells were never green, so no gate had ever seen the shape):
+  - `collrec__anon` (E0425): the anonymous use mints `FooList` at the crate root, and the wrapper's
+    accessors name the element type `Foo` bare without importing it from `a`. Candidate fix: mint
+    the array wrapper in the element's module, or import the element type where the wrapper is
+    minted (the map side answered the analogous placement question with `table_shape_sole_owners`).
+  - `collrec__named` (E0432): the `mark_refs` alias-target recursion (the E0433 inner-type-import
+    fix) descends into the alias target, where the Array arm adds a ROOT-scope import of the
+    structural `FooList` — but a NAMED collection alias mints only its own wrapper (`Recs`), so the
+    structural name exists nowhere. Before that recursion landed, the same cell failed RUST-side
+    (E0433, the inlined-alias-import class) — the recursion traded an earlier error for this one,
+    never a green-to-red. Candidate fix: don't mint structural-wrapper imports when recursing
+    through an alias target (the alias's own wrapper subsumes them — e.g. recurse the target with
+    the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
@@ -436,7 +456,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   or a NEW position to sit in, must add the shape or role in the same change. The known role candidate
   not yet enumerated is a group-choice-arm role (the `codegen_group_choices` per-variant ctor path,
   the group-choice sibling of `tchoice-variant`). The standing questions "which representation, and
-  which boundary position, are we *not* enumerating?" deserve a periodic sweep regardless.
+  which boundary position, are we *not* enumerating?" deserve a periodic sweep regardless — and the
+  rule extends to the MULTIFILE matrix's own `SHAPES` list (`project_multifile_matrix.ts`), which
+  has a proven instance: the collection-of-records shape (`[* <record>]`, the only array whose wasm
+  representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
+  placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
+  alias recursion could reach — now enumerated as the `collrec` cells (red, pinned; § findings).
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud

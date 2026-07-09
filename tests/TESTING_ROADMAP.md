@@ -99,6 +99,16 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      synthetic breadth vs real-world depth — recombination does not replace it.
 
 4. **Small independent residuals (low).**
+   - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
+     reach — one proven instance recorded, no machinery yet.** Review of the wasm burn-down
+     retirement (dropping the identity `.into()`) exposed `Holder::new(val.clone())` in a wasm
+     ctor — a clone of an owned, last-use argument (the boundary ops clone every non-Copy expr
+     regardless of the call site's ownership). `clippy::redundant_clone` would flag it but is
+     nursery-tier, so the gate's `-D clippy::all` cannot see the class; behavior and bytes are
+     unaffected (allocation cost only). Disposition mirrors the curated rustc style-deny precedent
+     (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
+     deny only if it is currently green-able on both profiles (nursery lints carry known false
+     positives). Act on a second instance or a consumer report, not before.
    - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
      `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
      resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust
@@ -125,7 +135,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
      `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
      (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
-     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm for its 43 cells). If wall-time
+     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 46 at HEAD). If wall-time
      bites: batch cells into fewer crates, adopt `cargo-nextest` as the suite runner, or gate only
      changed cells.
    - **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
