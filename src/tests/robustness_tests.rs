@@ -737,6 +737,98 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     );
 }
 
+/// A no-occurrence type-domain arrow entry — `{ tstr => uint }`, key non-literal — is rejected
+/// gracefully: per RFC 8610 an entry with NO occurrence indicator occurs EXACTLY ONCE, but table
+/// detection routed it to the same 0..N `BTreeMap` as `{ * tstr => uint }` (generation was
+/// byte-identical, verified by diff), silently WIDENING the occurrence — the generated decoder
+/// wrongly accepted e.g. the empty map (the certified over-acceptance instance `8200a0`, formerly
+/// pinned on `contain.map-key.memberkey.type1.tstr_arrow_nooccur`). This pins the rejection, that
+/// the message carries the exactly-once rationale and the `*` remedy, that the remedy generates,
+/// and the boundaries the guard must preserve:
+///   - fixed/literal arrow keys (`{ 1 => uint }`, `{ "a" => uint }`) still route to the record
+///     path (RFC-equal to the colon spelling — the existing arrow-routing test pins equality);
+///   - the parenthesized table `{ * (tstr => uint) }` stays supported (the occurrence lives on
+///     the inline group; the inner entry's missing occur is NOT the semantic occurrence);
+///   - the occur-less parenthesized form `{ (tstr => uint) }` splices into the plain arm and is
+///     rejected there (pure grouping — semantically identical to the unparenthesized spelling);
+///   - a NESTED anonymous no-occur table (`a = [{ tstr => uint }]`) rejects through the same
+///     seam (no rule name to cite — the message still carries the rationale and remedy);
+///   - count-permitting markers (`+` / `?` / `n*m`) are OUT of scope here and keep generating
+///     (they also table-detect to an unbounded 0..N map today — a separate ledgered finding, the
+///     widened-occurrence-marker table class in cddl-matrix/ROADMAP.md § findings; these pins
+///     flip loudly when that finding is fixed).
+#[test]
+fn no_occurrence_arrow_map_entry_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_nooccur_arrow_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "nooccur_arrow_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // The finding's shape: Err with the exactly-once rationale, the rule name, and the `*` remedy.
+    let msg = run("m = { tstr => uint }\n", "nooccur").expect_err(
+        "a no-occurrence type-domain arrow entry must reject (silent 0..N widening is wrong)",
+    );
+    assert!(
+        msg.contains("exactly once") && msg.contains("rule `m`"),
+        "rejection should carry the exactly-once rationale and name the rule, got: {msg}"
+    );
+    assert!(
+        msg.contains("{ * tstr => uint }"),
+        "rejection should advertise the explicit `*` table spelling, got: {msg}"
+    );
+
+    // Remedy-works: the advertised `*` spelling generates.
+    run("m = { * tstr => uint }\n", "star")
+        .expect("the advertised `* k => v` remedy must generate");
+
+    // Fixed/literal arrow keys keep routing to the record path.
+    run("m = { 1 => uint }\n", "fixed_uint")
+        .expect("a fixed uint arrow key is a 1-field struct and must keep generating");
+    run("m = { \"a\" => uint }\n", "fixed_text")
+        .expect("a fixed text arrow key is a 1-field struct and must keep generating");
+
+    // Parenthesized boundary: `*` on the inline group is the semantic occurrence — supported;
+    // the occur-less parenthesized form is pure grouping and rejects like the plain spelling.
+    run("m = { * (tstr => uint) }\n", "paren_star").expect(
+        "`{ * (k => v) }` carries the occurrence on the inline group and must keep generating",
+    );
+    run("m = { (tstr => uint) }\n", "paren_nooccur").expect_err(
+        "`{ (k => v) }` is pure grouping around an exactly-once entry and must reject like `{ k => v }`",
+    );
+
+    // Nested anonymous position rejects through the same seam (no rule name available).
+    let nested = run("a = [{ tstr => uint }]\n", "nested")
+        .expect_err("a nested anonymous no-occur table must reject through the same seam");
+    assert!(
+        nested.contains("exactly once"),
+        "nested rejection should still carry the exactly-once rationale, got: {nested}"
+    );
+
+    // OUT-of-scope boundary pins (the widened-occurrence-marker table class, ledgered separately):
+    // count-permitting markers still table-detect and generate today. These flip loudly when that
+    // finding is fixed — retarget them to the fix then.
+    run("m = { + tstr => uint }\n", "plus")
+        .expect("`+` on a table entry keeps generating (ledgered widening, out of scope here)");
+    run("m = { ? tstr => uint }\n", "opt")
+        .expect("`?` on a table entry keeps generating (ledgered widening, out of scope here)");
+    run("m = { 2*3 tstr => uint }\n", "bounded")
+        .expect("`n*m` on a table entry keeps generating (ledgered widening, out of scope here)");
+}
+
 /// Incremental choice extension (`/=` type-choice, `//=` group-choice) that EXTENDS an
 /// already-defined identifier is rejected gracefully: `parse_rule` re-registers the identifier on
 /// each statement, so the LAST definition wins and every earlier arm is silently dropped

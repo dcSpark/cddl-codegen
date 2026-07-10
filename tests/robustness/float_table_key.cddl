@@ -14,9 +14,12 @@
 ; The composite generic-instance case (resolved only during finalize) is pinned separately in
 ; float_table_key_composite.cddl. Remedy for a real consumer: an integer/text/bytes key domain, or
 ; an ordered-float wrapper if one is ever justified (see cddl-matrix/ROADMAP.md § findings).
-a = { float64 => uint }
-b = { float32 => uint }
-c = { number => uint }
-d = { time => uint }
-e = [x: uint, { number => uint }, y: tstr]
-f = { k: { time => uint } }
+; `*`-spelled: the no-occurrence arrow spelling is itself rejected at parse (exactly-once widening,
+; `no_occurrence_arrow_map_entry_rejects_gracefully`), and finalize short-circuits on prior
+; rejections — an occur-less spelling here would pin THAT rejection instead of the float boundary.
+a = { * float64 => uint }
+b = { * float32 => uint }
+c = { * number => uint }
+d = { * time => uint }
+e = [x: uint, { * number => uint }, y: tstr]
+f = { k: { * time => uint } }

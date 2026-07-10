@@ -6,10 +6,10 @@
 ; This pins that the wasm-alias-target walk mints the wrapper (regression: the alias named an unminted
 ; class, so the wasm crate failed with `cannot find type MapPreludeBignintToU64`). The value is `uint`
 ; (not `int`) to avoid dragging in the separate undefined-`Int` extern class. The `*` occurrence is
-; deliberate: a no-occurrence `{ bignint => uint }` is spec-exactly-once yet table-detects to the SAME
-; 0..N BTreeMap (a ledgered over-acceptance — cddl-matrix/ROADMAP.md § findings), and the
-; ir-conformance oracle validates minted instances (including the empty table) against the spec, so
-; the fixture spells the occurrence the generated type actually implements.
+; deliberate: a no-occurrence `{ bignint => uint }` is spec-exactly-once and is rejected gracefully
+; at generation (exactly-once widening — pinned by no_occurrence_arrow_map_entry_rejects_gracefully),
+; and the ir-conformance oracle validates minted instances (including the empty table) against the
+; spec, so the fixture spells the occurrence the generated type actually implements.
 ; `holder` embeds it so the member/embed role compiles alongside the standalone alias.
 x = bytes .cbor { * bignint => uint }
 holder = [payload: x]

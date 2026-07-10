@@ -16,9 +16,9 @@ mint no test surface (recorded honestly in the evidence). The orthogonal **emiss
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->6 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->44 `class="constraint"` enforcement reject vectors over 26 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows: every supported row with a rejectable constraint projects
-`enforce = yes (bounded-reject)`, except the one certified over-acceptance row, which projects the
-honest `enforce = no (over-accepts)` until its ledgered fix lands (§ findings); the green,
-unverified (empty), and over-accepts sets are each pinned exactly by
+`enforce = yes (bounded-reject)`, and no row carries a certified over-acceptance (the seed instance
+was closed by graceful rejection at generation); the green, unverified (empty), and over-accepts
+(empty) sets are each pinned exactly by
 `query_q4_directional.ts --check`).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
@@ -206,25 +206,22 @@ are ledgered here (that's what the probe/gate error messages point at).
     the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
-- **A no-occurrence type-domain arrow entry (`{ k => v }`, k non-literal) table-detects to the same
-  0..N `BTreeMap` as `{ * k => v }` — the spec's exactly-once occurrence is silently widened** (an
-  over-acceptance: generation of the two spellings is byte-identical, verified by diff; the decoder
-  accepts — and `--emit-tests` mints — an empty map the spec rejects). Surfaced by
-  `ir_conformance_corpus` validating minted instances of ledger-derived corpus fixtures whose
-  minimal shapes used the no-occurrence spelling (`bytes .cbor { bignint => uint }`,
-  `{ [+ uint] => uint }`); those fixtures now spell `*` so spec and implementation agree, and their
-  header comments cite this entry. The literal-key `*_arrow_single` cells don't cover this (they
-  correctly route to the struct path); the non-literal-key no-occurrence arrow is now enumerated as
-  the row `contain.map-key.memberkey.type1.tstr_arrow_nooccur` (`{ tstr => uint }`), and its
-  certified-invalid instance — the empty map, holder-wrapped `8200a0` — lives as that row's
-  `class="over-acceptance"` catalog pin (the shipped over-acceptance vector class: catalog pin +
-  `decode_conformance_replay`'s over-acceptance leg asserting "still wrongly accepts" + the Q4
-  `enforce = no (over-accepts)` projection, `EXPECTED_ENFORCE_OVERACCEPTS`). This entry STAYS OPEN as
-  the candidate FIX: honor exactly-once (a required single entry) or reject the no-occurrence spelling
-  gracefully, recommending `*`. When the fix lands, the over-acceptance pin flips loudly (the row's
-  `over_accept_*` replay test) — promote the vector to `class="constraint"` (+ `expect_err`) and move
-  the row id from `EXPECTED_ENFORCE_OVERACCEPTS` to `EXPECTED_ENFORCE_YES`; if the spelling is instead
-  rejected at generation, the row flips unsupported and its catalog row is dropped.
+- **A COUNT-PERMITTING occurrence marker (`+` / `?` / `n*m`) on a single non-literal arrow map
+  entry table-detects to the same UNBOUNDED 0..N `BTreeMap` as `{ * k => v }` — the marker's count
+  window is silently widened.** Verified by diff: `{ + tstr => uint }`, `{ ? tstr => uint }`, and
+  `{ 2*3 tstr => uint }` all generate byte-identically to the `*` spelling (the table-detection arm
+  never reads the entry's occurrence, and `HomogenousMap` — unlike `HomogenousArray` — carries no
+  bounds), so the generated decoder wrongly accepts e.g. an empty map for `+` and a 4-entry map for
+  `2*3`. Surfaced while closing the no-occurrence-arrow sibling (that spelling is now rejected
+  gracefully — the exactly-once case was a certified over-acceptance; this entry is the remaining
+  marker family). Current behavior is pinned by the out-of-scope boundary legs of
+  `no_occurrence_arrow_map_entry_rejects_gracefully` (they flip loudly when this is fixed).
+  Candidate fix: honor the marker as map-size bounds (give `HomogenousMap` a bounds slot like
+  `HomogenousArray`'s), or reject the count-permitting markers gracefully recommending `*`. Per the
+  "Intra-alternative variation rows" expansion rule (this doc), enumeration rows with
+  `class="constraint"` boundary-violation vectors (e.g. the empty map against `+`, an over-sized
+  map against `n*m`) must land BEFORE trusting any green here — the widening is invisible to
+  round-trip tests by construction.
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a

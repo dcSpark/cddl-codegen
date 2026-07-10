@@ -1490,71 +1490,6 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
-id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
-axis = "containment"
-example = "m = { tstr => uint }"
-spec = "__probe_holder = [0, m]\nm = { tstr => uint }"
-mode = "holder"
-type_name = "ProbeHolder"
-
-[[row.vector]]
-hex = "8200a0"
-source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "A no-occurrence type-domain arrow entry (`{ tstr => uint }`) requires EXACTLY ONE entry (RFC8610 §2.1/§3.2 — no occurrence indicator = exactly once), but cddl-codegen table-detects it to the same 0..N BTreeMap as the `* tstr => uint` spelling (generation byte-identical, verified by diff), so the generated decoder WRONGLY ACCEPTS this holder-wrapped EMPTY map `[0, {}]` (= 8200a0) that both oracles reject; ledgered in cddl-matrix/ROADMAP.md § findings, \"A no-occurrence type-domain arrow entry\". Promotion flow: when exactly-once is honored (a required single entry), the decoder will REJECT this — the replay pin flips loudly — so promote this vector to class=\"constraint\" with an expect_err and move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts; when the no-occurrence spelling is instead rejected at generation, the row flips unsupported and this catalog row is dropped."
-
-[[row.vector]]
-hex = "8200a165527562696b190f30"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16662656c69656619063f"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16756696c6e697573190ea7"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a168626f676579696e671904ad"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a169696e63657373616e7419025e"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16973696d756c61746564190f99"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16a746162756c6174696e671902ed"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16b696e646967657374696f6e191172"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16c70616c696d707365737427731908d2"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16c72616365636f757273652773190af4"
-source = "ruby-generate"
-expect = "accept"
-
-[[row]]
 id = "contain.map-key.memberkey.type1.uint_arrow_multi"
 axis = "containment"
 example = "m = { 2 => uint, 1: uint }"
@@ -1905,7 +1840,7 @@ expect = "accept"
 [[row]]
 id = "contain.map-key.type2.tag"
 axis = "containment"
-example = "m = { #6.24(uint) => tstr }"
+example = "m = { * #6.24(uint) => tstr }"
 pinned_reason = "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)"
 
 [[row]]
@@ -4054,58 +3989,48 @@ expect_err = "M.a.Int because: No variant matched"
 [[row]]
 id = "memberkey.type1"
 axis = "feature"
-example = "m = { tstr => int }"
-spec = "__probe_holder = [0, m]\nm = { tstr => int }"
+example = "m = { * tstr => int }"
+spec = "__probe_holder = [0, m]\nm = { * tstr => int }"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200a1644d6174743867"
+hex = "8200a0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a16563726f7764190916"
+hex = "8200a166626f707065641905d0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a1656d75636b73390189"
+hex = "8200a167537069636127733902a6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a1657479706f73190c21"
+hex = "8200a16a617474656e75617465643884"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a166726f73747261190aa4"
+hex = "8200a2686c61636b6579277338a2656c6976656e3902e7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a16773776167676572190561"
+hex = "8200a367696e63656e73653901fe677669637475616c1908b86867756e6e65722773190174"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a168686172726f7765641864"
+hex = "8200a466486f6f76657238d9686e69676761726473190ea46b63726f636f64696c6527731909286a43616d626f6469616e7339028e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a1686c616c6c79676167190eb4"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16a666f276327736c6527733902ee"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16a74696e73656c6c696e671903ef"
+hex = "8200a46b736369656e7469737427731911c86a73746f696369736d27731906ae6b4368616e676368756e2773190758684d756e696368277319097a"
 source = "ruby-generate"
 expect = "accept"
 

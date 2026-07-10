@@ -203,9 +203,11 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // path now width-guards every narrowing cast and the row carries its committed constraint vector,
 // so it projects `enforce = yes` like the rest; the episode is kept in README.md § "Gotchas" (the
 // over-acceptance gotcha) as the motivating example for the SHIPPED over-acceptance vector class.)
-// A row carrying a class="over-acceptance" vector (a CERTIFIED, unfixed silent-acceptance bug — the
-// no-occurrence type-domain arrow widening) projects the stronger honest fact `no (over-accepts: M)`
-// (deriveEnforce, dominating) instead of hiding the hole as `unverified`.
+// A row carrying a class="over-acceptance" vector (a CERTIFIED, unfixed silent-acceptance bug)
+// projects the stronger honest fact `no (over-accepts: M)` (deriveEnforce, dominating) instead of
+// hiding the hole as `unverified`. Zero such rows at HEAD: the seed instance (the no-occurrence
+// type-domain arrow widening) was closed by graceful rejection at generation, so its row left the
+// supported set and the catalog.
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
@@ -373,12 +375,14 @@ function vacuityProblems(rs: Directional[]): string[] {
   const EXPECTED_ENFORCE_UNVERIFIED: string[] = [];
   // The over-accepts set is pinned the SAME way: a row carrying a class="over-acceptance" vector
   // projects `enforce = no (over-accepts: M)` — the SHIPPED over-acceptance vector class (catalog pin
-  // + rust replay leg asserting "still wrongly accepts" + this projection). One entry today: the
-  // no-occurrence type-domain arrow row, whose empty-map instance the decoder widens exactly-once to
-  // 0..N (cddl-matrix/ROADMAP.md § findings, "A no-occurrence type-domain arrow entry"). When the
-  // decoder is fixed the replay pin flips loudly, the vector is promoted to class="constraint", and
-  // the row id moves from here to EXPECTED_ENFORCE_YES.
-  const EXPECTED_ENFORCE_OVERACCEPTS = ["contain.map-key.memberkey.type1.tstr_arrow_nooccur"];
+  // + rust replay leg asserting "still wrongly accepts" + this projection). EMPTY today: the seed
+  // instance (the no-occurrence type-domain arrow row, whose empty-map instance the decoder widened
+  // exactly-once to 0..N) was closed by graceful rejection at generation — the "rejected at
+  // generation" branch of the promotion flow: the row flipped unsupported and its catalog row (with
+  // the pin) was dropped. The machinery stays armed: a NEW certified over-acceptance lands as a
+  // class="over-acceptance" vector and its row id here; a decoder FIX instead flips the replay pin
+  // loudly, promotes the vector to class="constraint", and moves the row id to EXPECTED_ENFORCE_YES.
+  const EXPECTED_ENFORCE_OVERACCEPTS: string[] = [];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);

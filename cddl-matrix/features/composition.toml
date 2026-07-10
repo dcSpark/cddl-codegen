@@ -77,7 +77,10 @@ rfc = "RFC8610 §3.5.2; ABNF memberkey / type1 \"=>\""
 profile = "RFC8610"
 title = "Type memberkey (t =>)"
 desc = "A memberkey given as a full type expression followed by =>; the key matches any data item of that type (table / general form)."
-example = "m = { tstr => int }"
+# `*`-spelled: the no-occurrence spelling `{ tstr => int }` is spec-exactly-once and is rejected
+# gracefully at generation (the tstr_arrow_nooccur containment row owns that boundary); the example
+# must probe the memberkey production itself through a supported instance.
+example = "m = { * tstr => int }"
 roles = ["role.map-key"]
 
 # --- memberkey = bareword S ":" ---
