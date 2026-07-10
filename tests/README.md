@@ -443,12 +443,15 @@ and asserts they are accepted.
   pinned by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS`). A spec-INVALID accept
   vector NEVER counts as spec-valid decode evidence: it is excluded from the verify.ts decode-foreign
   corroboration count, from Q4's foreign-decode count, and from the replay gate's encoding-variant /
-  header-mutation / preserve legs. Three instances at HEAD — the widened-occurrence-marker table rows
-  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`
-  (`cddl-matrix/ROADMAP.md` § findings): a COUNT-PERMITTING marker (`+` / `?` / `n*m`) on a single
-  non-literal arrow map entry table-detects to the same unbounded 0..N map as `{ * k => v }`, so an
-  out-of-window map (empty `8200a0` for `+`, a 2-entry map for `?`, below/above-bound maps for `2*3`)
-  is wrongly accepted; each row carries its over-acceptance pin. (The seed instance was the
+  header-mutation / preserve legs. Zero instances at HEAD — the class stays armed for the next
+  certified instance. Its retired residents were the widened-occurrence-marker table rows
+  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`: a COUNT-PERMITTING
+  marker (`+` / `?` / `n*m`) on a single non-literal arrow map entry table-detected to the same
+  unbounded 0..N map as `{ * k => v }`, wrongly accepting out-of-window maps, until `+`/`1*` was
+  honored as a `NonEmptyMap` (plus_table's empty-map pin promoted to `class="constraint"`) and the
+  `?`/`n*m` spellings became graceful rejections (`tests/matrix_reject/` fixtures) — provenance in
+  `cddl-matrix/ROADMAP.md` § findings, the 'Real bounded `?` / `n*m` table cardinality is a
+  candidate feature' entry. (The seed instance was the
   no-occurrence type-domain arrow widening `{ tstr => uint }`, whose empty-map instance `8200a0` =
   holder `[0, {}]` was likewise wrongly accepted — it took the flow's OTHER branch, rejected gracefully
   at generation, pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`, its row flipped
