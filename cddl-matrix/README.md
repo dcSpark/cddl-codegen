@@ -213,10 +213,11 @@ None of these are cddl-codegen bugs, and the matrix no longer sits on any of the
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
 `2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–8 are OPEN at that rev — gap 6
+cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–9 are OPEN at that rev — gap 6
 gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
 class, ledgered honestly; gap 8 keeps one containment row's decode-foreign minting
-`pinned_reason`-vectorless); `RUST_CDDL` defaults to that build,
+`pinned_reason`-vectorless; gap 9 drops one containment row's legal empty-map accept candidate at
+every mint); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
 behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`

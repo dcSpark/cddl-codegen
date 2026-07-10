@@ -82,7 +82,13 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   here is an enforcement blind spot, not just coverage accounting (the over-acceptance gotcha in
   `README.md` § "Gotchas"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
   `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`, `ctl.ne.{zero,one}`, `ctl.size.uint`
-  (Q4 pins the exact enforce-green set). The same rule applies to DISPATCH variations, not just
+  (Q4 pins the exact enforce-green set). The vector CLASS follows the decoder's current behavior:
+  when it correctly rejects the boundary violation, the row lands `class="constraint"` (the rows
+  above); when it currently WRONGLY ACCEPTS it, the same enumeration lands the violation as a
+  certified `class="over-acceptance"` pin instead — worked precedent:
+  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`, enumerated with their
+  out-of-window map pins while the widening bug stands, which is what turns a silent widening into
+  a loud, Q4-visible `no (over-accepts)` fact. The same rule applies to DISPATCH variations, not just
   enforcement — precedent row: `contain.group-choice-arm.grpent.member.record_array_tagged`
   (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`), which pins the TAG head of a struct-level
   tagged record as an array-rep group-choice arm member. The arm discriminant routes a non-embedded
