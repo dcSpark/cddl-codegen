@@ -192,6 +192,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   in different scope-marked files) needs an ownership decision before it can generate. On
   implementation: flip the `assignt.extend`/`assigng.extend` reject rows (verify.ts re-probe),
   re-mint their decode rows, and retire the rejection + this entry.
+- **Honor count-permitting occurrences on heterogeneous ARRAY-record fields as `Vec` fields.**
   Generation rejects them gracefully (`[uint, tstr, * bytes]`, any marker but `?`/`1*1`, any
   position — the array analogue of the keyed-map zero-permitting guard, in the same parsing.rs
   field loop; boundaries pinned by `occurrence_on_array_record_field_rejects_gracefully`), to
