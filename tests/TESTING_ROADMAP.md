@@ -170,6 +170,20 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
      meanwhile the working rule for new rejection work is the float_table_key header comment: check
      which existing reject fixtures the new guard can reach, and respell or reason-assert them.
+   - **Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery
+     yet.** The `codegen` builder fork prefixes EVERY newline-separated line of a doc string with
+     the marker itself, so an emission-site string embedding a literal marker to "continue" a
+     multi-line doc ships doubled markers (rustdoc renders the extra slashes as literal text).
+     Proven instance: the wasm NonEmpty wrapper doc rewording embedded literal markers after its
+     `\n`s and landed at HEAD inside a commit whose snapshot suite was left stale-red; the next
+     bless folded the bug into ~660 golden snapshots and only post-bless diff REVIEW caught it —
+     the snapshot layer pins bytes, so it flags a change but blesses a defect just as happily, and
+     `generated_code_clippy_clean` cannot see it (no clippy lint fires on a doc comment's text).
+     Mechanical layer if the class recurs: a catalog-wide scan asserting no doubled-marker line in
+     any `*.snap` (cheap, pure grep). Meanwhile the working rules are: bare `\n` in `.doc()`
+     strings (the builder owns the markers), and the § "Blessing changes" discipline — review the
+     blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
+     change (the diff then contains someone else's unreviewed delta interleaved with yours).
    - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
      reach — one proven instance recorded, no machinery yet.** Review of the wasm burn-down
      retirement (dropping the identity `.into()`) exposed `Holder::new(val.clone())` in a wasm
@@ -180,6 +194,36 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
      deny only if it is currently green-able on both profiles (nursery lints carry known false
      positives). Act on a second instance or a consumer report, not before.
+   - **Bounded occurrences beyond `+` (`n*m` / `*n` / `n*` with n ≥ 2) — half runtime-checked,
+     half rejected, neither type-enforced.** Current state is asymmetric by representation:
+     ARRAYS (`[2*5 foo]`, `[*3 foo]`) are supported via serialize/deserialize-time length checks
+     on a bare `Vec<T>` — correct on the wire but bypassable at the API (the exact class the
+     two-type design's "Problem" section names; `is_non_empty_array`'s doc comment marks the
+     boundary) — while bounded TABLE markers reject gracefully at parsing's detection arm, pinned
+     by the `tests/matrix_reject/` rows
+     `contain.occurrence-target.memberkey.type1.bounded_table` /
+     `contain.occurrence-target.memberkey.bareword.zero_bounded_map` (the `HomogenousMap` doc
+     comment guarantees only `*` and `+`/`1*` bounds ever reach generation). The open FEATURE is
+     type-level enforcement for both: sibling statics `BoundedVec`/`BoundedMap` following the
+     bounds-general API rule in `draft/two-type-constraint-enforcement.md` § "Support for more
+     complex occurrences" (an operation is checked iff it can cross a bound; value-`&mut` is
+     unconditionally safe; one `TryFrom` door reporting the decoder's own
+     `RangeCheck { min, max }`; per-shape siblings rather than redefining `NonEmpty*` as
+     const-generic aliases — fallibility cannot follow a const param). Implementation retraces
+     the shipped `+` seams: parsing's bounds plumbing (`GroupParsingType::HomogenousArray`/
+     `HomogenousMap` already carry `(Option<i128>, Option<i128>)`), member/alias type selection
+     beside `is_non_empty_array`/`is_non_empty_map`, `static/` runtime + json/schemars companions
+     gated by a usage predicate (the `uses_non_empty_map` precedent), wasm Min/Max-suffixed
+     wrappers per the design doc's naming convention (which join the synthesized-name interaction
+     families of the sweep item above), deserialize collect-then-`try_into`.
+     Tests-first encoding: the table reject rows flip to enforce-green through the same promotion
+     flow `plus_table` took (over-acceptance vector → `class="constraint"` reason-asserted
+     rejection); arrays gain decode vectors pinning boundary counts (accept at min/max,
+     reason-asserted reject at min−1/max+1) plus wasm-ABI matrix shapes. Matrix-side row-flip
+     detail — including the `{ k => v }`-as-bounds-`(1, 1)` revisit — lives in the two
+     candidate-feature entries in `cddl-matrix/ROADMAP.md` (the "Real bounded `?` / `n*m` table
+     cardinality" entry and its two-type sibling). Build when a real spec needs it (a consumer
+     request or a corpus fixture), not before.
    - **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
      `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
      resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust

@@ -5,8 +5,10 @@ use std::collections::BTreeMap;
 /// CDDL `{+ k => v}` occurrence (`+` / `1*`).
 ///
 /// The non-emptiness is enforced ONCE, at the single `TryFrom<BTreeMap<K, V>>` door, and thereafter
-/// cannot be broken: there is no public field, no `&mut` to the inner map and no length-shrinking
-/// access that could drop below one entry (removal is checked). Construction from a map that is empty
+/// cannot be broken: there is no public field, the inner map is never lent as `&mut`, and every
+/// length-shrinking operation is checked (removal refuses at length 1). Value-level `&mut` access
+/// (`get_mut` / `values_mut` / `iter_mut`) is unrestricted — the invariant is about the map's
+/// LENGTH, which a `&mut V` cannot reach. Construction from a map that is empty
 /// fails with the same `DeserializeFailure::RangeCheck { min: Some(1), max: None }` the CBOR decoder
 /// raises, so the API door and the wire door report identical errors.
 ///
@@ -57,6 +59,20 @@ impl<K: Ord, V> NonEmptyMap<K, V> {
 
     pub fn get(&self, key: &K) -> Option<&V> {
         self.0.get(key)
+    }
+
+    /// Mutable access to a single value — e.g. updating a nested `NonEmptyMap` in place.
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.0.get_mut(key)
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.0.iter_mut()
+    }
+
+    // Built on `iter_mut` so both inner map flavors need only that method.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
     }
 
     pub fn contains_key(&self, key: &K) -> bool {

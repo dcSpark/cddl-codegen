@@ -4,6 +4,7 @@ expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
+
 #![allow(
     clippy::len_without_is_empty,
     clippy::too_many_arguments,
@@ -60,7 +61,9 @@ impl AsRef<OrderedHashMap<String, u64>> for MapTextToU64 {
     }
 }
 
-/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation.
+/// Enter via `try_from` or `new(first_key, first_value)`.
+/// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
@@ -113,7 +116,9 @@ impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
     }
 }
 
-/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyU64List(NonEmptyVec<u64>);
