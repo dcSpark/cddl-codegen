@@ -845,16 +845,16 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
     );
 }
 
-/// The no-occurrence arrow-entry rejection must reach maps instantiated through a GENERIC ARG —
-/// a guard-coverage pin. At the pre-two-type baseline (d63f834) this exact spelling BYPASSED the
-/// exactly-once/widening guard: `g<{ int .ne 0 => uint }>` silently generated an unbounded
-/// `BTreeMap<i64, u64>` while the same map as a plain rule/member rejected — the very
-/// over-acceptance class the guard exists to close, escaping through the generic-instantiation
-/// parse path. WI-1's RustType-level bounds threading closed the escape incidentally; this test
-/// pins the closure so the reach cannot silently regress back to widening. (Surfaced by the
-/// recombination fuzzer's layer-2 vacuity guard when its `outer=generic_arg inner=map_key
-/// filler=ctl.ne.zero` composition stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD`
-/// entry's minter gap is ledgered separately in cddl-matrix/ROADMAP.md § findings.)
+/// The no-occurrence arrow-entry rejection (`5ef7ed0`) must reach maps instantiated through a
+/// GENERIC ARG — a guard-coverage pin. Before that rejection existed, `g<{ int .ne 0 => uint }>`
+/// silently generated an unbounded `BTreeMap<i64, u64>` (the exactly-once entry widened to 0..N —
+/// the over-acceptance class the guard closes), and nothing pins the generic-instantiation parse
+/// path specifically: the sibling `no_occurrence_arrow_map_entry_rejects_gracefully` covers plain
+/// rules, parenthesized groups, and nested anonymous maps, but not this reach. This test pins it
+/// so the reach cannot silently regress back to widening. (Surfaced by the recombination fuzzer's
+/// layer-2 vacuity guard when its `outer=generic_arg inner=map_key filler=ctl.ne.zero` composition
+/// stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD` entry's minter gap is ledgered
+/// separately in cddl-matrix/ROADMAP.md § findings.)
 #[test]
 fn generic_arg_no_occurrence_table_rejects_gracefully() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {

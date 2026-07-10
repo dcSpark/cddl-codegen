@@ -276,8 +276,8 @@ are ledgered here (that's what the probe/gate error messages point at).
   (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
   `HomogenousArray` — carried no bounds, so the generated decoder wrongly accepted out-of-window maps).
   Now `+` / `1*` is honored as a `NonEmptyMap<K, V>` whose single `TryFrom` door rejects the empty map
-  identically at the API and the wire (shipped in `draft/two-type-constraint-enforcement.md`, WI-2
-  `4fa3041`). That empty-map rejection is pinned by the
+  identically at the API and the wire (`4fa3041`; enforcement model:
+  `docs/docs/output_format.mdx` § "Non-empty containers"). That empty-map rejection is pinned by the
   `contain.occurrence-target.memberkey.type1.plus_table` `class="constraint"` decode vector, projected
   `enforce = yes`. The other count-permitting markers — the `?`, `n*m`, `*n`, `n*`, and `0*n` spellings
   such as `{ ? tstr => uint }` and `{ 2*3 tstr => uint }` — are **rejected gracefully**, pinned by
@@ -289,6 +289,26 @@ are ledgered here (that's what the probe/gate error messages point at).
   slot lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes implementable
   as bounds `(1, 1)`, so flip its reject row (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on
   merit rather than keeping the rejection out of inertia.
+- **Extending type-level ("two-type") constraint enforcement beyond the `+` occurrence is a
+  candidate feature family.** The shipped model (`static/non_empty.rs` / `static/non_empty_map.rs`;
+  user-facing contract in `docs/docs/output_format.mdx` § "Non-empty containers") makes the invalid
+  state unrepresentable and funnels construction through a single `TryFrom` door — but only for the
+  lower-bound-exactly-1 container shape. The remaining constraint classes still enforce via runtime
+  checks that a `pub` field or direct mutation can bypass (the bypassability the `+` work removed):
+  - **Bounded containers** (`[2*5 T]` / `*n` arrays — runtime-checked today — and the rejected
+    `?`/`n*m` table spellings owned by the sibling entry above): a `BoundedVec<T, MIN, MAX>`-shaped
+    `static/` generic (with the non-empty type as its `MIN=1, MAX=∞` case) and mechanical
+    `Min{N}`/`Max{N}` wasm naming slot into the same conversion contract without redesign.
+  - **Atomic hand-over** (value windows: `uint .le N`, `.size` ranges on bytes/text): private-field
+    newtypes whose `TryFrom` door replaces today's ctor/deserialize checks (the
+    `value_bounds_check_line` emission sites).
+  - **Static-representable** (`bytes .size 32` → `[u8; 32]`, exact `n*n T` → `[T; n]`): the
+    representation itself carries the constraint — the `uint .size 1` → `u8` mapping is the shipped
+    precedent — independently of the `TryFrom` door, which stays as the ergonomic entry point.
+  Each class lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules in
+  `tests/core/input.cddl`, the `tests/robustness/non_empty_*` collision/dedup pins) is the template,
+  and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI/multifile matrix
+  `SHAPES` in the same change (the axis-honesty rule below).
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
@@ -385,9 +405,9 @@ are ledgered here (that's what the probe/gate error messages point at).
     the (correct) emitted decoder rejects with a `RangeCheck` — a minter-side gap, not a decoder
     bug. UNPINNED at HEAD, the one exception to this family's ledger rule: its `LAYER2_KNOWN_BAD`
     pin retired because the fuzzer's pinning composition (the no-occurrence spelling
-    `gen<{ int .ne 0 => uint }>`) now rejects gracefully at generation — the generic-arg
-    parse path used to bypass the exactly-once/widening guard, and the two-type bounds threading
-    closed that escape (pinned by `generic_arg_no_occurrence_table_rejects_gracefully`), while the
+    `gen<{ int .ne 0 => uint }>`) rejects gracefully at generation under the no-occurrence
+    arrow-entry rejection (`5ef7ed0`; its generic-instantiation reach is pinned by
+    `generic_arg_no_occurrence_table_rejects_gracefully`), while the
     sweep's `map_key` template has no `*`-spelled variant to re-reach the minter. Re-pin by adding
     a `*`-spelled map-key template (or a hand `--emit-tests` fixture over
     `{ * int .ne 0 => uint }`) when this gap is picked up.
