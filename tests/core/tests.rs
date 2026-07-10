@@ -1624,4 +1624,29 @@ mod tests {
             "empty wire map must reject as a RangeCheck, got: {err}"
         );
     }
+
+    #[test]
+    fn non_empty_map_value_mutation_and_checked_remove() {
+        // Value-level `&mut` needs no checked door — a `&mut V` cannot change the map's LENGTH.
+        // The nested shape is the motivating case: update an inner NonEmptyMap in place.
+        let mut outer = NonEmptyMap::new("voter".to_string(), NonEmptyMap::new(1u64, 10u64));
+        outer.get_mut(&"voter".to_string()).unwrap().insert(2, 20);
+        for v in outer.values_mut() {
+            v.insert(3, 30);
+        }
+        for (_, v) in outer.iter_mut() {
+            v.insert(4, 40);
+        }
+        assert_eq!(outer.get(&"voter".to_string()).unwrap().len(), 4);
+        // Length-shrinking stays checked: refused at length 1, allowed above it.
+        let mut m = NonEmptyMap::new(1u64, "a".to_string());
+        let err = m.remove(&1).unwrap_err();
+        assert!(
+            err.to_string().contains("0 not at least 1"),
+            "remove at length 1 must be refused, got: {err}"
+        );
+        m.insert(2, "b".to_string());
+        assert_eq!(m.remove(&1).unwrap(), Some("a".to_string()));
+        assert_eq!(m.len(), 1);
+    }
 }

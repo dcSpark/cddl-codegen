@@ -305,9 +305,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   lower-bound-exactly-1 container shape. The remaining constraint classes still enforce via runtime
   checks that a `pub` field or direct mutation can bypass (the bypassability the `+` work removed):
   - **Bounded containers** (`[2*5 T]` / `*n` arrays — runtime-checked today — and the rejected
-    `?`/`n*m` table spellings owned by the sibling entry above): a `BoundedVec<T, MIN, MAX>`-shaped
-    `static/` generic (with the non-empty type as its `MIN=1, MAX=∞` case) and mechanical
-    `Min{N}`/`Max{N}` wasm naming slot into the same conversion contract without redesign.
+    `?`/`n*m` table spellings owned by the sibling entry above): `BoundedVec`/`BoundedMap` statics
+    as SIBLINGS of the non-empty types, not a generalization the non-empty types alias into — Rust
+    cannot vary a method's fallibility by const parameter, so a `MIN=1, MAX=∞` instantiation would
+    force `Result` onto the shipped infallible `push`/`insert`. The mechanical `Min{N}`/`Max{N}`
+    wasm naming and the same conversion contract still slot in without redesign; the bounds-general
+    API rule (a length-changing operation is checked iff it can cross a bound; value-level `&mut`
+    is unrestricted at every bound shape) and the pickup plan live in
+    `draft/two-type-constraint-enforcement.md` § "Support for more complex occurrences" and the
+    bounded-occurrence residual in `tests/TESTING_ROADMAP.md`.
   - **Atomic hand-over** (value windows: `uint .le N`, `.size` ranges on bytes/text): private-field
     newtypes whose `TryFrom` door replaces today's ctor/deserialize checks (the
     `value_bounds_check_line` emission sites).

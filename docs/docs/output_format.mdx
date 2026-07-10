@@ -39,7 +39,11 @@ Each non-empty type provides one conversion contract:
 - **`From<NonEmptyVec<T>> for Vec<T>` — the infallible escape hatch.** Unwrap to the loose collection,
   mutate freely, and `try_into()` back at the edge. Plus `as_slice()` / `AsRef<[T]>` / `iter()` for
   read access without a round-trip, and infallible `push`/`extend` (a push can never break a min-1
-  bound) with checked `pop`/`remove` (removal that would empty the container errors).
+  bound) with checked `pop`/`remove` (removal that would empty the container errors). Value-level
+  mutable access — `iter_mut`/`as_mut_slice`/`IndexMut` on `NonEmptyVec`, `get_mut`/`values_mut`/
+  `iter_mut` on `NonEmptyMap` — is unrestricted: the invariant is about the container's length,
+  which a `&mut` to an element or value cannot reach, so nested non-empty containers can be updated
+  in place.
 - **Deserialize routes through the same `TryFrom`.** Wire-side and API-side enforcement cannot drift:
   an empty CBOR array/map is rejected during decode with the *same* `0 not at least 1` error the API
   raises, so the constraint holds identically at both doors.

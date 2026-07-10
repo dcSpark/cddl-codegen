@@ -4,6 +4,7 @@ expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
+
 #![allow(
     clippy::len_without_is_empty,
     clippy::too_many_arguments,
@@ -2263,7 +2264,9 @@ impl AsRef<cddl_lib::NemHolder> for NemHolder {
     }
 }
 
-/// `{+ k => v}` (`MapTextToNemVal`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+/// `{+ k => v}` (`MapTextToNemVal`): at least one entry, enforced by the `NonEmptyMap` representation.
+/// Enter via `try_from` or `new(first_key, first_value)`.
+/// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NemNamed(NonEmptyMap<String, cddl_lib::NemVal>);
@@ -2614,7 +2617,9 @@ impl AsRef<cddl_lib::NevHolder2> for NevHolder2 {
     }
 }
 
-/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NevInts(NonEmptyVec<u64>);
@@ -2746,7 +2751,9 @@ impl AsRef<Vec<cddl_lib::NevPt>> for NevPtList {
     }
 }
 
-/// `[+ NevPt]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+/// `[+ NevPt]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NevPts(NonEmptyVec<cddl_lib::NevPt>);
@@ -2838,7 +2845,9 @@ impl AsRef<cddl_lib::NevQ> for NevQ {
     }
 }
 
-/// `[+ NevQ]`: at least one element, enforced by the `NonEmptyVec` representation. The rule name coincides with the loose builder name, so no `try_from` source class exists — build incrementally from the first element (`new(first)` + `add`). `add` can never violate the bound; removal is checked in the core type.
+/// `[+ NevQ]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// The rule name coincides with the loose builder name, so no `try_from` source class exists — build incrementally from the first element (`new(first)` + `add`).
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NevQList(NonEmptyVec<cddl_lib::NevQ>);
@@ -3060,7 +3069,9 @@ impl AsRef<cddl_lib::NoAlias> for NoAlias {
     }
 }
 
-/// `[+ NevInts]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+/// `[+ NevInts]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyArrU64List(NonEmptyVec<NonEmptyVec<u64>>);
@@ -3102,7 +3113,9 @@ impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
     }
 }
 
-/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation.
+/// Enter via `try_from` or `new(first_key, first_value)`.
+/// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
@@ -3155,7 +3168,9 @@ impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
     }
 }
 
-/// `{+ k => v}` (`MapU64ToText`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+/// `{+ k => v}` (`MapU64ToText`): at least one entry, enforced by the `NonEmptyMap` representation.
+/// Enter via `try_from` or `new(first_key, first_value)`.
+/// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyMapU64ToText(NonEmptyMap<u64, String>);
@@ -3208,7 +3223,9 @@ impl AsRef<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
     }
 }
 
-/// `{+ k => v}` (`MapU64ToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+/// `{+ k => v}` (`MapU64ToU64`): at least one entry, enforced by the `NonEmptyMap` representation.
+/// Enter via `try_from` or `new(first_key, first_value)`.
+/// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyMapU64ToU64(NonEmptyMap<u64, u64>);
@@ -3261,7 +3278,9 @@ impl AsRef<NonEmptyMap<u64, u64>> for NonEmptyMapU64ToU64 {
     }
 }
 
-/// `[+ NevBar]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+/// `[+ NevBar]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NonEmptyNevBarList(NonEmptyVec<cddl_lib::NevBar>);

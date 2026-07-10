@@ -4484,7 +4484,7 @@ impl GenerationScope {
         };
         wrapper.s.doc(format!(
             "`[+ {elem_wasm}]`: at least one element, enforced by the `NonEmptyVec` \
-             representation.\n/// {entry_doc}\n/// `add` can never violate the bound; removal is checked \
+             representation.\n{entry_doc}\n`add` can never violate the bound; removal is checked \
              in the core type."
         ));
         wrapper.s.tuple_field(None, &inner_type);
@@ -4629,7 +4629,7 @@ impl GenerationScope {
         };
         wrapper.s.doc(format!(
             "`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the `NonEmptyMap` \
-             representation.\n/// {entry_doc}\n/// `insert` can never violate the bound; removal is checked \
+             representation.\n{entry_doc}\n`insert` can never violate the bound; removal is checked \
              in the core type."
         ));
         wrapper.s.tuple_field(None, &inner_type);

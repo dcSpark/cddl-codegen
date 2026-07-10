@@ -4,6 +4,7 @@ expression: lib
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
+
 #![allow(
     clippy::len_without_is_empty,
     clippy::too_many_arguments,
