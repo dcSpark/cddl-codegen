@@ -1,0 +1,3 @@
+; cell: necoll x array-element
+nums = [+ uint]
+holder = [* nums]

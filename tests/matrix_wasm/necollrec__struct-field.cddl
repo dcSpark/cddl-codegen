@@ -1,0 +1,4 @@
+; cell: necollrec x struct-field
+foo = [a0: uint]
+recs = [+ foo]
+holder = [field0: recs]

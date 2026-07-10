@@ -484,6 +484,245 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
     }
 }
 
+impl cbor_event::se::Serialize for NonemptyArm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            NonemptyArm::NonemptyArm0(nonempty_arm0) => nonempty_arm0.serialize(serializer),
+            NonemptyArm::Zz(zz) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("zz")?;
+                serializer.write_text(zz)
+            }
+        }
+    }
+}
+
+impl Deserialize for NonemptyArm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                let ret = NonemptyArm0::deserialize_as_embedded_group(raw, &mut read_len, len);
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(nonempty_arm0) => return Ok(Self::NonemptyArm0(nonempty_arm0)),
+                Err(e) => {
+                    errs.push(e.annotate("NonemptyArm0"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let zz_key = raw.text()?;
+                if zz_key != "zz" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(zz_key),
+                        expected: Key::Str(String::from("zz")),
+                    }
+                    .into());
+                }
+                let zz = raw.text()?;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(NonemptyArm::Zz(zz))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Zz"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("NonemptyArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for NonemptyArm0 {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(2))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for NonemptyArm0 {
+    fn serialize_as_embedded_group<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_text("f0")?;
+        serializer.write_array(cbor_event::Len::Len(self.f0.len() as u64))?;
+        for element in self.f0.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_text("f1")?;
+        serializer.write_unsigned_integer(self.f1)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NonemptyArm0 {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            Ok((len, read_len))
+        })()
+        .map_err(|e| e.annotate("NonemptyArm0"))?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for NonemptyArm0 {
+    fn deserialize_as_embedded_group<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+        _read_len: &mut CBORReadLen,
+        len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let mut f0 = None;
+            let mut f1 = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "f0" => {
+                            if f0.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "f0".into(),
+                                ))
+                                .into());
+                            }
+                            f0 = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut f0_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (f0_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        f0_arr.push(raw.unsigned_integer()?);
+                                    }
+                                    let f0_arr = NonEmptyVec::try_from(f0_arr)?;
+                                    Ok(f0_arr)
+                                })()
+                                .map_err(|e| e.annotate("f0"))?,
+                            );
+                        }
+                        "f1" => {
+                            if f1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "f1".into(),
+                                ))
+                                .into());
+                            }
+                            f1 = Some(
+                                Ok(raw
+                                    .unsigned_integer()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .and_then(|x| {
+                                        if x > 10 {
+                                            Err(DeserializeFailure::RangeCheck {
+                                                found: x as isize,
+                                                min: None,
+                                                max: Some(10),
+                                            }
+                                            .into())
+                                        } else {
+                                            Ok(x)
+                                        }
+                                    })?)
+                                .map_err(|e: DeserializeError| e.annotate("f1"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let f0 = match f0 {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("f0")))
+                            .into(),
+                    )
+                }
+            };
+            let f1 = match f1 {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("f1")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { f0, f1 })
+        })()
+        .map_err(|e| e.annotate("NonemptyArm0"))
+    }
+}
+
 impl cbor_event::se::Serialize for TextKeyed {
     fn serialize<'se, W: Write>(
         &self,

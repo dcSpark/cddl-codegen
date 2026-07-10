@@ -41,6 +41,43 @@ named rule.
 
 Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from its `Key` and `Value` types. A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
 
+## Non-empty containers (the two-wrapper pattern)
+
+A non-empty container — `[+ T]` → `NonEmptyVec<T>`, `{+ k => v}` → `NonEmptyMap<K, V>` (see
+[Output format](./output_format.mdx#non-empty-containers)) — crosses the wasm boundary as
+**two** classes, because JS cannot see the rust type-level guarantee and cannot hand a `Vec` over by
+value without consuming its elements:
+
+- The **loose wrapper is the builder.** It is exactly the ordinary collection wrapper the loose form
+  would generate (`BarList` for `[+ bar]`, `MapKToV` for `{+ k => v}`), with the same
+  `new()`/`add()`/`insert()`/`get()`/`len()` API — no new machinery. You fill it incrementally.
+- The **restricted wrapper wraps the real core type** (`NonEmptyBarList(cddl_lib::NonEmptyVec<...>)`)
+  and is created via **`try_from(list: &BarList) -> Result<Self, JsError>`**, which **borrows and
+  clones**: cloning sidesteps the ownership hazard entirely, so the JS-side loose `BarList` stays
+  valid after the conversion. The throw happens at `try_from`, right where the mistake is — not deep
+  inside a parent constructor. When the element's loose form is directly exposable (`[+ uint]` →
+  `Vec<u64>`, `[+ text]` → `Vec<String>`), no loose wrapper exists and `try_from` takes the bare
+  `Vec<...>` **by value** instead (boundary copies, no ownership hazard).
+- **Parent constructors and setters take the pre-checked restricted wrapper by reference**
+  (`Foo.new(…, tags: &NonEmptyBarList)`), so `Foo.new` stops being a throw site for the container
+  bound — the same infallibility win as the rust side. Getters return a clone of the restricted
+  wrapper.
+- **Mutation follows the bound:** `add`/`insert` stay infallible (a push can never violate a *minimum*
+  bound), while removal throws at the bound. `add` therefore mirrors the loose wrapper's `add`.
+
+```js
+const list = BarList.new();
+list.add(bar);
+const foo = Foo.new(hash, counter, NonEmptyBarList.try_from(list));
+```
+
+One corner: a **self-named rule** whose identifier *is* the element's loose-builder name
+(`bar_list = [+ bar]`, where `[* bar]` would already mint `BarList`) emits the restricted wrapper
+**without** `try_from` — the ident legitimately owns that name, so there is no separate loose class to
+borrow from, and construction is `new(first)` + `add` (the reason is in the wrapper's generated doc
+comment). See [`--wasm-list-macro`](./command_line_flags.mdx) for the macro-mode posture of these
+restricted wrappers.
+
 ## Enums
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.

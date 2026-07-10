@@ -845,6 +845,59 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
     );
 }
 
+/// The no-occurrence arrow-entry rejection must reach maps instantiated through a GENERIC ARG —
+/// a guard-coverage pin. At the pre-two-type baseline (d63f834) this exact spelling BYPASSED the
+/// exactly-once/widening guard: `g<{ int .ne 0 => uint }>` silently generated an unbounded
+/// `BTreeMap<i64, u64>` while the same map as a plain rule/member rejected — the very
+/// over-acceptance class the guard exists to close, escaping through the generic-instantiation
+/// parse path. WI-1's RustType-level bounds threading closed the escape incidentally; this test
+/// pins the closure so the reach cannot silently regress back to widening. (Surfaced by the
+/// recombination fuzzer's layer-2 vacuity guard when its `outer=generic_arg inner=map_key
+/// filler=ctl.ne.zero` composition stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD`
+/// entry's minter gap is ledgered separately in cddl-matrix/ROADMAP.md § findings.)
+#[test]
+fn generic_arg_no_occurrence_table_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_genarg_nooccur_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "genarg_nooccur_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // The escape's shape: a no-occurrence arrow table as a generic argument must reject with the
+    // same exactly-once rationale and explicit-occurrence remedies as the plain spelling.
+    let msg = run("g<a0> = [a0]\nx = g<{ int .ne 0 => uint }>\n", "nooccur").expect_err(
+        "a no-occurrence arrow entry inside a generic arg must reject (the baseline silently \
+         widened it to an unbounded table)",
+    );
+    assert!(
+        msg.contains("exactly once"),
+        "generic-arg rejection should carry the exactly-once rationale, got: {msg}"
+    );
+    assert!(
+        msg.contains("{ * int .ne 0 => uint }") && msg.contains("{ + int .ne 0 => uint }"),
+        "generic-arg rejection should advertise the `*` and `+` remedies, got: {msg}"
+    );
+
+    // Remedy-works boundaries: both advertised spellings generate through the same generic arg.
+    run("g<a0> = [a0]\nx = g<{ * int .ne 0 => uint }>\n", "star")
+        .expect("the advertised `*` table spelling must generate through a generic arg");
+    run("g<a0> = [a0]\nx = g<{ + int .ne 0 => uint }>\n", "plus")
+        .expect("the advertised `+` non-empty table spelling must generate through a generic arg");
+}
+
 /// Incremental choice extension (`/=` type-choice, `//=` group-choice) that EXTENDS an
 /// already-defined identifier is rejected gracefully: `parse_rule` re-registers the identifier on
 /// each statement, so the LAST definition wins and every earlier arm is silently dropped

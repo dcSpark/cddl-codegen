@@ -10,6 +10,7 @@ expression: content
     clippy::new_without_default
 )]
 
+use cddl_lib::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
@@ -390,6 +391,207 @@ impl AsRef<cddl_lib::MultiFieldArm0> for MultiFieldArm0 {
 pub enum MultiFieldArmKind {
     MultiFieldArm0,
     B,
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64List(NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64List {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64List, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64List> for NonEmptyVec<u64> {
+    fn from(wasm: NonEmptyU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptyArm(cddl_lib::NonemptyArm);
+
+#[wasm_bindgen]
+impl NonemptyArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptyArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NonemptyArm, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_nonempty_arm0(f0: &NonEmptyU64List, f1: u64) -> Result<NonemptyArm, JsError> {
+        cddl_lib::NonemptyArm::new_nonempty_arm0(f0.clone().into(), f1)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn new_zz(zz: String) -> Self {
+        Self(cddl_lib::NonemptyArm::new_zz(zz))
+    }
+
+    pub fn kind(&self) -> NonemptyArmKind {
+        match &self.0 {
+            cddl_lib::NonemptyArm::NonemptyArm0(_) => NonemptyArmKind::NonemptyArm0,
+            cddl_lib::NonemptyArm::Zz(_) => NonemptyArmKind::Zz,
+        }
+    }
+
+    pub fn as_nonempty_arm0(&self) -> Option<NonemptyArm0> {
+        match &self.0 {
+            cddl_lib::NonemptyArm::NonemptyArm0(nonempty_arm0) => {
+                Some(nonempty_arm0.clone().into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_zz(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::NonemptyArm::Zz(zz) => Some(zz.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NonemptyArm> for NonemptyArm {
+    fn from(native: cddl_lib::NonemptyArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptyArm> for cddl_lib::NonemptyArm {
+    fn from(wasm: NonemptyArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptyArm> for NonemptyArm {
+    fn as_ref(&self) -> &cddl_lib::NonemptyArm {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptyArm0(cddl_lib::NonemptyArm0);
+
+#[wasm_bindgen]
+impl NonemptyArm0 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptyArm0, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NonemptyArm0, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn f0(&self) -> NonEmptyU64List {
+        self.0.f0.clone().into()
+    }
+
+    pub fn f1(&self) -> u64 {
+        self.0.f1
+    }
+
+    pub fn new(f0: &NonEmptyU64List, f1: u64) -> Result<NonemptyArm0, JsError> {
+        cddl_lib::NonemptyArm0::new(f0.clone().into(), f1)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::NonemptyArm0> for NonemptyArm0 {
+    fn from(native: cddl_lib::NonemptyArm0) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptyArm0> for cddl_lib::NonemptyArm0 {
+    fn from(wasm: NonemptyArm0) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptyArm0> for NonemptyArm0 {
+    fn as_ref(&self) -> &cddl_lib::NonemptyArm0 {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NonemptyArmKind {
+    NonemptyArm0,
+    Zz,
 }
 
 #[derive(Clone, Debug)]

@@ -1,0 +1,3 @@
+; cell: nemap x anonb (shape defs, module a)
+mp = { + uint => text }
+ballast = [bal0: uint]

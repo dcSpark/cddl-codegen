@@ -1052,10 +1052,15 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
         "wire-ambiguous choice arms (bytes .cbor uint / tstr / bytes) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
     ),
     // -- emitted-test minter / baseline decode gaps on nested shapes -------------------------------
-    (
-        "outer=generic_arg inner=map_key filler=ctl.ne.zero",
-        "emit-tests minter does not respect .ne on a table key domain (mints 0 for int .ne 0); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // (The former `outer=generic_arg inner=map_key filler=ctl.ne.zero` entry — the emit-tests minter
+    // minting key 0 against an `int .ne 0` table domain — retired when its pinning composition
+    // stopped reaching layer 2: the no-occurrence arrow map entry `{ int .ne 0 => uint }` in
+    // generic-arg position used to BYPASS the exactly-once/widening guard and silently generate an
+    // unbounded table; WI-1's RustType-level bounds threading closed that guard escape, so the
+    // composition now rejects gracefully at generation (pinned by
+    // `generic_arg_no_occurrence_table_rejects_gracefully`). The MINTER gap itself still stands
+    // unpinned for `*`-spelled tables — cddl-matrix/ROADMAP.md § findings, recombination layer-2
+    // entry.)
     (
         "outer=arr_mid inner=cbor_payload filler=prelude.float64",
         "a bytes .cbor float64 member fails its emitted baseline re-decode; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",

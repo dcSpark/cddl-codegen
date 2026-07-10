@@ -238,6 +238,71 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
          NAMED collection alias mints only its own wrapper (`Recs`) — the structural name exists \
          nowhere",
     ),
+    // --- The two-type-constraint restricted wasm wrappers (`[+ T]` -> NonEmptyVec, `{+ k=>v}` ->
+    // NonEmptyMap; draft/two-type-constraint-enforcement.md) reach the SAME mark_refs
+    // structural-wrapper ROOT_SCOPE placement class cross-module: the loose builder (`FooList`/
+    // `MapU64ToText`) is minted at root, and the restricted wrapper — or the anon dedup-to-named
+    // reference — names it (and the element/rule type) bare from a non-root module. E0425 throughout
+    // (the collrec Array-arm findings entry in cddl-matrix/ROADMAP.md § findings). NOT fixed in this
+    // WI (the placement fix is the pre-existing issue-138 mark_refs work the finding tracks).
+    (
+        "necoll__anon",
+        &["E0425"],
+        "E0425: the anonymous `[+ uint]` dedups to module `a`'s `Nums` rule but names it bare in \
+         module `b` (the restricted wrapper's anon dedup-to-named cross-module reference) — the \
+         structural-wrapper ROOT_SCOPE class in cddl-matrix/ROADMAP.md § findings",
+    ),
+    (
+        "necoll__anonb",
+        &["E0425"],
+        "E0425: as necoll__anon (ballast variant) — anonymous `[+ uint]` dedups to module `a`'s \
+         `Nums` named bare in module `b` (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necollrec__anon",
+        &["E0425"],
+        "E0425: the root-minted loose `FooList`, element `Foo`, and restricted `Recs` wrappers are \
+         named bare from modules `a`/`b` — the `+` analogue of collrec's Array-arm structural-wrapper \
+         ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necollrec__named",
+        &["E0425"],
+        "E0425: the restricted wrapper references the root-minted loose `FooList`/element `Foo` by \
+         bare name from module `a` — the Array-arm structural-wrapper ROOT_SCOPE class \
+         (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necollrec__unref",
+        &["E0425"],
+        "E0425: as necollrec__named — the restricted+loose array wrappers' root-minted `FooList`/`Foo` \
+         named bare from module `a` (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__anon",
+        &["E0425"],
+        "E0425: the root-minted loose `MapU64ToText` and restricted `Mp` wrappers are named bare from \
+         modules `a`/`b` — the map-side manifestation of the structural-wrapper ROOT_SCOPE class \
+         (collmap is loose-only and green; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__anonb",
+        &["E0425"],
+        "E0425: as nemap__anon (ballast variant) (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__named",
+        &["E0425"],
+        "E0425: the restricted `Mp::try_from(&MapU64ToText)` references the root-minted loose \
+         `MapU64ToText` builder by bare name from module `a` — the structural-wrapper ROOT_SCOPE \
+         class reached via the restricted map wrapper (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__unref",
+        &["E0425"],
+        "E0425: as nemap__named — `Mp::try_from` names the root-minted loose `MapU64ToText` bare from \
+         module `a` (cddl-matrix/ROADMAP.md § findings)",
+    ),
 ];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
@@ -274,6 +339,57 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
          root scope where a NAMED collection alias mints only its own wrapper (the Array-arm \
          structural-wrapper findings entry in cddl-matrix/ROADMAP.md; E0432 class pinned by \
          MULTIFILE_MATRIX_SKIP)",
+    ),
+    // The two-type restricted wasm wrappers hit the same structural-wrapper ROOT_SCOPE placement
+    // class cross-module (E0425 in every case, pinned by MULTIFILE_MATRIX_SKIP), so their wasm crate
+    // never compiles and `cargo test` can never go green (cddl-matrix/ROADMAP.md § findings).
+    (
+        "necoll__anon",
+        "wasm crate never compiles: anonymous `[+ uint]` dedups to module `a`'s `Nums` named bare \
+         (E0425 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necoll__anonb",
+        "wasm crate never compiles: as necoll__anon, ballast variant (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necollrec__anon",
+        "wasm crate never compiles: root-minted `FooList`/`Foo`/`Recs` named bare cross-module — the \
+         `+` analogue of collrec's Array-arm class (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "necollrec__named",
+        "wasm crate never compiles: restricted wrapper references root-minted `FooList`/`Foo` bare \
+         from module `a` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md \
+         § findings)",
+    ),
+    (
+        "necollrec__unref",
+        "wasm crate never compiles: as necollrec__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__anon",
+        "wasm crate never compiles: root-minted `MapU64ToText`/`Mp` named bare cross-module (E0425 \
+         class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__anonb",
+        "wasm crate never compiles: as nemap__anon, ballast variant (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__named",
+        "wasm crate never compiles: restricted `Mp::try_from(&MapU64ToText)` references the \
+         root-minted loose builder bare from module `a` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__unref",
+        "wasm crate never compiles: as nemap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
     ),
 ];
 

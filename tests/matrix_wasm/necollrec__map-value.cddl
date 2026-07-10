@@ -1,0 +1,4 @@
+; cell: necollrec x map-value
+foo = [a0: uint]
+recs = [+ foo]
+holder = { * uint => recs }

@@ -1,0 +1,3 @@
+; cell: nemap x struct-field
+mp = { + uint => text }
+holder = [field0: mp]

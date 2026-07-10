@@ -1,0 +1,3 @@
+; cell: necoll x gchoice-variant
+nums = [+ uint]
+holder = [ f0: nums // f1: nint ]

@@ -4426,6 +4426,14 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
+hex = "820080"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "Empty array against `[+ uint]` (`+` requires at least one element): spec-INVALID (both oracles reject the empty array — ruby exit 1, rust local-fixes exit 1), and cddl-codegen now decodes `g` as NonEmptyVec<u64> whose single TryFrom door rejects the empty array with the same RangeCheck the API raises — the `+`/`1*` occurrence lower bound is honored as a NonEmptyVec (draft/two-type-constraint-enforcement.md, shipped WI-1 `74d35c1`). This is the boundary reject vector this row previously lacked (Intra-alternative variation rows rule; the plus_table map sibling is the precedent)."
+expect_err = "0 not at least 1"
+
+[[row.vector]]
 hex = "8200811907cf"
 source = "ruby-generate"
 expect = "accept"

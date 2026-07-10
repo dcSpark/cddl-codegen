@@ -365,7 +365,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
     "contain.occurrence-target.memberkey.type1.plus_table", "memberkey.cut",
-    "occur.bounded", "occur.bounded.lower", "occur.bounded.upper",
+    "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
     "value.number.bin", "value.number.hex", "value.number.hexfloat"];

@@ -1,0 +1,3 @@
+; cell: nemap x array-element
+mp = { + uint => text }
+holder = [* mp]

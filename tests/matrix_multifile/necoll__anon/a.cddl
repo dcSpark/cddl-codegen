@@ -1,0 +1,2 @@
+; cell: necoll x anon (shape defs, module a)
+nums = [+ uint]

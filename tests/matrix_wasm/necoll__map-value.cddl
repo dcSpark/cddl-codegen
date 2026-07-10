@@ -1,0 +1,3 @@
+; cell: necoll x map-value
+nums = [+ uint]
+holder = { * uint => nums }

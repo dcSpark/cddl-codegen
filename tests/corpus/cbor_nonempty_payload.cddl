@@ -1,0 +1,16 @@
+; `.cbor` payloads carrying an inline non-empty container. These rules classify as plain ALIASES
+; (not RustStructs), so their wasm alias line names the structural restricted wrapper
+; (`NonEmptyU64List` / `NonEmptyMapTextToU64`) — which only the alias-base minting walk emits.
+; Regression pinned (by this fixture's committed snapshots + the wasm-crate compile in
+; `feature_corpus_compiles`): the rust_structs minting walk never visited alias base types, so the
+; wasm crate referenced the wrapper without emitting it (E0425 with generation exit 0; surfaced by
+; the recombination wasm sweep's `bytes .cbor [+ uint]` composition).
+;
+; Kept OUT of cbor_in_bytes.cddl deliberately: the ruby `cddl` gem (0.12.14) cannot PARSE an
+; inline composite type2 controller (`bytes .cbor [+ uint]` — exit 65, the gap in
+; draft/ruby-cddl-inline-composite-control-arg-gap.md), and a spec-parse failure poisons every
+; rule in its fixture for the `ir_conformance_corpus` ruby sweep. These transparent top-level
+; aliases mint no standalone conformance cases (no wire API of their own), so isolating them here
+; keeps cbor_in_bytes' rules ruby-judgeable while this fixture stays compile/snapshot-gated only.
+wrapped_nonempty = bytes .cbor [+ uint]
+wrapped_nonempty_map = bytes .cbor { + tstr => uint }

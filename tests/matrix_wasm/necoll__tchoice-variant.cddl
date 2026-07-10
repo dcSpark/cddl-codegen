@@ -1,0 +1,3 @@
+; cell: necoll x tchoice-variant
+nums = [+ uint]
+holder = nums / nint

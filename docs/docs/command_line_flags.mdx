@@ -235,6 +235,8 @@ The first two parameters can be generic types (e.g. `Vec<u8>`, `BTreeMap<u64, St
 
 This supersedes `--wasm-conversions-macro` for list wrappers (the list macro is expected to emit the conversion traits itself); non-list types are unaffected. A list whose element type can't be reduced to those two bools (e.g. an optional element) falls back to the inline form.
 
+The **restricted non-empty list wrappers** (`[+ T]` → `NonEmptyBarList`; see [Wasm Differences](wasm_differences) § Non-empty containers) always emit **inline** in this phase — only the *loose* builder wrapper takes the macro path. The restricted wrapper's boundary surface (the failable `try_from` door, `new(first)`, checked removal) differs from the plain `new`/`len`/`get`/`add` block the macro emits, so a parallel macro for it is deferred; there is no flag needed to opt into the inline form.
+
 (The no-argument form of this flag is reserved for a future built-in default that would also emit the macro definition; for now the macro definition must be supplied by you, e.g. `cml_core_wasm::impl_wasm_list`.)
 
 ```bash

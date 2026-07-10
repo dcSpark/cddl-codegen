@@ -1,0 +1,2 @@
+; cell: nemap x named (shape defs, module a)
+mp = { + uint => text }

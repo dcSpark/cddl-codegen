@@ -1,0 +1,2 @@
+; cell: necollrec x named (reference from module b)
+bholder = [field0: recs]

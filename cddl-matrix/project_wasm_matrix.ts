@@ -46,6 +46,30 @@ const SHAPES: Record<string, Shape> = {
   coll: { defs: ["nums = [* uint]"], ty: "nums" },
   // wrapper struct (Table RustStruct) — a map-wrapper; a distinct emitter/typedef path from `coll`
   collmap: { defs: ["mp = { * uint => text }"], ty: "mp" },
+  // RESTRICTED non-empty list wrapper (`[+ T]` -> core `NonEmptyVec<T>`; the two-type-constraint
+  // feature, draft/two-type-constraint-enforcement.md). Distinct wasm-ABI shape from `coll`: the
+  // wrapper wraps `core::NonEmptyVec<u64>` and exposes a FAILABLE `try_from(elements: Vec<u64>) ->
+  // Result<_, JsError>` (the single checked door; the CBOR decoder routes through the same one)
+  // ALONGSIDE an infallible `new(first)` + infallible `add` (a push can never break a min-1 bound),
+  // unlike `coll`'s all-infallible `new()`/`add`. Exposable element (`uint`), so `try_from` takes
+  // the bare `Vec` BY VALUE (boundary copy, no ownership hazard) — the counterpart to `necollrec`'s
+  // borrow+clone door.
+  necoll: { defs: ["nums = [+ uint]"], ty: "nums" },
+  // RESTRICTED non-empty list wrapper over a NON-exposable (record) element — the design's headline
+  // two-wrapper pattern. Mints BOTH the loose builder (`FooList(Vec<cddl_lib::Foo>)`, today's `[* foo]`
+  // wrapper) AND the restricted wrapper (`Recs(NonEmptyVec<cddl_lib::Foo>)`), the latter created via
+  // `try_from(list: &FooList) -> Result<_, JsError>` which BORROWS the loose wrapper and CLONES its
+  // contents (cloning sidesteps the wasm ownership problem; the JS-side `FooList` stays valid). A
+  // distinct door from `necoll`'s by-value `try_from(Vec)`, and the exact surface WI-1 review found
+  // three wasm-name bugs on (loose-builder minting + non-exposable element accessors).
+  necollrec: { defs: ["foo = [a0: uint]", "recs = [+ foo]"], ty: "recs" },
+  // RESTRICTED non-empty map wrapper (`{+ k => v}` -> core `NonEmptyMap<K, V>`). The map sibling of
+  // `necollrec`: mints the loose `MapU64ToText` builder and the restricted `Mp(NonEmptyMap<u64,
+  // String>)` created via `try_from(map: &MapU64ToText) -> Result<_, JsError>` (borrow + clone), with
+  // an infallible `new(first_key, first_value)` + infallible `insert`. A distinct emitter/typedef path
+  // from `necoll`/`necollrec` (map key/value accessors, `insert` vs `add`), mirroring how `collmap`
+  // is distinct from `coll`.
+  nemap: { defs: ["mp = { + uint => text }"], ty: "mp" },
   // transparent `pub type` -> Vec (the wrapper-vs-transparent distinction; shares IR shape with `coll`)
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   // transparent alias to a *map* typedef — the map/table typedef-resolution path (known-red: E0425)
@@ -179,7 +203,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 138; // 17 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 162; // 20 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

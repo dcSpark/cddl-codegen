@@ -20,6 +20,49 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
+## Non-empty containers
+
+An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`
+/ `{1* k => v}` on tables — is enforced by the **type**, not by a bypassable check inside `new()`. The
+field type becomes `NonEmptyVec<T>` (or `NonEmptyMap<K, V>`), hand-written generics copied into the
+generated crate, so an empty value is simply not representable. A named rule aliases straight to it:
+`deltas = [+ int]` emits `pub type Deltas = NonEmptyVec<i64>`, giving the rule a real enforcement
+surface it never had standalone. Every other bound (`[* T]`, `[2*5 T]`, …) keeps today's bare `Vec` +
+runtime length check — only the exactly-`(1, ∞)` shape changes representation.
+
+Each non-empty type provides one conversion contract:
+
+- **`TryFrom<Vec<T>>` (resp. `TryFrom<BTreeMap<K, V>>` / `TryFrom<OrderedHashMap<K, V>>`) — the single
+  checked door.** It is the *only* way to build the value from a loose collection, and it returns a
+  `DeserializeError` whose `RangeCheck { found: 0, min: Some(1), max: None }` displays as
+  `0 not at least 1`.
+- **`From<NonEmptyVec<T>> for Vec<T>` — the infallible escape hatch.** Unwrap to the loose collection,
+  mutate freely, and `try_into()` back at the edge. Plus `as_slice()` / `AsRef<[T]>` / `iter()` for
+  read access without a round-trip, and infallible `push`/`extend` (a push can never break a min-1
+  bound) with checked `pop`/`remove` (removal that would empty the container errors).
+- **Deserialize routes through the same `TryFrom`.** Wire-side and API-side enforcement cannot drift:
+  an empty CBOR array/map is rejected during decode with the *same* `0 not at least 1` error the API
+  raises, so the constraint holds identically at both doors.
+
+Because the invalid state is unrepresentable, a struct whose only source of fallibility *was* an
+occurrence bound gets an **infallible `new()`**: every argument is already valid by construction, and
+serialization stays infallible (there is no empty value to fail on). Construction that used to check a
+length now hands over an already-checked value.
+
+**Migrating a consumer** (`Vec<T>` field → `NonEmptyVec<T>` field). The break is mechanical: the
+fallible `new(items: Vec<T>) -> Result<_, _>` becomes an infallible `new(items: NonEmptyVec<T>)`, and
+the length check moves to a single `try_into` at the point the loose collection is built.
+
+| Before (bypassable `new` check) | After (two-type) |
+|---|---|
+| `Foo::new(tags: Vec<Bar>) -> Result<Foo, DeserializeError>` | `Foo::new(tags: NonEmptyVec<Bar>) -> Foo` |
+| `let foo = Foo::new(tags)?;` (checks length, but a later `foo.tags.clear()` re-breaks it) | `let tags: NonEmptyVec<Bar> = tags.try_into()?; let foo = Foo::new(tags);` |
+| empty vs. absent modelled as `Option<Foo>` | empty `Vec<Bar>` is representable — it just isn't a `NonEmptyVec` yet; `Option` returns to meaning "the field itself is optional" |
+
+The type name, the generated doc comment (which quotes the originating CDDL), and the `TryFrom`
+signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a
+two-wrapper pattern — see [Wasm Differences](./wasm_differences.mdx).
+
 ## Generated crate roots (thin root, seed-once)
 
 Every generated crate — `rust/`, and (when enabled) `wasm/` and `wasm/json-gen/` — splits into two

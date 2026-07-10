@@ -1,0 +1,4 @@
+; cell: necollrec x newtype-inner
+foo = [a0: uint]
+recs = [+ foo]
+holder = recs ; @newtype

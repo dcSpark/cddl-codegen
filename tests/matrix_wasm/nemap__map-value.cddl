@@ -1,0 +1,3 @@
+; cell: nemap x map-value
+mp = { + uint => text }
+holder = { * uint => mp }

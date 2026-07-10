@@ -1,0 +1,3 @@
+; cell: nemap x newtype-inner
+mp = { + uint => text }
+holder = mp ; @newtype
