@@ -1497,4 +1497,67 @@ mod tests {
             "bounded-wrapper range error must not double-annotate, got: {err}"
         );
     }
+
+    // --- WI-1: NonEmptyVec two-type enforcement for `[+ T]` ---
+
+    #[test]
+    fn non_empty_vec_try_from_enforces_and_from_lossless() {
+        // singleton accepted, empty rejected through the SINGLE TryFrom door
+        NonEmptyVec::try_from(vec![1u64]).expect("singleton must be accepted");
+        let empty: Vec<u64> = Vec::new();
+        let err = NonEmptyVec::<u64>::try_from(empty).unwrap_err();
+        // identical Display to the wire door (see non_empty_vec_wire_rejects_empty_same_error)
+        assert!(
+            err.to_string().contains("0 not at least 1"),
+            "TryFrom empty must be a RangeCheck, got: {err}"
+        );
+        // From back is lossless
+        let nev = NonEmptyVec::try_from(vec![1u64, 2, 3]).unwrap();
+        let back: Vec<u64> = nev.into();
+        assert_eq!(back, vec![1u64, 2, 3]);
+    }
+
+    #[test]
+    fn non_empty_vec_holder_roundtrip_and_infallible_new() {
+        let tags = NonEmptyVec::try_from(vec![NevBar::new(7)]).unwrap();
+        let nested =
+            NonEmptyVec::try_from(vec![NonEmptyVec::try_from(vec![1u64, 2]).unwrap()]).unwrap();
+        let ints: NevInts = NonEmptyVec::try_from(vec![9u64]).unwrap();
+        // new() is INFALLIBLE (no Result) and takes the restricted NonEmptyVec types by value; the
+        // control field `plain` stays a bare Vec<String>.
+        let mut holder = NevHolder::new(tags, nested, vec!["hi".to_string()], ints);
+        deser_test(&holder);
+        // Option<NonEmptyVec<_>>: the optional field is absence, not "empty container"
+        holder.maybe = Some(NonEmptyVec::try_from(vec![NevBar::new(1)]).unwrap());
+        deser_test(&holder);
+    }
+
+    #[test]
+    fn non_empty_vec_wire_rejects_empty_same_error() {
+        // valid: outer array(1) [ inner [+ uint] array(1) [ 1 ] ] = 81 81 01
+        let mut ok = Deserializer::from(std::io::Cursor::new(vec![0x81u8, 0x81, 0x01]));
+        NevWire::deserialize(&mut ok).expect("valid single-element [+ uint] wire must deserialize");
+        // invalid: outer array(1) [ EMPTY inner array(0) ] = 81 80 — the `[+ uint]` field routes the
+        // empty Vec through the same NonEmptyVec::try_from door, so the wire error text MATCHES the
+        // API error text asserted in non_empty_vec_try_from_enforces_and_from_lossless.
+        let mut bad = Deserializer::from(std::io::Cursor::new(vec![0x81u8, 0x80]));
+        let err = NevWire::deserialize(&mut bad).unwrap_err();
+        assert!(
+            err.to_string().contains("0 not at least 1"),
+            "empty wire array must reject as a RangeCheck, got: {err}"
+        );
+    }
+
+    // The named/inline `[+ elem]` combinations (free-named rule, self-named rule, inline dedup)
+    // share the SAME rust-side representation — every member is a bare NonEmptyVec<Elem> and the
+    // named rules are transparent aliases to it — so one round-trip covers the rust leg; the wasm
+    // surface differences live in tests_wasm.rs.
+    #[test]
+    fn non_empty_vec_named_and_deduped_members_roundtrip() {
+        let pts: NevPts = NonEmptyVec::try_from(vec![NevPt::new(1)]).unwrap();
+        let pts_inline = NonEmptyVec::try_from(vec![NevPt::new(2), NevPt::new(3)]).unwrap();
+        let qs: NevQList = NonEmptyVec::try_from(vec![NevQ::new(7)]).unwrap();
+        let holder = NevHolder2::new(pts, pts_inline, qs);
+        deser_test(&holder);
+    }
 }

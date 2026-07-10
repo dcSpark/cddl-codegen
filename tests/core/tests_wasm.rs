@@ -308,3 +308,90 @@ fn wasm_generic_instance_boundary() {
     assert_eq!(back.foo().index_1(), "g");
     assert_eq!(back.foo().index_2(), vec![1]);
 }
+
+// --- WI-1: NonEmptyVec wasm two-wrapper pattern (`[+ T]`) ---
+// The restricted wrapper (`NonEmptyNevBarList`) is created only via `try_from` (borrow + clone, so
+// the loose builder survives) or `new(first)`; the throw lands at `try_from`, not inside a parent
+// ctor. Parent `new` takes the pre-checked `&NonEmpty*List` wrappers by reference. The empty-input
+// THROW isn't asserted here because `try_from` builds a `JsError` on the error path, and
+// `JsError::new` panics on the host target used by these tests (no JS runtime) — that rejection is
+// covered rust-side via the same TryFrom door (`non_empty_vec_wire_rejects_empty_same_error`).
+#[test]
+fn wasm_non_empty_list_try_from_and_source_survives() {
+    // the loose list wrapper IS the builder
+    let mut loose = NevBarList::new();
+    loose.add(&NevBar::new(3));
+    let mut tags = NonEmptyNevBarList::try_from(&loose)
+        .ok()
+        .expect("non-empty loose list converts");
+    // the source loose list stays valid after the (borrowing) conversion
+    loose.add(&NevBar::new(4));
+    assert_eq!(loose.len(), 2);
+    assert_eq!(tags.len(), 1);
+    // add on the restricted wrapper is infallible (a push can't break the >= 1 bound)
+    tags.add(&NevBar::new(5));
+    assert_eq!(tags.len(), 2);
+}
+
+#[test]
+fn wasm_non_empty_holder_parent_new_takes_wrappers_and_roundtrips() {
+    let mut tags_loose = NevBarList::new();
+    tags_loose.add(&NevBar::new(7));
+    let tags = NonEmptyNevBarList::try_from(&tags_loose).ok().expect("tags");
+    // nested: `[+ [+ uint]]` -> the inner `[+ uint]` DEDUPS to the named `nev_ints` rule's class
+    // (NevInts — no synthesized NonEmptyU64List exists in this crate), the outer wraps it
+    let inner = NevInts::try_from(vec![1u64, 2]).ok().expect("inner");
+    let nested = NonEmptyArrU64List::new(&inner);
+    // named `[+ uint]` rule wrapper: exposable element -> try_from a bare Vec
+    let ints = NevInts::try_from(vec![9u64]).ok().expect("ints");
+    // parent `new` is NOT a throw site for these container constraints
+    let holder = NevHolder::new(&tags, &nested, vec!["hi".to_string()], &ints);
+    let bytes = holder.to_cbor_bytes();
+    let back = NevHolder::from_cbor_bytes(&bytes)
+        .ok()
+        .expect("NevHolder round-trip");
+    assert_eq!(back.to_cbor_bytes(), bytes);
+    // read the restricted accessors back
+    assert_eq!(back.tags().len(), 1);
+    assert_eq!(back.nested().len(), 1);
+    assert_eq!(back.nested().get(0).len(), 2);
+    assert_eq!(back.ints().len(), 1);
+    assert_eq!(back.plain(), vec!["hi".to_string()]);
+    assert!(back.maybe().is_none());
+}
+
+// WI-1 follow-up: the three named/inline `[+ elem]` wasm-surface combinations.
+// - free-named rule (`nev_pts = [+ nev_pt]`): try_from borrows the loose NevPtList builder;
+// - inline `[+ nev_pt]` DEDUPS to that named class (ctor param + getter are NevPts — this test is
+//   the compile-level proof; the snapshot needle asserts no NonEmptyNevPtList is emitted);
+// - self-named rule (`nev_q_list = [+ nev_q]`, rule ident == loose-builder name): no try_from —
+//   construction is new(first) + add.
+#[test]
+fn wasm_non_empty_named_free_selfnamed_and_dedup() {
+    // free-named: the loose builder is minted for the rule and try_from borrows it
+    let mut loose = NevPtList::new();
+    loose.add(&NevPt::new(1));
+    let pts = NevPts::try_from(&loose).ok().expect("NevPts::try_from");
+    // the borrowed source stays usable
+    loose.add(&NevPt::new(2));
+    assert_eq!(loose.len(), 2);
+    // dedup: the inline `[+ nev_pt]` field takes the SAME named class
+    let pts_inline = NevPts::try_from(&loose)
+        .ok()
+        .expect("NevPts for the deduped inline field");
+    // self-named: new(first) + add (no try_from exists on NevQList)
+    let mut qs = NevQList::new(&NevQ::new(7));
+    qs.add(&NevQ::new(8));
+    let holder = NevHolder2::new(&pts, &pts_inline, &qs);
+    let bytes = holder.to_cbor_bytes();
+    let back = NevHolder2::from_cbor_bytes(&bytes)
+        .ok()
+        .expect("NevHolder2 round-trip");
+    assert_eq!(back.to_cbor_bytes(), bytes);
+    // dedup compile-level proof: the inline field's getter returns the NAMED class
+    let got: NevPts = back.pts_inline();
+    assert_eq!(got.len(), 2);
+    assert_eq!(back.pts().len(), 1);
+    assert_eq!(back.qs().len(), 2);
+    assert_eq!(back.qs().get(1).a(), 8);
+}

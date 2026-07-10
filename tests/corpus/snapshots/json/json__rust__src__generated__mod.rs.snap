@@ -7,9 +7,11 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -373,6 +375,17 @@ impl schemars::JsonSchema for IntWrapper {
 
     fn inline_schema() -> bool {
         <Int as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NevJson {
+    pub xs: NonEmptyVec<u64>,
+}
+
+impl NevJson {
+    pub fn new(xs: NonEmptyVec<u64>) -> Self {
+        Self { xs }
     }
 }
 

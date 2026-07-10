@@ -7,19 +7,21 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::HolderEncoding;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
-pub type ArrU64List = Vec<Vec<u64>>;
+pub type ArrU64List = Vec<NonEmptyVec<u64>>;
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -36,4 +38,4 @@ impl Holder {
     }
 }
 
-pub type T = OrderedHashMap<Vec<u64>, u64>;
+pub type T = OrderedHashMap<NonEmptyVec<u64>, u64>;

@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 89
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -2894,6 +2893,753 @@ impl Deserialize for MapWithDefaults {
             Ok(Self { key_1, key_2 })
         })()
         .map_err(|e| e.annotate("MapWithDefaults"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevBar {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_text("a")?;
+        serializer.write_unsigned_integer(self.a)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevBar {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut a = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "a" => {
+                            if a.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("a".into())).into()
+                                );
+                            }
+                            a = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("a"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let a = match a {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { a })
+        })()
+        .map_err(|e| e.annotate("NevBar"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(
+            4 + match &self.maybe {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_text("ints")?;
+        serializer.write_array(cbor_event::Len::Len(self.ints.len() as u64))?;
+        for element in self.ints.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_text("tags")?;
+        serializer.write_array(cbor_event::Len::Len(self.tags.len() as u64))?;
+        for element in self.tags.iter() {
+            element.serialize(serializer)?;
+        }
+        if let Some(field) = &self.maybe {
+            serializer.write_text("maybe")?;
+            serializer.write_array(cbor_event::Len::Len(field.len() as u64))?;
+            for element in field.iter() {
+                element.serialize(serializer)?;
+            }
+        }
+        serializer.write_text("plain")?;
+        serializer.write_array(cbor_event::Len::Len(self.plain.len() as u64))?;
+        for element in self.plain.iter() {
+            serializer.write_text(element)?;
+        }
+        serializer.write_text("nested")?;
+        serializer.write_array(cbor_event::Len::Len(self.nested.len() as u64))?;
+        for element in self.nested.iter() {
+            serializer.write_array(cbor_event::Len::Len(element.len() as u64))?;
+            for element in element.iter() {
+                serializer.write_unsigned_integer(*element)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            let mut ints = None;
+            let mut tags = None;
+            let mut maybe = None;
+            let mut plain = None;
+            let mut nested = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "ints" => {
+                            if ints.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "ints".into(),
+                                ))
+                                .into());
+                            }
+                            ints = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut ints_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (ints_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        ints_arr.push(raw.unsigned_integer()?);
+                                    }
+                                    let ints_arr = NonEmptyVec::try_from(ints_arr)?;
+                                    Ok(ints_arr)
+                                })()
+                                .map_err(|e| e.annotate("ints"))?,
+                            );
+                        }
+                        "tags" => {
+                            if tags.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "tags".into(),
+                                ))
+                                .into());
+                            }
+                            tags = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut tags_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (tags_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        tags_arr.push(NevBar::deserialize(raw)?);
+                                    }
+                                    let tags_arr = NonEmptyVec::try_from(tags_arr)?;
+                                    Ok(tags_arr)
+                                })()
+                                .map_err(|e| e.annotate("tags"))?,
+                            );
+                        }
+                        "maybe" => {
+                            if maybe.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "maybe".into(),
+                                ))
+                                .into());
+                            }
+                            maybe = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let mut maybe_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (maybe_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        maybe_arr.push(NevBar::deserialize(raw)?);
+                                    }
+                                    let maybe_arr = NonEmptyVec::try_from(maybe_arr)?;
+                                    Ok(maybe_arr)
+                                })()
+                                .map_err(|e| e.annotate("maybe"))?,
+                            );
+                        }
+                        "plain" => {
+                            if plain.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "plain".into(),
+                                ))
+                                .into());
+                            }
+                            plain = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut plain_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (plain_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        plain_arr.push(raw.text()?);
+                                    }
+                                    Ok(plain_arr)
+                                })()
+                                .map_err(|e| e.annotate("plain"))?,
+                            );
+                        }
+                        "nested" => {
+                            if nested.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "nested".into(),
+                                ))
+                                .into());
+                            }
+                            nested = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut nested_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (nested_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let mut nested_elem_arr = Vec::new();
+                                        let len = raw.array()?;
+                                        while match len {
+                                            cbor_event::Len::Len(n) => {
+                                                (nested_elem_arr.len() as u64) < n
+                                            }
+                                            cbor_event::Len::Indefinite => true,
+                                        } {
+                                            if matches!(len, cbor_event::Len::Indefinite)
+                                                && raw.cbor_type()? == cbor_event::Type::Special
+                                                && raw.special_break()?
+                                            {
+                                                break;
+                                            }
+                                            nested_elem_arr.push(raw.unsigned_integer()?);
+                                        }
+                                        let nested_elem_arr =
+                                            NonEmptyVec::try_from(nested_elem_arr)?;
+                                        nested_arr.push(nested_elem_arr);
+                                    }
+                                    let nested_arr = NonEmptyVec::try_from(nested_arr)?;
+                                    Ok(nested_arr)
+                                })()
+                                .map_err(|e| e.annotate("nested"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let tags = match tags {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tags")))
+                            .into(),
+                    )
+                }
+            };
+            let nested = match nested {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("nested")))
+                            .into(),
+                    )
+                }
+            };
+            let plain = match plain {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
+                            .into(),
+                    )
+                }
+            };
+            let ints = match ints {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("ints")))
+                            .into(),
+                    )
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                tags,
+                maybe,
+                nested,
+                plain,
+                ints,
+            })
+        })()
+        .map_err(|e| e.annotate("NevHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevHolder2 {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(3))?;
+        serializer.write_text("qs")?;
+        serializer.write_array(cbor_event::Len::Len(self.qs.len() as u64))?;
+        for element in self.qs.iter() {
+            element.serialize(serializer)?;
+        }
+        serializer.write_text("pts")?;
+        serializer.write_array(cbor_event::Len::Len(self.pts.len() as u64))?;
+        for element in self.pts.iter() {
+            element.serialize(serializer)?;
+        }
+        serializer.write_text("pts_inline")?;
+        serializer.write_array(cbor_event::Len::Len(self.pts_inline.len() as u64))?;
+        for element in self.pts_inline.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevHolder2 {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            let mut qs = None;
+            let mut pts = None;
+            let mut pts_inline = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "qs" => {
+                            if qs.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "qs".into(),
+                                ))
+                                .into());
+                            }
+                            qs = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut qs_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (qs_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        qs_arr.push(NevQ::deserialize(raw)?);
+                                    }
+                                    let qs_arr = NonEmptyVec::try_from(qs_arr)?;
+                                    Ok(qs_arr)
+                                })()
+                                .map_err(|e| e.annotate("qs"))?,
+                            );
+                        }
+                        "pts" => {
+                            if pts.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "pts".into(),
+                                ))
+                                .into());
+                            }
+                            pts = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut pts_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (pts_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        pts_arr.push(NevPt::deserialize(raw)?);
+                                    }
+                                    let pts_arr = NonEmptyVec::try_from(pts_arr)?;
+                                    Ok(pts_arr)
+                                })()
+                                .map_err(|e| e.annotate("pts"))?,
+                            );
+                        }
+                        "pts_inline" => {
+                            if pts_inline.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "pts_inline".into(),
+                                ))
+                                .into());
+                            }
+                            pts_inline = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut pts_inline_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => {
+                                            (pts_inline_arr.len() as u64) < n
+                                        }
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        pts_inline_arr.push(NevPt::deserialize(raw)?);
+                                    }
+                                    let pts_inline_arr = NonEmptyVec::try_from(pts_inline_arr)?;
+                                    Ok(pts_inline_arr)
+                                })()
+                                .map_err(|e| e.annotate("pts_inline"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let pts = match pts {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("pts")))
+                            .into(),
+                    )
+                }
+            };
+            let pts_inline =
+                match pts_inline {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("pts_inline"),
+                        ))
+                        .into())
+                    }
+                };
+            let qs = match qs {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("qs")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self {
+                pts,
+                pts_inline,
+                qs,
+            })
+        })()
+        .map_err(|e| e.annotate("NevHolder2"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevPt {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_text("p")?;
+        serializer.write_unsigned_integer(self.p)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevPt {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut p = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "p" => {
+                            if p.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("p".into())).into()
+                                );
+                            }
+                            p = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("p"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let p = match p {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("p")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { p })
+        })()
+        .map_err(|e| e.annotate("NevPt"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevQ {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.a)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevQ {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NevQ { a })
+        })()
+        .map_err(|e| e.annotate("NevQ"))
+    }
+}
+
+impl cbor_event::se::Serialize for NevWire {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_array(cbor_event::Len::Len(self.items.len() as u64))?;
+        for element in self.items.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NevWire {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let items = (|| -> Result<_, DeserializeError> {
+                let mut items_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (items_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    items_arr.push(raw.unsigned_integer()?);
+                }
+                let items_arr = NonEmptyVec::try_from(items_arr)?;
+                Ok(items_arr)
+            })()
+            .map_err(|e| e.annotate("items"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NevWire { items })
+        })()
+        .map_err(|e| e.annotate("NevWire"))
     }
 }
 

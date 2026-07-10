@@ -254,3 +254,8 @@ width_collapse = [
     i8w: -128 .. 127,
     i64w: -9223372036854775808 .. 9223372036854775807,
 ]
+
+; WI-1: a `[+ T]` field under --preserve-encodings. The NonEmptyVec container must NOT swallow or
+; duplicate the array's length-encoding metadata — the encoding vars stay keyed off the FIELD in the
+; parent's encoding struct, so an indefinite-length encoding round-trips byte-identically.
+nev_preserve = [ pts: [+ uint] ]

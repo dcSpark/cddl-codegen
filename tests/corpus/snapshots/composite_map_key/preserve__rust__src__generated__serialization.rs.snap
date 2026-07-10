@@ -112,14 +112,7 @@ impl Deserialize for Holder {
                             table_key_arr.push(table_key_elem);
                             table_key_elem_encodings.push(table_key_elem_encoding);
                         }
-                        if table_key_arr.len() < 1 {
-                            return Err(DeserializeFailure::RangeCheck {
-                                found: table_key_arr.len() as isize,
-                                min: Some(1),
-                                max: None,
-                            }
-                            .into());
-                        }
+                        let table_key_arr = NonEmptyVec::try_from(table_key_arr)?;
                         let (table_key, table_key_encoding, table_key_elem_encodings) =
                             (table_key_arr, table_key_encoding, table_key_elem_encodings);
                         let (table_value, table_value_encoding) =

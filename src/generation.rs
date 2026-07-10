@@ -570,14 +570,26 @@ impl GenerationScope {
             if let AliasIdent::Rust(ident) = alias_ident {
                 // also make sure not to generate it if we instead generated a binary wrapper type
                 if alias_info.gen_rust_alias {
-                    self.rust(types, ident).push_type_alias(
-                        TypeAlias::new(
-                            ident,
-                            alias_info.base_type.for_rust_member(types, false, cli),
-                        )
-                        .vis("pub")
-                        .clone(),
+                    let mut type_alias = TypeAlias::new(
+                        ident,
+                        alias_info.base_type.for_rust_member(types, false, cli),
                     );
+                    type_alias.vis("pub");
+                    // Decision 11 (two-type design doc): a named `[+ T]` rule's alias quotes the
+                    // originating occurrence — the type name, doc comment, and TryFrom signature
+                    // are three redundant discovery signals for the constraint.
+                    if alias_info.base_type.is_non_empty_array()
+                        && let ConceptualRustType::Array(elem) =
+                            &alias_info.base_type.conceptual_type
+                    {
+                        type_alias.doc(format!(
+                            "`[+ {}]`: at least one element, enforced at the `NonEmptyVec` \
+                             `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
+                             door, so wire-side and API-side rejection are identical).",
+                            elem.for_rust_member(types, false, cli)
+                        ));
+                    }
+                    self.rust(types, ident).push_type_alias(type_alias);
                 }
                 if alias_info.gen_wasm_alias {
                     // WASM crate
@@ -617,10 +629,7 @@ impl GenerationScope {
                             .as_ref()
                             .filter(|target| {
                                 types.has_wasm_wrapper(target)
-                                    && !alias_info
-                                        .base_type
-                                        .conceptual_type
-                                        .directly_wasm_exposable(types)
+                                    && !alias_info.base_type.directly_wasm_exposable(types)
                             })
                             .map(|target| target.to_string())
                             .unwrap_or_else(|| alias_info.base_type.for_wasm_member(types));
@@ -674,6 +683,48 @@ impl GenerationScope {
                         },
                         &mut existing_aliases,
                     );
+                    // The conceptual visitor above can't see array LENGTH bounds (they live on the
+                    // RustType, stripped before it recurses), so mint the restricted `NonEmpty*List`
+                    // wrappers for inline `[+ T]` shapes from a RustType-level walk that does.
+                    match rust_struct.variant() {
+                        RustStructType::Record(record) => {
+                            for field in &record.fields {
+                                self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
+                            }
+                        }
+                        RustStructType::Table { domain, range } => {
+                            self.ensure_non_empty_wrappers(types, domain, cli);
+                            self.ensure_non_empty_wrappers(types, range, cli);
+                        }
+                        RustStructType::Wrapper { wrapped, .. } => {
+                            self.ensure_non_empty_wrappers(types, wrapped, cli);
+                        }
+                        RustStructType::GroupChoice { variants, .. }
+                        | RustStructType::TypeChoice { variants } => {
+                            for v in variants {
+                                match &v.data {
+                                    EnumVariantData::RustType(t) => {
+                                        self.ensure_non_empty_wrappers(types, t, cli)
+                                    }
+                                    EnumVariantData::Inlined(rec) => {
+                                        for f in &rec.fields {
+                                            self.ensure_non_empty_wrappers(
+                                                types,
+                                                &f.rust_type,
+                                                cli,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        RustStructType::Array { element_type, .. } => {
+                            // the named rule's own wrapper is minted in the variant match below;
+                            // here just mint wrappers its element needs (nested `[+ [+ int]]`)
+                            self.ensure_non_empty_wrappers(types, element_type, cli);
+                        }
+                        _ => (),
+                    }
                 }
                 match rust_struct.variant() {
                     RustStructType::Record(record) => {
@@ -726,9 +777,28 @@ impl GenerationScope {
                         //    .rust()
                         //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
                     }
-                    RustStructType::Array { element_type, .. } => {
+                    RustStructType::Array {
+                        element_type,
+                        bounds,
+                    } => {
                         if cli.wasm {
-                            self.generate_array_type(types, element_type.clone(), rust_ident, cli);
+                            if *bounds == Some((Some(1), None)) {
+                                // named `[+ T]` rule: its JS class is the RESTRICTED wrapper (wrapping
+                                // core::NonEmptyVec) under the rule ident, not the loose list wrapper.
+                                self.generate_non_empty_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    cli,
+                                );
+                            } else {
+                                self.generate_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    cli,
+                                );
+                            }
                         }
                         //self
                         //    .rust()
@@ -888,6 +958,11 @@ impl GenerationScope {
             self.rust_lib().raw("pub mod error;");
             if cli.preserve_encodings {
                 self.rust_lib().raw("pub mod ordered_hash_map;");
+            }
+            // only crates that actually use `[+ T]` pull in the NonEmptyVec runtime — keeps every
+            // non-`+` crate's output byte-identical
+            if types.uses_non_empty_vec() {
+                self.rust_lib().raw("pub mod non_empty;");
             }
         }
         if cli.preserve_encodings {
@@ -1106,6 +1181,13 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_non_empty_vec() {
+                content.push_import(
+                    format!("{}::non_empty", cli.common_import_rust()),
+                    "NonEmptyVec",
+                    None,
+                );
+            }
         }
 
         // serialization
@@ -1210,6 +1292,13 @@ impl GenerationScope {
                     );
                 } else {
                     content.push_import("std::collections", "BTreeMap", None);
+                }
+                if types.uses_non_empty_vec() {
+                    content.push_import(
+                        format!("{}::non_empty", cli.common_import_wasm()),
+                        "NonEmptyVec",
+                        None,
+                    );
                 }
                 // external macros
                 if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro
@@ -1483,6 +1572,27 @@ impl GenerationScope {
                 std::fs::write(
                     rust_dir.join("rust/src/generated/ordered_hash_map.rs"),
                     rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+                )?;
+            }
+
+            // non_empty.rs (the NonEmptyVec runtime) — only for crates that use `[+ T]`. Its
+            // json/schemars companions append under the same flags as the ordered_hash_map ones.
+            if types.uses_non_empty_vec() {
+                let mut non_empty_rs =
+                    std::fs::read_to_string(cli.static_dir.join("non_empty.rs"))?;
+                if cli.json_serde_derives {
+                    non_empty_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("non_empty_json.rs"),
+                    )?);
+                }
+                if cli.json_schema_export {
+                    non_empty_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("non_empty_schemars.rs"),
+                    )?);
+                }
+                std::fs::write(
+                    rust_dir.join("rust/src/generated/non_empty.rs"),
+                    rustfmt_generated_string(&non_empty_rs)?.as_ref(),
                 )?;
             }
         }
@@ -3637,7 +3747,15 @@ impl GenerationScope {
                         .add_to(&mut deser_loop);
                     }
                     deser_code.content.push_block(deser_loop);
-                    if let Some(bounds) = &type_cfg.bounds {
+                    if type_cfg.bounds == Some((Some(1), None)) {
+                        // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
+                        // uses, so the wire side and API side report the identical RangeCheck error
+                        // ("0 not at least 1") and can never drift. The encoding vars stay keyed off
+                        // the field (untouched below) — only the value var is rebound.
+                        deser_code.content.line(&format!(
+                            "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
+                        ));
+                    } else if let Some(bounds) = &type_cfg.bounds {
                         // we use cargo fmt after so it's okay if we just use .line() here
                         deser_code.content.line(&bounds_check_if_block(
                             bounds,
@@ -4225,6 +4343,171 @@ impl GenerationScope {
             wrapper.push(self, types);
         }
     }
+
+    /// Emit the RESTRICTED list wrapper for a `[+ elem]` array — the wasm twin of the loose list
+    /// wrapper, but wrapping `core::NonEmptyVec<elem>` instead of `Vec<elem>`. Created via
+    /// `try_from` (borrow + clone, so the source loose list/Vec stays valid) or `new(first)`; `add`
+    /// stays infallible (a push can't break a `>= 1` bound). `wrapper_ident` is the JS class name —
+    /// the synthesized `NonEmpty*List` for inline arrays, or the rule ident for a named `[+ …]`.
+    fn generate_non_empty_array_type(
+        &mut self,
+        types: &IntermediateTypes,
+        element_type: RustType,
+        wrapper_ident: &RustIdent,
+        cli: &Cli,
+    ) {
+        // mint any NonEmpty wrappers the element itself needs (nested `[+ [+ int]]`) first
+        self.ensure_non_empty_wrappers(types, &element_type, cli);
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
+        let elem_rust = element_type.for_rust_member(types, true, cli);
+        let inner_type = format!("NonEmptyVec<{elem_rust}>");
+        // the element's structural loose-builder name; when it coincides with THIS wrapper's ident
+        // (a self-named rule like `bar_list = [+ bar]`), the loose builder cannot exist — the rule
+        // legitimately owns the ident for its restricted class (collision-checked in finalize), so
+        // the wrapper emits WITHOUT `try_from` and is built incrementally (`new(first)` + `add`).
+        let elem_wasm = element_type.for_wasm_member(types);
+        let loose_list = (!element_type.directly_wasm_exposable(types)
+            && !element_type.is_non_empty_array())
+        .then(|| element_type.name_as_wasm_array(types));
+        let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
+        let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
+        // Decision 11 (two-type design doc): quote the originating CDDL occurrence so the type
+        // name, the doc comment, and the try_from signature are three redundant discovery signals.
+        let entry_doc = if self_named {
+            "The rule name coincides with the loose builder name, so no `try_from` source class \
+             exists — build incrementally from the first element (`new(first)` + `add`)."
+        } else {
+            "Enter via `try_from` (the single checked door — the CBOR decoder routes through the \
+             same door) or `new(first)`."
+        };
+        wrapper.s.doc(format!(
+            "`[+ {elem_wasm}]`: at least one element, enforced by the `NonEmptyVec` \
+             representation. {entry_doc} `add` can never violate the bound; removal is checked \
+             in the core type."
+        ));
+        wrapper.s.tuple_field(None, &inner_type);
+        // new(first) — always valid (length 1)
+        let mut new_func = codegen::Function::new("new");
+        new_func
+            .vis("pub")
+            .ret("Self")
+            .arg("first", element_type.for_wasm_param(types))
+            .line(format!(
+                "Self(NonEmptyVec::new({}))",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "first", false)
+                        .into_iter()
+                )
+            ));
+        wrapper.s_impl.push_fn(new_func);
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .line("self.0.len()");
+        wrapper
+            .s_impl
+            .new_fn("get")
+            .vis("pub")
+            .ret(element_type.for_wasm_return(types))
+            .arg_ref_self()
+            .arg("index", "usize")
+            .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
+        // add stays infallible: a push can never violate the >= 1 lower bound
+        wrapper
+            .s_impl
+            .new_fn("add")
+            .vis("pub")
+            .arg_mut_self()
+            .arg("elem", element_type.for_wasm_param(types))
+            .line(format!(
+                "self.0.push({});",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "elem", false)
+                        .into_iter()
+                )
+            ));
+        // try_from: the single checked door from the loose form to the restricted wrapper. It
+        // BORROWS (and clones) so the source loose list/Vec remains valid on the JS side, and the
+        // throw happens here — right at the conversion, not inside a parent constructor.
+        if element_type.directly_wasm_exposable(types) {
+            // exposable element: no loose wrapper exists, so take the bare Vec by value (boundary copy)
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("elements", format!("Vec<{elem_wasm}>"))
+                .line(
+                    "NonEmptyVec::try_from(elements).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+                );
+        } else if let Some(loose_list) = loose_list.filter(|_| !self_named) {
+            // non-exposable, non-nested element: borrow the loose list wrapper and clone it out.
+            // Make sure the loose builder exists (inline arrays already mint it; a named `[+ bar]`
+            // rule may not have — minting is idempotent via `already_generated`, and a user rule
+            // of incompatible shape claiming this ident was rejected at finalize).
+            self.generate_array_type(
+                types,
+                element_type.clone(),
+                &RustIdent::new(CDDLIdent::new(loose_list.clone())),
+                cli,
+            );
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("list", format!("&{loose_list}"))
+                .line(format!(
+                    "let inner: {} = list.clone().into();",
+                    element_type.name_as_rust_array(types, true, cli)
+                ))
+                .line(
+                    "NonEmptyVec::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+                );
+        }
+        // else: self-named rule (loose ident unavailable — see the doc comment) or a nested
+        // nonempty element (no clean loose source): built incrementally via new(first)+add only.
+        wrapper.add_conversion_methods(&inner_type, cli);
+        wrapper.push(self, types);
+    }
+
+    /// Recursively mint the restricted `NonEmpty*List` wrappers a type (at any nesting level) needs.
+    /// Named `[+ …]` rules mint their own wrapper under the rule ident elsewhere, so this only fires
+    /// on INLINE array shapes (conceptual `Array` carrying the `(Some(1), None)` bounds) that do NOT
+    /// dedup to a named rule.
+    fn ensure_non_empty_wrappers(&mut self, types: &IntermediateTypes, rt: &RustType, cli: &Cli) {
+        match &rt.conceptual_type {
+            ConceptualRustType::Array(inner) => {
+                if rt.is_non_empty_array() {
+                    // dedup-to-named: an inline `[+ elem]` whose element has a NAMED `[+ …]` rule
+                    // uses that rule's class (minted by the rule's own variant-match) — nothing
+                    // synthesized here
+                    if types.non_empty_named_owner(inner).is_none() {
+                        let ident =
+                            RustIdent::new(CDDLIdent::new(rt.non_empty_wasm_wrapper_name(types)));
+                        self.generate_non_empty_array_type(types, (**inner).clone(), &ident, cli);
+                    }
+                } else {
+                    self.ensure_non_empty_wrappers(types, inner, cli);
+                }
+            }
+            ConceptualRustType::Optional(inner) => {
+                self.ensure_non_empty_wrappers(types, inner, cli)
+            }
+            ConceptualRustType::Map(k, v) => {
+                self.ensure_non_empty_wrappers(types, k, cli);
+                self.ensure_non_empty_wrappers(types, v, cli);
+            }
+            _ => (),
+        }
+    }
 }
 
 fn canonical_param(cli: &Cli) -> &'static str {
@@ -4535,6 +4818,13 @@ fn bounds_check_if_block_float(
 /// bounded named Rust wrapper checks at its own construction). Reproduces the integer path
 /// byte-for-byte (same `nint_bounds_to_u64` swap) so existing snapshots are unchanged.
 fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<String> {
+    // The `[+ T]` shape enforces its `>= 1` bound at the type level (NonEmptyVec's single TryFrom
+    // door), so no inline length check is emitted at ctor/setter/deser sites — the invalid state is
+    // unrepresentable. Every OTHER array bound (2*5, *3, …) keeps this runtime-check path. Alias-
+    // resolving so a field referencing a named `[+ …]` rule skips the check too.
+    if ty.is_type_enforced_non_empty() {
+        return None;
+    }
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
             ty.resolve_alias_shallow(),
@@ -5525,7 +5815,7 @@ fn mint_wasm_wrapper_for_visited_type(
 ) {
     match ty {
         ConceptualRustType::Array(elem) => {
-            if !ty.directly_wasm_exposable(types) {
+            if !ty.directly_wasm_exposable_ct(types) {
                 let array_ident = elem.name_as_wasm_array(types);
                 if wasm_wrappers_generated.insert(array_ident.clone()) {
                     gen_scope.generate_array_type(
@@ -5567,7 +5857,7 @@ fn mint_wasm_wrapper_for_visited_type(
                     }
                 }
             }
-            if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable(types) {
+            if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable_ct(types) {
                 let keys_ident = k.name_as_wasm_array(types);
                 if wasm_wrappers_generated.insert(keys_ident.clone()) {
                     gen_scope.generate_array_type(
@@ -5693,7 +5983,9 @@ fn codegen_table_type(
     // `.map(Into::into)` through the Option — not a blanket `.into()`, which has no
     // `From<Option<Inner>>` impl (wasm E0277/E0308).
     let value_nullable_inner_exposable = match value_type.conceptual_type.resolve_alias_shallow() {
-        ConceptualRustType::Optional(inner) => inner.conceptual_type.directly_wasm_exposable(types),
+        ConceptualRustType::Optional(inner) => {
+            inner.conceptual_type.directly_wasm_exposable_ct(types)
+        }
         _ => false,
     };
     // insert
@@ -5819,19 +6111,19 @@ fn codegen_table_type(
     let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
     let mut keys = codegen::Function::new("keys");
     keys.arg_ref_self()
-        .ret(keys_type.for_wasm_return(types))
+        .ret(keys_type.for_wasm_return_ct(types))
         .vis("pub");
     let key_clone = if key_type.is_copy(types) {
         ".keys().copied()"
     } else {
         ".keys().cloned()"
     };
-    if keys_type.directly_wasm_exposable(types) {
+    if keys_type.directly_wasm_exposable_ct(types) {
         keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
     } else {
         keys.line(format!(
             "{}(self.0{key_clone}.collect::<Vec<_>>())",
-            keys_type.for_wasm_return(types)
+            keys_type.for_wasm_return_ct(types)
         ));
     }
     wrapper.s_impl.push_fn(keys);

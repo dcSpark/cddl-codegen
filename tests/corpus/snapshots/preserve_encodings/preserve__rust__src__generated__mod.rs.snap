@@ -7,20 +7,22 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
-    HashEncoding, MapWithDefaultsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
-    SignBoundsEncoding, SignedIntsEncoding, String1632Encoding, String64Encoding,
+    HashEncoding, MapWithDefaultsEncoding, NevPreserveEncoding, PlainArraysEncoding, PlainEncoding,
+    SecondEncoding, SignBoundsEncoding, SignedIntsEncoding, String1632Encoding, String64Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -699,6 +701,21 @@ impl MapWithDefaults {
 impl Default for MapWithDefaults {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NevPreserve {
+    pub pts: NonEmptyVec<u64>,
+    pub encodings: Option<NevPreserveEncoding>,
+}
+
+impl NevPreserve {
+    pub fn new(pts: NonEmptyVec<u64>) -> Self {
+        Self {
+            pts,
+            encodings: None,
+        }
     }
 }
 

@@ -3805,6 +3805,99 @@ impl Deserialize for MapWithDefaults {
     }
 }
 
+impl cbor_event::se::Serialize for NevPreserve {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.pts_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.pts.len() as u64),
+        )?;
+        for (i, element) in self.pts.iter().enumerate() {
+            let pts_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.pts_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*element, fit_sz(*element, pts_elem_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.pts_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NevPreserve {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let (pts, pts_encoding, pts_elem_encodings) = (|| -> Result<_, DeserializeError> {
+                let mut pts_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let pts_encoding = len.into();
+                let mut pts_elem_encodings = Vec::new();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (pts_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let (pts_elem, pts_elem_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    pts_arr.push(pts_elem);
+                    pts_elem_encodings.push(pts_elem_encoding);
+                }
+                let pts_arr = NonEmptyVec::try_from(pts_arr)?;
+                Ok((pts_arr, pts_encoding, pts_elem_encodings))
+            })()
+            .map_err(|e| e.annotate("pts"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NevPreserve {
+                pts,
+                encodings: Some(NevPreserveEncoding {
+                    len_encoding,
+                    pts_encoding,
+                    pts_elem_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NevPreserve"))
+    }
+}
+
 impl cbor_event::se::Serialize for NonOverlapBasicEmbed {
     fn serialize<'se, W: Write>(
         &self,

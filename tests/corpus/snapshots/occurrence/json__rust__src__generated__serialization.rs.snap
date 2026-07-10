@@ -54,14 +54,7 @@ impl Deserialize for OccurrenceHolder {
                     }
                     o_arr.push(raw.unsigned_integer()?);
                 }
-                if o_arr.len() < 1 {
-                    return Err(DeserializeFailure::RangeCheck {
-                        found: o_arr.len() as isize,
-                        min: Some(1),
-                        max: None,
-                    }
-                    .into());
-                }
+                let o_arr = NonEmptyVec::try_from(o_arr)?;
                 Ok(o_arr)
             })()
             .map_err(|e| e.annotate("o"))?;

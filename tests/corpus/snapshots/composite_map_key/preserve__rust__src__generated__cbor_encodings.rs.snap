@@ -12,6 +12,6 @@ use std::collections::BTreeMap;
 pub struct HolderEncoding {
     pub len_encoding: LenEncoding,
     pub table_encoding: LenEncoding,
-    pub table_key_encodings: BTreeMap<Vec<u64>, (LenEncoding, Vec<Option<cbor_event::Sz>>)>,
-    pub table_value_encodings: BTreeMap<Vec<u64>, Option<cbor_event::Sz>>,
+    pub table_key_encodings: BTreeMap<NonEmptyVec<u64>, (LenEncoding, Vec<Option<cbor_event::Sz>>)>,
+    pub table_value_encodings: BTreeMap<NonEmptyVec<u64>, Option<cbor_event::Sz>>,
 }

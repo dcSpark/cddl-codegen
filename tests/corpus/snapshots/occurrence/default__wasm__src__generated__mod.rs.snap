@@ -10,6 +10,7 @@ expression: content
     clippy::new_without_default
 )]
 
+use cddl_lib::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
@@ -111,14 +112,15 @@ impl AsRef<cddl_lib::OccurrenceHolder> for OccurrenceHolder {
     }
 }
 
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OneOrMore(Vec<u64>);
+pub struct OneOrMore(NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl OneOrMore {
-    pub fn new() -> Self {
-        Self(Vec::new())
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
     }
 
     pub fn len(&self) -> usize {
@@ -132,22 +134,28 @@ impl OneOrMore {
     pub fn add(&mut self, elem: u64) {
         self.0.push(elem);
     }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<OneOrMore, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
 }
 
-impl From<Vec<u64>> for OneOrMore {
-    fn from(native: Vec<u64>) -> Self {
+impl From<NonEmptyVec<u64>> for OneOrMore {
+    fn from(native: NonEmptyVec<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<OneOrMore> for Vec<u64> {
+impl From<OneOrMore> for NonEmptyVec<u64> {
     fn from(wasm: OneOrMore) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<u64>> for OneOrMore {
-    fn as_ref(&self) -> &Vec<u64> {
+impl AsRef<NonEmptyVec<u64>> for OneOrMore {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
         &self.0
     }
 }

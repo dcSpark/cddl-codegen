@@ -1619,4 +1619,29 @@ mod tests {
             "plain-group header error must not double-annotate, got: {plain_err}"
         );
     }
+
+    // WI-1: a `[+ uint]` field under --preserve-encodings must keep its length-encoding metadata in
+    // the parent's encoding struct (keyed off the FIELD), so an indefinite-length encoding of the
+    // NonEmptyVec array round-trips byte-identically — the container swap must not swallow it.
+    #[test]
+    fn non_empty_vec_preserves_encoding() {
+        let pts = NonEmptyVec::try_from(vec![1u64, 2, 3]).unwrap();
+        let mut nev = NevPreserve::new(pts);
+        deser_test(&nev);
+        let definite = nev.to_cbor_bytes();
+        let mut enc = NevPreserveEncoding::default();
+        enc.pts_encoding = LenEncoding::Indefinite;
+        nev.encodings = Some(enc);
+        deser_test(&nev);
+        let indefinite = nev.to_cbor_bytes();
+        assert!(
+            definite != indefinite,
+            "indefinite [+ uint] encoding must differ from the definite one"
+        );
+        assert_eq!(
+            *indefinite.last().unwrap(),
+            BREAK,
+            "indefinite inner array must terminate with BREAK"
+        );
+    }
 }
