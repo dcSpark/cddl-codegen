@@ -842,11 +842,11 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` holds fixtures with a
   *rust*-validator gap that still generate, round-trip, and dump fine: they are generated **without**
   `--emit-tests-conformance` (rust validate half off) while their minted bytes are **still** swept by
-  the ruby gem — a rust-validator blind spot must not cost the decorrelated oracle its coverage. One
-  resident at HEAD: `cbor_bignint_table` (the validator rejects any bignint-KEYED map, even spec-valid
-  instances — `cddl-matrix/README.md` § "Upstream oracle gaps" gap #6,
-  `draft/rust-cddl-bignint-key-validator-gap.md`; its ruby half is separately on `RUBY_EXPECTED_FAIL`
-  above, so the decode-side reference-codec differential below is its structural check).
+  the ruby gem — a rust-validator blind spot must not cost the decorrelated oracle its coverage.
+  Empty at HEAD: the sole past resident, `cbor_bignint_table`, came off the list when the fork's
+  bignum map-key fix shipped (`cddl-matrix/README.md` § "Upstream oracle gaps" gap #6; its ruby
+  half is separately on `RUBY_EXPECTED_FAIL` above, so it keeps the decode-side reference-codec
+  differential AND the rust conformance half as its checks).
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops

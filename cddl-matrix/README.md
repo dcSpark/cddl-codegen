@@ -212,9 +212,9 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
-`2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–9 are OPEN at that rev — gap 6
-gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
+`4e39d09` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
+cddl-codegen's own parser share it) carries fixes for gaps 1–6 (gaps 7–9 are OPEN at that rev —
+gap 7 blocks ONE arm-coverage-floor
 class, ledgered honestly; gap 8 keeps one containment row's decode-foreign minting
 `pinned_reason`-vectorless; gap 9 drops one containment row's legal empty-map accept candidate at
 every mint); `RUST_CDDL` defaults to that build,
@@ -277,17 +277,22 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    positions (occurrence bounds, tag heads, simple values) is broken
    (`draft/radix-oracle-deviations-verdict.md`), so future radix-position rows can't lean on ruby.
    Repro + fix provenance: `draft/rust-cddl-radix-int-literal-gap.md`.
-6. **bignint-keyed map validation over-rejection** (OPEN at `local-fixes` @ `2c7548e`, the pinned
-   rev): `validate_cbor_from_slice` rejects EVERY map whose KEY domain is the prelude `bignint`
-   ("expected object value of type bignint, got object") — empty or not, spec-valid entries or not,
-   `.cbor`-wrapped or bare; bignint VALUES validate fine, so the gap is specific to the key-domain
-   position. No matrix row sits on it (no bignint-key-domain cell exists), but it blinds the
-   generated-crate conformance oracle for `tests/corpus/cbor_bignint_table.cddl`, which therefore
-   rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (its ruby half is separately unjudgeable —
-   the gem's inline-composite controller parse gap — so the decode-side reference-codec
-   differential is its structural check). Differential repro + prune steps:
-   `draft/rust-cddl-bignint-key-validator-gap.md`.
-7. **prelude `number` rejects a float** (OPEN at `2c7548e`, NOT fork-fixed): `validate` rejects every
+6. **bignum-typed map keys rejected wholesale + bignum VALUE tags unchecked** (released 0.10.x): the
+   member-key walk had no predicate for the prelude bignum types (`biguint`/`bignint`/`bigint`), so
+   `validate` rejected EVERY map whose KEY domain is one of them ("expected object value of type
+   bignint, got object") — empty or not, spec-valid entries or not, `.cbor`-wrapped or bare. The
+   fix surfaced a second, opposite-polarity gap: the `Value::Tag` arm only inspected tags 0/1, so a
+   bignum VALUE "validated" under ANY tag (`[bignint]` accepted `2(h'01')` and even `3(1)`). FIXED
+   in `local-fixes` @ `c2ebf9f` (bignum keys match at all four member-key sites; bignum tags are
+   enforced in both positions per the RFC 8610 prelude — `bignint` = tag 3 only, `biguint` = tag 2
+   only, `bigint` either; a mismatched tag now fails discriminatingly with "map requires entry key
+   of type bignint"; 30-case suite on the fork, 12/12 differential agreement vs the ruby gem). The
+   fix re-armed the rust conformance-oracle half for `tests/corpus/cbor_bignint_table.cddl` —
+   formerly the sole `RUST_ORACLE_SKIP` resident (its ruby half is separately unjudgeable — the
+   gem's inline-composite controller parse gap — so it stays on `RUBY_EXPECTED_FAIL`). Two
+   fingerprint probes (`bignint-key-empty-map-accepts`, `bignint-wrong-tag-rejects`) pin the fixed
+   behavior, refusing a stale pre-fix (old-pin) oracle build.
+7. **prelude `number` rejects a float** (OPEN at `4e39d09`, NOT fork-fixed): `validate` rejects every
    CBOR float against the built-in `number` type (`expected type number, got Float(…)`), while ints
    against `number` — and floats against the equivalent inline `int / float` or a user alias — validate
    fine. Root cause is a one-line asymmetry: `is_ident_float_data_type` omits `Token::NUMBER` where its
@@ -302,7 +307,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    fixed oracle is refused by both consumers until it is consciously re-pinned). Repro + the one-line
    fork-fix + prune steps:
    `draft/rust-cddl-number-float-gap.md`.
-8. **tag-typed map-key over-rejection** (OPEN at `2c7548e`, NOT fork-fixed): `validate` evaluates a
+8. **tag-typed map-key over-rejection** (OPEN at `4e39d09`, NOT fork-fixed): `validate` evaluates a
    TAGGED Type1 member key against the WHOLE map instead of the entry keys — spec-valid
    `{24(5): "x"}` against `m = { * #6.24(uint) => tstr }` rejects with
    `expected tagged data #6.24(uint), got Map(...)`, while the untagged `{ * uint => tstr }`
@@ -315,7 +320,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    unavailable; the row's support verdict is unaffected (execution-gated green). No upstream
    issue filed yet. Differential repro + suspected `src/validator/cbor.rs` site + close-out steps:
    `draft/rust-cddl-tag-map-key-gap.md` (local note).
-9. **optional-entry empty-map over-rejection** (OPEN at `2c7548e`, NOT fork-fixed): `validate`
+9. **optional-entry empty-map over-rejection** (OPEN at `4e39d09`, NOT fork-fixed): `validate`
    rejects the spec-VALID EMPTY map against a map whose sole entry carries a `?` occurrence
    (`m = { ? tstr => uint }`, instance `{}` = holder `8200a0`) — `?` permits the entry to be absent,
    so the empty map is a legal 0-entry instance — while ruby accepts. Scope: the `?` MARKER on a
@@ -434,9 +439,9 @@ numbers** — same robustness rule as the COVERAGE.md docs.
   sibling checkout — § "Upstream oracle gaps" explains why, and why to pin an immutable copy before a
   multi-probe run). Evidence-writing verify runs REQUIRE the pinned-behavior oracle: a stock
   `cargo install cddl` build is refused at startup by the `runOracleFingerprint` behavioral fingerprint
-  (its five released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
+  (its released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
   `~/.cargo/bin/cddl` no longer produces a degraded-but-workable run — supply the `local-fixes` @
-  `2c7548e` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
+  `4e39d09` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
   `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time dep warm-up).
 
 ## Scope (v1)

@@ -163,20 +163,19 @@ are ledgered here (that's what the probe/gate error messages point at).
   Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
   controller type — same caveat class as the ruby radix-position deviations
   (`draft/radix-oracle-deviations-verdict.md`).
-- When a rust `cddl` fix ships bignint-keyed map validation (README gap #6 — OPEN at the pinned
-  `2c7548e` rev; differential repro + prune steps in
-  `draft/rust-cddl-bignint-key-validator-gap.md`): remove `cbor_bignint_table` from
-  `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (re-arming its rust conformance half), prune README
-  gap #6, and delete that draft.
+- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
+  30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
+  `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
+  wording).
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
-  `2c7548e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
+  `4e39d09` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
   it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
   disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
   change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
   draft.
 - When a rust `cddl` fix ships optional-entry empty-map validation (README gap #9 — OPEN at the
-  pinned `2c7548e` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`;
+  pinned `4e39d09` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`;
   repro + suspected site + close-out detail in `draft/rust-cddl-optional-entry-empty-map-gap.md`):
   the close-out is now just **prune README gap #9 + that draft**. It no longer gates a decode re-mint:
   `{ ? tstr => uint }` is a **rejected** spelling (the count-permitting table-marker boundary — the
