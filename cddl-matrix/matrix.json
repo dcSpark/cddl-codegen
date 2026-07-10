@@ -1693,6 +1693,21 @@
           }
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.grpent.member.record_array_tagged",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.memberkey.bareword.map",
         "status": "supported"
       },
@@ -2751,6 +2766,14 @@
       "feature": "grpent.member",
       "id": "contain.group-choice-arm.grpent.member.record_array",
       "note": "Array-representation group-choice arm whose member value is a named RECORD type (`a: st`, `st = [x: uint, y: tstr]` with a uint first field) rather than a scalar. A non-embedded record arm serializes NESTED — the outer array header then the record's OWN array header — so the arm's deserialize discriminant must peek the record's Array header, not its first field's uint type; otherwise spec-valid bytes fall through to NoVariantMatched against the overlapping `tstr` sibling. RFC8610 §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ a: tg // b: tstr ]\ntg = #6.10([x: uint])",
+      "feature": "grpent.member",
+      "id": "contain.group-choice-arm.grpent.member.record_array_tagged",
+      "note": "Array-representation group-choice arm whose member value is a named TAGGED record type (`a: tg`, `tg = #6.10([x: uint])`) — the tag-head variation of the record_array sibling. The arm's deserialize discriminant routes through `RustType::cbor_types`, whose struct-tag branch dispatches on the record's TAG head (CBOR major type 6), not its Array representation: an alternative discriminant that hand-mapped the record's rep (always Array/Map, never Tag) would dispatch tagged-record arms on the WRONG head type and fall through to NoVariantMatched on spec-valid bytes — while staying green through every untagged record-arm gate. This row is what makes that mis-mapping fail loudly. RFC8610 §2.2.2, §2.2.4, §3.4.",
       "role": "role.group-choice-arm",
       "spec": "allowed"
     },
