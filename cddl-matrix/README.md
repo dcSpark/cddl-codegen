@@ -317,15 +317,18 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
 9. **optional-entry empty-map over-rejection** (OPEN at `2c7548e`, NOT fork-fixed): `validate`
    rejects the spec-VALID EMPTY map against a map whose sole entry carries a `?` occurrence
    (`m = { ? tstr => uint }`, instance `{}` = holder `8200a0`) — `?` permits the entry to be absent,
-   so the empty map is a legal 0-entry instance — while ruby accepts. Scope: the empty map under an
-   optional-marked sole entry; the `+` / `n*m` markers correctly reject the empty map (it violates
-   their lower bound). No matrix row's SUPPORT verdict sits on it (execution-gated green), but it
-   shapes the over-acceptance pins the widened-occurrence-marker table class (`ROADMAP.md` § findings)
-   can certify: `contain.occurrence-target.memberkey.type1.optional_table`'s BELOW-bound over-acceptance
-   (the empty map the decoder ALSO wrongly accepts) cannot pass the two-oracle spec-INVALID gate —
-   ruby certifies the empty map spec-VALID — so only its ABOVE-bound 2-entry pin is certified, and the
-   row's ruby-generated empty-map accept candidate is dropped at mint. No upstream issue filed yet
-   (local note).
+   so the empty map is a legal 0-entry instance — while ruby accepts. Scope: the `?` MARKER on a
+   type-domain key specifically — the semantically identical `0*1` spelling, `*` tables, and
+   `?`-marked bareword/fixed-text entries all validate the empty map fine, and the `+` / `n*m`
+   markers correctly reject it (there it genuinely violates the lower bound). No matrix row's
+   SUPPORT verdict sits on it (execution-gated green), and no over-acceptance pin is lost to it —
+   the `?` window has no below-bound violation at all (0 entries is in-window). Its one bite: the
+   `contain.occurrence-target.memberkey.type1.optional_table` row's spec-VALID empty-map ACCEPT
+   candidate cannot pass the two-oracle gate (dropped at every mint, `ruby 0 rust 1`), so the legal
+   empty-map instance has no committed decode evidence on that row. No upstream issue filed yet.
+   Differential repro + suspected `src/validator/cbor.rs` site (the shared
+   `Occur::Optional | None` match arm) + close-out steps:
+   `draft/rust-cddl-optional-entry-empty-map-gap.md` (local note).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
