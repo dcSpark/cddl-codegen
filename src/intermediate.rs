@@ -2789,6 +2789,14 @@ impl EnumVariant {
                                     Some(ty.cbor_types(types))
                                 }
                             }
+                            // Conservative, not a gap: `None` = brute-force try-each-variant,
+                            // which is always correct. By the same wire-form analysis as the
+                            // Record arm above, a NON-embedded group-choice arm could dispatch on
+                            // its own rep header (its serialize writes outer header then its own
+                            // per-arm header), i.e. `Some(ty.cbor_types(types))` — but no row/cell
+                            // pins that shape's dispatch today, so keep brute force until one does
+                            // (enumerate the row first, per cddl-matrix/ROADMAP.md's
+                            // "Intra-alternative variation rows" rule).
                             RustStructType::GroupChoice { .. } => None,
                             _ => Some(ty.cbor_types(types)),
                         }
