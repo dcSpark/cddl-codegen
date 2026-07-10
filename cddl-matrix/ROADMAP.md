@@ -46,6 +46,17 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Ruby-oracle flake absorber for evidence-writing verify runs — build on the next committed bite.**
+  The ruby oracle non-deterministically flips a verdict on identical input (documented on
+  `control_examples.toml`'s header; observed on `ctl.and`, corroboration-only either way), so a full
+  `verify.ts` run can hand an unrelated change a spurious one-line annotation evidence flip. No gate
+  can see it (the evidence is probe-written by design); the working rule is review discipline — the
+  annotations diff of an evidence-writing run must name exactly the rows the change touches, and a
+  flake flip is hand-reverted (done once, on the occurrence-marker enumeration change). If a spurious
+  flip ships committed, or the hand-revert dance recurs, build the mechanical layer in the probe
+  itself: retry a ruby-fail verdict once on identical input and record the retry outcome (absorbing
+  the observed spurious-fail direction at source — no read of the previously committed annotations,
+  preserving the no-prior-output-dependence invariant).
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
@@ -149,11 +160,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
   draft.
 - When a rust `cddl` fix ships optional-entry empty-map validation (README gap #9 — OPEN at the
-  pinned `2c7548e` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`):
-  the `contain.occurrence-target.memberkey.type1.optional_table` row can then certify its BELOW-bound
-  (empty-map) over-acceptance pin too, and mint a spec-VALID empty-map accept vector; re-mint the row
-  (`--mint-decode-foreign --only=contain.occurrence-target.memberkey.type1.optional_table`) and prune
-  README gap #9.
+  pinned `2c7548e` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`;
+  repro + suspected site + close-out detail in `draft/rust-cddl-optional-entry-empty-map-gap.md`):
+  re-mint the `contain.occurrence-target.memberkey.type1.optional_table` row
+  (`--mint-decode-foreign --only=<that id>`) so it gains its legal empty-map ACCEPT vector — nothing
+  more changes: the `?` window has no below-bound violation (0 entries is in-window), so no new
+  over-acceptance pin exists; the above-bound 2-entry pin stays the row's only one. Then re-run the
+  full `verify.ts` in the same change (the § 9 evidence-coherence lint enforces the ordering) and
+  prune README gap #9 + that draft.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
@@ -253,10 +267,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   and move the row ids from `EXPECTED_ENFORCE_OVERACCEPTS` to `EXPECTED_ENFORCE_YES`. If the bounds slot
   lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes implementable as
   bounds `(1, 1)`, so flip its reject row (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on
-  merit rather than keeping the rejection out of inertia. (The `?` row's below-bound direction has no
-  certifiable pin: the rust oracle @ `2c7548e` over-rejects the spec-VALID empty map — see README
-  § "Upstream oracle gaps"'s empty-map note — so only its above-bound 2-entry over-acceptance is
-  pinned.)
+  merit rather than keeping the rejection out of inertia. (The `?` row carries only the above-bound
+  2-entry pin BY CONSTRUCTION — its window has no below-bound violation, 0 entries is in-window;
+  what it is missing is decode evidence for the LEGAL empty map, blocked by the rust oracle's
+  over-rejection of it — README gap #9, `draft/rust-cddl-optional-entry-empty-map-gap.md`.)
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
