@@ -209,9 +209,10 @@ None of these are cddl-codegen bugs, and the matrix no longer sits on any of the
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
 `2c7548e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–7 are OPEN at that rev — gap 6
+cddl-codegen's own parser share it) carries fixes for gaps 1–5 (gaps 6–8 are OPEN at that rev — gap 6
 gates a corpus fixture's conformance-oracle half, not any matrix row; gap 7 blocks ONE arm-coverage-floor
-class, ledgered honestly); `RUST_CDDL` defaults to that build,
+class, ledgered honestly; gap 8 keeps one containment row's decode-foreign minting
+`pinned_reason`-vectorless); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
 behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`
@@ -296,6 +297,19 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    fixed oracle is refused by both consumers until it is consciously re-pinned). Repro + the one-line
    fork-fix + prune steps:
    `draft/rust-cddl-number-float-gap.md`.
+8. **tag-typed map-key over-rejection** (OPEN at `2c7548e`, NOT fork-fixed): `validate` evaluates a
+   TAGGED Type1 member key against the WHOLE map instead of the entry keys — spec-valid
+   `{24(5): "x"}` against `m = { * #6.24(uint) => tstr }` rejects with
+   `expected tagged data #6.24(uint), got Map(...)`, while the untagged `{ * uint => tstr }`
+   control validates fine (the member-key walk repositions onto entry keys for the key classes it
+   special-cases, but not for `Type2::TaggedData`, so the tag type is visited with the map as the
+   current value); ruby accepts. Spelling-independent (re-confirmed under the `*` respell during
+   the no-occurrence-arrow close-out). This is what keeps `contain.map-key.type2.tag`
+   `pinned_reason`-vectorless in the decode catalog — every ruby-generated candidate dies on the
+   two-oracle gate — so decode-foreign corroboration for tagged map keys is structurally
+   unavailable; the row's support verdict is unaffected (execution-gated green). No upstream
+   issue filed yet. Differential repro + suspected `src/validator/cbor.rs` site + close-out steps:
+   `draft/rust-cddl-tag-map-key-gap.md` (local note).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
