@@ -6,7 +6,7 @@
       "spec": "a = 0x14",
       "mode": "compile",
       "expectOk": true,
-      "why": "radix uint literals parse (local-fixes @ 2c7548e); released 0.10.x mis-lexes 0x14 as 'Invalid hexfloat' and fails compile."
+      "why": "radix uint literals parse (2c7548e, in the pinned local-fixes lineage); released 0.10.x mis-lexes 0x14 as 'Invalid hexfloat' and fails compile."
     },
     {
       "name": "control-op-array-entry",
@@ -38,7 +38,23 @@
       "mode": "validate",
       "cborHex": "fa4048f5c3",
       "expectOk": false,
-      "why": "prelude `number` still REJECTS a float (open gap #7 at 2c7548e, deliberately pinned OPEN); DECODE_FLOOR_ARM_EXEMPT['prelude.number/7'] (lib.ts) and its stale-guard depend on this gap being open, so an oracle where it is FIXED must not silently mint."
+      "why": "prelude `number` still REJECTS a float (open gap #7 at the pinned rev, deliberately pinned OPEN); DECODE_FLOOR_ARM_EXEMPT['prelude.number/7'] (lib.ts) and its stale-guard depend on this gap being open, so an oracle where it is FIXED must not silently mint."
+    },
+    {
+      "name": "bignint-key-empty-map-accepts",
+      "spec": "x = { * bignint => int }",
+      "mode": "validate",
+      "cborHex": "a0",
+      "expectOk": true,
+      "why": "bignum-KEYED maps validate (c2ebf9f/4e39d09); every earlier build — including the PREVIOUS pin 2c7548e — rejected ANY bignint-keyed map wholesale ('expected object value of type bignint, got object'), so this probe refuses a stale old-pin rebuild."
+    },
+    {
+      "name": "bignint-wrong-tag-rejects",
+      "spec": "x = [bignint]",
+      "mode": "validate",
+      "cborHex": "81c24101",
+      "expectOk": false,
+      "why": "enforcement control: tag 2 (biguint) under `bignint` (= #6.3(bstr), tag 3) MUST reject. Pre-fix builds (2c7548e included) silently ACCEPTED any non-0/1 tag in value position (the Value::Tag catch-all), and an always-accept stub passes it too — both are refused here."
     }
   ]
 }

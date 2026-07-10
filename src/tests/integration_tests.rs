@@ -3842,7 +3842,7 @@ fn comment_dsl() {
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
 /// so a routine cddl bump that updates only Cargo.toml can't silently leave the oracle on a stale rev.
-const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"2c7548e1c90a8b7f1fe18c4123c7e28daea3d1b9\" }\n";
+const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"4e39d094dd1b8c3d2ea738295742e102b3419346\" }\n";
 
 #[test]
 fn cddl_oracle_dep_rev_matches_cargo_toml() {
@@ -4018,7 +4018,7 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
         let mut message = format!(
             "HARNESS FAILURE: rust oracle fingerprint MISMATCH — CDDL_ORACLE_DEP rev {rev} does not \
              behave like the pinned oracle. Failing probe(s):\n{combined}\nThe pinned oracle is the \
-             fork's `local-fixes` branch @ 2c7548e, injected through CDDL_ORACLE_DEP. Recover by \
+             fork's `local-fixes` branch @ 4e39d09, injected through CDDL_ORACLE_DEP. Recover by \
              updating CDDL_ORACLE_DEP only after consciously re-validating the shared probe set in \
              cddl-matrix/oracle_fingerprint.json."
         );
@@ -4365,15 +4365,13 @@ fn ir_conformance_corpus() {
     // RUST_ORACLE_SKIP: fixtures whose minted bytes are valid but hit a documented RUST conformance
     // validator gap. Such fixtures still generate, round-trip, and dump, but are generated WITHOUT
     // --emit-tests-conformance (rust validate half off) so the decorrelated ruby gem can continue
-    // judging them. A rust-validator gap must not blind the second oracle.
-    //   - cbor_bignint_table: the validator rejects ANY bignint-KEYED map ("expected object value of
-    //     type bignint, got object") — empty or not, spec-valid entries or not, `.cbor`-wrapped or
-    //     bare — an over-rejection isolated to the key-domain position (bare bignint VALUES validate
-    //     fine: the same fixture's `prelude_bignint` rule passes). Differential repro table + prune
-    //     steps: draft/rust-cddl-bignint-key-validator-gap.md. (Its ruby half is ALSO unjudgeable —
-    //     the gem's inline composite control-arg parse gap, exit 65 — so its minted rules ride
-    //     RUBY_EXPECTED_FAIL below; the decode-side reference-codec differential still checks the
-    //     dumped bytes structurally.)
+    // judging them. A rust-validator gap must not blind the second oracle. Currently empty.
+    //   (cbor_bignint_table is a PAST resident: the validator rejected ANY bignint-KEYED map
+    //   wholesale — an over-rejection isolated to the key-domain position — until the fork's
+    //   bignum-key fix (`local-fixes` @ 4e39d09, which also makes bignum tags ENFORCED in value
+    //   position: `bignint` accepts tag 3 only, `biguint` tag 2 only, per the RFC 8610 prelude).
+    //   Its ruby half remains unjudgeable — the gem's inline composite control-arg parse gap,
+    //   exit 65 — so its minted rules still ride RUBY_EXPECTED_FAIL below.)
     //   (sized_int is a PAST resident, off the list twice over: its negative-lower-bound range
     //   `i_8: -128..127` stopped being a validator gap at the fork's `885c61c` non-uint-range fix,
     //   and its `i_64: int .size 8` member — which the rust validator hard-errors on, an
@@ -4383,7 +4381,7 @@ fn ir_conformance_corpus() {
     //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
     //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
     //   this list until the fork fix lands.)
-    const RUST_ORACLE_SKIP: &[&str] = &["cbor_bignint_table"];
+    const RUST_ORACLE_SKIP: &[&str] = &[];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -4441,10 +4439,9 @@ fn ir_conformance_corpus() {
             "same gem PARSER gap as cbor_wrapped_group_array's entry, `{…}` flavor: the fixture's \
              `bytes .cbor { * bignint => uint }` inline-map controller is a parse error (exit 65, \
              verified against gem 0.12.14 directly), so the spec-parse failure poisons `holder`'s \
-             spec-valid empty-table case without judging it. This fixture's RUST oracle half is \
-             ALSO off (RUST_ORACLE_SKIP: the bignint-KEY validator gap, \
-             draft/rust-cddl-bignint-key-validator-gap.md), leaving the decode-side reference-codec \
-             differential as its structural check. Repro + upstream steps: \
+             spec-valid empty-table case without judging it. (The fixture's RUST oracle half is back \
+             on since the fork's bignum-key fix — 4e39d09 — so only the ruby half is blind here.) \
+             Repro + upstream steps: \
              draft/ruby-cddl-inline-composite-control-arg-gap.md",
         ),
     ];

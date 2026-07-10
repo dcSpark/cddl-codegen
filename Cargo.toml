@@ -23,9 +23,11 @@ cbor_event = "2.4.0"
 # generated-crate conformance oracle, CDDL_ORACLE_DEP): control ops over a uint target were
 # unenforced, a multi-entry group in an array only validated as the sole entry with no occurrence
 # (draft/rust-cddl-group-occurrence-array-count-gap.md), and ranges with non-uint endpoints
-# (`-10..10`, `0.5..10.5`) blanket-rejected every instance (draft/rust-cddl-float-range-gap.md).
+# (`-10..10`, `0.5..10.5`) blanket-rejected every instance (draft/rust-cddl-float-range-gap.md),
+# and bignum-typed (`biguint`/`bignint`/`bigint`) map keys rejected every map wholesale while
+# bignum VALUES accepted any tag unchecked (fixed together in c2ebf9f).
 # Move back to a crates.io version once all land in anweiss/cddl + release. See tests/TESTING_ROADMAP.md.
-cddl = { git = "https://github.com/dcSpark/cddl", rev = "2c7548e1c90a8b7f1fe18c4123c7e28daea3d1b9" }
+cddl = { git = "https://github.com/dcSpark/cddl", rev = "4e39d094dd1b8c3d2ea738295742e102b3419346" }
 clap = { version = "4.5", features = ["derive"] }
 # dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
