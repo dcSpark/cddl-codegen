@@ -121,7 +121,39 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-4. **Small independent residuals (low).**
+4. **Synthesized-name interaction sweep + a generation-time duplicate-ident invariant — the
+   "generation exits 0 but the generated crate doesn't compile" class, now recurred enough to earn a
+   standing system.** The generator mints structural wasm idents (loose `{Elem}List` / `Map{K}To{V}`
+   builders, restricted `NonEmpty*` wrappers, table `keys()` list wrappers) whose interactions with
+   USER rule names and with EACH OTHER form an enumeration axis no standing gate sweeps: the shape
+   catalogs (wasm-ABI matrix, corpus, recombination) mint one rule per shape and never spell a
+   colliding user name or a named+inline coexistence, so every bug in this class ships as exit 0
+   plus a non-compiling wasm crate. Evidence from the two-type phase-1 feature: three review-found
+   instances in ONE feature — a collision scan covering fewer IR positions than its minting walk
+   (E0428), a self-named rule's self-referential `try_from` (E0277), and inline+named same-shape
+   coexistence silently skipping the loose-builder mint (E0277) — plus a PRE-existing plain-loose
+   instance recorded on the `non_empty_loose_builder_name_claimed` fixture header (`bar_list = tstr`
+   + a `[* bar]` use is E0428 at HEAD, predating the feature). All four were found by adversarial
+   repro specs in review, none by a gate; a fifth (the alias-classifying-root E0425,
+   referenced-but-never-minted wrapper) WAS gate-caught, but only by the full-tier recombination
+   wasm leg. Per-instance pins exist (the `tests/robustness/non_empty_*` fixtures,
+   `core_non_empty_dedup_and_self_named_wasm_surface`); the standing system is two layers:
+   - **A generation-time duplicate-ident assert** (cheap, broad, catches the E0428 flavor at the
+     source): before export, collect the wasm scope's top-level minted idents and hard-error on a
+     duplicate — turning every silent redefinition miscompile into a loud generator error, including
+     the pre-existing plain-loose instance above. This matches the "malformed emission is a hard
+     generator error" posture the round-trip work established.
+   - **A name-interaction fixture sweep** (semantic, catches the E0277 dedup/shape-mismatch flavor a
+     duplicate-ident assert cannot): for each synthesized-name family, generate the interaction
+     spellings — a user rule claiming the synthesized name, named + inline same shape, a self-named
+     rule (rule ident == structural loose name), a different-shape claim of a needed builder ident —
+     and assert graceful rejection or dedup AND a compiling wasm crate. The two-type robustness
+     fixtures are the seed set; the sweep generalizes them across name families.
+   The E0425 flavor (referenced-but-never-minted) stays owned by the compile gates (matrix +
+   recombination legs); if it recurs outside their reach, the scoped invariant is "every synthesized
+   wrapper name an emitter references must be in the minted set" at generation time.
+
+5. **Small independent residuals (low).**
    - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
      machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
      (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it
@@ -213,7 +245,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
      needle instance is the signal to design a detector for that flavor too, same policy.
 
-5. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
+6. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
    already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
    via pure-byte transforms harness-side, no oracle: the encoding-variant axis — spec-EQUAL
    re-encodings (indefinite framing / non-minimal widths / chunked strings / reversed maps) via the
