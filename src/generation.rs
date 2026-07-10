@@ -31,7 +31,7 @@ pub use generated::*;
 /// tool-owned generated trees. Ends with a newline so it prepends cleanly onto rustfmt'd content.
 /// `pub(crate)` so the `generated_files_start_with_header` gate asserts against the same banner
 /// and path family the stamper uses (a private copy in the test would drift silently).
-pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n";
+pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n\n";
 
 /// True for the header-stamped scope families: the tool-owned generated trees under
 /// `rust/src/generated/` and `wasm/src/generated/`. The seed-once crate roots (`*/src/lib.rs`),
@@ -4480,12 +4480,11 @@ impl GenerationScope {
             "The rule name coincides with the loose builder name, so no `try_from` source class \
              exists — build incrementally from the first element (`new(first)` + `add`)."
         } else {
-            "Enter via `try_from` (the single checked door — the CBOR decoder routes through the \
-             same door) or `new(first)`."
+            "Enter via `try_from` or `new(first)`."
         };
         wrapper.s.doc(format!(
             "`[+ {elem_wasm}]`: at least one element, enforced by the `NonEmptyVec` \
-             representation. {entry_doc} `add` can never violate the bound; removal is checked \
+             representation.\n/// {entry_doc}\n/// `add` can never violate the bound; removal is checked \
              in the core type."
         ));
         wrapper.s.tuple_field(None, &inner_type);
@@ -4626,12 +4625,11 @@ impl GenerationScope {
              exists — build incrementally from the first entry (`new(first_key, first_value)` + \
              `insert`)."
         } else {
-            "Enter via `try_from` (the single checked door — the CBOR decoder routes through the \
-             same door) or `new(first_key, first_value)`."
+            "Enter via `try_from` or `new(first_key, first_value)`."
         };
         wrapper.s.doc(format!(
             "`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the `NonEmptyMap` \
-             representation. {entry_doc} `insert` can never violate the bound; removal is checked \
+             representation.\n/// {entry_doc}\n/// `insert` can never violate the bound; removal is checked \
              in the core type."
         ));
         wrapper.s.tuple_field(None, &inner_type);
