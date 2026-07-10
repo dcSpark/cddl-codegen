@@ -727,7 +727,7 @@ Two consumers run it:
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8 min (138 cells x 3 profiles)
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8-10 min (162 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -913,7 +913,10 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   and runs in CI's `matrix-drift` job.
 - **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
-    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `ralias` (transparent
+    (array/map wrapper structs), `necoll`/`necollrec`/`nemap` (restricted non-empty wrappers over
+    `NonEmptyVec`/`NonEmptyMap` — the failable `try_from` door beside infallible
+    `new(first)`+`add`/`insert`; `necoll` takes a bare `Vec` by value, `necollrec`/`nemap` borrow +
+    clone their loose builder wrapper), `passthru`/`passthrumap` (transparent `pub type`s), `ralias` (transparent
     alias to a Record struct), `struct`, `mstruct`
     (map-representation Record struct — bareword-keyed map), `cborwrap`/`cborwrap2`, `tag` (a CBOR-tag
     wrapper struct — crosses via a wasm `new(inner)` ctor and an inner-value `get()` accessor, plus
@@ -1202,18 +1205,20 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `named`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
   `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
   would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
-  (the controls are throwaway, not committed). All 7 candidates
-  (`coll`/`collmap`/`collrec`/`tag`/`nullable`/`bwrap`/`cborwrap`) probed green. `anonb` applies to
+  (the controls are throwaway, not committed). All 10 candidates
+  (`coll`/`collmap`/`collrec`/`tag`/`nullable`/`bwrap`/`cborwrap` and the restricted non-empty
+  shapes `necoll`/`necollrec`/`nemap`) probed green. `anonb` applies to
   exactly the anon shapes whose plain `anon` cell would be masked by an alias-only module `a`
-  emitting no serialization (`coll`/`collmap`/`nullable`); the other anon shapes' module `a` already
-  emits serialization, so nothing masks their b-side verdict and a ballast variant adds no
-  discrimination (their `anon` cells are green except the pinned `collrec__anon`).
+  emitting no serialization (`coll`/`collmap`/`nullable`/`necoll`/`nemap`); the other anon shapes'
+  module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
+  variant adds no discrimination (their `anon` cells are green except the pinned `collrec__anon`,
+  `necollrec__anon`, and the other structural-wrapper-class pins below).
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (48 at HEAD).
+  once) / ~30 s warm measured at 43 cells (59 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1233,9 +1238,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, ~6 min at HEAD's 59; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
-  dominated by the 144 generate + 288 nested `cargo test` invocations).
+  dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
   reason) holds cells red in EVERY profile — seeded with the two `collrec` compile-floor carries
   (their wasm crate never compiles, so `cargo test` can never pass; reasons cite the Array-arm
@@ -1266,11 +1271,16 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** The two `collrec` cells (`collrec__anon` E0425, `collrec__named` E0432) —
-the ARRAY structural-wrapper placement class (`[* <record>]`, the only array whose wasm
-representation needs a generated `FooList`-style wrapper; `mark_refs`' Array arm still hard-codes
-ROOT_SCOPE as the wrapper's import source; fix queue in `cddl-matrix/ROADMAP.md` § findings). The
-shape was enumerated from a review-found `SHAPES` hole, so neither cell has ever compiled. Every
+**What it pins today.** Eleven cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
+placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings), none of which has ever
+compiled: the two `collrec` cells (`collrec__anon` E0425, `collrec__named` E0432 — the ARRAY
+structural-wrapper class, `[* <record>]`, the only loose array whose wasm representation needs a
+generated `FooList`-style wrapper; `mark_refs`' Array arm still hard-codes ROOT_SCOPE as the
+wrapper's import source; enumerated from a review-found `SHAPES` hole), plus the nine restricted
+non-empty cells (`necollrec__{anon,named,unref}`, `nemap__{anon,anonb,named,unref}`,
+`necoll__{anon,anonb}` — all E0425: the restricted wrapper's `try_from(&Loose)` or anon
+dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root
+module; the per-shape breakdown is on the same findings entry). Every
 other cell is green, and greenness rests on three emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
 `generation.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only

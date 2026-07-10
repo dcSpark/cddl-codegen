@@ -44,10 +44,10 @@ Each non-empty type provides one conversion contract:
   an empty CBOR array/map is rejected during decode with the *same* `0 not at least 1` error the API
   raises, so the constraint holds identically at both doors.
 
-Because the invalid state is unrepresentable, a struct whose only source of fallibility *was* an
-occurrence bound gets an **infallible `new()`**: every argument is already valid by construction, and
-serialization stays infallible (there is no empty value to fail on). Construction that used to check a
-length now hands over an already-checked value.
+Because the invalid state is unrepresentable, a struct whose only rejectable constraint is an
+occurrence lower bound gets an **infallible `new()`**: every argument is already valid by
+construction, and serialization stays infallible (there is no empty value to fail on). Construction
+never checks a length — it hands over an already-checked value.
 
 **Migrating a consumer** (`Vec<T>` field → `NonEmptyVec<T>` field). The break is mechanical: the
 fallible `new(items: Vec<T>) -> Result<_, _>` becomes an infallible `new(items: NonEmptyVec<T>)`, and

@@ -1054,11 +1054,11 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // -- emitted-test minter / baseline decode gaps on nested shapes -------------------------------
     // (The former `outer=generic_arg inner=map_key filler=ctl.ne.zero` entry — the emit-tests minter
     // minting key 0 against an `int .ne 0` table domain — retired when its pinning composition
-    // stopped reaching layer 2: the no-occurrence arrow map entry `{ int .ne 0 => uint }` in
-    // generic-arg position used to BYPASS the exactly-once/widening guard and silently generate an
-    // unbounded table; WI-1's RustType-level bounds threading closed that guard escape, so the
-    // composition now rejects gracefully at generation (pinned by
-    // `generic_arg_no_occurrence_table_rejects_gracefully`). The MINTER gap itself still stands
+    // stopped reaching layer 2: the composition's map spelling carries NO occurrence indicator, so
+    // it rejects gracefully at generation under the no-occurrence arrow-entry rejection (`5ef7ed0`);
+    // the staleness sat latent until the next full-tier run (this sweep is full-tier-only). The
+    // generic-instantiation REACH of that rejection is pinned by
+    // `generic_arg_no_occurrence_table_rejects_gracefully`. The MINTER gap itself still stands
     // unpinned for `*`-spelled tables — cddl-matrix/ROADMAP.md § findings, recombination layer-2
     // entry.)
     (
