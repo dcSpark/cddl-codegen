@@ -1,0 +1,8 @@
+; WI-1 (NonEmptyVec): the collision scan must see `[+ elem]` in a NAMED ARRAY RULE'S ELEMENT
+; position too — `outer = [* [+ bar]]` mints the synthesized NonEmptyBarList wasm class exactly
+; like a record field would, so a user rule claiming that ident is rejected gracefully under
+; --wasm=true. (Before the scan covered this position, generation exited 0 and the emitted wasm
+; crate defined the class twice — E0428.) Generates cleanly under --wasm=false.
+bar = [x: uint]
+outer = [* [+ bar]]
+non_empty_bar_list = [y: uint]

@@ -352,3 +352,37 @@ docs_groupchoice = [
   ; @doc comments about second @name second
   text
 ] ; @doc type-level comment
+; --- WI-1: NonEmptyVec two-type enforcement for the `+`/`1*` occurrence on arrays ---
+; `[+ T]` becomes NonEmptyVec<T> (invalid empty state unrepresentable, one TryFrom door). Every
+; other array bound keeps the runtime-check path; `[* T]` stays a bare Vec.
+nev_bar = { a: uint }
+; a NAMED `[+ T]` rule gains a real enforcement surface: `pub type NevInts = NonEmptyVec<u64>`
+nev_ints = [+ uint]
+nev_holder = {
+  tags: [+ nev_bar],        ; inline [+ bar]   -> NonEmptyVec<NevBar>
+  ? maybe: [+ nev_bar],     ; optional [+ bar] -> Option<NonEmptyVec<NevBar>>
+  nested: [+ [+ uint]],     ; nested           -> NonEmptyVec<NonEmptyVec<u64>>
+  plain: [* text],          ; control (stays a bare Vec<String>)
+  ints: nev_ints,           ; reference to the named `[+ uint]` rule
+}
+; single-field array-record whose standalone deserialize routes an empty wire array through the same
+; TryFrom door as the API (identical RangeCheck error at both doors)
+nev_wire = [items: [+ uint]]
+
+; Named `[+ elem]` over a NON-exposable element (free name): the wasm class gets a
+; `try_from(&NevPtList)` borrowing the loose builder (minted for it). An inline `[+ nev_pt]` in the
+; same spec DEDUPS to this named rule's class (the spec author's name wins over a synthesized
+; NonEmptyNevPtList — lexicographically-first same-shape rule if several exist). NB: the same dedup
+; makes nev_holder's inner `[+ uint]` (in `nested` above) resolve to NevInts.
+nev_pt = { p: uint }
+nev_pts = [+ nev_pt]
+; SELF-NAMED rule: the rule ident IS the element's loose-builder name (`nev_q_list` -> NevQList =
+; the loose list wrapper name for element NevQ), so the restricted class legitimately owns the
+; ident and emits WITHOUT `try_from` — construction is `new(first)` + `add`.
+nev_q = [a: uint]
+nev_q_list = [+ nev_q]
+nev_holder2 = {
+  pts: nev_pts,
+  pts_inline: [+ nev_pt],
+  qs: nev_q_list,
+}

@@ -25,6 +25,9 @@ inline_group_choice_member PANIC
 map_bareword_keyword_key   error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
+non_empty_loose_builder_name_claimed error (graceful)
+non_empty_wrapper_collision_array_element error (graceful)
+non_empty_wrapper_name_collision error (graceful)
 prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok

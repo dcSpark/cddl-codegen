@@ -12,6 +12,7 @@ expression: content
 pub use crate::ExternGenericExternalFoo;
 pub use crate::ExternalFoo;
 
+use cddl_lib::non_empty::NonEmptyVec;
 pub use cddl_lib::CEnum;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
@@ -59,6 +60,47 @@ impl From<A> for cddl_lib::A {
 
 impl AsRef<cddl_lib::A> for A {
     fn as_ref(&self) -> &cddl_lib::A {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrU64List(Vec<NonEmptyVec<u64>>);
+
+#[wasm_bindgen]
+impl ArrU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevInts {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevInts) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<NonEmptyVec<u64>>> for ArrU64List {
+    fn from(native: Vec<NonEmptyVec<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64List> for Vec<NonEmptyVec<u64>> {
+    fn from(wasm: ArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<NonEmptyVec<u64>>> for ArrU64List {
+    fn as_ref(&self) -> &Vec<NonEmptyVec<u64>> {
         &self.0
     }
 }
@@ -2069,6 +2111,527 @@ impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct NevBar(cddl_lib::NevBar);
+
+#[wasm_bindgen]
+impl NevBar {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevBar, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::NevBar::new(a))
+    }
+}
+
+impl From<cddl_lib::NevBar> for NevBar {
+    fn from(native: cddl_lib::NevBar) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevBar> for cddl_lib::NevBar {
+    fn from(wasm: NevBar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevBar> for NevBar {
+    fn as_ref(&self) -> &cddl_lib::NevBar {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevBarList(Vec<cddl_lib::NevBar>);
+
+#[wasm_bindgen]
+impl NevBarList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevBar {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevBar) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::NevBar>> for NevBarList {
+    fn from(native: Vec<cddl_lib::NevBar>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevBarList> for Vec<cddl_lib::NevBar> {
+    fn from(wasm: NevBarList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::NevBar>> for NevBarList {
+    fn as_ref(&self) -> &Vec<cddl_lib::NevBar> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevHolder(cddl_lib::NevHolder);
+
+#[wasm_bindgen]
+impl NevHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn tags(&self) -> NonEmptyNevBarList {
+        self.0.tags.clone().into()
+    }
+
+    pub fn set_maybe(&mut self, maybe: &NonEmptyNevBarList) {
+        self.0.maybe = Some(maybe.clone().into())
+    }
+
+    pub fn maybe(&self) -> Option<NonEmptyNevBarList> {
+        self.0.maybe.clone().map(std::convert::Into::into)
+    }
+
+    pub fn nested(&self) -> NonEmptyArrU64List {
+        self.0.nested.clone().into()
+    }
+
+    pub fn plain(&self) -> Vec<String> {
+        self.0.plain.clone()
+    }
+
+    pub fn ints(&self) -> NevInts {
+        self.0.ints.clone().into()
+    }
+
+    pub fn new(
+        tags: &NonEmptyNevBarList,
+        nested: &NonEmptyArrU64List,
+        plain: Vec<String>,
+        ints: &NevInts,
+    ) -> Self {
+        Self(cddl_lib::NevHolder::new(
+            tags.clone().into(),
+            nested.clone().into(),
+            plain,
+            ints.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::NevHolder> for NevHolder {
+    fn from(native: cddl_lib::NevHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevHolder> for cddl_lib::NevHolder {
+    fn from(wasm: NevHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevHolder> for NevHolder {
+    fn as_ref(&self) -> &cddl_lib::NevHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevHolder2(cddl_lib::NevHolder2);
+
+#[wasm_bindgen]
+impl NevHolder2 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevHolder2, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pts(&self) -> NevPts {
+        self.0.pts.clone().into()
+    }
+
+    pub fn pts_inline(&self) -> NevPts {
+        self.0.pts_inline.clone().into()
+    }
+
+    pub fn qs(&self) -> NevQList {
+        self.0.qs.clone().into()
+    }
+
+    pub fn new(pts: &NevPts, pts_inline: &NevPts, qs: &NevQList) -> Self {
+        Self(cddl_lib::NevHolder2::new(
+            pts.clone().into(),
+            pts_inline.clone().into(),
+            qs.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::NevHolder2> for NevHolder2 {
+    fn from(native: cddl_lib::NevHolder2) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevHolder2> for cddl_lib::NevHolder2 {
+    fn from(wasm: NevHolder2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevHolder2> for NevHolder2 {
+    fn as_ref(&self) -> &cddl_lib::NevHolder2 {
+        &self.0
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevInts(NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl NevInts {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NevInts, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for NevInts {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevInts> for NonEmptyVec<u64> {
+    fn from(wasm: NevInts) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for NevInts {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevPt(cddl_lib::NevPt);
+
+#[wasm_bindgen]
+impl NevPt {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevPt, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn p(&self) -> u64 {
+        self.0.p
+    }
+
+    pub fn new(p: u64) -> Self {
+        Self(cddl_lib::NevPt::new(p))
+    }
+}
+
+impl From<cddl_lib::NevPt> for NevPt {
+    fn from(native: cddl_lib::NevPt) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevPt> for cddl_lib::NevPt {
+    fn from(wasm: NevPt) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevPt> for NevPt {
+    fn as_ref(&self) -> &cddl_lib::NevPt {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevPtList(Vec<cddl_lib::NevPt>);
+
+#[wasm_bindgen]
+impl NevPtList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevPt {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevPt) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::NevPt>> for NevPtList {
+    fn from(native: Vec<cddl_lib::NevPt>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevPtList> for Vec<cddl_lib::NevPt> {
+    fn from(wasm: NevPtList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::NevPt>> for NevPtList {
+    fn as_ref(&self) -> &Vec<cddl_lib::NevPt> {
+        &self.0
+    }
+}
+
+/// `[+ NevPt]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevPts(NonEmptyVec<cddl_lib::NevPt>);
+
+#[wasm_bindgen]
+impl NevPts {
+    pub fn new(first: &NevPt) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevPt {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevPt) {
+        self.0.push(elem.clone().into());
+    }
+
+    pub fn try_from(list: &NevPtList) -> Result<NevPts, JsError> {
+        let inner: Vec<cddl_lib::NevPt> = list.clone().into();
+        NonEmptyVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<cddl_lib::NevPt>> for NevPts {
+    fn from(native: NonEmptyVec<cddl_lib::NevPt>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevPts> for NonEmptyVec<cddl_lib::NevPt> {
+    fn from(wasm: NevPts) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<cddl_lib::NevPt>> for NevPts {
+    fn as_ref(&self) -> &NonEmptyVec<cddl_lib::NevPt> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevQ(cddl_lib::NevQ);
+
+#[wasm_bindgen]
+impl NevQ {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevQ, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::NevQ::new(a))
+    }
+}
+
+impl From<cddl_lib::NevQ> for NevQ {
+    fn from(native: cddl_lib::NevQ) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevQ> for cddl_lib::NevQ {
+    fn from(wasm: NevQ) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevQ> for NevQ {
+    fn as_ref(&self) -> &cddl_lib::NevQ {
+        &self.0
+    }
+}
+
+/// `[+ NevQ]`: at least one element, enforced by the `NonEmptyVec` representation. The rule name coincides with the loose builder name, so no `try_from` source class exists — build incrementally from the first element (`new(first)` + `add`). `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevQList(NonEmptyVec<cddl_lib::NevQ>);
+
+#[wasm_bindgen]
+impl NevQList {
+    pub fn new(first: &NevQ) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevQ {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevQ) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<NonEmptyVec<cddl_lib::NevQ>> for NevQList {
+    fn from(native: NonEmptyVec<cddl_lib::NevQ>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevQList> for NonEmptyVec<cddl_lib::NevQ> {
+    fn from(wasm: NevQList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<cddl_lib::NevQ>> for NevQList {
+    fn as_ref(&self) -> &NonEmptyVec<cddl_lib::NevQ> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevWire(cddl_lib::NevWire);
+
+#[wasm_bindgen]
+impl NevWire {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevWire, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn items(&self) -> NevInts {
+        self.0.items.clone().into()
+    }
+
+    pub fn new(items: &NevInts) -> Self {
+        Self(cddl_lib::NevWire::new(items.clone().into()))
+    }
+}
+
+impl From<cddl_lib::NevWire> for NevWire {
+    fn from(native: cddl_lib::NevWire) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevWire> for cddl_lib::NevWire {
+    fn from(wasm: NevWire) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevWire> for NevWire {
+    fn as_ref(&self) -> &cddl_lib::NevWire {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct NintGeNewtype(cddl_lib::NintGeNewtype);
 
 #[wasm_bindgen]
@@ -2200,6 +2763,97 @@ impl From<NoAlias> for cddl_lib::NoAlias {
 
 impl AsRef<cddl_lib::NoAlias> for NoAlias {
     fn as_ref(&self) -> &cddl_lib::NoAlias {
+        &self.0
+    }
+}
+
+/// `[+ NevInts]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyArrU64List(NonEmptyVec<NonEmptyVec<u64>>);
+
+#[wasm_bindgen]
+impl NonEmptyArrU64List {
+    pub fn new(first: &NevInts) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevInts {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevInts) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
+    fn from(native: NonEmptyVec<NonEmptyVec<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyArrU64List> for NonEmptyVec<NonEmptyVec<u64>> {
+    fn from(wasm: NonEmptyArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
+    fn as_ref(&self) -> &NonEmptyVec<NonEmptyVec<u64>> {
+        &self.0
+    }
+}
+
+/// `[+ NevBar]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyNevBarList(NonEmptyVec<cddl_lib::NevBar>);
+
+#[wasm_bindgen]
+impl NonEmptyNevBarList {
+    pub fn new(first: &NevBar) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevBar {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevBar) {
+        self.0.push(elem.clone().into());
+    }
+
+    pub fn try_from(list: &NevBarList) -> Result<NonEmptyNevBarList, JsError> {
+        let inner: Vec<cddl_lib::NevBar> = list.clone().into();
+        NonEmptyVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<cddl_lib::NevBar>> for NonEmptyNevBarList {
+    fn from(native: NonEmptyVec<cddl_lib::NevBar>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyNevBarList> for NonEmptyVec<cddl_lib::NevBar> {
+    fn from(wasm: NonEmptyNevBarList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<cddl_lib::NevBar>> for NonEmptyNevBarList {
+    fn as_ref(&self) -> &NonEmptyVec<cddl_lib::NevBar> {
         &self.0
     }
 }

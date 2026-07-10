@@ -7,11 +7,13 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod serialization;
 pub use crate::ExternGeneric;
 pub use crate::ExternalFoo;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -758,6 +760,102 @@ impl MapWithDefaults {
 impl Default for MapWithDefaults {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NevBar {
+    pub a: u64,
+}
+
+impl NevBar {
+    pub fn new(a: u64) -> Self {
+        Self { a }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NevHolder {
+    pub tags: NonEmptyVec<NevBar>,
+    pub maybe: Option<NonEmptyVec<NevBar>>,
+    pub nested: NonEmptyVec<NonEmptyVec<u64>>,
+    pub plain: Vec<String>,
+    pub ints: NevInts,
+}
+
+impl NevHolder {
+    pub fn new(
+        tags: NonEmptyVec<NevBar>,
+        nested: NonEmptyVec<NonEmptyVec<u64>>,
+        plain: Vec<String>,
+        ints: NevInts,
+    ) -> Self {
+        Self {
+            tags,
+            maybe: None,
+            nested,
+            plain,
+            ints,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NevHolder2 {
+    pub pts: NevPts,
+    pub pts_inline: NonEmptyVec<NevPt>,
+    pub qs: NevQList,
+}
+
+impl NevHolder2 {
+    pub fn new(pts: NevPts, pts_inline: NonEmptyVec<NevPt>, qs: NevQList) -> Self {
+        Self {
+            pts,
+            pts_inline,
+            qs,
+        }
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NevInts = NonEmptyVec<u64>;
+
+#[derive(Clone, Debug)]
+pub struct NevPt {
+    pub p: u64,
+}
+
+impl NevPt {
+    pub fn new(p: u64) -> Self {
+        Self { p }
+    }
+}
+
+/// `[+ NevPt]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NevPts = NonEmptyVec<NevPt>;
+
+#[derive(Clone, Debug)]
+pub struct NevQ {
+    pub a: u64,
+}
+
+impl NevQ {
+    pub fn new(a: u64) -> Self {
+        Self { a }
+    }
+}
+
+/// `[+ NevQ]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NevQList = NonEmptyVec<NevQ>;
+
+#[derive(Clone, Debug)]
+pub struct NevWire {
+    pub items: NonEmptyVec<u64>,
+}
+
+impl NevWire {
+    pub fn new(items: NonEmptyVec<u64>) -> Self {
+        Self { items }
     }
 }
 

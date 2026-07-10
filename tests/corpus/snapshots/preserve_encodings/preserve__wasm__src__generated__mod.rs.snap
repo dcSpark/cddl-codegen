@@ -10,6 +10,7 @@ expression: content
     clippy::new_without_default
 )]
 
+use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 pub use cddl_lib::CEnum;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
@@ -1717,6 +1718,97 @@ impl From<MapWithDefaults> for cddl_lib::MapWithDefaults {
 
 impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
     fn as_ref(&self) -> &cddl_lib::MapWithDefaults {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevPreserve(cddl_lib::NevPreserve);
+
+#[wasm_bindgen]
+impl NevPreserve {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NevPreserve, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pts(&self) -> NonEmptyU64List {
+        self.0.pts.clone().into()
+    }
+
+    pub fn new(pts: &NonEmptyU64List) -> Self {
+        Self(cddl_lib::NevPreserve::new(pts.clone().into()))
+    }
+}
+
+impl From<cddl_lib::NevPreserve> for NevPreserve {
+    fn from(native: cddl_lib::NevPreserve) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevPreserve> for cddl_lib::NevPreserve {
+    fn from(wasm: NevPreserve) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NevPreserve> for NevPreserve {
+    fn as_ref(&self) -> &cddl_lib::NevPreserve {
+        &self.0
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64List(NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64List {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64List, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64List> for NonEmptyVec<u64> {
+    fn from(wasm: NonEmptyU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
         &self.0
     }
 }

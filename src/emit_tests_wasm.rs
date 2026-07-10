@@ -208,7 +208,15 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         MintValue::Array {
             elem: Some(e),
             count,
-        } => format!("vec![{}; {count}]", rust_scoped(e, scoped)),
+            non_empty,
+        } => {
+            let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
+            if *non_empty {
+                format!("NonEmptyVec::try_from({vec}).unwrap()")
+            } else {
+                vec
+            }
+        }
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map { key, val, count } => {
             let k = map_key_expr(key);
@@ -285,7 +293,7 @@ fn wasm_value(
             )),
         },
         ConceptualRustType::Array(_) => {
-            if ty.directly_wasm_exposable(types) {
+            if ty.directly_wasm_exposable_ct(types) {
                 // wasm exposes this as a plain Vec<prim>, identical literal to the rust side
                 Some(emit_tests::render_rust(mv))
             } else {
@@ -412,17 +420,18 @@ fn wasm_arg(
     cli: &Cli,
 ) -> Option<String> {
     let resolved = field_ty.resolve_alias_shallow();
-    // A wrapper collection crosses the wasm boundary as `&Wrapper` (a `FooList`/`FooMap`, or a named
-    // list/map like `nums = [* uint]` -> `&Nums`), so it's built through the wrapper's `new`/`add`
-    // (list) or `new`/`insert` (map) API — see `wasm_collection_build`. `directly_wasm_exposable` on
-    // the UNRESOLVED type distinguishes it from a plain `Vec<prim>` (which crosses transparently).
+    // A wrapper collection crosses the wasm boundary as `&Wrapper` (a `FooList`/`FooMap`, a named
+    // list/map like `nums = [* uint]` -> `&Nums`, or a restricted `&NonEmpty<Elem>List`), so it's
+    // built through the wrapper's `new`/`add` (list) or `new`/`insert` (map) API — see
+    // `wasm_collection_build`. The RustType-level `directly_wasm_exposable` (bounds-aware) is what
+    // distinguishes it from a plain `Vec<prim>`: a `[+ uint]` element is NOT bare-exposable (it
+    // crosses as its `NonEmpty<Elem>List` wrapper) even though the conceptual array would be.
     if matches!(
         resolved,
         ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
-    ) && !field_ty.conceptual_type.directly_wasm_exposable(types)
+    ) && !field_ty.directly_wasm_exposable(types)
     {
-        let build =
-            wasm_collection_build(types, &field_ty.conceptual_type, resolved, mv, scoped, cli)?;
+        let build = wasm_collection_build(types, field_ty, resolved, mv, scoped, cli)?;
         // the ctor param is `&Wrapper` for a wrapper collection (`for_wasm_param` prefixes `&`)
         return Some(if field_ty.for_wasm_param(types).starts_with('&') {
             format!("&{build}")
@@ -450,17 +459,29 @@ fn wasm_arg(
 /// which are the same whichever way the field named its collection.
 fn wasm_collection_build(
     types: &IntermediateTypes,
-    unresolved: &ConceptualRustType,
+    field_ty: &RustType,
     resolved: &ConceptualRustType,
     mv: &MintValue,
     scoped: &ScopeMap,
     cli: &Cli,
 ) -> Option<String> {
-    let wrapper = unresolved.for_wasm_member(types);
+    // Bounds-aware wrapper name: `NonEmptyBarList` for `[+ bar]`, the alias/loose name otherwise.
+    let wrapper = field_ty.for_wasm_member(types);
     match (resolved, mv) {
-        (ConceptualRustType::Array(elem_ty), MintValue::Array { elem, count }) => {
+        (ConceptualRustType::Array(elem_ty), MintValue::Array { elem, count, .. }) => {
             // `add(elem)` takes the element via `for_wasm_param`, so reuse `wasm_arg` for the same
             // by-ref/by-value boundary the wrapper's ctor param uses.
+            if field_ty.is_type_enforced_non_empty() {
+                // restricted wrapper: `new(first)` seeds the first element (no empty state), `add`
+                // the rest. `count` is >= 1 for a `[+ T]` shape.
+                let e = elem.as_ref()?;
+                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
+                let mut body = format!("let mut l = {wrapper}::new({elem_expr});");
+                for _ in 1..*count {
+                    body.push_str(&format!(" l.add({elem_expr});"));
+                }
+                return Some(format!("{{ {body} l }}"));
+            }
             let mut body = format!("let mut l = {wrapper}::new();");
             if let Some(e) = elem {
                 let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;

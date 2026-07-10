@@ -7,13 +7,15 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
-pub type ArrU64List = Vec<Vec<u64>>;
+pub type ArrU64List = Vec<NonEmptyVec<u64>>;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Holder {
@@ -26,4 +28,4 @@ impl Holder {
     }
 }
 
-pub type T = BTreeMap<Vec<u64>, u64>;
+pub type T = BTreeMap<NonEmptyVec<u64>, u64>;

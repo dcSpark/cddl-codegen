@@ -3426,8 +3426,9 @@ fn corpus_occurrence_bounds_enforced() {
         "tests/corpus/snapshots/occurrence/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("occurrence serialization snapshot missing");
+    // `2*5` and `1*3` keep the runtime occurrence-count length checks byte-for-byte (only the exact
+    // `+` shape changes representation — WI-1 of two-type-constraint-enforcement).
     for check in [
-        "if o_arr.len() < 1 {",
         "if b_arr.len() < 2 || b_arr.len() > 5 {",
         "if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {",
     ] {
@@ -3436,12 +3437,58 @@ fn corpus_occurrence_bounds_enforced() {
             "occurrence snapshot lost the occurrence-count length check `{check}`"
         );
     }
+    // the `+` (`[+ uint]`) shape is now type-enforced: its length check is GONE from the ctor/deser,
+    // replaced by the single `NonEmptyVec::try_from` door (identical RangeCheck error). The old
+    // inline `if o_arr.len() < 1` runtime check must NOT come back.
+    assert!(
+        !ser.contains("if o_arr.len() < 1 {"),
+        "occurrence `[+ uint]` reverted to an inline length check — it must enforce via NonEmptyVec"
+    );
+    assert!(
+        ser.contains("NonEmptyVec::try_from(o_arr)?"),
+        "occurrence `[+ uint]` deserialize must route the collected Vec through NonEmptyVec::try_from"
+    );
     // the value-misread form bound each ELEMENT read through `.and_then(|x| if x < ... )` —
     // occurrence bounds must never re-attach to element values
     assert!(
         !ser.contains("found: x as isize"),
         "occurrence snapshot has an element VALUE RangeCheck — occurrence counts are being \
          misread as element value bounds again"
+    );
+}
+
+/// The named/inline `[+ elem]` wasm-surface contract (two-type design doc, dedup + collision
+/// decisions), asserted on the COMMITTED core whole-program wasm snapshot so none of it can
+/// regress via an unreviewed re-bless; the *executed* proof is `tests/core/tests_wasm.rs`'s
+/// `wasm_non_empty_named_free_selfnamed_and_dedup` in `core_with_wasm`:
+/// - an inline `[+ nev_pt]` DEDUPS to the named `nev_pts = [+ nev_pt]` rule's class — no
+///   synthesized `NonEmptyNevPtList` may exist, and member surfaces use the named class;
+/// - the free-named rule's `try_from` borrows the loose `NevPtList` builder (minted for it);
+/// - a SELF-NAMED rule (`nev_q_list = [+ nev_q]`, rule ident == loose-builder name) emits its
+///   restricted class WITHOUT `try_from` — the self-referential `try_from(list: &NevQList)`
+///   form was the miscompile (the restricted class fed to itself as the loose source, E0277).
+#[test]
+fn core_non_empty_dedup_and_self_named_wasm_surface() {
+    let wasm = std::fs::read_to_string(
+        "tests/corpus/snapshots/core/default__wasm__src__generated__mod.rs.snap",
+    )
+    .expect("core wasm snapshot missing");
+    assert!(
+        !wasm.contains("NonEmptyNevPtList"),
+        "inline `[+ nev_pt]` must dedup to the named NevPts class, not mint NonEmptyNevPtList"
+    );
+    assert!(
+        wasm.contains("pub fn pts_inline(&self) -> NevPts"),
+        "the deduped inline field's getter must return the NAMED class NevPts"
+    );
+    assert!(
+        wasm.contains("pub fn try_from(list: &NevPtList) -> Result<NevPts, JsError>"),
+        "the free-named rule's try_from must borrow the loose NevPtList builder"
+    );
+    assert!(
+        !wasm.contains("try_from(list: &NevQList)"),
+        "self-named `[+ …]` rule emitted a self-referential try_from — the restricted class fed \
+         to itself as the loose source (the E0277 miscompile class)"
     );
 }
 

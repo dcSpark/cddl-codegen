@@ -249,4 +249,21 @@ mod tests {
         // ...and object-shaped forms reject a wrong-typed field
         check_rejects!(TableHolder, serde_json::json!({"t": {"a": "nope"}}));
     }
+
+    // WI-1: NonEmptyVec (`[+ uint]`) serializes as a plain JSON array, and JSON deserialize routes
+    // through the same TryFrom door — an empty array is rejected there too.
+    #[test]
+    fn non_empty_vec_json() {
+        let nev = NevJson::new(NonEmptyVec::try_from(vec![1u64, 2, 3]).unwrap());
+        let json = serde_json::to_string(&nev).unwrap();
+        assert!(
+            json.contains("[1,2,3]"),
+            "NonEmptyVec must serialize as a plain JSON array, got: {json}"
+        );
+        // JSON deserialize routes through TryFrom (round-trips back to the same JSON)
+        let back: NevJson = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        // an empty array for a `[+ uint]` field is rejected AT the TryFrom door on JSON deserialize
+        assert!(serde_json::from_str::<NevJson>(r#"{"xs":[]}"#).is_err());
+    }
 }

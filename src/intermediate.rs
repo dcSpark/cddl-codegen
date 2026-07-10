@@ -236,8 +236,139 @@ impl<'a> IntermediateTypes<'a> {
         &self.type_aliases
     }
 
+    /// Whether ANY generated type uses the `[+ T]` NonEmptyVec shape, so `export`/import wiring can
+    /// pull in the `non_empty` runtime module + `NonEmptyVec` import only for crates that need it
+    /// (keeping every non-`+` crate's output byte-identical). Covers named `[+ …]` rules (via their
+    /// registered alias base_type and the `RustStructType::Array` bounds) and inline/nested
+    /// occurrences on record fields, table domain/range, wrappers, and enum variants.
+    pub fn uses_non_empty_vec(&self) -> bool {
+        if self
+            .type_aliases
+            .values()
+            .any(|a| a.base_type.contains_non_empty_array())
+        {
+            return true;
+        }
+        self.rust_structs.values().any(|rs| match rs.variant() {
+            RustStructType::Array { bounds, .. } => *bounds == Some((Some(1), None)),
+            RustStructType::Record(record) => record
+                .fields
+                .iter()
+                .any(|f| f.rust_type.contains_non_empty_array()),
+            RustStructType::Table { domain, range } => {
+                domain.contains_non_empty_array() || range.contains_non_empty_array()
+            }
+            RustStructType::Wrapper { wrapped, .. } => wrapped.contains_non_empty_array(),
+            RustStructType::GroupChoice { variants, .. }
+            | RustStructType::TypeChoice { variants } => variants.iter().any(|v| match &v.data {
+                EnumVariantData::RustType(t) => t.contains_non_empty_array(),
+                EnumVariantData::Inlined(rec) => rec
+                    .fields
+                    .iter()
+                    .any(|f| f.rust_type.contains_non_empty_array()),
+            }),
+            RustStructType::CStyleEnum { .. }
+            | RustStructType::Extern
+            | RustStructType::RawBytesType => false,
+        })
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
+    }
+
+    /// The NAMED `[+ elem]` rule that owns the wasm surface for an inline `[+ elem]` of the same
+    /// element, if any — the design doc's inline-dedup-to-named rule: the spec author's chosen name
+    /// wins over a synthesized `NonEmpty<Elem>List`. Element equality is alias-resolved so spelling
+    /// differences can't defeat the dedup. Deterministic: `rust_structs` is a `BTreeMap`, so the
+    /// lexicographically-first matching rule ident wins when several same-shape rules exist.
+    pub fn non_empty_named_owner(&self, element: &RustType) -> Option<&RustIdent> {
+        let resolved = element.clone().resolve_aliases();
+        self.rust_structs
+            .iter()
+            .find_map(|(ident, rs)| match rs.variant() {
+                RustStructType::Array {
+                    element_type,
+                    bounds,
+                } if *bounds == Some((Some(1), None))
+                    && element_type.clone().resolve_aliases() == resolved =>
+                {
+                    Some(ident)
+                }
+                _ => None,
+            })
+    }
+
+    /// Visit every `RustType` occurrence in the IR — record fields, table domain/range, wrapper
+    /// inners, enum variants (incl. inlined records), named-array element types, and type-alias
+    /// base types — recursing into Array/Optional/Map inners at the RustType level, so occurrence
+    /// bounds (which live on `RustType`, not the conceptual type) stay visible to the visitor
+    /// (the conceptual `visit_types` strips them at every step).
+    pub fn visit_all_rust_types<F: FnMut(&RustType)>(&self, f: &mut F) {
+        fn walk<F: FnMut(&RustType)>(rt: &RustType, f: &mut F) {
+            f(rt);
+            match &rt.conceptual_type {
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    walk(inner, f)
+                }
+                ConceptualRustType::Map(k, v) => {
+                    walk(k, f);
+                    walk(v, f);
+                }
+                _ => {}
+            }
+        }
+        for alias in self.type_aliases.values() {
+            walk(&alias.base_type, f);
+        }
+        for rs in self.rust_structs.values() {
+            match rs.variant() {
+                RustStructType::Record(record) => {
+                    record.fields.iter().for_each(|fl| walk(&fl.rust_type, f))
+                }
+                RustStructType::Table { domain, range } => {
+                    walk(domain, f);
+                    walk(range, f);
+                }
+                RustStructType::Wrapper { wrapped, .. } => walk(wrapped, f),
+                RustStructType::Array { element_type, .. } => walk(element_type, f),
+                RustStructType::GroupChoice { variants, .. }
+                | RustStructType::TypeChoice { variants } => {
+                    variants.iter().for_each(|v| match &v.data {
+                        EnumVariantData::RustType(t) => walk(t, f),
+                        EnumVariantData::Inlined(rec) => {
+                            rec.fields.iter().for_each(|fl| walk(&fl.rust_type, f))
+                        }
+                    })
+                }
+                RustStructType::CStyleEnum { .. }
+                | RustStructType::Extern
+                | RustStructType::RawBytesType => {}
+            }
+        }
+    }
+
+    /// Whether `name` is claimed by a user-defined rule (a generated rust struct or a user type
+    /// alias) — the namespace the synthesized wasm wrapper names must not silently shadow.
+    fn wasm_ident_claimed_by_user_rule(&self, name: &str) -> bool {
+        let ident = RustIdent::new(CDDLIdent::new(name));
+        self.rust_structs.contains_key(&ident)
+            || self.type_aliases.contains_key(&AliasIdent::Rust(ident))
+    }
+
+    /// Whether rule `name` provides a COMPATIBLE loose list wrapper for `element_resolved` (an
+    /// Array rust struct of the same element whose bounds are NOT the `[+]` shape — its wasm class
+    /// is the loose `Vec` wrapper, byte-compatible with what the try_from source needs).
+    fn provides_compatible_loose_list(&self, name: &str, element_resolved: &RustType) -> bool {
+        let ident = RustIdent::new(CDDLIdent::new(name));
+        matches!(
+            self.rust_structs.get(&ident).map(|rs| rs.variant()),
+            Some(RustStructType::Array {
+                element_type,
+                bounds,
+            }) if *bounds != Some((Some(1), None))
+                && element_type.clone().resolve_aliases() == *element_resolved
+        )
     }
 
     /// Every camel-cased Rust type ident this crate will DEFINE (structs, user aliases, plain
@@ -715,7 +846,7 @@ impl<'a> IntermediateTypes<'a> {
                 self.create_and_register_array_type(
                     parent_visitor,
                     domain.clone(),
-                    &domain.conceptual_type.name_as_wasm_array(self),
+                    &domain.conceptual_type.name_as_wasm_array_ct(self),
                     cli,
                 );
                 let mut map_type: RustType =
@@ -775,7 +906,7 @@ impl<'a> IntermediateTypes<'a> {
     ) -> RustType {
         let raw_arr_type = ConceptualRustType::Array(Box::new(element_type.clone()));
         // only generate an array wrapper if we can't wasm-expose it raw
-        if raw_arr_type.directly_wasm_exposable(self) {
+        if raw_arr_type.directly_wasm_exposable_ct(self) {
             return raw_arr_type.into();
         }
         let array_type_ident = RustIdent::new(CDDLIdent::new(array_type_name));
@@ -937,6 +1068,15 @@ impl<'a> IntermediateTypes<'a> {
         for msg in float_key_rejections {
             self.record_rejection(msg);
         }
+        // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`
+        // wasm class; if a user rule already OWNS that identifier, silently sharing it would emit a
+        // wrapper of the wrong shape (loose `Vec` vs restricted `NonEmptyVec`). Reject clearly rather
+        // than shadow. Only relevant with wasm bindings (the collision is on the wasm class name).
+        if cli.wasm {
+            for msg in self.non_empty_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+        }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
         // finalize would silently swallow anything recorded here.
@@ -944,6 +1084,147 @@ impl<'a> IntermediateTypes<'a> {
             return Err(self.rejections_error());
         }
         Ok(())
+    }
+
+    /// Detect wasm-class name conflicts the `[+ elem]` (NonEmptyVec) emission would otherwise turn
+    /// into a non-compiling wasm crate — every leg rejects gracefully rather than silently shadow
+    /// or emit malformed code. Scans EVERY RustType position (incl. named-array element types and
+    /// alias base types) via `visit_all_rust_types`. Three conflict classes:
+    ///
+    /// 1. An inline `[+ elem]` with no named owner (see `non_empty_named_owner` — when an owner
+    ///    exists the inline use dedups to the named rule and mints nothing) mints a synthesized
+    ///    `NonEmpty<Elem>List` class: a user rule claiming that ident collides.
+    /// 2. A restricted wrapper whose element is non-exposable needs the LOOSE `<Elem>List` builder
+    ///    as its `try_from` source (synthesized mints and free-named `[+ elem]` rules alike): a
+    ///    user rule claiming that ident with any shape OTHER than a same-element loose Array rule
+    ///    (which IS the builder, shared) collides.
+    /// 3. A self-named rule (`bar_list = [+ bar]` — the rule ident IS the element's loose-builder
+    ///    name) legitimately claims the name for its RESTRICTED wrapper (it emits with no
+    ///    `try_from`; construction is `new(first)` + `add`), but then no OTHER use may need the
+    ///    loose `<Elem>List` builder: a plain non-exposable `[* elem]` mint or a map-key list
+    ///    wrapper of the same element would reference a class of the wrong shape.
+    fn non_empty_wrapper_name_collisions(&self) -> Vec<String> {
+        // BTreeSet: deterministic message order (repo determinism invariant)
+        let mut msgs = BTreeSet::new();
+
+        // collect every inline nonempty shape + every loose-builder need from PLAIN array shapes
+        let mut inline_non_empty: Vec<RustType> = Vec::new();
+        // loose <Elem>List classes needed by plain (non-`+`) uses: name -> a use description
+        let mut plain_loose_needs: BTreeMap<String, String> = BTreeMap::new();
+        self.visit_all_rust_types(&mut |rt| {
+            if rt.is_non_empty_array() {
+                inline_non_empty.push(rt.clone());
+            } else if let ConceptualRustType::Array(elem) = &rt.conceptual_type
+                && !rt.directly_wasm_exposable(self)
+            {
+                plain_loose_needs.insert(
+                    elem.name_as_wasm_array(self),
+                    "a plain (`*`-occurrence) array use".to_owned(),
+                );
+            }
+            if let ConceptualRustType::Map(k, _v) = &rt.conceptual_type {
+                // table wrappers mint a keys() list wrapper over the KEY type
+                if !ConceptualRustType::Array(Box::new((**k).clone()))
+                    .directly_wasm_exposable_ct(self)
+                {
+                    plain_loose_needs.insert(
+                        k.name_as_wasm_array(self),
+                        "a map keys() wrapper".to_owned(),
+                    );
+                }
+            }
+        });
+        // named tables' keys() wrappers (Table structs aren't visited as Map RustTypes)
+        for rs in self.rust_structs.values() {
+            if let RustStructType::Table { domain, .. } = rs.variant()
+                && !ConceptualRustType::Array(Box::new(domain.clone()))
+                    .directly_wasm_exposable_ct(self)
+            {
+                plain_loose_needs.insert(
+                    domain.name_as_wasm_array(self),
+                    "a table keys() wrapper".to_owned(),
+                );
+            }
+        }
+
+        // shared leg: the loose-builder need of a restricted wrapper (synthesized or free-named)
+        let check_loose_need = |element: &RustType,
+                                needed_by: &str,
+                                msgs: &mut BTreeSet<String>| {
+            if element.directly_wasm_exposable(self) || element.is_non_empty_array() {
+                return; // exposable: try_from takes a bare Vec; nested: no loose source at all
+            }
+            let loose = element.name_as_wasm_array(self);
+            if self.wasm_ident_claimed_by_user_rule(&loose)
+                && !self.provides_compatible_loose_list(&loose, &element.clone().resolve_aliases())
+            {
+                msgs.insert(format!(
+                    "name collision: rule '{loose}' claims the ident the loose '{loose}' list \
+                     builder needs as the `try_from` source of {needed_by} — rename the rule (or \
+                     make it `[* …]` of the same element, which IS that builder)"
+                ));
+            }
+        };
+
+        // (1) + (2) for inline `[+ elem]` shapes that actually mint a synthesized class
+        for rt in &inline_non_empty {
+            let ConceptualRustType::Array(elem) = &rt.conceptual_type else {
+                unreachable!("is_non_empty_array implies an Array conceptual type");
+            };
+            if self.non_empty_named_owner(elem).is_some() {
+                continue; // dedups to the named rule's class — nothing synthesized, no conflict
+            }
+            let restricted = rt.non_empty_wasm_wrapper_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for an inline `[+ …]` occurrence — rename the rule to \
+                     avoid shadowing the restricted NonEmptyVec wrapper"
+                ));
+            }
+            check_loose_need(
+                elem,
+                &format!("the inline `[+ …]` wrapper '{restricted}'"),
+                &mut msgs,
+            );
+        }
+
+        // (2) + (3) for named `[+ elem]` rules
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Array {
+                element_type,
+                bounds,
+            } = rs.variant()
+            else {
+                continue;
+            };
+            if *bounds != Some((Some(1), None)) {
+                continue;
+            }
+            if element_type.directly_wasm_exposable(self) || element_type.is_non_empty_array() {
+                continue;
+            }
+            let loose = element_type.name_as_wasm_array(self);
+            if loose == ident.to_string() {
+                // self-named rule: it owns the ident as its RESTRICTED class (no try_from); any
+                // OTHER use needing the loose builder of this element now has no class to name
+                if let Some(need) = plain_loose_needs.get(&loose) {
+                    msgs.insert(format!(
+                        "name collision: rule '{ident}' (`[+ …]`) claims the ident that {need} of \
+                         the same element needs for its loose '{loose}' list wrapper — rename the \
+                         rule so the loose builder class can exist"
+                    ));
+                }
+            } else {
+                check_loose_need(
+                    element_type,
+                    &format!("the named `[+ …]` rule '{ident}'"),
+                    &mut msgs,
+                );
+            }
+        }
+
+        msgs.into_iter().collect()
     }
 
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
@@ -1888,9 +2169,58 @@ impl RustType {
         }
     }
 
+    /// The `[+ T]` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
+    /// ARRAY. This is the ONLY array bounds shape that changes representation: it becomes
+    /// `NonEmptyVec<T>`, whose single `TryFrom<Vec<T>>` door enforces non-emptiness at the type
+    /// level. Every other array bound (`2*5`, `*3`, …) keeps the runtime-check path and a bare
+    /// `Vec<T>`. Matches the RAW conceptual type (not alias-resolved): a field that *references* a
+    /// named `[+ int]` rule carries this bounds shape but is an `Alias`, and its member type must
+    /// stay the alias name (whose target is already `NonEmptyVec`), not re-inline the container.
+    pub fn is_non_empty_array(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Array(_))
+            && self.config.bounds == Some((Some(1), None))
+    }
+
+    /// Like `is_non_empty_array` but alias-resolving: true for a field that *references* a named
+    /// `[+ …]` rule (an `Alias` whose target is the `[+ T]` array) as well as an inline `[+ T]`.
+    /// Used only for the ENFORCEMENT decision (skip the ctor/setter length check, don't make new()
+    /// fallible) — the enforcement lives in the member TYPE (`NonEmptyVec`, whether inline or the
+    /// alias target). Naming stays on the RAW `is_non_empty_array` so an aliased field keeps its
+    /// rule-derived wrapper name rather than synthesizing a `NonEmpty*List`.
+    pub fn is_type_enforced_non_empty(&self) -> bool {
+        matches!(
+            self.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        ) && self.config.bounds == Some((Some(1), None))
+    }
+
+    /// Whether this type, at ANY nesting level, contains the `[+ T]` NonEmptyVec shape (so the
+    /// crate needs the `non_empty` runtime module + import). Recurses into container inners.
+    pub fn contains_non_empty_array(&self) -> bool {
+        if self.is_non_empty_array() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_non_empty_array()
+            }
+            ConceptualRustType::Map(k, v) => {
+                k.contains_non_empty_array() || v.contains_non_empty_array()
+            }
+            _ => false,
+        }
+    }
+
     /// Whether this type carries a value window (integer OR float) that a constructor/setter must
     /// enforce. Used to decide constructor fallibility at inline (field/variant/ctor) sites.
     pub fn has_value_bounds(&self) -> bool {
+        // The NonEmptyVec (`[+ T]`) shape enforces its `>= 1` bound at the type level via a single
+        // TryFrom door, so it emits NO constructor/setter length check and does NOT make new()
+        // fallible — the invalid (empty) state is unrepresentable, not runtime-rejected. Covers both
+        // inline `[+ T]` and a field referencing a named `[+ …]` rule (alias-resolving).
+        if self.is_type_enforced_non_empty() {
+            return false;
+        }
         self.config.bounds.is_some() || self.config.float_bounds.is_some()
     }
 
@@ -1900,6 +2230,177 @@ impl RustType {
                 ConceptualRustType::Rust(ident) => types.can_new_fail(ident),
                 _ => false,
             }
+    }
+
+    /// The wasm-boundary name of the restricted list wrapper for a `[+ elem]` array. When a NAMED
+    /// `[+ elem]` rule of the same element exists, the inline use DEDUPS to that rule's class (the
+    /// spec author's name wins — see `IntermediateTypes::non_empty_named_owner`); otherwise a
+    /// `NonEmpty<Elem>List` class is synthesized (`NonEmptyBarList` for `[+ bar]`). Used both to
+    /// REFERENCE the wrapper (parent ctor/setter param, getter return) and to decide MINTING, so
+    /// the two sites can never disagree. Named `[+ …]` rules themselves don't route through here —
+    /// they keep their rule ident as the wrapper name.
+    pub fn non_empty_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) => match types.non_empty_named_owner(inner) {
+                Some(owner) => owner.to_string(),
+                None => format!("NonEmpty{}List", inner.conceptual_type.for_variant()),
+            },
+            _ => unreachable!("non_empty_wasm_wrapper_name on a non-array: {:?}", self),
+        }
+    }
+
+    // --- Bounds-aware type-naming/boundary wrappers (RustType level) -------------------------------
+    // `RustType` Derefs to `ConceptualRustType`, but `config.bounds` lives on `RustType`, so the
+    // conceptual `*_ct` methods below can't see the `[+ T]` shape. These inherent methods consult
+    // `config.bounds` and pick `NonEmptyVec`/`NonEmpty*List` for that one shape, recursing at the
+    // RustType level so nested `[+ [+ int]]` bounds are each honored; everything else delegates to
+    // the raw conceptual `*_ct` method (element iteration / encoding-var plumbing stay raw).
+
+    /// Type when stored inside a rust struct (member/alias/param). Bounds-aware over `for_rust_member_ct`.
+    pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool, cli: &Cli) -> String {
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) => format!(
+                "{}<{}>",
+                if self.is_non_empty_array() {
+                    "NonEmptyVec"
+                } else {
+                    "Vec"
+                },
+                inner.for_rust_member(types, from_wasm, cli)
+            ),
+            ConceptualRustType::Optional(inner) => {
+                format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
+            }
+            _ => self
+                .conceptual_type
+                .for_rust_member_ct(types, from_wasm, cli),
+        }
+    }
+
+    /// Function parameter TYPE that will be moved in. Bounds-aware over `for_rust_move_ct`.
+    pub fn for_rust_move(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+        self.for_rust_member(types, false, cli)
+    }
+
+    /// If we were to store a value directly in a wasm-wrapper, this would be used. Bounds-aware.
+    pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
+        if self.is_non_empty_array() {
+            return self.non_empty_wasm_wrapper_name(types);
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Optional(inner) => {
+                format!("Option<{}>", inner.for_wasm_member(types))
+            }
+            _ => self.conceptual_type.for_wasm_member_ct(types),
+        }
+    }
+
+    /// Return TYPE for wasm. Bounds-aware over `for_wasm_return_ct`.
+    pub fn for_wasm_return(&self, types: &IntermediateTypes) -> String {
+        self.for_wasm_member(types)
+    }
+
+    /// Function parameter TYPE from wasm (ref for non-primitives). Bounds-aware over `for_wasm_param_ct`.
+    pub fn for_wasm_param(&self, types: &IntermediateTypes) -> String {
+        if self.is_non_empty_array() {
+            return format!("&{}", self.non_empty_wasm_wrapper_name(types));
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Optional(inner) => {
+                format!("Option<{}>", inner.for_wasm_param_impl_rt(types))
+            }
+            _ => self.conceptual_type.for_wasm_param_ct(types),
+        }
+    }
+
+    /// Optional-inner variant of `for_wasm_param` (no leading `&`), bounds-aware.
+    fn for_wasm_param_impl_rt(&self, types: &IntermediateTypes) -> String {
+        if self.is_non_empty_array() {
+            return self.non_empty_wasm_wrapper_name(types);
+        }
+        self.conceptual_type.for_wasm_param_impl(types, true)
+    }
+
+    /// Whether the type crosses the wasm boundary as a bare value (not via a wrapper). A NonEmpty
+    /// array is ALWAYS wrapped (restricted `NonEmpty*List`), so it is never directly exposable.
+    pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
+        if self.is_non_empty_array() {
+            return false;
+        }
+        self.conceptual_type.directly_wasm_exposable_ct(types)
+    }
+
+    /// `self` is the ELEMENT type; this names the LOOSE `Vec`-of-`self` wrapper (`BarList`,
+    /// `ArrIntList`). It is NOT the nonempty-container name — that is `for_wasm_member` on the array
+    /// RustType. The element's own `for_variant` (bounds-invariant) drives the name, so a nonempty
+    /// element still yields a distinct loose container name (e.g. `[* [+ int]]` → `ArrIntList`).
+    pub fn name_as_wasm_array(&self, types: &IntermediateTypes) -> String {
+        self.conceptual_type.name_as_wasm_array_ct(types)
+    }
+
+    /// `self` is the ELEMENT type; this is the `Vec<element>` rust type. Bounds-aware over the
+    /// ELEMENT (a nonempty element becomes `Vec<NonEmptyVec<..>>`), but never wraps `self` itself in
+    /// `NonEmptyVec` — the container's nonemptiness is decided by `for_rust_member` on the array.
+    pub fn name_as_rust_array(
+        &self,
+        types: &IntermediateTypes,
+        from_wasm: bool,
+        cli: &Cli,
+    ) -> String {
+        format!("Vec<{}>", self.for_rust_member(types, from_wasm, cli))
+    }
+
+    /// FROM rust TO wasm (getter/return). A NonEmpty array crosses as its restricted wrapper.
+    pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
+        if self.is_non_empty_array() {
+            return format!("{expr}.clone().into()");
+        }
+        self.conceptual_type.to_wasm_boundary(types, expr, is_ref)
+    }
+
+    pub fn to_wasm_boundary_optional(
+        &self,
+        types: &IntermediateTypes,
+        expr: &str,
+        is_ref: bool,
+    ) -> String {
+        if self.is_non_empty_array() {
+            return format!("{expr}.clone().map(std::convert::Into::into)");
+        }
+        self.conceptual_type
+            .to_wasm_boundary_optional(types, expr, is_ref)
+    }
+
+    /// FROM wasm TO rust (owning). A NonEmpty array is handed over as `&NonEmpty*List` and cloned
+    /// + `.into()`'d into the core `NonEmptyVec` (the wrapper's `From`/`AsRef` conversion methods).
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_wasm_boundary_clone(
+        &self,
+        types: &IntermediateTypes,
+        expr: &str,
+        can_fail: bool,
+    ) -> Vec<ToWasmBoundaryOperations> {
+        if self.is_non_empty_array() {
+            let mut ops = vec![
+                ToWasmBoundaryOperations::Code(format!("{expr}.clone()")),
+                ToWasmBoundaryOperations::Into,
+            ];
+            if can_fail {
+                ops.push(ToWasmBoundaryOperations::TryInto);
+            }
+            return ops;
+        }
+        self.conceptual_type
+            .from_wasm_boundary_clone(types, expr, can_fail)
+    }
+
+    /// FROM wasm as non-owning ref. A NonEmpty-array wrapper is passed by-ref unchanged.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
+        if self.is_non_empty_array() {
+            return expr.to_owned();
+        }
+        self.conceptual_type.from_wasm_boundary_ref(types, expr)
     }
 
     fn _cbor_special_type(&self) -> Option<CBORSpecial> {
@@ -1980,7 +2481,7 @@ impl ConceptualRustType {
         }
     }
 
-    pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
+    pub fn directly_wasm_exposable_ct(&self, types: &IntermediateTypes) -> bool {
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
@@ -2019,14 +2520,14 @@ impl ConceptualRustType {
                         Primitive::Str => true,
                     },
                     Self::Array(_) => false,
-                    _ => ty.conceptual_type.directly_wasm_exposable(types),
+                    _ => ty.conceptual_type.directly_wasm_exposable_ct(types),
                 }
             }
-            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable(types),
+            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable_ct(types),
             Self::Map(_, _) => false,
             Self::Alias(ident, ty) => match ident {
                 // reserved aliases (uint→u64, …) generate no wrapper — they ARE the raw type, unwrap
-                AliasIdent::Reserved(_) => ty.directly_wasm_exposable(types),
+                AliasIdent::Reserved(_) => ty.directly_wasm_exposable_ct(types),
                 // Whether a named alias is directly exposable turns on whether `ident` is emitted as a
                 // `#[wasm_bindgen]` WRAPPER struct (a generated `RustStruct`, e.g. `nums = [* uint]`)
                 // or a transparent `pub type` alias (no generated struct — a passthrough `arr2 = arr`,
@@ -2039,7 +2540,7 @@ impl ConceptualRustType {
                 AliasIdent::Rust(rust_ident) => {
                     match types.rust_struct(rust_ident).map(|rs| rs.variant()) {
                         Some(RustStructType::CStyleEnum { .. }) | None => {
-                            ty.directly_wasm_exposable(types)
+                            ty.directly_wasm_exposable_ct(types)
                         }
                         Some(_) => false,
                     }
@@ -2056,26 +2557,21 @@ impl ConceptualRustType {
         }
     }
 
-    pub fn name_as_wasm_array(&self, types: &IntermediateTypes) -> String {
-        if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable(types) {
-            format!("Vec<{}>", self.for_wasm_member(types))
+    pub fn name_as_wasm_array_ct(&self, types: &IntermediateTypes) -> String {
+        if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable_ct(types) {
+            format!("Vec<{}>", self.for_wasm_member_ct(types))
         } else {
             format!("{}List", self.for_variant())
         }
     }
 
-    pub fn name_as_rust_array(
+    pub fn name_as_rust_array_ct(
         &self,
         types: &IntermediateTypes,
         from_wasm: bool,
         cli: &Cli,
     ) -> String {
-        format!("Vec<{}>", self.for_rust_member(types, from_wasm, cli))
-    }
-
-    /// Function parameter TYPE that will be moved in
-    pub fn for_rust_move(&self, types: &IntermediateTypes, cli: &Cli) -> String {
-        self.for_rust_member(types, false, cli)
+        format!("Vec<{}>", self.for_rust_member_ct(types, from_wasm, cli))
     }
 
     /// Function parameter TYPE by-non-mut-reference for read-only
@@ -2095,12 +2591,12 @@ impl ConceptualRustType {
             }
             Self::Array(ty) => format!(
                 "&{}",
-                ty.conceptual_type.name_as_rust_array(types, false, cli)
+                ty.conceptual_type.name_as_rust_array_ct(types, false, cli)
             ),
             Self::Optional(ty) => {
                 format!("Option<{}>", ty.conceptual_type._for_rust_read(types, cli))
             }
-            Self::Map(_k, _v) => format!("&{}", self.for_rust_member(types, false, cli)),
+            Self::Map(_k, _v) => format!("&{}", self.for_rust_member_ct(types, false, cli)),
             Self::Alias(ident, ty) => match &**ty {
                 // TODO: ???
                 Self::Rust(_) => format!("&{ident}"),
@@ -2110,7 +2606,7 @@ impl ConceptualRustType {
     }
 
     /// Function parameter TYPE from wasm (i.e. ref for non-primitives, value for supported primitives)
-    pub fn for_wasm_param(&self, types: &IntermediateTypes) -> String {
+    pub fn for_wasm_param_ct(&self, types: &IntermediateTypes) -> String {
         self.for_wasm_param_impl(types, false)
     }
 
@@ -2130,13 +2626,13 @@ impl ConceptualRustType {
                 }
             }
             Self::Array(ty) => {
-                if self.directly_wasm_exposable(types) {
-                    ty.conceptual_type.name_as_wasm_array(types)
+                if self.directly_wasm_exposable_ct(types) {
+                    ty.conceptual_type.name_as_wasm_array_ct(types)
                 } else {
                     format!(
                         "{}{}",
                         opt_ref,
-                        ty.conceptual_type.name_as_wasm_array(types)
+                        ty.conceptual_type.name_as_wasm_array_ct(types)
                     )
                 }
             }
@@ -2146,13 +2642,13 @@ impl ConceptualRustType {
                     ty.conceptual_type.for_wasm_param_impl(types, true)
                 )
             }
-            Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member(types)),
+            Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member_ct(types)),
             // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
             Self::Alias(ident, ty) => match &**ty {
                 Self::Rust(_) |
                 Self::Array(_) |
-                Self::Map(_, _) if !self.directly_wasm_exposable(types) => format!("{opt_ref}{ident}"),
+                Self::Map(_, _) if !self.directly_wasm_exposable_ct(types) => format!("{opt_ref}{ident}"),
                 Self::Optional(_) |
                 // no special handling if for some reason nested aliases, just strip all to avoid hassle
                 Self::Alias(_, _) => ty.for_wasm_param_impl(types, force_not_ref),
@@ -2162,8 +2658,8 @@ impl ConceptualRustType {
     }
 
     /// Return TYPE for wasm
-    pub fn for_wasm_return(&self, types: &IntermediateTypes) -> String {
-        self.for_wasm_member(types)
+    pub fn for_wasm_return_ct(&self, types: &IntermediateTypes) -> String {
+        self.for_wasm_member_ct(types)
     }
 
     pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
@@ -2184,13 +2680,14 @@ impl ConceptualRustType {
         format!(
             "{}<{}, {}>",
             table_type(cli),
-            k.conceptual_type.for_rust_member(types, from_wasm, cli),
-            v.conceptual_type.for_rust_member(types, from_wasm, cli)
+            // RustType-level so a `[+ T]` map value picks up NonEmptyVec (bounds live on RustType)
+            k.for_rust_member(types, from_wasm, cli),
+            v.for_rust_member(types, from_wasm, cli)
         )
     }
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used.
-    pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
+    pub fn for_wasm_member_ct(&self, types: &IntermediateTypes) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
@@ -2198,13 +2695,15 @@ impl ConceptualRustType {
             ),
             Self::Primitive(p) => p.to_string(),
             Self::Rust(ident) => ident.to_string(),
-            Self::Array(ty) => ty.conceptual_type.name_as_wasm_array(types),
-            Self::Optional(ty) => format!("Option<{}>", ty.conceptual_type.for_wasm_member(types)),
+            Self::Array(ty) => ty.conceptual_type.name_as_wasm_array_ct(types),
+            Self::Optional(ty) => {
+                format!("Option<{}>", ty.conceptual_type.for_wasm_member_ct(types))
+            }
             Self::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_wasm_member(types),
+                AliasIdent::Reserved(_) => ty.for_wasm_member_ct(types),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
@@ -2212,7 +2711,12 @@ impl ConceptualRustType {
     }
 
     /// Type when storing a value inside of a rust struct. This is the underlying raw representation.
-    pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool, cli: &Cli) -> String {
+    pub fn for_rust_member_ct(
+        &self,
+        types: &IntermediateTypes,
+        from_wasm: bool,
+        cli: &Cli,
+    ) -> String {
         match self {
             Self::Fixed(_) => panic!(
                 "should not expose Fixed type in member, only needed for serializaiton: {:?}",
@@ -2226,18 +2730,20 @@ impl ConceptualRustType {
                     ident.to_string()
                 }
             }
-            Self::Array(ty) => ty.conceptual_type.name_as_rust_array(types, from_wasm, cli),
+            Self::Array(ty) => ty
+                .conceptual_type
+                .name_as_rust_array_ct(types, from_wasm, cli),
             Self::Optional(ty) => {
                 format!(
                     "Option<{}>",
-                    ty.conceptual_type.for_rust_member(types, from_wasm, cli)
+                    ty.conceptual_type.for_rust_member_ct(types, from_wasm, cli)
                 )
             }
             Self::Map(k, v) => Self::name_for_rust_map(types, k, v, from_wasm, cli),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
-                AliasIdent::Reserved(_) => ty.for_rust_member(types, from_wasm, cli),
+                AliasIdent::Reserved(_) => ty.for_rust_member_ct(types, from_wasm, cli),
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(rust_ident) => {
                     if from_wasm {
@@ -2302,7 +2808,7 @@ impl ConceptualRustType {
                     ty.from_wasm_boundary_clone(types, expr, can_fail)
                 }
                 AliasIdent::Rust(_) => {
-                    if self.directly_wasm_exposable(types)
+                    if self.directly_wasm_exposable_ct(types)
                         && matches!(ty.resolve_alias_shallow(), Self::Primitive(_))
                     {
                         vec![ToWasmBoundaryOperations::Code(expr_cloned)]
@@ -2318,7 +2824,7 @@ impl ConceptualRustType {
                 .conceptual_type
                 .from_wasm_boundary_clone_optional(types, expr, can_fail),
             Self::Array(ty) => {
-                if self.directly_wasm_exposable(types) {
+                if self.directly_wasm_exposable_ct(types) {
                     ty.conceptual_type
                         .from_wasm_boundary_clone(types, expr, can_fail)
                 } else {
@@ -2379,7 +2885,7 @@ impl ConceptualRustType {
             // BY VALUE and reaches the no-`.as_ref()` get branch, so it needs an explicit `&` for
             // `BTreeMap::get` (like a primitive key), else `self.0.get(key)` mismatches `&Q` (E0308).
             Self::Rust(_ident) => {
-                if self.directly_wasm_exposable(types) {
+                if self.directly_wasm_exposable_ct(types) {
                     format!("&{expr}")
                 } else {
                     expr.to_owned()
@@ -2396,7 +2902,7 @@ impl ConceptualRustType {
             Self::Alias(ident, ty) => match ident {
                 AliasIdent::Reserved(_) => ty.from_wasm_boundary_ref(types, expr),
                 AliasIdent::Rust(_) => {
-                    if self.directly_wasm_exposable(types) {
+                    if self.directly_wasm_exposable_ct(types) {
                         ty.from_wasm_boundary_ref(types, expr)
                     } else {
                         expr.to_owned()
@@ -2405,7 +2911,7 @@ impl ConceptualRustType {
             },
             Self::Optional(ty) => ty.conceptual_type.from_wasm_boundary_ref(types, expr),
             Self::Array(ty) => {
-                if self.directly_wasm_exposable(types) {
+                if self.directly_wasm_exposable_ct(types) {
                     ty.conceptual_type.from_wasm_boundary_ref(types, expr)
                 } else {
                     expr.to_owned()
@@ -2442,7 +2948,7 @@ impl ConceptualRustType {
             //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(types), expr),
             //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
             Self::Array(_ty) => {
-                if self.directly_wasm_exposable(types) {
+                if self.directly_wasm_exposable_ct(types) {
                     format!("{expr}.clone()")
                 } else {
                     format!("{expr}.clone().into()")
@@ -2488,7 +2994,7 @@ impl ConceptualRustType {
         expr: &str,
         is_ref: bool,
     ) -> String {
-        if self.directly_wasm_exposable(types) {
+        if self.directly_wasm_exposable_ct(types) {
             self.to_wasm_boundary(types, expr, is_ref)
         } else {
             format!("{expr}.clone().map(std::convert::Into::into)")
@@ -2539,7 +3045,7 @@ impl ConceptualRustType {
         match self {
             Self::Primitive(_) => Some(false),
             Self::Rust(ident) => Some(!types.is_enum(ident)),
-            Self::Array(_) => Some(!self.directly_wasm_exposable(types)),
+            Self::Array(_) => Some(!self.directly_wasm_exposable_ct(types)),
             Self::Map(_k, _v) => Some(true),
             // A named alias is exposed AS its wrapper struct when one exists (see the Alias arm of
             // `directly_wasm_exposable`), so conversions go through From/Into regardless of the

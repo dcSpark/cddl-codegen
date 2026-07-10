@@ -111,10 +111,13 @@ pub(crate) enum MintValue {
     StrLit { content: String },
     /// a byte string of the given length: `vec![0u8; len]`
     Bytes { len: i128 },
-    /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`
+    /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`. When `non_empty`
+    /// the target type is `NonEmptyVec<T>` (`[+ T]`), so it is built through the single TryFrom door
+    /// (`NonEmptyVec::try_from(vec![..]).unwrap()`).
     Array {
         elem: Option<Box<MintValue>>,
         count: i128,
+        non_empty: bool,
     },
     /// a map of `count` entries with synthesized keys
     Map {
@@ -169,7 +172,16 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Array {
             elem: Some(e),
             count,
-        } => format!("vec![{}; {count}]", render_rust(e)),
+            non_empty,
+        } => {
+            let vec = format!("vec![{}; {count}]", render_rust(e));
+            if *non_empty {
+                // route through the single TryFrom door (same as every other construction path)
+                format!("NonEmptyVec::try_from({vec}).unwrap()")
+            } else {
+                vec
+            }
+        }
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map { key, val, count } => {
             let k = match key {
@@ -888,7 +900,13 @@ fn record_deser_reject(
         .iter()
         .copied()
         .filter(|f| {
-            (f.rust_type.config.bounds.is_some() && measure_kind(&f.rust_type).is_some())
+            // the `[+ T]` shape enforces its bound in the type (`NonEmptyVec`), so its invalid
+            // (empty) state is UNREPRESENTABLE — there is nothing to mutate-and-serialize for a
+            // deser-reject. Its wire-side rejection is covered by the hand-written fixture tests
+            // (an empty wire array must be rejected through the same TryFrom door).
+            (f.rust_type.config.bounds.is_some()
+                && measure_kind(&f.rust_type).is_some()
+                && !f.rust_type.is_type_enforced_non_empty())
                 || f.rust_type.config.float_bounds.is_some()
         })
         .collect();
@@ -1507,12 +1525,16 @@ pub(crate) fn mint_struct(
         // element wire path is still exercised there. Named-table standalone element coverage is
         // owned at the embed site by verify.ts's synthetic-holder probe (cddl-matrix/README.md).
         RustStructType::Table { .. } => Some(MintValue::TableEmpty { ident: name }),
-        RustStructType::Array { element_type, .. } => {
+        RustStructType::Array {
+            element_type,
+            bounds,
+        } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
             Some(MintValue::Array {
                 elem: valid_value_at(types, element_type, depth + 1).map(Box::new),
                 count: 1,
+                non_empty: *bounds == Some((Some(1), None)),
             })
         }
         // the reserved `int` prelude resolves to the hand-written `Int` extern (static prelude):
@@ -1563,6 +1585,7 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
         ConceptualRustType::Array(_) => Some(MintValue::Array {
             elem: None,
             count: 0,
+            non_empty: false,
         }),
         ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
         _ => None,
@@ -1627,6 +1650,7 @@ fn materialize_at(
             Some(MintValue::Array {
                 elem: Some(Box::new(e)),
                 count: measure,
+                non_empty: ty.is_type_enforced_non_empty(),
             })
         }
         ConceptualRustType::Map(k, v) => {

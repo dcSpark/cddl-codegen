@@ -7,9 +7,11 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -28,14 +30,6 @@ impl OccurrenceHolder {
         b: Bounded,
         inline_bounded: Vec<String>,
     ) -> Result<Self, DeserializeError> {
-        if o.len() < 1 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: o.len() as isize,
-                min: Some(1),
-                max: None,
-            }
-            .into());
-        }
         if b.len() < 2 || b.len() > 5 {
             return Err(DeserializeFailure::RangeCheck {
                 found: b.len() as isize,
@@ -60,4 +54,5 @@ impl OccurrenceHolder {
     }
 }
 
-pub type OneOrMore = Vec<u64>;
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type OneOrMore = NonEmptyVec<u64>;

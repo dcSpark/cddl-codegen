@@ -1,0 +1,10 @@
+; WI-1 (NonEmptyVec): an inline `[+ bar]` whose element is non-exposable needs the loose `BarList`
+; builder class as its `try_from` source; a user rule of a DIFFERENT shape claiming that ident is
+; rejected gracefully under --wasm=true (emitting both would define the class twice — E0428 — or
+; hand try_from a wrapper of the wrong shape). A rule that IS `[* bar]` of the same element is
+; compatible (it IS the builder) and does not reject. NOTE: the analogous conflict for a PLAIN
+; `[* bar]` loose mint (`bar_list = tstr` + `xs: [* bar]`) is a PRE-existing silent-miscompile
+; class untouched by WI-1.
+bar = [x: uint]
+bar_list = tstr
+holder = { xs: [+ bar] }
