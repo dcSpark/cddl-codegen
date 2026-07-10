@@ -57,6 +57,15 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   itself: retry a ruby-fail verdict once on identical input and record the retry outcome (absorbing
   the observed spurious-fail direction at source — no read of the previously committed annotations,
   preserving the no-prior-output-dependence invariant).
+  A SECOND spurious-flip class is environmental, with a distinct triage signature: **ENOSPC from
+  accumulated probe scratch dirs**. A full `verify.ts` run once flipped ~11 rows to IDENTICAL
+  "cargo test exit 101" evidence in one batch — none reproducing when probed individually — with
+  `/tmp` at 99% under 1600+ stale `cddl_codegen_*` dirs; after clearing them, the re-run's
+  annotations diff was empty. The tell that separates it from a ruby flake: MANY rows flipping in
+  one run, all with the same generic cargo-failure evidence line, none reproducing solo. Check
+  `df` and clear the stale scratch dirs BEFORE trusting (or laboriously hand-reverting) a wide
+  evidence diff; if it recurs, the mechanical layer is a disk-headroom preflight in `verify.ts`
+  alongside the oracle-fingerprint checks (and/or per-probe scratch cleanup at success).
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 

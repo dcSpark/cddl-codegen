@@ -69,6 +69,13 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 - New features should be built on master directly instead of branching unless justified (ex: a worktree)
 - Commit unsigned to avoid GPG prompts
+- **The conversation-start git snapshot can be stale — never baseline against it.** The harness's
+  session-start "Recent commits"/HEAD snapshot once lagged 14 commits behind the repo's real HEAD;
+  a "pre-feature baseline" repro run at the snapshot's HEAD attributed another commit's behavior
+  change to the session's own work, and the wrong root-cause shipped in a commit before review
+  caught it. Before any attribution that depends on a commit range (bisecting, baselining a repro,
+  writing a root-cause or a ledger-retirement comment), read the actual topology from the repo —
+  `git rev-parse <your-first-commit>^` / `git log` — and baseline against the TRUE parent.
 
 ## Build & verify
 
