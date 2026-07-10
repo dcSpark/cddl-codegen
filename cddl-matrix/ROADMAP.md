@@ -143,18 +143,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **Incremental choice extension (`/=` type-choice, `//=` group-choice) silently drops every arm but the
-  last.** `parse_rule` re-registers the rule ident on each statement, so the LAST definition wins and the
-  generated type models only the final extension arm — `a = int` / `a /= tstr` generates a `tstr`-only
-  type, dropping the `int` base arm (parsing.rs documents the `is_type_choice_alternate ignored` skip;
-  the `//=` group case is the same shape). Surfaced by the `773b723` array-sequence oracle fix: the old
-  rust oracle rejected the base-arm instances ITSELF (its own array/occurrence bug), so the mint's
-  two-oracle gate never presented them and the rows minted only the extension-arm accepts — masking the
-  drop. Against the fixed oracle, `assignt.extend` / `assigng.extend` re-mint with base-arm accept
-  candidates that ruby+rust both accept but our decoder REJECTS; committed as `class="limitation"` reject
-  pins (spec-valid, wrongly rejected — pruned when `/=`/`//=` extension is implemented, or rejected
-  loudly at generation instead of silently narrowing). A concrete instance of the lesson that an oracle
-  bug can hide a codegen gap by rejecting the discriminating vector before our decoder ever sees it.
 - **Honor count-permitting occurrences on heterogeneous ARRAY-record fields as `Vec` fields.**
   Generation rejects them gracefully (`[uint, tstr, * bytes]`, any marker but `?`/`1*1`, any
   position — the array analogue of the keyed-map zero-permitting guard, in the same parsing.rs

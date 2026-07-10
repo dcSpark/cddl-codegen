@@ -150,6 +150,11 @@ pub fn with_types<R>(
     // where they enter and abort through the normal rejection channel. Because a reserved name can
     // also be REFERENCED by another rule (a reference reaches `RustIdent::new` too), we surface the
     // rejection immediately rather than after IR build — nothing may proceed to the assert.
+    // Track identifiers already seen in source order so a `/=`/`//=` rule that EXTENDS an
+    // already-defined identifier can be rejected loudly. Source-order iteration makes the "already
+    // defined" test (and thus determinism) inherent; the FIRST definition of a name via `/=` is
+    // valid CDDL (the shelley precedent) and must pass through, so we only reject on a repeat.
+    let mut seen_idents = std::collections::BTreeSet::new();
     for cddl_rule in cddl.rules.iter() {
         if rule_is_scope_marker(cddl_rule).is_some() {
             continue;
@@ -161,6 +166,15 @@ pub fn with_types<R>(
         // groups): `@name` renames fields/variants/arms, never the rule identifier itself. Reject
         // it here, alongside the reserved-name pre-scan, rather than emit a surprising type name.
         if let Some(msg) = parsing::rule_position_name_rejection(cddl_rule) {
+            types.record_rejection(msg);
+        }
+        // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
+        // identifier on each statement, so the LAST definition wins and every earlier arm is
+        // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
+        // definition via `/=`/`//=` (identifier not yet seen) is valid CDDL and passes through.
+        if !seen_idents.insert(cddl_rule.name())
+            && let Some(msg) = parsing::incremental_choice_extension_rejection(cddl_rule)
+        {
             types.record_rejection(msg);
         }
     }

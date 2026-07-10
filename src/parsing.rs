@@ -74,9 +74,13 @@ pub fn parse_rule(
                 // ignore - this was inserted by us so that cddl's parsing succeeds
                 // see comments in main.rs
             } else {
-                // (1) is_type_choice_alternate ignored since shelley.cddl doesn't need it
-                //     It's used, but used for no reason as it is the initial definition
-                //     (which is also valid cddl), but it would be fine as = instead of /=
+                // (1) is_type_choice_alternate is ignored here because only the INITIAL definition
+                //     of an identifier via `/=` reaches this point. That case is valid cddl (the
+                //     shelley precedent — a lone `b /= tstr` is equivalent to `b = tstr`), so the
+                //     flag carries no extra meaning. The other case — a `/=` rule that EXTENDS an
+                //     already-defined identifier with another choice arm — is rejected upstream in
+                //     `api::with_types` (via `incremental_choice_extension_rejection`) before it can
+                //     reach here and silently drop every arm but the last.
                 // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
 
                 let generic_params = rule.generic_params.as_ref().map(|gp| {
@@ -198,6 +202,46 @@ pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<Strin
         ))
     } else {
         None
+    }
+}
+
+/// A graceful-rejection message if `cddl_rule` EXTENDS an already-defined identifier with an
+/// incremental choice-extension operator (`/=` type-choice, `//=` group-choice), else `None`.
+///
+/// Incremental extension is unsupported: `parse_rule` re-registers the rule identifier on each
+/// statement, so the LAST definition wins and every earlier arm is silently dropped (`a = int` /
+/// `a /= tstr` generates a `tstr`-only type, discarding the `int` base arm). Rather than narrow
+/// silently — a decoder that rejects spec-valid CBOR, invisible to round-trip tests — we reject at
+/// the parse-walk seam (`api::with_types`), which is the ONLY caller and owns the "already defined"
+/// bookkeeping (source-order seen-set). This function classifies the operator (so the message and
+/// remedy match) but does NOT itself decide whether the identifier was previously defined: an
+/// alternate rule whose identifier is the FIRST definition of that name is valid CDDL (the shelley
+/// precedent — equivalent to `=`) and must keep generating, so the caller only invokes this on a
+/// repeat.
+///
+/// Remedies are the supported spellings that model the same shape and are asserted to generate in
+/// `incremental_choice_extension_rejects_gracefully`: for `/=`, fold the arms into one type-choice
+/// rule (`a = int / tstr`); for `//=`, a plain group rule cannot itself carry a group choice
+/// (`api::with_types`' `mark_plain_group` asserts a single group choice), so give each arm its own
+/// named group and select between them at the use site (`t = [ grpA // grpB ]`).
+pub fn incremental_choice_extension_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+    let name = cddl_rule.name();
+    match cddl_rule {
+        cddl::ast::Rule::Type { rule, .. } if rule.is_type_choice_alternate => Some(format!(
+            "rule `{name}`: incremental type-choice extension (`/=`) is not supported — \
+             re-defining an already-defined identifier with `/=` silently drops every arm but the \
+             last, generating a type that models only the final extension arm. Fold the arms into a \
+             single type-choice rule instead, e.g. `{name} = <arm1> / <arm2>`."
+        )),
+        cddl::ast::Rule::Group { rule, .. } if rule.is_group_choice_alternate => Some(format!(
+            "rule `{name}`: incremental group-choice extension (`//=`) is not supported — \
+             re-defining an already-defined identifier with `//=` silently drops every arm but the \
+             last, generating a group that models only the final extension arm. A plain group rule \
+             cannot itself carry a group choice, so give each arm its own named group and select \
+             between them at the use site, e.g. `{name}_a = (...)`, `{name}_b = (...)`, \
+             `t = [ {name}_a // {name}_b ]`."
+        )),
+        _ => None,
     }
 }
 

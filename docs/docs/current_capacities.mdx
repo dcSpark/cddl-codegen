@@ -72,6 +72,8 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 
 | Construct | CDDL example | Behavior |
 |-----------|--------------|----------|
+| Incremental group-choice extension (//=) | `tcpopts = (1: int); tcpopts //= (2: tstr)` | rejected gracefully at parse |
+| Incremental type-choice extension (/=) | `a = int; a /= tstr` | rejected gracefully at parse |
 | Generic group definition | `set<a> = (* a)` | panics generation |
 | any | `x = any` | generates but does not compile |
 | cbor-any | `x = cbor-any` | panics generation |

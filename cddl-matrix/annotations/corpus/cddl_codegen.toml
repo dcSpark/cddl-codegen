@@ -366,14 +366,15 @@ code_anchor = "Do we need to handle cuts"
 
 [[note]]
 id = "assignt.extend"
-status = "partial"
-reason = "type socket plug (/=) is parsed but ignored; a $-socket reference is merely stripped ($x -> x)"
-code_anchor = "is_type_choice_alternate"
+status = "unsupported"
+reason = "incremental type-choice extension (/=) that extends an already-defined ident is rejected gracefully at generation — silently dropping every arm but the last (only the final extension arm survives) generated a wrong type, so api.rs rejects the second definition; fold the arms into one rule (`a = int / tstr`) instead"
+code_anchor = "incremental_choice_extension_rejection"
 
 [[note]]
 id = "assigng.extend"
-status = "partial"
-reason = "group socket plug (//=) is parsed but ignored — same socket-stripping story as the type socket; the Rule::Group arm of parse_rule processes it as a plain inline group with no plug semantics (no distinct code site to anchor)"
+status = "unsupported"
+reason = "incremental group-choice extension (//=) that extends an already-defined ident is rejected gracefully at generation — same silent last-wins drop as the type socket; a plain group rule cannot itself carry a group choice, so give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`)"
+code_anchor = "incremental_choice_extension_rejection"
 
 [[note]]
 id = "prelude.float"
@@ -553,7 +554,7 @@ text = "Misleading panic message — the control-op catch-all says 'not seen in 
 text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap."
 
 [[finding]]
-text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes)."
+text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes)."
 
 [[finding]]
 text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats."
