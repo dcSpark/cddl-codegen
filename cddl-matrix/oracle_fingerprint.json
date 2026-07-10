@@ -55,6 +55,22 @@
       "cborHex": "81c24101",
       "expectOk": false,
       "why": "enforcement control: tag 2 (biguint) under `bignint` (= #6.3(bstr), tag 3) MUST reject. Pre-fix builds (2c7548e included) silently ACCEPTED any non-0/1 tag in value position (the Value::Tag catch-all), and an always-accept stub passes it too — both are refused here."
+    },
+    {
+      "name": "optional-entry-empty-map-accepts",
+      "spec": "m = { ? tstr => uint }",
+      "mode": "validate",
+      "cborHex": "a0",
+      "expectOk": true,
+      "why": "a `?`-marked type-domain map entry permits absence, so the empty map validates (3d56d8e/765fd81); every earlier build — including the PREVIOUS pin 4e39d09 — rejected it ('map requires entry key of type tstr'), so this probe refuses a stale old-pin rebuild."
+    },
+    {
+      "name": "closed-map-unexpected-key-rejects",
+      "spec": "m = { ? k: uint }",
+      "mode": "validate",
+      "cborHex": "a1616101",
+      "expectOk": false,
+      "why": "enforcement control: {\"a\": 1} has an entry no group member consumes and MUST reject (closed-map rule). Pre-3d56d8e builds (4e39d09 included) skipped the unexpected-key check entirely when no member consumed any key, and an always-accept stub passes too — both are refused here."
     }
   ]
 }

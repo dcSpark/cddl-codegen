@@ -336,16 +336,17 @@ if (altCoverageResult.problems.some(p => p.includes("extraction yielded"))) {
 // --- ORACLE-IDENTITY FINGERPRINT (mechanical rust-oracle pin) -------------------------------------
 // `RUST_CDDL` defaults to a LIVE development tree's `target/debug/cddl` (README § "Upstream oracle
 // gaps"). Every local branch reports version 0.10.6, so a version string cannot tell the pinned
-// `local-fixes` @ 4e39d09 build apart from a wrong-branch rebuild — and evidence minted against the
+// `local-fixes` @ 765fd81 build apart from a wrong-branch rebuild — and evidence minted against the
 // wrong oracle looks EXACTLY like evidence minted against the pinned one. This behavioral fingerprint
 // is the guard the version string can't be: a handful of pinned probe inputs from
 // oracle_fingerprint.json whose accept/reject exits are UNIQUE to the local-fixes fixes. The same JSON
 // is consumed by `integration_tests::rust_oracle_fingerprint` for the generated-crate
 // `CDDL_ORACLE_DEP` crate preflight. Discriminating power (why each probe is here):
-//   • WIP branch `non-uint-ranges` (0.10.6 + the non-uint-range fix only, NOT 4e39d09/773b723) fails 1–2;
+//   • WIP branch `non-uint-ranges` (0.10.6 + the non-uint-range fix only, NOT 765fd81/773b723) fails 1–2;
 //   • released/crates.io 0.10.x fails 1–3;
-//   • the PREVIOUS pin 2c7548e (everything but the bignum-key/tag fix) fails 6–7;
-//   • an always-accept stub fails 4–5 and 7;   • a post-fix FUTURE build fails 5.
+//   • the PAST pin 2c7548e (everything through the radix fix) fails 6–7;
+//   • the PAST pin 4e39d09 (everything through the bignum fix) fails 8–9;
+//   • an always-accept stub fails 4–5, 7, and 9;   • a post-fix FUTURE build fails 5.
 // It is an oracle-IDENTITY check (same category as the `existsSync(RUST_CDDL)` HARNESS FAILURE above),
 // so it runs UNCONDITIONALLY at startup on every path (normal probe, --mint-decode-foreign, --smoke),
 // before the multi-minute shared-target warm-up — a wrong oracle fails in under a second. Exits ONLY
@@ -432,13 +433,13 @@ function runOracleFingerprint(dir: string): void {
   if (failures.length) {
     console.error(`HARNESS FAILURE: rust oracle fingerprint MISMATCH — RUST_CDDL='${RUST_CDDL}' does not behave like the pinned oracle. Failing probe(s):`);
     for (const f of failures) console.error(f);
-    console.error("The pinned oracle is the fork's `local-fixes` branch @ 4e39d09 in the sibling repo ~/Documents/git/cddl (README § \"Upstream oracle gaps\"). Recover by rebuilding from THAT branch (restore any WIP checkout afterwards) or by pointing RUST_CDDL at an immutable copy of the pinned build. A stock `cargo install cddl` binary is NOT accepted — its released 0.10.x gaps fail this fingerprint by design.");
+    console.error("The pinned oracle is the fork's `local-fixes` branch @ 765fd81 in the sibling repo ~/Documents/git/cddl (README § \"Upstream oracle gaps\"). Recover by rebuilding from THAT branch (restore any WIP checkout afterwards) or by pointing RUST_CDDL at an immutable copy of the pinned build. A stock `cargo install cddl` binary is NOT accepted — its released 0.10.x gaps fail this fingerprint by design.");
     if (failures.some(f => f.includes("prelude-number-float-rejects"))) {
       console.error("NOTE: the 'prelude-number-float-rejects' probe pins gap #7 as OPEN on purpose. If the oracle LEGITIMATELY moved (a fixed rust `cddl` that now accepts a float against `number`), re-pin CONSCIOUSLY: update this fingerprint entry TOGETHER with the close-out steps in ROADMAP.md § findings (the prelude-`number` float entry — re-mint prelude.number via `verify.ts --mint-decode-foreign --only=prelude.number` and prune DECODE_FLOOR_ARM_EXEMPT). Do NOT just delete the probe.");
     }
     process.exit(2);
   }
-  console.log(`rust oracle fingerprint OK (${ORACLE_FINGERPRINT.length} probes — local-fixes @ 4e39d09 behavior)`);
+  console.log(`rust oracle fingerprint OK (${ORACLE_FINGERPRINT.length} probes — local-fixes @ 765fd81 behavior)`);
 }
 
 // ==================================================================================================
