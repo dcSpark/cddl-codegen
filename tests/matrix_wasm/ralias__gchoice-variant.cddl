@@ -1,0 +1,4 @@
+; cell: ralias x gchoice-variant
+st = [a: uint, b: text]
+ral = st
+holder = [ f0: ral // f1: nint ]

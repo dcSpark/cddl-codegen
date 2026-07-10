@@ -52,6 +52,9 @@ const SHAPES: Record<string, Shape> = {
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   // wrapper struct (Record RustStruct)
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
+  // transparent alias to a Record RustStruct — distinct from `struct` at wasm ctor boundaries where
+  // the rust ctor may take the alias wrapper as one argument instead of inlining the record fields.
+  ralias: { defs: ["st = [a: uint, b: text]", "ral = st"], ty: "ral" },
   // map-representation Record struct (bareword-keyed map). Wasm emission is byte-identical to `struct`
   // modulo type names (the representation only changes rust-side serialization), so one representative
   // cell suffices — it still compile-gates the map-rep rust code through the wasm crate's path-dependency
@@ -176,7 +179,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 130; // 16 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 138; // 17 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

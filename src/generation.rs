@@ -7776,7 +7776,7 @@ fn codegen_group_choices(
             // for the variant, which happens in the general case for multi-field group choices
             let fields = match &variant.data {
                 EnumVariantData::RustType(ty) => {
-                    match ty.conceptual_type.resolve_alias_shallow() {
+                    match &ty.conceptual_type {
                         // we need to check for sanity here, as if we're referring to the ident
                         // it should at this stage be registered
                         ConceptualRustType::Rust(ident) => {

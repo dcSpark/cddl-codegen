@@ -1725,7 +1725,7 @@ pub(crate) fn variant_arg_fields<'a>(
 /// If `ty` directly names a generated `Record` struct, return it (so we can flatten its
 /// constructor args for a group-choice variant).
 fn ty_as_record<'a>(types: &'a IntermediateTypes, ty: &RustType) -> Option<&'a RustRecord> {
-    if let ConceptualRustType::Rust(ident) = ty.resolve_alias_shallow()
+    if let ConceptualRustType::Rust(ident) = &ty.conceptual_type
         && let RustStructType::Record(record) = types.rust_struct(ident)?.variant()
     {
         return Some(record);

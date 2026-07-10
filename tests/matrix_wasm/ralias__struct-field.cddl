@@ -1,0 +1,4 @@
+; cell: ralias x struct-field
+st = [a: uint, b: text]
+ral = st
+holder = [field0: ral]

@@ -140,13 +140,7 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom"];
 /// - `extern__array-element` references a user-supplied type (undefined standalone -> E0425), while
 ///   the extern emit path is integration-tested separately in `tests/extern-deps`. Because the cell
 ///   never compiles here, it never round-trips here either.
-/// - `cborwrap__gchoice-variant` (E0308): the group-choice per-variant wasm ctor
-///   (`codegen_group_choices` in generation.rs) descends through the `.cbor`-wrapper arm to the inner
-///   record and inlines ITS field — emitting `new_f0(a: u64)` — while the rust ctor takes the wrapper
-///   type (`new_f0(f0: Fb)`), so the wasm ctor passes `u64` where `Fb` is expected. A wasm-boundary
-///   emitter bug specific to a `.cbor`-wrapper shape in a group-choice arm; ledgered in
-///   cddl-matrix/ROADMAP.md § findings.
-const WASM_MATRIX_SKIP: &[&str] = &["cborwrap__gchoice-variant", "extern__array-element"];
+const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
 
 /// Extract the DISTINCT rustc error codes (`E####`) from compiler output, keyed off the `error[E`
 /// prefix. Only a real diagnostic header (`error[E0583]: ...`) carries that prefix; the trailing
@@ -250,24 +244,24 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
 /// stem, reason)` marks a cell whose emitted wasm round-trip surface is a known structural gap
 /// UNDER THAT PROFILE — a red the sweep tolerates deliberately, distinct from `WASM_MATRIX_SKIP`'s
-/// "red in EVERY profile" (extern). `struct__gchoice-variant` and `generic__gchoice-variant` are red
-/// in all three profiles here but COMPILE (so they can't go in `WASM_MATRIX_SKIP`, which the compile
-/// floor also consults and would flag as "resurfaced") — listed once per profile below, ledgered in
+/// "red in EVERY profile" (extern). The Record-arm gchoice cells listed below are red in all three
+/// profiles here but COMPILE (so they can't go in `WASM_MATRIX_SKIP`, which the compile floor also
+/// consults and would flag as "resurfaced") — listed once per profile below, ledgered in
 /// cddl-matrix/ROADMAP.md § findings. A resurfaced guard fails the gate if a listed cell starts
 /// passing, and an up-front stale-pin guard rejects entries naming a dead profile or cell stem, so the
 /// list can't rot silently.
 const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[
     // Core deserialize-discriminant bug in the group-choice arm path (`codegen_group_choices`): a
-    // RECORD arm (array-rep `struct` `st = [a: uint, b: text]`, or generic-instance record `generic`
-    // `uc = cont<uint>` -> `[value: uint]`) serializes as a NESTED array — `Holder::F0` writes the
-    // outer `[1]` then `st`/`uc`'s own array — but the emitted `Holder` deserializer discriminates F0
+    // RECORD arm (array-rep `struct` `st = [a: uint, b: text]`, generic-instance record `generic`
+    // `uc = cont<uint>` -> `[value: uint]`, or alias-to-record `ralias` `ral = st`) serializes as a
+    // NESTED array — `Holder::F0` writes the outer `[1]` then the record's own array — but the emitted
+    // `Holder` deserializer discriminates F0
     // on the record's FIRST FIELD's cbor type (`UnsignedInteger`, as if the record were EMBEDDED into
     // the arm) instead of the record's own `Array` wire type, so the bytes peek `Array` and fall
     // through to `NoVariantMatched`. Wrapper-struct arms (`coll`/`collmap`) discriminate correctly on
     // `Array`, so this is Record-arm-specific. A rust-crate serialization bug (reproduces without
     // `--wasm`); the wasm round-trip merely surfaces it (the decode Err hits `JsError::new`, which
-    // panics off-wasm). Sibling of the `cborwrap__gchoice-variant` group-choice-arm over-resolution
-    // compile bug pinned in `WASM_MATRIX_SKIP`. Ledgered in cddl-matrix/ROADMAP.md § findings.
+    // panics off-wasm). Ledgered in cddl-matrix/ROADMAP.md § findings.
     (
         "default",
         "struct__gchoice-variant",
@@ -297,6 +291,21 @@ const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[
         "json",
         "generic__gchoice-variant",
         "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
+    ),
+    (
+        "default",
+        "ralias__gchoice-variant",
+        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
+    ),
+    (
+        "preserve",
+        "ralias__gchoice-variant",
+        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
+    ),
+    (
+        "json",
+        "ralias__gchoice-variant",
+        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
     ),
 ];
 
