@@ -168,21 +168,18 @@ are ledgered here (that's what the probe/gate error messages point at).
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
   wording).
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
-  `4e39d09` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
+  `765fd81` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
   it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
   disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
   change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
   draft.
-- When a rust `cddl` fix ships optional-entry empty-map validation (README gap #9 — OPEN at the
-  pinned `4e39d09` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`;
-  repro + suspected site + close-out detail in `draft/rust-cddl-optional-entry-empty-map-gap.md`):
-  the close-out is now just **prune README gap #9 + that draft**. It no longer gates a decode re-mint:
-  `{ ? tstr => uint }` is a **rejected** spelling (the count-permitting table-marker boundary — the
-  `?` / `n*m` markers are gracefully rejected, `contain.occurrence-target.memberkey.type1.optional_table`
-  now lives in `tests/matrix_reject/`, not the decode catalog), so there is no committed decode row for
-  the gap to feed a legal empty-map accept vector into. The gap survives only as a fingerprint/oracle
-  note until the fix ships.
+- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
+  PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
+  prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
+  fingerprint probes' provenance wording). The fork checkout's `future-issues/` files four
+  adjacent map-matching gaps found during that fix — bundle them into the upstream conversation
+  when convenient.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 

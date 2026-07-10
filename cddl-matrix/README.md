@@ -212,12 +212,11 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
-`4e39d09` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–6 (gaps 7–9 are OPEN at that rev —
-gap 7 blocks ONE arm-coverage-floor
+`765fd81` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
+cddl-codegen's own parser share it) carries fixes for gaps 1–6 and 9 (gaps 7–8 are OPEN at that
+rev — gap 7 blocks ONE arm-coverage-floor
 class, ledgered honestly; gap 8 keeps one containment row's decode-foreign minting
-`pinned_reason`-vectorless; gap 9 drops one containment row's legal empty-map accept candidate at
-every mint); `RUST_CDDL` defaults to that build,
+`pinned_reason`-vectorless); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
 behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`
@@ -292,7 +291,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    gem's inline-composite controller parse gap — so it stays on `RUBY_EXPECTED_FAIL`). Two
    fingerprint probes (`bignint-key-empty-map-accepts`, `bignint-wrong-tag-rejects`) pin the fixed
    behavior, refusing a stale pre-fix (old-pin) oracle build.
-7. **prelude `number` rejects a float** (OPEN at `4e39d09`, NOT fork-fixed): `validate` rejects every
+7. **prelude `number` rejects a float** (OPEN at `765fd81`, NOT fork-fixed): `validate` rejects every
    CBOR float against the built-in `number` type (`expected type number, got Float(…)`), while ints
    against `number` — and floats against the equivalent inline `int / float` or a user alias — validate
    fine. Root cause is a one-line asymmetry: `is_ident_float_data_type` omits `Token::NUMBER` where its
@@ -307,7 +306,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    fixed oracle is refused by both consumers until it is consciously re-pinned). Repro + the one-line
    fork-fix + prune steps:
    `draft/rust-cddl-number-float-gap.md`.
-8. **tag-typed map-key over-rejection** (OPEN at `4e39d09`, NOT fork-fixed): `validate` evaluates a
+8. **tag-typed map-key over-rejection** (OPEN at `765fd81`, NOT fork-fixed): `validate` evaluates a
    TAGGED Type1 member key against the WHOLE map instead of the entry keys — spec-valid
    `{24(5): "x"}` against `m = { * #6.24(uint) => tstr }` rejects with
    `expected tagged data #6.24(uint), got Map(...)`, while the untagged `{ * uint => tstr }`
@@ -320,23 +319,26 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    unavailable; the row's support verdict is unaffected (execution-gated green). No upstream
    issue filed yet. Differential repro + suspected `src/validator/cbor.rs` site + close-out steps:
    `draft/rust-cddl-tag-map-key-gap.md` (local note).
-9. **optional-entry empty-map over-rejection** (OPEN at `4e39d09`, NOT fork-fixed): `validate`
-   rejects the spec-VALID EMPTY map against a map whose sole entry carries a `?` occurrence
-   (`m = { ? tstr => uint }`, instance `{}` = holder `8200a0`) — `?` permits the entry to be absent,
-   so the empty map is a legal 0-entry instance — while ruby accepts. Scope: the `?` MARKER on a
-   type-domain key specifically — the semantically identical `0*1` spelling, `*` tables, and
-   `?`-marked bareword/fixed-text entries all validate the empty map fine, and the `+` / `n*m`
-   markers correctly reject it (there it genuinely violates the lower bound). No matrix row's
-   SUPPORT verdict sits on it, and no over-acceptance pin is lost to it — the `?` window has no
-   below-bound violation at all (0 entries is in-window). Its practical bite on the matrix is now
-   GONE: cddl-codegen rejects the `{ ? tstr => uint }` spelling gracefully (the count-permitting
-   table-marker boundary), so `contain.occurrence-target.memberkey.type1.optional_table` is a reject
-   fixture in `tests/matrix_reject/`, not a decode-catalog row — there is no committed empty-map ACCEPT
-   candidate for the oracle over-rejection to block. The gap survives only as an upstream `validate`
-   observation. No upstream issue filed yet.
-   Differential repro + suspected `src/validator/cbor.rs` site (the shared
-   `Occur::Optional | None` match arm) + close-out steps:
-   `draft/rust-cddl-optional-entry-empty-map-gap.md` (local note).
+9. **optional-entry empty-map over-rejection + closed-map check skipped when nothing consumed**
+   (released 0.10.x): `validate` rejected the spec-VALID EMPTY map against a map whose sole entry
+   carries a `?` occurrence (`m = { ? tstr => uint }`, instance `{}`) — `?` permits absence, so
+   the empty map is a legal 0-entry instance — because the CBOR validator's shared
+   `Occur::Optional | None` member-key arm demanded a matching entry unconditionally (the `0*1`
+   spelling, `*` tables, and `?`-marked literal keys took other arms and behaved). Fixing it
+   surfaced two interlocking gaps, shipped together in `local-fixes` @ `3d56d8e` so no instance
+   moves from reject to accept: the closed-map rule was SKIPPED whenever no group member consumed
+   any key (`validated_keys = None` meant "don't check" — `{ ? k: uint }` wrongly ACCEPTED
+   `{"a": 1}`, the laxity the old local note recorded as an adjacent observation), and the JSON
+   validator had no type-domain string-key matching at all for `?`/occurrence-less entries. Fixed
+   behavior verified by a 21-CBOR/12-JSON differential grid vs the ruby gem plus fork regression
+   tests. No matrix consequence beyond the ledger: cddl-codegen rejects the `{ ? tstr => uint }`
+   spelling gracefully (the count-permitting table-marker boundary), so
+   `contain.occurrence-target.memberkey.type1.optional_table` is a reject fixture in
+   `tests/matrix_reject/` with no decode-catalog row to re-mint. Two fingerprint probes
+   (`optional-entry-empty-map-accepts`, `closed-map-unexpected-key-rejects`) pin the fixed
+   behavior, refusing a stale pre-fix (old-pin) oracle build. Four adjacent map-matching gaps
+   found during the fix are filed in the fork checkout's `future-issues/` (extension-member
+   openness, consumed-key re-matching, mixed key domains, float-key/null copy-paste).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
@@ -441,7 +443,7 @@ numbers** — same robustness rule as the COVERAGE.md docs.
   `cargo install cddl` build is refused at startup by the `runOracleFingerprint` behavioral fingerprint
   (its released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
   `~/.cargo/bin/cddl` no longer produces a degraded-but-workable run — supply the `local-fixes` @
-  `4e39d09` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
+  `765fd81` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
   `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time dep warm-up).
 
 ## Scope (v1)

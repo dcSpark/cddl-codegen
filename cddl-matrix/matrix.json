@@ -3150,7 +3150,7 @@
       "example": "m = { ? tstr => uint }",
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.optional_table",
-      "note": "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). Same widening as the `+` sibling — table-detected to an unbounded 0..N BTreeMap, so the decoder WRONGLY accepts a 2-entry map (the certified over-acceptance instance, holder `[0, <2-entry map>]` = `8200a2616101616202`). The above-bound direction is the row's ONLY violation class (`?` permits absence — no below-bound violation exists). Separately, the rust oracle @ 4e39d09 OVER-rejects the spec-VALID empty map here (`8200a0` is a legal 0-entry instance), so that accept candidate cannot pass the two-oracle gate and is dropped at mint (README gap #9, draft/rust-cddl-optional-entry-empty-map-gap.md). Ledgered widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings).",
+      "note": "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). cddl-codegen REJECTS this spelling gracefully — the count-permitting table-marker boundary: a 0..1 window an unbounded BTreeMap table cannot honor, so rejection replaced the old silent widening — making this a reject fixture (`tests/matrix_reject/`), not a decode-catalog row. The rust oracle formerly ALSO over-rejected the spec-VALID empty map here (README gap #9, fixed in the pinned fork @ 3d56d8e), so if the marker is ever honored as map-size bounds, the legal empty-map accept vector (`8200a0`) is now mintable through the two-oracle gate.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
