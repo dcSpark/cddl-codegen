@@ -68,6 +68,13 @@
  *      synthetic all-fields sample (constructed in-code, exercising EVERY schema field) additionally
  *      round-trips through parse∘compose independent of what the committed catalog happens to exercise,
  *      so a writer that drops a field currently unused by the committed rows still fails.
+ *   9. Annotation-evidence ↔ decode-catalog coherence — every supported row's top-level
+ *      `matrix.json` evidence must carry exactly one decode-foreign clause, and that clause's
+ *      count/presence must match the committed catalog count used by `verify.ts`'s decode-foreign
+ *      probe: active, current rows count `expect="accept"` vectors except `class="over-acceptance"`;
+ *      missing/pinned/unusable rows expect "no committed decode vectors"; stale catalog examples are
+ *      left to § 2 so the drift is not double-reported. A `FAILED (N)` clause is count-checked only;
+ *      the replay gate owns whether decode actually succeeds.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
@@ -111,7 +118,7 @@ const SEEDED_CONTROLS: { id: string; hex: string; comment: string }[] = [
 
 // --- matrix.json: supported ids + their examples --------------------------------------------------
 interface MatrixLookupRow { id: string; example: string }
-interface Annotation { id: string; status: string }
+interface Annotation { id: string; status: string; evidence?: unknown }
 interface MatrixJson {
   annotations: { cddl_codegen: Annotation[] };
   features: MatrixLookupRow[];
@@ -122,8 +129,9 @@ const matrix = (await Bun.file(`${HERE}/matrix.json`).json()) as MatrixJson;
 const exampleById = new Map<string, string>();
 for (const arr of [matrix.features, matrix.containment, matrix.control_operators])
   for (const r of arr) exampleById.set(r.id, r.example);
+const supportedAnnotations = matrix.annotations.cddl_codegen.filter(a => a.status === "supported");
 const supported = new Set(
-  matrix.annotations.cddl_codegen.filter(a => a.status === "supported").map(a => a.id),
+  supportedAnnotations.map(a => a.id),
 );
 
 // --- catalog.toml ---------------------------------------------------------------------------------
@@ -139,6 +147,62 @@ const rows = catalog.row ?? [];
 const problems: string[] = [];
 const catalogById = new Map<string, CatRow>();
 const HEX_RE = /^[0-9a-f]+$/;
+
+// --- §9: annotation-evidence ↔ decode-catalog coherence helpers -----------------------------------
+const DECODE_EVIDENCE_CLAUSE_RE =
+  /; no committed decode vectors \(see catalog\)(?=;|$)|; accepts ([0-9]+) foreign spec-derived vector\(s\)(?=;|$)|; foreign-vector decode FAILED \(([0-9]+) vector\(s\)\)(?=;|$)/g;
+const DECODE_EVIDENCE_FIX =
+  "re-run the full verify.ts after a scoped mint — mint BEFORE probe, or re-probe after";
+
+type DecodeEvidenceClause =
+  | { kind: "none"; text: string }
+  | { kind: "accepts"; count: number; text: string }
+  | { kind: "failed"; count: number; text: string };
+type DecodeCatalogExpectation =
+  | { kind: "none" }
+  | { kind: "vectors"; count: number };
+
+function parseDecodeEvidenceClauses(evidence: unknown): DecodeEvidenceClause[] {
+  if (typeof evidence !== "string") return [];
+  return [...evidence.matchAll(DECODE_EVIDENCE_CLAUSE_RE)].map(m => {
+    const text = m[0];
+    if (text === "; no committed decode vectors (see catalog)") return { kind: "none", text };
+    if (m[1] !== undefined) return { kind: "accepts", count: Number(m[1]), text };
+    return { kind: "failed", count: Number(m[2]), text };
+  });
+}
+
+function describeCommittedDecodeClause(clauses: DecodeEvidenceClause[]): string {
+  if (clauses.length === 0) return "NO decode-foreign clause";
+  if (clauses.length === 1) return JSON.stringify(clauses[0].text);
+  return `${clauses.length} decode-foreign clauses [${clauses.map(c => JSON.stringify(c.text)).join(", ")}]`;
+}
+
+function describeExpectedDecodeClause(expected: DecodeCatalogExpectation): string {
+  if (expected.kind === "none") return JSON.stringify("; no committed decode vectors (see catalog)");
+  return `count ${expected.count} via either ${JSON.stringify(`; accepts ${expected.count} foreign spec-derived vector(s)`)} or ` +
+    `${JSON.stringify(`; foreign-vector decode FAILED (${expected.count} vector(s))`)}`;
+}
+
+function decodeCatalogExpectation(row: CatRow | undefined, matrixExample: string): DecodeCatalogExpectation | "skip" {
+  if (!row || row.pinned_reason !== undefined || row.spec === undefined || row.type_name === undefined)
+    return { kind: "none" };
+  if (row.example !== matrixExample) return "skip";
+  const n = (row.vector ?? []).filter(v => v.expect === "accept" && v.class !== "over-acceptance").length;
+  return n === 0 ? { kind: "none" } : { kind: "vectors", count: n };
+}
+
+function evidenceCatalogClauseProblem(id: string, evidence: unknown, expected: DecodeCatalogExpectation): string | null {
+  const clauses = parseDecodeEvidenceClauses(evidence);
+  const fail = () =>
+    `\`${id}\`: annotation evidence decode-foreign clause drift — committed clause: ` +
+    `${describeCommittedDecodeClause(clauses)}; expected: ${describeExpectedDecodeClause(expected)}; fix: ${DECODE_EVIDENCE_FIX}`;
+  if (clauses.length !== 1) return fail();
+  const clause = clauses[0];
+  if (expected.kind === "none") return clause.kind === "none" ? null : fail();
+  if ((clause.kind === "accepts" || clause.kind === "failed") && clause.count === expected.count) return null;
+  return fail();
+}
 
 for (const r of rows) {
   const id = typeof r.id === "string" ? r.id : undefined;
@@ -435,6 +499,103 @@ if (supported.size < 80)
   }
 }
 
+// --- §9: annotation-evidence ↔ decode-catalog coherence -------------------------------------------
+{
+  const selfProblems: string[] = [];
+  const assertProblem = (name: string, problem: string | null, wantNeedle: string) => {
+    if (problem === null || !problem.includes(wantNeedle))
+      selfProblems.push(`${name}: expected a problem containing ${JSON.stringify(wantNeedle)}, got ${JSON.stringify(problem)}`);
+  };
+  const assertOk = (name: string, problem: string | null) => {
+    if (problem !== null) selfProblems.push(`${name}: expected OK, got ${JSON.stringify(problem)}`);
+  };
+  const expectFrom = (row: CatRow | undefined, matrixExample: string): DecodeCatalogExpectation => {
+    const got = decodeCatalogExpectation(row, matrixExample);
+    if (got === "skip") throw new Error("synthetic §9 expectation unexpectedly skipped");
+    return got;
+  };
+  const overOnly: CatRow = {
+    id: "synthetic.over-only", example: "x = uint", spec: "x = uint", type_name: "X",
+    vector: [{ hex: "00", expect: "accept", class: "over-acceptance" }],
+  };
+  const overPlusSpecValid: CatRow = {
+    id: "synthetic.over-plus-valid", example: "x = uint", spec: "x = uint", type_name: "X",
+    vector: [
+      { hex: "00", expect: "accept", class: "over-acceptance" },
+      { hex: "01", expect: "accept" },
+    ],
+  };
+
+  assertProblem(
+    "missing clause",
+    evidenceCatalogClauseProblem("synthetic.missing", "probe: cddl-codegen exit 0; ruby=ok rust=ok", { kind: "none" }),
+    "NO decode-foreign clause",
+  );
+  assertProblem(
+    "stale no committed with vectors",
+    evidenceCatalogClauseProblem(
+      "synthetic.stale-no",
+      "probe: cddl-codegen exit 0; no committed decode vectors (see catalog); ruby=ok rust=ok",
+      { kind: "vectors", count: 10 },
+    ),
+    "count 10",
+  );
+  assertProblem(
+    "stale accepts count",
+    evidenceCatalogClauseProblem(
+      "synthetic.stale-count",
+      "probe: cddl-codegen exit 0; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+      { kind: "vectors", count: 3 },
+    ),
+    "count 3",
+  );
+  assertOk(
+    "FAILED with matching count",
+    evidenceCatalogClauseProblem(
+      "synthetic.failed-ok",
+      "probe: cddl-codegen exit 0; foreign-vector decode FAILED (3 vector(s)); ruby=ok rust=ok",
+      { kind: "vectors", count: 3 },
+    ),
+  );
+  assertOk(
+    "over-acceptance-only vectors excluded",
+    evidenceCatalogClauseProblem(
+      "synthetic.over-only",
+      "probe: cddl-codegen exit 0; no committed decode vectors (see catalog); ruby=ok rust=ok",
+      expectFrom(overOnly, "x = uint"),
+    ),
+  );
+  assertOk(
+    "over-acceptance excluded from mixed count",
+    evidenceCatalogClauseProblem(
+      "synthetic.over-plus-valid",
+      "probe: cddl-codegen exit 0; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+      expectFrom(overPlusSpecValid, "x = uint"),
+    ),
+  );
+  assertOk(
+    "clause present and correct",
+    evidenceCatalogClauseProblem(
+      "synthetic.correct",
+      "probe: cddl-codegen exit 0; accepts 3 foreign spec-derived vector(s); ruby=ok rust=ok",
+      { kind: "vectors", count: 3 },
+    ),
+  );
+  for (const p of selfProblems)
+    problems.push(`annotation evidence↔catalog synthetic self-test: ${p}`);
+}
+
+let evidenceCatalogChecked = 0;
+for (const a of supportedAnnotations) {
+  const matrixExample = exampleById.get(a.id);
+  if (matrixExample === undefined) continue; // impossible for current matrix shape; other checks guard emptiness.
+  const expected = decodeCatalogExpectation(catalogById.get(a.id), matrixExample);
+  if (expected === "skip") continue; // §2 reports stale catalog examples; avoid double-reporting the row.
+  evidenceCatalogChecked++;
+  const problem = evidenceCatalogClauseProblem(a.id, a.evidence, expected);
+  if (problem !== null) problems.push(problem);
+}
+
 // --- report ---------------------------------------------------------------------------------------
 const activeRows = rows.filter(r => (r.vector ?? []).length > 0);
 const pinnedRows = rows.filter(r => typeof r.pinned_reason === "string" && r.pinned_reason.length > 0);
@@ -456,6 +617,7 @@ console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
     `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ` +
-    `${Object.keys(floorScope).length} arm-coverage-floor rows (${Object.keys(DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class) · ${supported.size} supported matrix rows`,
+    `${Object.keys(floorScope).length} arm-coverage-floor rows (${Object.keys(DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class) · ` +
+    `evidence↔catalog clauses coherent on ${evidenceCatalogChecked} supported rows · ${supported.size} supported matrix rows`,
 );
 process.exit(0);

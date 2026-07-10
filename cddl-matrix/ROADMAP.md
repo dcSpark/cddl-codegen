@@ -45,18 +45,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Annotation-evidence ↔ decode-catalog coherence lint.** A supported row's committed evidence
-  carries a decode-foreign corroboration clause ("accepts N foreign spec-derived vector(s)" / "no
-  committed decode vectors"), but nothing cross-checks it against the committed catalog: the clause
-  is probe-written by the full `verify.ts` run, so a scoped `--mint-decode-foreign --only=<row>`
-  run AFTER the probe leaves a factually wrong committed string until the next full run (proven
-  instance: the `record_array_tagged` row minted 10 vectors while its evidence still read "no
-  committed decode vectors" — caught by review, fixed by a second full run; every gate stayed
-  green because none compares the two files). The lint is cheap and mechanical — for each supported
-  row, assert the evidence clause's presence/count matches the catalog's committed vectors — and
-  belongs in `project_decode_conformance.ts --check` (it already parses both inputs). Until built,
-  the working rule is ordering: mint BEFORE the full verify run (the no-occurrence-arrow close-out
-  did this), or re-run verify after a scoped mint.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 

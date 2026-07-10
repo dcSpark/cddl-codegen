@@ -374,7 +374,11 @@ and asserts they are accepted.
   another fold) refreshes the row's decode-foreign evidence clause, which otherwise still reads
   "no committed decode vectors" from the pre-mint probe. Generation is
   randomized, so verdict stability comes from the COMMIT: the deterministic gates below replay
-  committed bytes only. A spec-valid vector the decoder rejects is written as a **class-less
+  committed bytes only. `project_decode_conformance.ts` also compares each supported row's committed
+  evidence clause with the catalog's spec-valid accept-vector count, excluding
+  `class="over-acceptance"`; this catches the proven scoped-mint-after-probe drift where
+  `record_array_tagged` minted vectors while its evidence still claimed none. A spec-valid vector the
+  decoder rejects is written as a **class-less
   `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
   into `class = "bug"` (ledger it in `cddl-matrix/ROADMAP.md` § findings) or
   `class = "limitation"` (cite `current_capacities.mdx` / the overlay note). `source = "hand"`
