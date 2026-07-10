@@ -140,7 +140,8 @@ const SMOKE = SMOKE_N > 0;
 // catalog, never annotations/verify_report.json, and skips the reconcile/probe loops (it inserts itself
 // right after the shared-target warm-up and process.exit()s before the normal probe pipeline). See
 // runMintDecodeForeign. `--only=id,id,…` re-mints just that subset, preserving every other committed row
-// verbatim (parsed back through the same deterministic writer).
+// verbatim (parsed back through the same deterministic writer); a named id that has left the supported
+// set but still has a committed row is DROPPED (support-boundary removal), not re-minted.
 const MINT_DECODE = process.argv.includes("--mint-decode-foreign");
 const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
@@ -1140,8 +1141,13 @@ function runMintDecodeForeign(): never {
   const existing = existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map<string, CatalogRow>();
   const outRows = new Map<string, CatalogRow>();
   if (MINT_ONLY) {
-    const unknown = [...MINT_ONLY].filter(id => !supported.includes(id));
-    if (unknown.length) { console.error(`HARNESS FAILURE: --only names row(s) not 'supported' in matrix.json: ${unknown.join(", ")}`); process.exit(2); }
+    // A `--only` id is valid if it's either a supported row (re-mint it) or an existing catalog row
+    // that just left the supported set (DROP it — a support-boundary REMOVAL, e.g. a construct newly
+    // rejected at generation). Excluded from BOTH the verbatim-preserve below and `toMint`, such an id
+    // simply vanishes from the output — the intended drop. A name that is neither supported nor an
+    // existing row is a typo and still hard-fails.
+    const unknown = [...MINT_ONLY].filter(id => !supported.includes(id) && !existing.has(id));
+    if (unknown.length) { console.error(`HARNESS FAILURE: --only names row(s) that are neither 'supported' in matrix.json nor an existing catalog row: ${unknown.join(", ")}`); process.exit(2); }
     for (const [rid, row] of existing) if (!MINT_ONLY.has(rid)) outRows.set(rid, row);  // preserve verbatim
   }
   const toMint = supported.filter(id => (MINT_ONLY ? MINT_ONLY.has(id) : true));

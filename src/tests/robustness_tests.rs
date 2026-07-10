@@ -737,6 +737,72 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     );
 }
 
+/// Incremental choice extension (`/=` type-choice, `//=` group-choice) that EXTENDS an
+/// already-defined identifier is rejected gracefully: `parse_rule` re-registers the identifier on
+/// each statement, so the LAST definition wins and every earlier arm is silently dropped
+/// (`a = int` / `a /= tstr` generated a `tstr`-only type, discarding the `int` base arm — a
+/// decoder that rejects spec-valid CBOR, invisible to round-trip tests). This pins the graceful
+/// rejection, that the message names the operator and an actionable remedy, that the advertised
+/// remedy spellings actually generate, and the boundary the guard must preserve: a LONE alternate
+/// rule whose identifier is its FIRST definition (the shelley precedent — valid CDDL, equivalent
+/// to `=`) must keep generating.
+#[test]
+fn incremental_choice_extension_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_incr_choice_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "incr_choice_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    // `/=` extending an already-defined type: Err naming `/=` and the fold remedy.
+    let type_ext = run("a = int\na /= tstr\n", "type_ext").expect_err(
+        "`/=` extending an already-defined type must reject (silent arm-drop to the last is wrong)",
+    );
+    assert!(
+        type_ext.contains("/=") && type_ext.contains("rule `a`"),
+        "type-choice extension rejection should name the operator and the rule, got: {type_ext}"
+    );
+    assert!(
+        type_ext.contains("a = int / tstr") || type_ext.contains("<arm1> / <arm2>"),
+        "type-choice extension remedy should advertise folding into one type-choice rule, got: {type_ext}"
+    );
+
+    // `//=` extending an already-defined group: the analogue.
+    let group_ext = run("tcpopts = (1: int)\ntcpopts //= (2: tstr)\n", "group_ext").expect_err(
+        "`//=` extending an already-defined group must reject (silent arm-drop to the last is wrong)",
+    );
+    assert!(
+        group_ext.contains("//=") && group_ext.contains("rule `tcpopts`"),
+        "group-choice extension rejection should name the operator and the rule, got: {group_ext}"
+    );
+
+    // Boundary: a LONE `/=` rule (first definition of `b`) is valid CDDL and must keep generating.
+    run("b /= tstr\n", "lone_type_alt")
+        .expect("a lone `/=` rule (initial definition) must keep generating (shelley precedent)");
+
+    // Remedy-works: the advertised folded/restructured spellings generate ok.
+    run("a = int / tstr\n", "type_fold")
+        .expect("the folded type-choice remedy `a = int / tstr` must generate");
+    run(
+        "tcpopts_a = (1: int)\ntcpopts_b = (2: tstr)\nt = [ tcpopts_a // tcpopts_b ]\n",
+        "group_usesite",
+    )
+    .expect("the use-site group-choice remedy `t = [ grpA // grpB ]` must generate");
+}
+
 /// A bareword map/array key that is a Rust keyword (`{ if: uint }`, `[if: uint]`, `{ true: uint }`)
 /// emits a struct field literally named by the keyword — invalid Rust, formerly caught only by the
 /// rustfmt gate as a "generator bug". Reject it at parse time with the `@name` remedy. Honoring

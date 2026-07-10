@@ -49,13 +49,13 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `assigng.extend` | ⚠️ | Incremental group-choice extension (//=) | group socket plug (//=) is parsed but ignored — same socket-stripping story as the type socket; the Rule::Group arm of parse_rule processes it as a plain inline group with no plug semantics (no distinct code site to anchor) |
+| `assigng.extend` | ➖ | Incremental group-choice extension (//=) | incremental group-choice extension (//=) that extends an already-defined ident is rejected gracefully at generation — same silent last-wins drop as the type socket; a plain group rule cannot itself carry a group choice, so give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`)  [`incremental_choice_extension_rejection`] |
 
 ### `assignt` (1)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `assignt.extend` | ⚠️ | Incremental type-choice extension (/=) | type socket plug (/=) is parsed but ignored; a $-socket reference is merely stripped ($x -> x)  [`is_type_choice_alternate`] |
+| `assignt.extend` | ➖ | Incremental type-choice extension (/=) | incremental type-choice extension (/=) that extends an already-defined ident is rejected gracefully at generation — silently dropping every arm but the last (only the final extension arm survives) generated a wrong type, so api.rs rejects the second definition; fold the arms into one rule (`a = int / tstr`) instead  [`incremental_choice_extension_rejection`] |
 
 ### `genericarg` (2)
 
@@ -312,7 +312,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
 2. Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
 3. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
-4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`; the `/=` / `//=` plug mechanism is ignored (see the assignt/assigng.extend notes).
+4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes).
 5. Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats.
 6. Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested).
 7. Bug — a type choice containing `bool` generates non-compiling Rust (`error[E0282]: type annotations needed`): `bool / tstr` and `uint / bool` fail, while `int / tstr` and `uint / text / bytes` compile. Surfaced by the compile-gate (the `type.choice` example was changed off `bool` to isolate the construct). Candidate cddl-codegen fix.
@@ -324,7 +324,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **106** — ✅ 54 covered · ➕ 21 supported-untested · ⚠️ 6 partial · ➖ 25 not supported
+- Features: **106** — ✅ 54 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 59
 

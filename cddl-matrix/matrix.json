@@ -2,34 +2,14 @@
   "annotations": {
     "cddl_codegen": [
       {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "assigng.extend",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "assignt.extend",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
         "emission": {

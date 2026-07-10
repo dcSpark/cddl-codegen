@@ -9,6 +9,8 @@ expression: catalog
 # cddl-fork-bump regression class) — investigate, don't blindly re-bless. project_robustness.ts --check
 # pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.
 
+assigng.extend                     error (graceful)
+assignt.extend                     error (graceful)
 contain.group-choice-arm.memberkey.type1.map error (graceful)
 contain.group-choice-arm.memberkey.value.float_map error (graceful)
 contain.group-choice-arm.memberkey.value.nint_map error (graceful)

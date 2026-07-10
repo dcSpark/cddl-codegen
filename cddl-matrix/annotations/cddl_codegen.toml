@@ -53,21 +53,13 @@
 
 [[support]]
 id = "assigng.extend"
-status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
-emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+status = "unsupported"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "assignt.extend"
-status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
-emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+status = "unsupported"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.ne.one"
