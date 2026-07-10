@@ -364,7 +364,10 @@ and asserts they are accepted.
   rule) so decoding routes through the *generated* field-decode path rather than cbor_event's
   blanket impls.
 - **Refresh flow** — `cd cddl-matrix && bun run verify.ts --mint-decode-foreign` (or
-  `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically). The mint phase is
+  `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically; an `--only` id that
+  has LEFT the supported set but still has a committed row is DROPPED — the support-boundary
+  removal flow, e.g. a construct newly rejected at generation — while an id that is neither
+  supported nor an existing row still hard-fails as a typo). The mint phase is
   mint-ONLY (writes the catalog, never annotations) and takes "supported" from the committed
   `matrix.json` — so a row whose verdict just flipped needs the plain probe run and a
   `build_matrix.ts` fold BEFORE it can mint; symmetrically, a plain probe run AFTER the mint (plus

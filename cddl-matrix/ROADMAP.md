@@ -152,22 +152,31 @@ are ledgered here (that's what the probe/gate error messages point at).
   `draft/rust-cddl-bignint-key-validator-gap.md`): remove `cbor_bignint_table` from
   `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (re-arming its rust conformance half), prune README
   gap #6, and delete that draft.
-- When a rust `cddl` fix ships TAG-typed map-key validation: the validator evaluates a tagged
-  Type1 member key (`{ * #6.24(uint) => tstr }`) against the WHOLE map instead of the entry keys
-  (`expected tagged data #6.24(uint), got Map(...)` on spec-valid `{24(5): "x"}`; ruby accepts —
-  the member-key walk repositions onto entry keys for the key classes it special-cases but not for
-  `Type2::TaggedData`; minimal two-file differential repro, suspected `src/validator/cbor.rs` site,
-  and prune steps in `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet).
-  This is what keeps `contain.map-key.type2.tag` `pinned_reason`-vectorless (spelling-independent —
-  re-confirmed under the `*` respell during the no-occurrence-arrow close-out). On a fixed oracle:
-  re-mint the row (`--mint-decode-foreign --only=contain.map-key.type2.tag`), re-run the full
-  `verify.ts` in the same change so the evidence picks up the corroboration clause, and prune the
-  draft + this entry.
+- When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
+  `2c7548e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
+  `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
+  it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
+  disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
+  change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
+  draft.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **Honor count-permitting occurrences on heterogeneous ARRAY-record fields as `Vec` fields.**
+- **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
+  feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
+  (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`
+  spelling keeps generating), to avoid the silent last-wins arm drop the old parse produced. Real
+  support means merging the arms, and the plausible route is an AST-level pre-pass at that same
+  seam: concatenate the extension rules' `type_choices`/group choices into the base rule before
+  `parse_rule` ever sees them, so the existing `parse_type_choices` path does the rest. Known
+  hazards to design for (why the rejection shipped instead of a quick merge): the `ParentVisitor`
+  is built over the ORIGINAL AST, so synthesized/merged nodes must keep resolving for the
+  comment-DSL walks (`get_comment_after` ascends node identity); per-arm `RuleMetadata` from each
+  statement's comments must merge, not drop; and a cross-module extension (base and `/=` statement
+  in different scope-marked files) needs an ownership decision before it can generate. On
+  implementation: flip the `assignt.extend`/`assigng.extend` reject rows (verify.ts re-probe),
+  re-mint their decode rows, and retire the rejection + this entry.
   Generation rejects them gracefully (`[uint, tstr, * bytes]`, any marker but `?`/`1*1`, any
   position — the array analogue of the keyed-map zero-permitting guard, in the same parsing.rs
   field loop; boundaries pinned by `occurrence_on_array_record_field_rejects_gracefully`), to
@@ -241,7 +250,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   marker family). Current behavior is pinned by the out-of-scope boundary legs of
   `no_occurrence_arrow_map_entry_rejects_gracefully` (they flip loudly when this is fixed).
   Candidate fix: honor the marker as map-size bounds (give `HomogenousMap` a bounds slot like
-  `HomogenousArray`'s), or reject the count-permitting markers gracefully recommending `*`. Per the
+  `HomogenousArray`'s), or reject the count-permitting markers gracefully recommending `*`. If the
+  bounds slot lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes
+  implementable as bounds `(1, 1)`, so flip its reject row
+  (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on merit rather than keeping the
+  rejection out of inertia. Per the
   "Intra-alternative variation rows" expansion rule (this doc), enumeration rows with
   `class="constraint"` boundary-violation vectors (e.g. the empty map against `+`, an over-sized
   map against `n*m`) must land BEFORE trusting any green here — the widening is invisible to
