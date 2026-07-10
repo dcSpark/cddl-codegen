@@ -108,6 +108,14 @@ note = "Array-representation group-choice arm whose member value is a named RECO
 example = "t = [ a: st // b: tstr ]\nst = [x: uint, y: tstr]"
 
 [[contain]]
+id = "contain.group-choice-arm.grpent.member.record_array_tagged"
+role = "role.group-choice-arm"
+feature = "grpent.member"
+spec = "allowed"
+note = "Array-representation group-choice arm whose member value is a named TAGGED record type (`a: tg`, `tg = #6.10([x: uint])`) — the tag-head variation of the record_array sibling. The arm's deserialize discriminant routes through `RustType::cbor_types`, whose struct-tag branch dispatches on the record's TAG head (CBOR major type 6), not its Array representation: an alternative discriminant that hand-mapped the record's rep (always Array/Map, never Tag) would dispatch tagged-record arms on the WRONG head type and fall through to NoVariantMatched on spec-valid bytes — while staying green through every untagged record-arm gate. This row is what makes that mis-mapping fail loudly. RFC8610 §2.2.2, §2.2.4, §3.4."
+example = "t = [ a: tg // b: tstr ]\ntg = #6.10([x: uint])"
+
+[[contain]]
 id = "contain.group-choice-arm.grpchoice.sequence.array"
 role = "role.group-choice-arm"
 feature = "grpchoice.sequence"

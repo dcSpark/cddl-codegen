@@ -1142,6 +1142,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.group-choice-arm.grpent.member.record_array_tagged"
+axis = "containment"
+example = "t = [ a: tg // b: tstr ]\ntg = #6.10([x: uint])"
+spec = "t = [ a: tg // b: tstr ]\ntg = #6.10([x: uint])"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "8166636c756e6b79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816872656e6465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81696c6f646573746f6e65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816a70617472696172636873"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816a73656d6170686f726564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81ca8119012b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81ca81190693"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81ca8119098b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81ca81190e54"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81ca81191137"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.group-choice-arm.memberkey.bareword.map"
 axis = "containment"
 example = "t = { a: uint // b: tstr }"

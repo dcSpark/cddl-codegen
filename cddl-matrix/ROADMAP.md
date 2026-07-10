@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 90 containment cells, and 230 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 91 containment cells, and 231 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -71,14 +71,15 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   `README.md` § "Gotchas"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
   `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`, `ctl.ne.{zero,one}`, `ctl.size.uint`
   (Q4 pins the exact enforce-green set). The same rule applies to DISPATCH variations, not just
-  enforcement: a known pending instance is a struct-level TAGGED record as an array-rep group-choice
-  arm member (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`). The arm-discriminant fix routes
-  a non-embedded record arm through `RustType::cbor_types`, whose struct-tag branch dispatches on
-  Tag — but that variation is code-review-verified only: every enumerated record-arm row
-  (`contain.group-choice-arm.grpent.member.record_array` and the wasm-matrix `struct`/`generic`/
-  `ralias` gchoice cells) is untagged, so an alternative fix that hand-mapped `record.rep` (always
-  Array/Map, never Tag) would have gone green through every existing gate while mis-dispatching
-  tagged-record arms. Enumerate it as a `contain.group-choice-arm` row before trusting that green.
+  enforcement — precedent row: `contain.group-choice-arm.grpent.member.record_array_tagged`
+  (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`), which pins the TAG head of a struct-level
+  tagged record as an array-rep group-choice arm member. The arm discriminant routes a non-embedded
+  record arm through `RustType::cbor_types`, whose struct-tag branch dispatches on Tag; before this
+  row, every enumerated record-arm gate (`contain.group-choice-arm.grpent.member.record_array` and
+  the wasm-matrix `struct`/`generic`/`ralias` gchoice cells) was untagged, so an alternative
+  discriminant that hand-mapped `record.rep` (always Array/Map, never Tag) would have gone green
+  through every existing gate while mis-dispatching tagged-record arms — this row is what makes
+  that mis-mapping fail loudly.
 
 ## Findings — open (the ledger of candidate fixes; the matrix's actual payoff)
 
