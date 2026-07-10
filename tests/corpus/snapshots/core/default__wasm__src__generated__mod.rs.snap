@@ -13,6 +13,7 @@ pub use crate::ExternGenericExternalFoo;
 pub use crate::ExternalFoo;
 
 use cddl_lib::non_empty::NonEmptyVec;
+use cddl_lib::non_empty_map::NonEmptyMap;
 pub use cddl_lib::CEnum;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
@@ -1921,6 +1922,51 @@ impl AsRef<cddl_lib::InlineWrapper> for InlineWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct MapTextToNemVal(BTreeMap<String, cddl_lib::NemVal>);
+
+#[wasm_bindgen]
+impl MapTextToNemVal {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: &NemVal) -> Option<NemVal> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: String) -> Option<NemVal> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<String, cddl_lib::NemVal>> for MapTextToNemVal {
+    fn from(native: BTreeMap<String, cddl_lib::NemVal>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToNemVal> for BTreeMap<String, cddl_lib::NemVal> {
+    fn from(wasm: MapTextToNemVal) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<String, cddl_lib::NemVal>> for MapTextToNemVal {
+    fn as_ref(&self) -> &BTreeMap<String, cddl_lib::NemVal> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct MapTextToText(BTreeMap<String, String>);
 
 #[wasm_bindgen]
@@ -2005,6 +2051,51 @@ impl From<MapTextToU64> for BTreeMap<String, u64> {
 
 impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
     fn as_ref(&self) -> &BTreeMap<String, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToText(BTreeMap<u64, String>);
+
+#[wasm_bindgen]
+impl MapU64ToText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, String>> for MapU64ToText {
+    fn from(native: BTreeMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToText> for BTreeMap<u64, String> {
+    fn from(wasm: MapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, String>> for MapU64ToText {
+    fn as_ref(&self) -> &BTreeMap<u64, String> {
         &self.0
     }
 }
@@ -2105,6 +2196,208 @@ impl From<MapWithDefaults> for cddl_lib::MapWithDefaults {
 
 impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
     fn as_ref(&self) -> &cddl_lib::MapWithDefaults {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NemHolder(cddl_lib::NemHolder);
+
+#[wasm_bindgen]
+impl NemHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NemHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn inline(&self) -> NonEmptyMapTextToU64 {
+        self.0.inline.clone().into()
+    }
+
+    pub fn set_maybe(&mut self, maybe: &NonEmptyMapU64ToText) {
+        self.0.maybe = Some(maybe.clone().into())
+    }
+
+    pub fn maybe(&self) -> Option<NonEmptyMapU64ToText> {
+        self.0.maybe.clone().map(std::convert::Into::into)
+    }
+
+    pub fn plain(&self) -> MapTextToU64 {
+        self.0.plain.clone().into()
+    }
+
+    pub fn named(&self) -> NemNamed {
+        self.0.named.clone().into()
+    }
+
+    pub fn new(inline: &NonEmptyMapTextToU64, plain: &MapTextToU64, named: &NemNamed) -> Self {
+        Self(cddl_lib::NemHolder::new(
+            inline.clone().into(),
+            plain.clone().into(),
+            named.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::NemHolder> for NemHolder {
+    fn from(native: cddl_lib::NemHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemHolder> for cddl_lib::NemHolder {
+    fn from(wasm: NemHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NemHolder> for NemHolder {
+    fn as_ref(&self) -> &cddl_lib::NemHolder {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapTextToNemVal`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NemNamed(NonEmptyMap<String, cddl_lib::NemVal>);
+
+#[wasm_bindgen]
+impl NemNamed {
+    pub fn new(first_key: String, first_value: &NemVal) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: &NemVal) -> Option<NemVal> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: String) -> Option<NemVal> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapTextToNemVal) -> Result<NemNamed, JsError> {
+        let inner: BTreeMap<String, cddl_lib::NemVal> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<String, cddl_lib::NemVal>> for NemNamed {
+    fn from(native: NonEmptyMap<String, cddl_lib::NemVal>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemNamed> for NonEmptyMap<String, cddl_lib::NemVal> {
+    fn from(wasm: NemNamed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<String, cddl_lib::NemVal>> for NemNamed {
+    fn as_ref(&self) -> &NonEmptyMap<String, cddl_lib::NemVal> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NemVal(cddl_lib::NemVal);
+
+#[wasm_bindgen]
+impl NemVal {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NemVal, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn v(&self) -> u64 {
+        self.0.v
+    }
+
+    pub fn new(v: u64) -> Self {
+        Self(cddl_lib::NemVal::new(v))
+    }
+}
+
+impl From<cddl_lib::NemVal> for NemVal {
+    fn from(native: cddl_lib::NemVal) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemVal> for cddl_lib::NemVal {
+    fn from(wasm: NemVal) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NemVal> for NemVal {
+    fn as_ref(&self) -> &cddl_lib::NemVal {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NemWire(cddl_lib::NemWire);
+
+#[wasm_bindgen]
+impl NemWire {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NemWire, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn m(&self) -> NonEmptyMapU64ToU64 {
+        self.0.m.clone().into()
+    }
+
+    pub fn new(m: &NonEmptyMapU64ToU64) -> Self {
+        Self(cddl_lib::NemWire::new(m.clone().into()))
+    }
+}
+
+impl From<cddl_lib::NemWire> for NemWire {
+    fn from(native: cddl_lib::NemWire) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemWire> for cddl_lib::NemWire {
+    fn from(wasm: NemWire) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NemWire> for NemWire {
+    fn as_ref(&self) -> &cddl_lib::NemWire {
         &self.0
     }
 }
@@ -2805,6 +3098,165 @@ impl From<NonEmptyArrU64List> for NonEmptyVec<NonEmptyVec<u64>> {
 
 impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
     fn as_ref(&self) -> &NonEmptyVec<NonEmptyVec<u64>> {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+
+#[wasm_bindgen]
+impl NonEmptyMapTextToU64 {
+    pub fn new(first_key: String, first_value: u64) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapTextToU64) -> Result<NonEmptyMapTextToU64, JsError> {
+        let inner: BTreeMap<String, u64> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn from(native: NonEmptyMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapTextToU64> for NonEmptyMap<String, u64> {
+    fn from(wasm: NonEmptyMapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn as_ref(&self) -> &NonEmptyMap<String, u64> {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapU64ToText`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapU64ToText(NonEmptyMap<u64, String>);
+
+#[wasm_bindgen]
+impl NonEmptyMapU64ToText {
+    pub fn new(first_key: u64, first_value: String) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapU64ToText) -> Result<NonEmptyMapU64ToText, JsError> {
+        let inner: BTreeMap<u64, String> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
+    fn from(native: NonEmptyMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapU64ToText> for NonEmptyMap<u64, String> {
+    fn from(wasm: NonEmptyMapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
+    fn as_ref(&self) -> &NonEmptyMap<u64, String> {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapU64ToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapU64ToU64(NonEmptyMap<u64, u64>);
+
+#[wasm_bindgen]
+impl NonEmptyMapU64ToU64 {
+    pub fn new(first_key: u64, first_value: u64) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapU64ToU64) -> Result<NonEmptyMapU64ToU64, JsError> {
+        let inner: BTreeMap<u64, u64> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<u64, u64>> for NonEmptyMapU64ToU64 {
+    fn from(native: NonEmptyMap<u64, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapU64ToU64> for NonEmptyMap<u64, u64> {
+    fn from(wasm: NonEmptyMapU64ToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<u64, u64>> for NonEmptyMapU64ToU64 {
+    fn as_ref(&self) -> &NonEmptyMap<u64, u64> {
         &self.0
     }
 }

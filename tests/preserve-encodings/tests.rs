@@ -1644,4 +1644,35 @@ mod tests {
             "indefinite inner array must terminate with BREAK"
         );
     }
+
+    // WI-2: a `{+ k => v}` field under --preserve-encodings must keep its length/key-order encoding
+    // metadata in the parent's encoding struct (keyed off the FIELD `m`), so an indefinite-length
+    // encoding of the NonEmptyMap round-trips byte-identically — the container swap must not swallow
+    // it. (The `NemPreserveEncoding` struct carries `m_encoding`/`m_key_encodings`/`m_value_encodings`
+    // exactly as a bare table field would.)
+    #[test]
+    fn non_empty_map_preserves_encoding() {
+        let m = NonEmptyMap::try_from(OrderedHashMap::from_iter([
+            (1u64, "a".to_string()),
+            (2u64, "b".to_string()),
+        ]))
+        .unwrap();
+        let mut nem = NemPreserve::new(m);
+        deser_test(&nem);
+        let definite = nem.to_cbor_bytes();
+        let mut enc = NemPreserveEncoding::default();
+        enc.m_encoding = LenEncoding::Indefinite;
+        nem.encodings = Some(enc);
+        deser_test(&nem);
+        let indefinite = nem.to_cbor_bytes();
+        assert!(
+            definite != indefinite,
+            "indefinite {{+ k => v}} encoding must differ from the definite one"
+        );
+        assert_eq!(
+            *indefinite.last().unwrap(),
+            BREAK,
+            "indefinite inner map must terminate with BREAK"
+        );
+    }
 }

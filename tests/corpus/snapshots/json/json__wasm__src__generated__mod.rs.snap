@@ -11,6 +11,7 @@ expression: content
 )]
 
 use cddl_lib::non_empty::NonEmptyVec;
+use cddl_lib::non_empty_map::NonEmptyMap;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
@@ -393,6 +394,64 @@ pub type MapTextToU64 = Table;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct NemJson(cddl_lib::NemJson);
+
+#[wasm_bindgen]
+impl NemJson {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NemJson, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NemJson, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn xs(&self) -> NonEmptyMapTextToU64 {
+        self.0.xs.clone().into()
+    }
+
+    pub fn new(xs: &NonEmptyMapTextToU64) -> Self {
+        Self(cddl_lib::NemJson::new(xs.clone().into()))
+    }
+}
+
+impl From<cddl_lib::NemJson> for NemJson {
+    fn from(native: cddl_lib::NemJson) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemJson> for cddl_lib::NemJson {
+    fn from(wasm: NemJson) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NemJson> for NemJson {
+    fn as_ref(&self) -> &cddl_lib::NemJson {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct NevJson(cddl_lib::NevJson);
 
 #[wasm_bindgen]
@@ -503,6 +562,59 @@ impl From<NintWrapper> for cddl_lib::NintWrapper {
 
 impl AsRef<cddl_lib::NintWrapper> for NintWrapper {
     fn as_ref(&self) -> &cddl_lib::NintWrapper {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+
+#[wasm_bindgen]
+impl NonEmptyMapTextToU64 {
+    pub fn new(first_key: String, first_value: u64) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapTextToU64) -> Result<NonEmptyMapTextToU64, JsError> {
+        let inner: BTreeMap<String, u64> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn from(native: NonEmptyMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapTextToU64> for NonEmptyMap<String, u64> {
+    fn from(wasm: NonEmptyMapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn as_ref(&self) -> &NonEmptyMap<String, u64> {
         &self.0
     }
 }

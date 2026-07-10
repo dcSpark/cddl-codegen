@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: ir
 ---
 {
@@ -171,6 +171,7 @@ expression: ir
                     basic_override: false,
                 },
             },
+            bounds: None,
         },
     },
     RustIdent(

@@ -363,7 +363,8 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       radix-conversion trap — plus an off-by-one/truncated-digit guard each), rejected as
   //       FixedValueMismatch; both oracles certify.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
-    "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint", "memberkey.cut",
+    "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
+    "contain.occurrence-target.memberkey.type1.plus_table", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
@@ -378,23 +379,20 @@ function vacuityProblems(rs: Directional[]): string[] {
   const EXPECTED_ENFORCE_UNVERIFIED: string[] = [];
   // The over-accepts set is pinned the SAME way: a row carrying a class="over-acceptance" vector
   // projects `enforce = no (over-accepts: M)` — the SHIPPED over-acceptance vector class (catalog pin
-  // + rust replay leg asserting "still wrongly accepts" + this projection). The populated set is the
-  // widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings): a COUNT-PERMITTING
-  // occurrence marker (`+` / `?` / `n*m`) on a single non-literal arrow map entry table-detects to the
-  // SAME unbounded 0..N BTreeMap as `{ * k => v }` (HomogenousMap carries no bounds), so the generated
-  // decoder wrongly accepts out-of-window maps — an empty map for `+`, a 2-entry map for `?`, and
-  // below/above-bound maps for `2*3`. Each row carries its certified boundary-violation over-acceptance
-  // pin(s). (The seed instance — the no-occurrence type-domain arrow row, whose empty-map instance the
-  // decoder widened exactly-once to 0..N — took the OTHER promotion branch: closed by graceful rejection
-  // at generation, its row flipped unsupported and its catalog pin was dropped.) The machinery stays
-  // armed: a NEW certified over-acceptance lands as a class="over-acceptance" vector and its row id here;
-  // a decoder FIX instead flips the replay pin loudly, promotes the vector to class="constraint", and
-  // moves the row id to EXPECTED_ENFORCE_YES.
-  const EXPECTED_ENFORCE_OVERACCEPTS: string[] = [
-    "contain.occurrence-target.memberkey.type1.bounded_table",
-    "contain.occurrence-target.memberkey.type1.optional_table",
-    "contain.occurrence-target.memberkey.type1.plus_table",
-  ];
+  // + rust replay leg asserting "still wrongly accepts" + this projection). EMPTY today: the
+  // widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings) is CLOSED. Both promotion
+  // branches fired for a COUNT-PERMITTING occurrence marker on a single non-literal arrow map entry:
+  //   - `+` / `1*` is now HONORED — the entry decodes as a `NonEmptyMap` whose single TryFrom door
+  //     rejects the empty map, so `plus_table`'s empty-map vector was promoted to class="constraint"
+  //     and its row id moved to EXPECTED_ENFORCE_YES above (the decoder-fix branch);
+  //   - `?` / `n*m` / `*n` / `0*n` is REJECTED gracefully at generation (a bounded cardinality this
+  //     phase does not honor — silently widening it to 0..N was the bug), so `optional_table` /
+  //     `bounded_table` flipped unsupported and their catalog rows were dropped (the graceful-rejection
+  //     branch, same as the seed no-occurrence type-domain arrow row before them).
+  // The machinery stays armed: a NEW certified over-acceptance lands as a class="over-acceptance"
+  // vector and its row id here; a decoder FIX flips the replay pin loudly, promotes the vector to
+  // class="constraint", and moves the row id to EXPECTED_ENFORCE_YES.
+  const EXPECTED_ENFORCE_OVERACCEPTS: string[] = [];
   if (anyConstraintVectors) {
     if (enforceYes < 1)
       problems.push(`the catalog ships class="constraint" vectors but no row projects enforce=yes — the enforce derivation drifted`);

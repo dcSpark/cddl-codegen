@@ -266,4 +266,24 @@ mod tests {
         // an empty array for a `[+ uint]` field is rejected AT the TryFrom door on JSON deserialize
         assert!(serde_json::from_str::<NevJson>(r#"{"xs":[]}"#).is_err());
     }
+
+    // WI-2: NonEmptyMap (`{+ tstr => uint}`) serializes as a plain JSON object, and JSON deserialize
+    // routes through the same TryFrom door — an empty object is rejected there too.
+    #[test]
+    fn non_empty_map_json() {
+        // build flavor-agnostically via `NonEmptyMap::new` (the inner map type — `BTreeMap` under
+        // `json`, `OrderedHashMap` under `json_preserve` — is never named), so this compiles under
+        // both profiles without a `TryFrom<map>` whose collect target would be ambiguous.
+        let nem = NemJson::new(NonEmptyMap::new("a".to_string(), 1u64));
+        let json = serde_json::to_string(&nem).unwrap();
+        assert!(
+            json.contains("{\"a\":1}"),
+            "NonEmptyMap must serialize as a plain JSON object, got: {json}"
+        );
+        // JSON deserialize routes through TryFrom (round-trips back to the same JSON)
+        let back: NemJson = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        // an empty object for a `{+ tstr => uint}` field is rejected AT the TryFrom door on deserialize
+        assert!(serde_json::from_str::<NemJson>(r#"{"xs":{}}"#).is_err());
+    }
 }

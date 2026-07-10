@@ -1,0 +1,7 @@
+; WI-2 (NonEmptyMap): a user rule whose name equals the `NonEmptyMapKToV` wasm wrapper that an inline
+; `{+ k => v}` occurrence mints must be REJECTED (never silently shadowed) — sharing the name would
+; emit a wrapper of the wrong shape (loose table map vs restricted NonEmptyMap). The collision is on
+; the wasm class name (uint -> U64), so it is graceful-rejected under --wasm=true and generates
+; cleanly under --wasm=false (rust has no such wrapper: the inline field is a bare NonEmptyMap).
+non_empty_map_text_to_u64 = [a: uint]
+holder = { m: {+ text => uint} }

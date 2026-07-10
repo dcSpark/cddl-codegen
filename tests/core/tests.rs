@@ -1560,4 +1560,68 @@ mod tests {
         let holder = NevHolder2::new(pts, pts_inline, qs);
         deser_test(&holder);
     }
+
+    // --- WI-2: NonEmptyMap two-type enforcement for `{+ k => v}` ---
+
+    #[test]
+    fn non_empty_map_try_from_enforces_and_from_lossless() {
+        // one entry accepted, empty rejected through the SINGLE TryFrom door
+        let one = std::collections::BTreeMap::from([("a".to_string(), 1u64)]);
+        NonEmptyMap::try_from(one).expect("one-entry map must be accepted");
+        let empty: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+        let err = NonEmptyMap::try_from(empty).unwrap_err();
+        // identical Display to the wire door (see non_empty_map_wire_rejects_empty_same_error)
+        assert!(
+            err.to_string().contains("0 not at least 1"),
+            "TryFrom empty must be a RangeCheck, got: {err}"
+        );
+        // From back is lossless
+        let src = std::collections::BTreeMap::from([("a".to_string(), 1u64), ("b".to_string(), 2)]);
+        let nem = NonEmptyMap::try_from(src.clone()).unwrap();
+        let back: std::collections::BTreeMap<String, u64> = nem.into();
+        assert_eq!(back, src);
+    }
+
+    #[test]
+    fn non_empty_map_holder_roundtrip_and_infallible_new() {
+        let inline =
+            NonEmptyMap::try_from(std::collections::BTreeMap::from([("x".to_string(), 7u64)]))
+                .unwrap();
+        let named: NemNamed = NonEmptyMap::try_from(std::collections::BTreeMap::from([(
+            "k".to_string(),
+            NemVal::new(3),
+        )]))
+        .unwrap();
+        // new() is INFALLIBLE (no Result) and takes the restricted NonEmptyMap types by value; the
+        // control field `plain` stays a bare BTreeMap<String, u64>.
+        let mut holder = NemHolder::new(
+            inline,
+            std::collections::BTreeMap::from([("p".to_string(), 9u64)]),
+            named,
+        );
+        deser_test(&holder);
+        // Option<NonEmptyMap<_>>: the optional field is absence, not "empty container"
+        holder.maybe =
+            Some(NonEmptyMap::try_from(std::collections::BTreeMap::from([(1u64, "v".to_string())]))
+                .unwrap());
+        deser_test(&holder);
+    }
+
+    #[test]
+    fn non_empty_map_wire_rejects_empty_same_error() {
+        // valid: outer map(1) { "m": inner map(1) { 0: 1 } } = a1 61 6d a1 00 01
+        let mut ok = Deserializer::from(std::io::Cursor::new(vec![
+            0xa1u8, 0x61, 0x6d, 0xa1, 0x00, 0x01,
+        ]));
+        NemWire::deserialize(&mut ok).expect("valid single-entry {+ uint => uint} wire");
+        // invalid: outer map(1) { "m": EMPTY inner map(0) } = a1 61 6d a0 — the `{+ uint => uint}`
+        // field routes the empty map through the same NonEmptyMap::try_from door, so the wire error
+        // text MATCHES the API error text asserted above.
+        let mut bad = Deserializer::from(std::io::Cursor::new(vec![0xa1u8, 0x61, 0x6d, 0xa0]));
+        let err = NemWire::deserialize(&mut bad).unwrap_err();
+        assert!(
+            err.to_string().contains("0 not at least 1"),
+            "empty wire map must reject as a RangeCheck, got: {err}"
+        );
+    }
 }

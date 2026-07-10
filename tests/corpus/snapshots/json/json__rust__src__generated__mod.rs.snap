@@ -8,10 +8,12 @@ expression: content
 
 pub mod error;
 pub mod non_empty;
+pub mod non_empty_map;
 pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
+use crate::generated::non_empty_map::NonEmptyMap;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -375,6 +377,17 @@ impl schemars::JsonSchema for IntWrapper {
 
     fn inline_schema() -> bool {
         <Int as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NemJson {
+    pub xs: NonEmptyMap<String, u64>,
+}
+
+impl NemJson {
+    pub fn new(xs: NonEmptyMap<String, u64>) -> Self {
+        Self { xs }
     }
 }
 

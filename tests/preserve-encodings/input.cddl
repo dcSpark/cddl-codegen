@@ -259,3 +259,9 @@ width_collapse = [
 ; duplicate the array's length-encoding metadata — the encoding vars stay keyed off the FIELD in the
 ; parent's encoding struct, so an indefinite-length encoding round-trips byte-identically.
 nev_preserve = [ pts: [+ uint] ]
+
+; WI-2: a `{+ k => v}` field under --preserve-encodings. The NonEmptyMap container must NOT swallow or
+; duplicate the table's length/key-order encoding metadata — the encoding vars stay keyed off the
+; FIELD in the parent's encoding struct, so an indefinite-length / non-canonical-order encoding
+; round-trips byte-identically.
+nem_preserve = [ m: {+ uint => tstr} ]

@@ -8,12 +8,14 @@ expression: content
 
 pub mod error;
 pub mod non_empty;
+pub mod non_empty_map;
 pub mod serialization;
 pub use crate::ExternGeneric;
 pub use crate::ExternalFoo;
 
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
+use crate::generated::non_empty_map::NonEmptyMap;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -760,6 +762,54 @@ impl MapWithDefaults {
 impl Default for MapWithDefaults {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NemHolder {
+    pub inline: NonEmptyMap<String, u64>,
+    pub maybe: Option<NonEmptyMap<u64, String>>,
+    pub plain: BTreeMap<String, u64>,
+    pub named: NemNamed,
+}
+
+impl NemHolder {
+    pub fn new(
+        inline: NonEmptyMap<String, u64>,
+        plain: BTreeMap<String, u64>,
+        named: NemNamed,
+    ) -> Self {
+        Self {
+            inline,
+            maybe: None,
+            plain,
+            named,
+        }
+    }
+}
+
+/// `{+ String => NemVal}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NemNamed = NonEmptyMap<String, NemVal>;
+
+#[derive(Clone, Debug)]
+pub struct NemVal {
+    pub v: u64,
+}
+
+impl NemVal {
+    pub fn new(v: u64) -> Self {
+        Self { v }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NemWire {
+    pub m: NonEmptyMap<u64, u64>,
+}
+
+impl NemWire {
+    pub fn new(m: NonEmptyMap<u64, u64>) -> Self {
+        Self { m }
     }
 }
 

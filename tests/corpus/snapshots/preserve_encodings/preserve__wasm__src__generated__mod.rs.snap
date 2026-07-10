@@ -11,6 +11,7 @@ expression: content
 )]
 
 use cddl_lib::non_empty::NonEmptyVec;
+use cddl_lib::non_empty_map::NonEmptyMap;
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 pub use cddl_lib::CEnum;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
@@ -1724,6 +1725,49 @@ impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct NemPreserve(cddl_lib::NemPreserve);
+
+#[wasm_bindgen]
+impl NemPreserve {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NemPreserve, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn m(&self) -> NonEmptyMapU64ToText {
+        self.0.m.clone().into()
+    }
+
+    pub fn new(m: &NonEmptyMapU64ToText) -> Self {
+        Self(cddl_lib::NemPreserve::new(m.clone().into()))
+    }
+}
+
+impl From<cddl_lib::NemPreserve> for NemPreserve {
+    fn from(native: cddl_lib::NemPreserve) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NemPreserve> for cddl_lib::NemPreserve {
+    fn from(wasm: NemPreserve) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NemPreserve> for NemPreserve {
+    fn as_ref(&self) -> &cddl_lib::NemPreserve {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct NevPreserve(cddl_lib::NevPreserve);
 
 #[wasm_bindgen]
@@ -1761,6 +1805,59 @@ impl From<NevPreserve> for cddl_lib::NevPreserve {
 
 impl AsRef<cddl_lib::NevPreserve> for NevPreserve {
     fn as_ref(&self) -> &cddl_lib::NevPreserve {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapU64ToText`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapU64ToText(NonEmptyMap<u64, String>);
+
+#[wasm_bindgen]
+impl NonEmptyMapU64ToText {
+    pub fn new(first_key: u64, first_value: String) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapU64ToText) -> Result<NonEmptyMapU64ToText, JsError> {
+        let inner: OrderedHashMap<u64, String> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
+    fn from(native: NonEmptyMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapU64ToText> for NonEmptyMap<u64, String> {
+    fn from(wasm: NonEmptyMapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
+    fn as_ref(&self) -> &NonEmptyMap<u64, String> {
         &self.0
     }
 }

@@ -221,6 +221,7 @@ expression: ir
                     basic_override: false,
                 },
             },
+            bounds: None,
         },
     },
 }

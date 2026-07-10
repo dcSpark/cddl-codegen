@@ -1,0 +1,8 @@
+; WI-2 (NonEmptyMap): the collision scan must see `{+ k => v}` in a NESTED value/element position too
+; — `outer = [* {+ bar => baz}]` mints the synthesized NonEmptyMapBarToBaz wasm class exactly like a
+; record field would, so a user rule claiming that ident is rejected gracefully under --wasm=true.
+; Generates cleanly under --wasm=false.
+bar = [x: uint]
+baz = [y: uint]
+outer = [* {+ bar => baz}]
+non_empty_map_bar_to_baz = [w: uint]

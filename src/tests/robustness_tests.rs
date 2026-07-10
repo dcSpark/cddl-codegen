@@ -820,17 +820,29 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
         "nested rejection should still carry the exactly-once rationale, got: {nested}"
     );
 
-    // OUT-of-scope boundary pins (the widened-occurrence-marker table class, ledgered separately;
-    // enumerated as matrix rows contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table
-    // with certified class="over-acceptance" decode-catalog pins for the out-of-window maps):
-    // count-permitting markers still table-detect and generate today. These flip loudly when that
-    // finding is fixed — retarget them to the fix then.
+    // WI-2 (two-type `{+ k => v}`): the count-permitting markers on a table entry are now HONORED or
+    // REJECTED — this closes the widened-occurrence-marker over-acceptance class:
+    // - `+` / `1*` generate a NonEmptyMap (non-empty table, enforced via the single TryFrom door);
+    // - `?` / `n*m` / `*n` (n≥2) / `0*n` reject gracefully (a real bounded cardinality this phase does
+    //   not honor — silently widening it to 0..N was the bug).
     run("m = { + tstr => uint }\n", "plus")
-        .expect("`+` on a table entry keeps generating (ledgered widening, out of scope here)");
-    run("m = { ? tstr => uint }\n", "opt")
-        .expect("`?` on a table entry keeps generating (ledgered widening, out of scope here)");
-    run("m = { 2*3 tstr => uint }\n", "bounded")
-        .expect("`n*m` on a table entry keeps generating (ledgered widening, out of scope here)");
+        .expect("`+` on a table entry now generates a NonEmptyMap");
+    let opt = run("m = { ? tstr => uint }\n", "opt")
+        .expect_err("`?` on a table entry now rejects (bounded cardinality not honored)");
+    assert!(
+        opt.contains("bounded occurrence marker") && opt.contains("rule `m`"),
+        "`?` rejection should carry the bounded-marker rationale and name the rule, got: {opt}"
+    );
+    assert!(
+        opt.contains("{ * tstr => uint }") && opt.contains("{ + tstr => uint }"),
+        "`?` rejection should advertise both the `*` (unbounded) and `+` (non-empty) remedies, got: {opt}"
+    );
+    let bounded = run("m = { 2*3 tstr => uint }\n", "bounded")
+        .expect_err("`n*m` on a table entry now rejects (bounded cardinality not honored)");
+    assert!(
+        bounded.contains("bounded occurrence marker"),
+        "`2*3` rejection should carry the bounded-marker rationale, got: {bounded}"
+    );
 }
 
 /// Incremental choice extension (`/=` type-choice, `//=` group-choice) that EXTENDS an
