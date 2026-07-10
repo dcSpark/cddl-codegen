@@ -1,0 +1,4 @@
+; cell: ralias x newtype-inner
+st = [a: uint, b: text]
+ral = st
+holder = ral ; @newtype

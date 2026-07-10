@@ -208,46 +208,30 @@ are ledgered here (that's what the probe/gate error messages point at).
     never a green-to-red. Candidate fix: don't mint structural-wrapper imports when recursing
     through an alias target (the alias's own wrapper subsumes them — e.g. recurse the target with
     the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
-- **A `.cbor`-wrapper shape in a GROUP-choice arm mints a wasm ctor whose arg shape disagrees with the
-  rust ctor** (E0308) — surfaced by the `gchoice-variant` wasm-ABI role (`[ f0: T // f1: nint ]`, the
-  `codegen_group_choices` per-variant ctor path). For `cborwrap` (`fb = bytes .cbor foo`,
-  `foo = [a: uint]`) the rust ctor takes the wrapper type — `Holder::new_f0(f0: Fb)` — but the wasm
-  ctor's field-resolution descends through the `.cbor` wrapper to the inner `Foo` record and INLINES
-  its field, emitting `new_f0(a: u64)` whose body calls `cddl_lib::Holder::new_f0(a)` — passing `u64`
-  where `Fb` is expected. The wasm ctor loop resolves the arm field type and, on reaching a Record,
-  pulls `record.fields`; a `.cbor` wrapper resolves transparently to its inner record, so it is
-  wrongly treated as an inlinable multi-field arm. Pinned by `cborwrap__gchoice-variant` in
-  `WASM_MATRIX_SKIP` (`integration_tests.rs`, E0308 comment); the compile-floor pin carries the cell
-  into the round-trip gate automatically (the wasm crate never compiles, so `cargo test` can never
-  pass — same disposition as the `collrec` and `extern` reds). Candidate fix: the group-choice wasm
-  ctor's field-resolution must not descend through a `.cbor` wrapper — take the wrapper type (`Fb`) as
-  a single ctor arg, mirroring the rust ctor, rather than inlining the inner record's fields (the
-  transparent-to-wrapper resolution that `has_wasm_wrapper` distinguishes). Every other shape crosses
-  the group-choice arm boundary green, so this is `.cbor`-wrapper-specific.
 - **A RECORD arm in an array-rep group choice deserializes to `NoVariantMatched`** — a core
-  serialization bug (reproduces without `--wasm`), the deserialize sibling of the `cborwrap`
-  over-resolution compile bug above; both live in the `codegen_group_choices` arm path. Surfaced by
-  the `gchoice-variant` wasm-ABI role (`[ f0: T // f1: nint ]`) with the two Record shapes — `struct`
+  serialization bug (reproduces without `--wasm`) in the `codegen_group_choices` arm path. Surfaced by
+  the `gchoice-variant` wasm-ABI role (`[ f0: T // f1: nint ]`) with the Record shapes — `struct`
   (`st = [a: uint, b: text]`) and the generic-instance record `generic` (`cont<T0> = [value: T0]`,
-  `uc = cont<uint>` -> `[value: uint]`). The arm serializes as a NESTED array — `Holder::F0` writes the
-  outer `[1]` then the record's OWN array (`new_f0` on `generic` emits `81 81 00`), so the first
-  element is an `Array` — but the emitted `Holder` deserializer discriminates the arms by peeking the
-  first element's CBOR type and matches F0 on `cbor_type == UnsignedInteger`: it derives the arm's
-  discriminant from the record's FIRST FIELD (`a`/`value`, a `uint`), as if the record were EMBEDDED
-  (fields flattened) into the arm, rather than from the record's own `Array` wire type. So the bytes
-  peek `Array` and fall through to `NoVariantMatched`. Wrapper-collection arms (`coll` `[* uint]`,
+  `uc = cont<uint>` -> `[value: uint]`), plus the alias-to-record shape `ralias` (`ral = st`). The arm
+  serializes as a NESTED array — `Holder::F0` writes the outer `[1]` then the record's OWN array
+  (`new_f0` on `generic` emits `81 81 00`), so the first element is an `Array` — but the emitted
+  `Holder` deserializer discriminates the arms by peeking the first element's CBOR type and matches F0
+  on `cbor_type == UnsignedInteger`: it derives the arm's discriminant from the record's FIRST FIELD
+  (`a`/`value`, a `uint`), as if the record were EMBEDDED (fields flattened) into the arm, rather than
+  from the record's own `Array` wire type. So the bytes peek `Array` and fall through to
+  `NoVariantMatched`. Wrapper-collection arms (`coll` `[* uint]`,
   `collmap`) discriminate correctly on `Array` (a wrapper struct reports its own array type), so this
   is RECORD-arm-specific: the mismatch is serialize-writes-nested vs discriminant-assumes-embedded.
   Under `--wasm` it surfaces as a wasm-bindgen panic (the decode Err reaches `Holder::from_cbor_bytes`'s
-  `JsError::new`, which panics on the native test target). Pinned by six `WASM_MATRIX_PROFILE_SKIP`
-  entries (both cells × default/preserve/json) in `integration_tests.rs` — the cells compile, so they
+  `JsError::new`, which panics on the native test target). Pinned by nine `WASM_MATRIX_PROFILE_SKIP`
+  entries (three cells × default/preserve/json) in `integration_tests.rs` — the cells compile, so they
   cannot go in `WASM_MATRIX_SKIP` (the compile floor would flag them "resurfaced"). Candidate fix:
   derive the group-choice arm's discriminant CBOR type from the arm's WIRE representation (the record's
   `Array`, not its first field) — reconcile the discriminant with the serializer's nested-array output
   (or, if embedding was intended, serialize the record embedded so `[a, b]` discriminates on `a`).
-  Shares a root with the `cborwrap` entry above: the group-choice arm path mishandles composite arms
-  whose wire form differs from a shallow conceptual resolution. Because the bug is rust-side, it also
-  exposes a CONTAINMENT enumeration gap: the grid's group-choice-arm rows stop at primitive members
+  The group-choice arm path must treat composite arms according to their wire form rather than a
+  shallow conceptual resolution. Because the bug is rust-side, it also exposes a CONTAINMENT
+  enumeration gap: the grid's group-choice-arm rows stop at primitive members
   (`contain.group-choice-arm.grpent.member.array`) and plain-group splices
   (`contain.group-choice-arm.grpent.groupname.array` — a plain group EMBEDS by spec, so it is not this
   shape); no row places a named RECORD type as an arm member (`t = [ a: st // b: tstr ]`, `st` a

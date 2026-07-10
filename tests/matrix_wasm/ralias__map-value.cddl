@@ -1,0 +1,4 @@
+; cell: ralias x map-value
+st = [a: uint, b: text]
+ral = st
+holder = { * uint => ral }

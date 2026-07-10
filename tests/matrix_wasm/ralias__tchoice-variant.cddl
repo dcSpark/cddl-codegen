@@ -1,0 +1,4 @@
+; cell: ralias x tchoice-variant
+st = [a: uint, b: text]
+ral = st
+holder = ral / nint

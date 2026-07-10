@@ -1,0 +1,4 @@
+; cell: ralias x array-element
+st = [a: uint, b: text]
+ral = st
+holder = [* ral]
