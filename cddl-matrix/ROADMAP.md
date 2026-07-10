@@ -70,7 +70,15 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   here is an enforcement blind spot, not just coverage accounting (the over-acceptance gotcha in
   `README.md` § "Gotchas"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
   `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`, `ctl.ne.{zero,one}`, `ctl.size.uint`
-  (Q4 pins the exact enforce-green set).
+  (Q4 pins the exact enforce-green set). The same rule applies to DISPATCH variations, not just
+  enforcement: a known pending instance is a struct-level TAGGED record as an array-rep group-choice
+  arm member (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`). The arm-discriminant fix routes
+  a non-embedded record arm through `RustType::cbor_types`, whose struct-tag branch dispatches on
+  Tag — but that variation is code-review-verified only: every enumerated record-arm row
+  (`contain.group-choice-arm.grpent.member.record_array` and the wasm-matrix `struct`/`generic`/
+  `ralias` gchoice cells) is untagged, so an alternative fix that hand-mapped `record.rep` (always
+  Array/Map, never Tag) would have gone green through every existing gate while mis-dispatching
+  tagged-record arms. Enumerate it as a `contain.group-choice-arm` row before trusting that green.
 
 ## Findings — open (the ledger of candidate fixes; the matrix's actual payoff)
 
@@ -452,6 +460,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
   alias recursion could reach — now enumerated as the `collrec` cells (red, pinned; § findings).
+  A second proven instance on the wasm matrix itself: the alias-to-record shape (`ral = st`) was
+  missing from `SHAPES`, so the group-choice wasm-ctor alias-resolution divergence was un-gated for
+  plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review
+  asked which other alias shapes the divergent `resolve_alias_shallow` could reach — now enumerated
+  as the `ralias` cells (green). Both instances were found by review asking "what else can this
+  code path reach?", which is exactly the question the periodic sweep mechanizes.
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
