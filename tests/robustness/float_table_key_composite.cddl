@@ -5,5 +5,7 @@
 ; parse walk. Without the finalize-time check this generates `ok` and the emitted crate fails
 ; `cargo build` with E0277 (`f64: Eq`) exactly like the direct family (float_table_key.cddl); with
 ; it, this rejects GRACEFULLY. Companion pin to float_table_key.cddl for the finalize-only seam.
+; `*`-spelled for the same reason as float_table_key.cddl: the occur-less arrow spelling is
+; rejected at parse, which would short-circuit finalize before the float check this fixture pins.
 gen<a0> = [a0]
-x = { gen<float64> => uint }
+x = { * gen<float64> => uint }

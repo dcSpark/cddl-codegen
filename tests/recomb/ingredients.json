@@ -89,7 +89,7 @@
     },
     {
       "aux": [],
-      "expr": "{ tstr => int }",
+      "expr": "{ * tstr => int }",
       "feature": "memberkey.type1"
     },
     {

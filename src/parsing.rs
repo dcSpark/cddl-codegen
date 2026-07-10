@@ -1538,11 +1538,17 @@ fn flatten_group_entries<'a>(
 }
 
 /// Parses which type of group it is for various common special cases to handle
+///
+/// `rule_name` is the enclosing rule when there is one (the named-rule path through
+/// `parse_group_choice`); `None` for anonymous nested composites (`rust_type_from_type2`'s
+/// `Type2::Array` / `Type2::Map` arms), where rejection messages describe the entry instead of
+/// citing a rule.
 fn parse_group_type<'a>(
     types: &mut IntermediateTypes,
     parent_visitor: &'a ParentVisitor,
     group_choice: &'a GroupChoice<'a>,
     rep: Representation,
+    rule_name: Option<&RustIdent>,
     cli: &Cli,
 ) -> GroupParsingType {
     let entries = flatten_group_entries(&group_choice.group_entries, rep);
@@ -1637,6 +1643,46 @@ fn parse_group_type<'a>(
                                     // fixed-value key: fall through to the 1-element struct path
                                     // (identical to the `MemberKey::Value` arm below).
                                 } else {
+                                    // A NON-fixed key with NO occurrence indicator occurs EXACTLY
+                                    // ONCE (RFC 8610 §2.1/§3.2); table-detecting it to a 0..N map
+                                    // silently WIDENS that occurrence — the generated decoder
+                                    // wrongly accepts e.g. an empty map (a certified
+                                    // over-acceptance, formerly pinned on the
+                                    // tstr_arrow_nooccur matrix row). Reject gracefully with the
+                                    // explicit-`*` remedy. NOT applied in the InlineGroup table
+                                    // arm below: there the semantic occurrence is the inline
+                                    // group's own marker (`{ * (k => v) }`), and the inner
+                                    // entry's missing occur means nothing. Fixed keys above must
+                                    // keep falling through — `{ 1 => uint }` is RFC-equal to the
+                                    // colon spelling and correctly routes to the record path.
+                                    if ge.occur.is_none() {
+                                        // cite the rule by its SOURCE spelling when we have one
+                                        // (the user is looking at their CDDL, not our output);
+                                        // anonymous nested maps describe the entry instead.
+                                        let site = match rule_name {
+                                            Some(name) => format!(
+                                                "rule `{}`",
+                                                types
+                                                    .source_rule_name(name)
+                                                    .map(str::to_owned)
+                                                    .unwrap_or_else(|| name.to_string())
+                                            ),
+                                            None => "inline map".to_owned(),
+                                        };
+                                        let value = &ge.entry_type;
+                                        types.record_rejection(format!(
+                                            "{site}: the map entry `{t1} => {value}` has no \
+                                             occurrence indicator, which per RFC 8610 means the \
+                                             entry occurs exactly once; treating it as a 0..N \
+                                             table would silently widen that occurrence (the \
+                                             generated decoder would wrongly accept e.g. an \
+                                             empty map). For a table, spell the occurrence \
+                                             explicitly: `{{ * {t1} => {value} }}`."
+                                        ));
+                                        // keep parsing on the harmless table path — the rejection
+                                        // surfaces as a graceful Err at `finalize`, and nothing
+                                        // may panic in between.
+                                    }
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
                                     return GroupParsingType::HomogenousMap(key_type, value_type);
@@ -2080,6 +2126,7 @@ fn rust_type_from_type2(
                         parent_visitor,
                         group_choice,
                         Representation::Array,
+                        None,
                         cli,
                     ) {
                         GroupParsingType::HomogenousArray(element_type, bounds) => {
@@ -2162,6 +2209,7 @@ fn rust_type_from_type2(
                         parent_visitor,
                         group_choice,
                         Representation::Map,
+                        None,
                         cli,
                     ) {
                         // Table map - homogenous key/value types
@@ -2634,89 +2682,102 @@ fn parse_group_choice(
     } else {
         rule_metadata
     };
-    let rust_struct = match parse_group_type(types, parent_visitor, group_choice, rep, cli) {
-        GroupParsingType::HomogenousArray(element_type, bounds) => {
-            // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
-            // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
-            // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
-            // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
-            // trip their "must be a struct or a generic instance" assert at generation time.
-            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
-                types.set_rep_if_plain_group(
-                    parent_visitor,
-                    element_ident,
-                    Representation::Array,
-                    cli,
-                );
-            }
-            if rule_metadata.newtype.is_some() {
-                // generate newtype over array
-                let mut array_type: RustType =
-                    ConceptualRustType::Array(Box::new(element_type)).into();
-                if let Some(bounds) = bounds {
-                    array_type = array_type.with_bounds(bounds);
-                }
-                RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), array_type, None)
-            } else {
-                // Array - homogeneous element type with proper occurence operator
-                RustStruct::new_array(
-                    name.clone(),
-                    tag,
-                    Some(&rule_metadata),
-                    element_type,
-                    bounds,
-                )
-            }
-        }
-        GroupParsingType::HomogenousMap(key_type, value_type) => {
-            // Same registration gap as the array arm above: a plain group used as a table key or
-            // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
-            // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
-            // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
-            // already commits to. Without this the ident stays an unregistered plain group and
-            // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
-            for member in [&key_type, &value_type] {
-                if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
+    let rust_struct =
+        match parse_group_type(types, parent_visitor, group_choice, rep, Some(name), cli) {
+            GroupParsingType::HomogenousArray(element_type, bounds) => {
+                // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
+                // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
+                // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
+                // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
+                // trip their "must be a struct or a generic instance" assert at generation time.
+                if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
                     types.set_rep_if_plain_group(
                         parent_visitor,
-                        member_ident,
+                        element_ident,
                         Representation::Array,
                         cli,
                     );
                 }
+                if rule_metadata.newtype.is_some() {
+                    // generate newtype over array
+                    let mut array_type: RustType =
+                        ConceptualRustType::Array(Box::new(element_type)).into();
+                    if let Some(bounds) = bounds {
+                        array_type = array_type.with_bounds(bounds);
+                    }
+                    RustStruct::new_wrapper(
+                        name.clone(),
+                        tag,
+                        Some(&rule_metadata),
+                        array_type,
+                        None,
+                    )
+                } else {
+                    // Array - homogeneous element type with proper occurence operator
+                    RustStruct::new_array(
+                        name.clone(),
+                        tag,
+                        Some(&rule_metadata),
+                        element_type,
+                        bounds,
+                    )
+                }
             }
-            if rule_metadata.newtype.is_some() {
-                // generate newtype over map
-                RustStruct::new_wrapper(
-                    name.clone(),
-                    tag,
-                    Some(&rule_metadata),
-                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into(),
-                    None,
-                )
-            } else {
-                // Table map - homogeneous key/value types
-                RustStruct::new_table(
-                    name.clone(),
-                    tag,
-                    Some(&rule_metadata),
-                    key_type,
-                    value_type,
-                )
+            GroupParsingType::HomogenousMap(key_type, value_type) => {
+                // Same registration gap as the array arm above: a plain group used as a table key or
+                // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
+                // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
+                // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
+                // already commits to. Without this the ident stays an unregistered plain group and
+                // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
+                for member in [&key_type, &value_type] {
+                    if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
+                        types.set_rep_if_plain_group(
+                            parent_visitor,
+                            member_ident,
+                            Representation::Array,
+                            cli,
+                        );
+                    }
+                }
+                if rule_metadata.newtype.is_some() {
+                    // generate newtype over map
+                    RustStruct::new_wrapper(
+                        name.clone(),
+                        tag,
+                        Some(&rule_metadata),
+                        ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into(),
+                        None,
+                    )
+                } else {
+                    // Table map - homogeneous key/value types
+                    RustStruct::new_table(
+                        name.clone(),
+                        tag,
+                        Some(&rule_metadata),
+                        key_type,
+                        value_type,
+                    )
+                }
             }
-        }
-        GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
-            assert!(
-                rule_metadata.newtype.is_none(),
-                "Can only use @newtype on primtives + heterogenious arrays/maps"
-            );
-            // Heterogenous map or array with defined key/value pairs in the cddl like a struct
-            let record =
-                parse_record_from_group_choice(types, rep, parent_visitor, name, group_choice, cli);
-            // We need to store this in IntermediateTypes so we can refer from one struct to another.
-            RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
-        }
-    };
+            GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
+                assert!(
+                    rule_metadata.newtype.is_none(),
+                    "Can only use @newtype on primtives + heterogenious arrays/maps"
+                );
+                // Heterogenous map or array with defined key/value pairs in the cddl like a struct
+                let record = parse_record_from_group_choice(
+                    types,
+                    rep,
+                    parent_visitor,
+                    name,
+                    group_choice,
+                    cli,
+                );
+                // We need to store this in IntermediateTypes so we can refer from one struct to another.
+                RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
+            }
+        };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
         None => types.register_rust_struct(parent_visitor, rust_struct, cli),

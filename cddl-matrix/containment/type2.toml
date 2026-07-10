@@ -53,8 +53,8 @@ id = "contain.map-key.type2.tag"
 role = "role.map-key"
 feature = "type2.tag"
 spec = "allowed"
-note = "A tagged type as a map key (memberkey can be a type)."
-example = "m = { #6.24(uint) => tstr }"
+note = "A tagged type as a map key (memberkey can be a type). `*`-spelled: the no-occurrence spelling is spec-exactly-once and rejected gracefully at generation (the tstr_arrow_nooccur map-key row owns that boundary)."
+example = "m = { * #6.24(uint) => tstr }"
 
 [[contain]]
 id = "contain.cbor-payload.type2.array"

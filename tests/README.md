@@ -436,12 +436,14 @@ and asserts they are accepted.
   pinned by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS`). A spec-INVALID accept
   vector NEVER counts as spec-valid decode evidence: it is excluded from the verify.ts decode-foreign
   corroboration count, from Q4's foreign-decode count, and from the replay gate's encoding-variant /
-  header-mutation / preserve legs. The seed instance is the no-occurrence type-domain arrow widening
-  (`contain.map-key.memberkey.type1.tstr_arrow_nooccur` — `{ tstr => uint }` table-detected to 0..N,
-  its empty-map instance `8200a0` = holder `[0, {}]` wrongly accepted; `cddl-matrix/ROADMAP.md`
-  § findings). Note the deliberate symmetry: `8200a0` is ALSO the seeded-control *accept* on `type2.map`
-  (`{ * tstr => int }` — a spec-VALID empty table there), while against the no-occurrence spelling the
-  same bytes are spec-INVALID — the byte-identical generation of the two spellings IS the bug.
+  header-mutation / preserve legs. Zero instances at HEAD; the class stays armed for the next
+  certified silent-acceptance. The seed instance was the no-occurrence type-domain arrow widening
+  (`{ tstr => uint }` table-detected to the same 0..N map as the `*` spelling; its empty-map
+  instance `8200a0` = holder `[0, {}]` was wrongly accepted — byte-identical generation of the two
+  spellings WAS the bug), closed by the flow's "rejected at generation" branch: the spelling now
+  rejects gracefully (pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`), its row flipped
+  unsupported, and the catalog pin was dropped with it. (`8200a0` remains the seeded-control *accept*
+  on `type2.map` — `{ * tstr => int }`, a spec-VALID empty table there.)
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~3 min): per active row it generates a crate from the committed `spec` and `cargo
   test`s it under two profiles. Oracle-free and deterministic — the bytes were spec-cross-validated

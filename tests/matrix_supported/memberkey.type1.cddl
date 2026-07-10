@@ -1,1 +1,1 @@
-m = { tstr => int }
+m = { * tstr => int }

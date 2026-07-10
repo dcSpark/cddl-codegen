@@ -191,11 +191,13 @@ an array entry — gap #4 below; that fork fix is also what let the row's accept
 **A certified over-acceptance projects `enforce = no (over-accepts: M)`** — the fifth enforce value,
 dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"` accept vector:
 spec-INVALID CBOR (both oracles reject at mint, the same inverse gate as `class="constraint"`) the
-generated decoder CURRENTLY (wrongly) ACCEPTS. One row carries it today —
-`contain.map-key.memberkey.type1.tstr_arrow_nooccur` (the no-occurrence type-domain arrow widening,
-ROADMAP § findings) — asserted exactly by `query_q4_directional.ts --check`'s
-`EXPECTED_ENFORCE_OVERACCEPTS` pin, the decay twin of the green/unverified sets. When the decoder is
-fixed the replay pin flips, the vector is promoted to `class="constraint"`, and the row moves to the
+generated decoder CURRENTLY (wrongly) ACCEPTS. Zero rows carry one at HEAD — the set is asserted
+exactly (currently empty) by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS`
+pin, the decay twin of the green/unverified sets. The seed instance (the no-occurrence type-domain
+arrow widening, `contain.map-key.memberkey.type1.tstr_arrow_nooccur`) was closed by the flow's
+"rejected at generation" branch: the spelling now rejects gracefully, the row flipped unsupported,
+and its catalog pin was dropped. The other branch stays documented for the next instance: a decoder
+FIX flips the replay pin, the vector is promoted to `class="constraint"`, and the row moves to the
 green set.
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
@@ -354,11 +356,13 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   the decoder CURRENTLY wrongly accepts, replayed by `decode_conformance_replay`'s over-acceptance leg
   as "still wrongly accepts" (`over_accept_N`) so the pin flips LOUDLY when a fix lands, and projected
   by `query_q4_directional.ts` as the honest `enforce = no (over-accepts: M)` (dominating `yes`/
-  `unverified`) instead of hiding the hole. The seed instance is the no-occurrence type-domain arrow
-  widening (`contain.map-key.memberkey.type1.tstr_arrow_nooccur` — `{ tstr => uint }` table-detected
-  to 0..N, its empty-map instance `8200a0` wrongly accepted; § "Directional support evidence (Q4)",
-  ROADMAP § findings). When the fix lands the vector is promoted to `class="constraint"` (+ `expect_err`)
-  and the row moves to Q4's enforce-green pin.
+  `unverified`) instead of hiding the hole. Zero instances at HEAD; the class stays armed. The seed
+  instance was the no-occurrence type-domain arrow widening (`{ tstr => uint }` table-detected to
+  0..N, its empty-map instance `8200a0` wrongly accepted), closed by the flow's OTHER exit: the
+  spelling is rejected gracefully at generation (pinned by
+  `no_occurrence_arrow_map_entry_rejects_gracefully`), its row flipped unsupported, and the pin was
+  dropped with it. A decoder FIX instead promotes the vector to `class="constraint"` (+ `expect_err`)
+  and moves the row to Q4's enforce-green pin.
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped
