@@ -2187,14 +2187,14 @@ fn multifile_matrix_roundtrips() {
     eprintln!(
         "multifile_matrix_roundtrips: minted test modules across the sweep — rust {minted_rust_modules}, wasm {minted_wasm_modules}"
     );
-    // Vacuity floor, calibrated from the first green run: all 138 (46 cells × 3 profiles)
+    // Vacuity floor, calibrated from the observed green runs: all 144 (48 cells × 3 profiles)
     // generations minted BOTH modules (every cell's module `b` holder is a mintable composite
     // record). A big drop means the emitter's multifile coverage silently shrank, not that the
     // matrix got simpler.
     assert!(
-        minted_rust_modules >= 130 && minted_wasm_modules >= 130,
+        minted_rust_modules >= 136 && minted_wasm_modules >= 136,
         "only {minted_rust_modules} rust / {minted_wasm_modules} wasm (profile, cell) generations \
-         minted a generated-test module (expected >= 130 each of 138) — emit_tests multifile \
+         minted a generated-test module (expected >= 136 each of 144) — emit_tests multifile \
          coverage shrank; the sweep's green is going vacuous"
     );
     assert!(

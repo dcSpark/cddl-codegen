@@ -367,7 +367,9 @@ and asserts they are accepted.
   `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically). The mint phase is
   mint-ONLY (writes the catalog, never annotations) and takes "supported" from the committed
   `matrix.json` — so a row whose verdict just flipped needs the plain probe run and a
-  `build_matrix.ts` fold BEFORE it can mint. Generation is
+  `build_matrix.ts` fold BEFORE it can mint; symmetrically, a plain probe run AFTER the mint (plus
+  another fold) refreshes the row's decode-foreign evidence clause, which otherwise still reads
+  "no committed decode vectors" from the pre-mint probe. Generation is
   randomized, so verdict stability comes from the COMMIT: the deterministic gates below replay
   committed bytes only. A spec-valid vector the decoder rejects is written as a **class-less
   `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
@@ -713,7 +715,7 @@ Two consumers run it:
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8 min (130 cells x 3 profiles)
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8 min (138 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -899,7 +901,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   and runs in CI's `matrix-drift` job.
 - **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
-    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `struct`, `mstruct`
+    (array/map wrapper structs), `passthru`/`passthrumap` (transparent `pub type`s), `ralias` (transparent
+    alias to a Record struct), `struct`, `mstruct`
     (map-representation Record struct — bareword-keyed map), `cborwrap`/`cborwrap2`, `tag` (a CBOR-tag
     wrapper struct — crosses via a wasm `new(inner)` ctor and an inner-value `get()` accessor, plus
     `From<cddl_lib::Tg>` / cbor bytes), `bwrap` (a bounded/range wrapper struct — the only
@@ -1198,7 +1201,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (46 at HEAD).
+  once) / ~30 s warm measured at 43 cells (48 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1213,14 +1216,14 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   Loud-skip contract as the wasm round-trip gate: a cell minting no test surface passes with zero
   tests (the emitter eprintln!s the skip; the floor still pins its ABI) — and a minted-module
   vacuity floor (each generated crate's root `generated/mod.rs` is grepped for its test module;
-  observed 138/138 rust and 138/138 wasm) bounds the aggregate so green can't quietly go vacuous.
+  observed 144/144 rust and 144/144 wasm) bounds the aggregate so green can't quietly go vacuous.
   The multifile `--emit-tests` emission itself (root-level test module + `use super::<m>::*;` scope
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.5 min measured at 46 cells; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
-  dominated by the 138 generate + 276 nested `cargo test` invocations).
+  dominated by the 144 generate + 288 nested `cargo test` invocations).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
   reason) holds cells red in EVERY profile — seeded with the two `collrec` compile-floor carries
   (their wasm crate never compiles, so `cargo test` can never pass; reasons cite the Array-arm
