@@ -755,8 +755,10 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
 ///     seam (no rule name to cite — the message still carries the rationale and remedy);
 ///   - count-permitting markers (`+` / `?` / `n*m`) are OUT of scope here and keep generating
 ///     (they also table-detect to an unbounded 0..N map today — a separate ledgered finding, the
-///     widened-occurrence-marker table class in cddl-matrix/ROADMAP.md § findings; these pins
-///     flip loudly when that finding is fixed).
+///     widened-occurrence-marker table class in cddl-matrix/ROADMAP.md § findings, enumerated as the
+///     matrix rows `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` with
+///     certified `class="over-acceptance"` decode-catalog pins for the out-of-window maps; these
+///     legs and those pins flip loudly together when that finding is fixed).
 #[test]
 fn no_occurrence_arrow_map_entry_rejects_gracefully() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
@@ -818,7 +820,9 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
         "nested rejection should still carry the exactly-once rationale, got: {nested}"
     );
 
-    // OUT-of-scope boundary pins (the widened-occurrence-marker table class, ledgered separately):
+    // OUT-of-scope boundary pins (the widened-occurrence-marker table class, ledgered separately;
+    // enumerated as matrix rows contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table
+    // with certified class="over-acceptance" decode-catalog pins for the out-of-window maps):
     // count-permitting markers still table-detect and generate today. These flip loudly when that
     // finding is fixed — retarget them to the fix then.
     run("m = { + tstr => uint }\n", "plus")

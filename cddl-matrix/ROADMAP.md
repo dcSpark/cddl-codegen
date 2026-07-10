@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 91 containment cells, and 231 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 234 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -16,9 +16,10 @@ mint no test surface (recorded honestly in the evidence). The orthogonal **emiss
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->6 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->44 `class="constraint"` enforcement reject vectors over 26 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows: every supported row with a rejectable constraint projects
-`enforce = yes (bounded-reject)`, and no row carries a certified over-acceptance (the seed instance
-was closed by graceful rejection at generation); the green, unverified (empty), and over-accepts
-(empty) sets are each pinned exactly by
+`enforce = yes (bounded-reject)`, while three rows carry a certified over-acceptance and project
+`enforce = no (over-accepts)` — the widened-occurrence-marker table class
+(`contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`, § findings); the green,
+unverified (empty), and over-accepts (3-row) sets are each pinned exactly by
 `query_q4_directional.ts --check`).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
 `corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
@@ -147,6 +148,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
   change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
   draft.
+- When a rust `cddl` fix ships optional-entry empty-map validation (README gap #9 — OPEN at the
+  pinned `2c7548e` rev; `validate` over-rejects the spec-VALID empty map against `{ ? tstr => uint }`):
+  the `contain.occurrence-target.memberkey.type1.optional_table` row can then certify its BELOW-bound
+  (empty-map) over-acceptance pin too, and mint a spec-VALID empty-map accept vector; re-mint the row
+  (`--mint-decode-foreign --only=contain.occurrence-target.memberkey.type1.optional_table`) and prune
+  README gap #9.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
@@ -229,24 +236,27 @@ are ledgered here (that's what the probe/gate error messages point at).
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **A COUNT-PERMITTING occurrence marker (`+` / `?` / `n*m`) on a single non-literal arrow map
   entry table-detects to the same UNBOUNDED 0..N `BTreeMap` as `{ * k => v }` — the marker's count
-  window is silently widened.** Verified by diff: `{ + tstr => uint }`, `{ ? tstr => uint }`, and
-  `{ 2*3 tstr => uint }` all generate byte-identically to the `*` spelling (the table-detection arm
-  never reads the entry's occurrence, and `HomogenousMap` — unlike `HomogenousArray` — carries no
-  bounds), so the generated decoder wrongly accepts e.g. an empty map for `+` and a 4-entry map for
-  `2*3`. Surfaced while closing the no-occurrence-arrow sibling (that spelling is now rejected
-  gracefully — the exactly-once case was a certified over-acceptance; this entry is the remaining
-  marker family). Current behavior is pinned by the out-of-scope boundary legs of
-  `no_occurrence_arrow_map_entry_rejects_gracefully` (they flip loudly when this is fixed).
-  Candidate fix: honor the marker as map-size bounds (give `HomogenousMap` a bounds slot like
-  `HomogenousArray`'s), or reject the count-permitting markers gracefully recommending `*`. If the
-  bounds slot lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes
-  implementable as bounds `(1, 1)`, so flip its reject row
-  (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on merit rather than keeping the
-  rejection out of inertia. Per the
-  "Intra-alternative variation rows" expansion rule (this doc), enumeration rows with
-  `class="constraint"` boundary-violation vectors (e.g. the empty map against `+`, an over-sized
-  map against `n*m`) must land BEFORE trusting any green here — the widening is invisible to
-  round-trip tests by construction.
+  window is silently widened.** `{ + tstr => uint }`, `{ ? tstr => uint }`, and `{ 2*3 tstr => uint }`
+  all generate byte-identically to the `*` spelling (the table-detection arm never reads the entry's
+  occurrence, and `HomogenousMap` — unlike `HomogenousArray` — carries no bounds), so the generated
+  decoder wrongly accepts out-of-window maps (an empty map for `+`, a 2-entry map for `?`, below/above-
+  bound maps for `2*3`). Enumerated per the "Intra-alternative variation rows" rule (this doc): the
+  three matrix rows `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` carry
+  certified `class="over-acceptance"` boundary-violation pins (both oracles reject the out-of-window
+  maps; the decoder currently accepts them), replayed by `decode_conformance_replay`'s `over_accept_*`
+  leg as "still wrongly accepts" and projected `enforce = no (over-accepts)` (pinned in
+  `query_q4_directional.ts`'s `EXPECTED_ENFORCE_OVERACCEPTS`). Current generation is ALSO pinned by the
+  out-of-scope boundary legs of `no_occurrence_arrow_map_entry_rejects_gracefully`. Candidate fix:
+  honor the marker as map-size bounds (give `HomogenousMap` a bounds slot like `HomogenousArray`'s), or
+  reject the count-permitting markers gracefully recommending `*`. On the fix, the over-acceptance
+  replay pins flip loudly — the signal to promote each vector to `class="constraint"` (+ `expect_err`)
+  and move the row ids from `EXPECTED_ENFORCE_OVERACCEPTS` to `EXPECTED_ENFORCE_YES`. If the bounds slot
+  lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes implementable as
+  bounds `(1, 1)`, so flip its reject row (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on
+  merit rather than keeping the rejection out of inertia. (The `?` row's below-bound direction has no
+  certifiable pin: the rust oracle @ `2c7548e` over-rejects the spec-VALID empty map — see README
+  § "Upstream oracle gaps"'s empty-map note — so only its above-bound 2-entry over-acceptance is
+  pinned.)
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a

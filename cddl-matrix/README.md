@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 91 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->231 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->106 features and 94 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->234 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -191,14 +191,18 @@ an array entry — gap #4 below; that fork fix is also what let the row's accept
 **A certified over-acceptance projects `enforce = no (over-accepts: M)`** — the fifth enforce value,
 dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"` accept vector:
 spec-INVALID CBOR (both oracles reject at mint, the same inverse gate as `class="constraint"`) the
-generated decoder CURRENTLY (wrongly) ACCEPTS. Zero rows carry one at HEAD — the set is asserted
-exactly (currently empty) by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS`
-pin, the decay twin of the green/unverified sets. The seed instance (the no-occurrence type-domain
-arrow widening, `contain.map-key.memberkey.type1.tstr_arrow_nooccur`) was closed by the flow's
-"rejected at generation" branch: the spelling now rejects gracefully, the row flipped unsupported,
-and its catalog pin was dropped. The other branch stays documented for the next instance: a decoder
-FIX flips the replay pin, the vector is promoted to `class="constraint"`, and the row moves to the
-green set.
+generated decoder CURRENTLY (wrongly) ACCEPTS. Three rows carry one at HEAD — the widened-occurrence-
+marker table class (`ROADMAP.md` § findings): a COUNT-PERMITTING occurrence marker (`+` / `?` / `n*m`)
+on a single non-literal arrow map entry table-detects to the same unbounded 0..N `BTreeMap` as
+`{ * k => v }` (`HomogenousMap` carries no bounds), so
+`contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` each carry a certified
+out-of-window map pin (an empty map for `+`, a 2-entry map for `?`, below/above-bound maps for `2*3`).
+The set is asserted exactly by `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS` pin,
+the decay twin of the green/unverified sets. (The seed instance — the no-occurrence type-domain arrow
+widening, `contain.map-key.memberkey.type1.tstr_arrow_nooccur` — took the flow's OTHER branch, closed
+by graceful rejection at generation, dropping its row and pin.) The promotion branch these pins encode:
+a decoder FIX (a bounds slot on `HomogenousMap`) flips the replay pin loudly, the vector is promoted to
+`class="constraint"`, and the row moves to the green set.
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
@@ -310,6 +314,18 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    unavailable; the row's support verdict is unaffected (execution-gated green). No upstream
    issue filed yet. Differential repro + suspected `src/validator/cbor.rs` site + close-out steps:
    `draft/rust-cddl-tag-map-key-gap.md` (local note).
+9. **optional-entry empty-map over-rejection** (OPEN at `2c7548e`, NOT fork-fixed): `validate`
+   rejects the spec-VALID EMPTY map against a map whose sole entry carries a `?` occurrence
+   (`m = { ? tstr => uint }`, instance `{}` = holder `8200a0`) — `?` permits the entry to be absent,
+   so the empty map is a legal 0-entry instance — while ruby accepts. Scope: the empty map under an
+   optional-marked sole entry; the `+` / `n*m` markers correctly reject the empty map (it violates
+   their lower bound). No matrix row's SUPPORT verdict sits on it (execution-gated green), but it
+   shapes the over-acceptance pins the widened-occurrence-marker table class (`ROADMAP.md` § findings)
+   can certify: `contain.occurrence-target.memberkey.type1.optional_table`'s BELOW-bound over-acceptance
+   (the empty map the decoder ALSO wrongly accepts) cannot pass the two-oracle spec-INVALID gate —
+   ruby certifies the empty map spec-VALID — so only its ABOVE-bound 2-entry pin is certified, and the
+   row's ruby-generated empty-map accept candidate is dropped at mint. No upstream issue filed yet
+   (local note).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
@@ -370,13 +386,17 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   the decoder CURRENTLY wrongly accepts, replayed by `decode_conformance_replay`'s over-acceptance leg
   as "still wrongly accepts" (`over_accept_N`) so the pin flips LOUDLY when a fix lands, and projected
   by `query_q4_directional.ts` as the honest `enforce = no (over-accepts: M)` (dominating `yes`/
-  `unverified`) instead of hiding the hole. Zero instances at HEAD; the class stays armed. The seed
-  instance was the no-occurrence type-domain arrow widening (`{ tstr => uint }` table-detected to
-  0..N, its empty-map instance `8200a0` wrongly accepted), closed by the flow's OTHER exit: the
-  spelling is rejected gracefully at generation (pinned by
-  `no_occurrence_arrow_map_entry_rejects_gracefully`), its row flipped unsupported, and the pin was
-  dropped with it. A decoder FIX instead promotes the vector to `class="constraint"` (+ `expect_err`)
-  and moves the row to Q4's enforce-green pin.
+  `unverified`) instead of hiding the hole. Three instances at HEAD — the widened-occurrence-marker
+  table class (`ROADMAP.md` § findings): a COUNT-PERMITTING occurrence marker (`+` / `?` / `n*m`) on a
+  single non-literal arrow map entry table-detects to the same unbounded 0..N `BTreeMap` as `{ * k => v }`
+  (`HomogenousMap` carries no bounds), so an out-of-window map (`8200a0` = empty for `+`, a 2-entry map
+  for `?`, below/above-bound maps for `2*3`) is wrongly accepted;
+  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` each carry the pin. (The
+  seed instance was the no-occurrence type-domain arrow widening `{ tstr => uint }`, whose empty-map
+  instance `8200a0` was likewise wrongly accepted — closed by the flow's OTHER exit: rejected gracefully
+  at generation, pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`, its row flipped
+  unsupported and the pin dropped with it.) A decoder FIX instead promotes the vector to
+  `class="constraint"` (+ `expect_err`) and moves the row to Q4's enforce-green pin.
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped
