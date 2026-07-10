@@ -101,6 +101,30 @@ note = "A bounded occurrence with lower bound zero on a keyed struct-map field p
 example = "multi = { a: uint, 0*1 b: uint }"
 
 [[contain]]
+id = "contain.occurrence-target.memberkey.type1.plus_table"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A one-or-more occurrence on a NON-literal (type-domain) arrow map entry: `{ + tstr => uint }` requires 1..N entries (RFC8610 §3.2 `+` = one-or-more, §3.5.2 admits a type1 key). Home here because the varying axis is the occurrence MARKER on the arrow entry (its no-occurrence sibling `contain.map-key.memberkey.type1.tstr_arrow_nooccur` lives in map-key.toml because ITS axis was the key spelling). cddl-codegen table-detects this to the SAME unbounded 0..N BTreeMap as `{ * tstr => uint }` (HomogenousMap carries no bounds), so the generated decoder WRONGLY accepts an empty map — the certified over-acceptance instance (holder `[0, {}]` = `8200a0`), the ledgered widened-occurrence-marker table class in cddl-matrix/ROADMAP.md § findings. Enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' rule; the class=\"over-acceptance\" pin flips loudly when the marker is honored as map-size bounds."
+example = "m = { + tstr => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.optional_table"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). Same widening as the `+` sibling — table-detected to an unbounded 0..N BTreeMap, so the decoder WRONGLY accepts a 2-entry map (the certified over-acceptance instance, holder `[0, <2-entry map>]` = `8200a2616101616202`). The over-acceptance is the ABOVE-bound direction only: the rust oracle @ 2c7548e OVER-rejects the spec-VALID empty map here (`?` permits absence, so `8200a0` is a legal 0-entry instance), so that empty-map accept candidate cannot pass the two-oracle accept gate and is dropped at mint (an upstream-oracle gap, README § 'Upstream oracle gaps'). Ledgered widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings)."
+example = "m = { ? tstr => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.bounded_table"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => uint }` requires 2..3 entries (RFC8610 §3.2 `n*m`, §3.5.2). Same widening as the `+`/`?` siblings — table-detected to an unbounded 0..N BTreeMap, so the decoder WRONGLY accepts BOTH below-lower-bound maps (empty `8200a0`, 1-entry `8200a1616101`) and an above-upper-bound 4-entry map (`8200a461610161620261630361640a`) — three certified over-acceptance instances spanning both bound directions. Ledgered widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings); the class=\"over-acceptance\" pins flip loudly when the marker is honored as map-size bounds."
+example = "m = { 2*3 tstr => uint }"
+
+[[contain]]
 id = "contain.occurrence-target.grpent.member.zero_array"
 role = "role.occurrence-target"
 feature = "grpent.member"

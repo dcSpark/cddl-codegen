@@ -41,9 +41,11 @@ of each (wrong-major-type / truncated-header byte transforms) must reject WITH a
 location naming the decoding type (`failed in {type_name}`) — the annotation contract at catalog
 breadth. A certified silent-acceptance bug is pinned rather than hidden: its spec-INVALID instance
 lands as a `class="over-acceptance"` accept vector replayed as "still wrongly accepts" and projected
-`enforce = no (over-accepts)` until a fix flips it loudly (zero instances at HEAD — the seed
-instance, the no-occurrence type-domain arrow widening, was closed by graceful rejection at
-generation, dropping its pin with its row; the class machinery stays armed). The location evidence is itself
+`enforce = no (over-accepts)` until a fix flips it loudly (three live instances — the widened-
+occurrence-marker table rows `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`,
+whose `+`/`?`/`n*m` markers table-detect to an unbounded 0..N map that wrongly accepts out-of-window
+maps; the seed instance, the no-occurrence type-domain arrow widening, took the other branch — closed
+by graceful rejection at generation, dropping its pin with its row). The location evidence is itself
 validated, not just present: every captured Display's
 location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *satisfies* a bare
 `failed in Foo` contains, so presence alone could not see the double-annotation class;
