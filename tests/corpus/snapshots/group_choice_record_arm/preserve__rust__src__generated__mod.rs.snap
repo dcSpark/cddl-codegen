@@ -1,0 +1,68 @@
+---
+source: src/tests/snapshot_tests.rs
+assertion_line: 89
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::StEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub enum RecordArm {
+    A {
+        a: St,
+        len_encoding: LenEncoding,
+    },
+    B {
+        b: String,
+        b_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl RecordArm {
+    pub fn new_a(x: u64, y: String) -> Self {
+        Self::A {
+            a: St::new(x, y),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self::B {
+            b,
+            b_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct St {
+    pub x: u64,
+    pub y: String,
+    pub encodings: Option<StEncoding>,
+}
+
+impl St {
+    pub fn new(x: u64, y: String) -> Self {
+        Self {
+            x,
+            y,
+            encodings: None,
+        }
+    }
+}

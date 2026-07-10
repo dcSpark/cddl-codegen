@@ -1060,10 +1060,6 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
         "outer=arr_mid inner=cbor_payload filler=prelude.float64",
         "a bytes .cbor float64 member fails its emitted baseline re-decode; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
     ),
-    (
-        "outer=garm_arr inner=generic_arg filler=prelude.nil",
-        "[ ga: gen<nil> // tstr ] fails NoVariantMatched on its own serialization; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
 ];
 
 // ---- generalized layer-2 runner (shared by every emission profile) --------------------------------

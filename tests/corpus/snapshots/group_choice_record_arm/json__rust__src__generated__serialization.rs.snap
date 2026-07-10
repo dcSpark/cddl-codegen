@@ -1,0 +1,103 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for RecordArm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            RecordArm::A(a) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                a.serialize(serializer)
+            }
+            RecordArm::B(b) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_text(b)
+            }
+        }
+    }
+}
+
+impl Deserialize for RecordArm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            match raw.cbor_type()? {
+                cbor_event::Type::Array => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let a = St::deserialize(raw)?;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(RecordArm::A(a))
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let b = raw.text()?;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(RecordArm::B(b))
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("RecordArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for St {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_unsigned_integer(self.x)?;
+        serializer.write_text(&self.y)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for St {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
+            let y = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("y"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(St { x, y })
+        })()
+        .map_err(|e| e.annotate("St"))
+    }
+}

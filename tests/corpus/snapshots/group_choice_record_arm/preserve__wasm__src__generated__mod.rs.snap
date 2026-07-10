@@ -1,0 +1,131 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RecordArm(cddl_lib::RecordArm);
+
+#[wasm_bindgen]
+impl RecordArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RecordArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_a(x: u64, y: String) -> Self {
+        Self(cddl_lib::RecordArm::new_a(x, y))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self(cddl_lib::RecordArm::new_b(b))
+    }
+
+    pub fn kind(&self) -> RecordArmKind {
+        match &self.0 {
+            cddl_lib::RecordArm::A { .. } => RecordArmKind::A,
+            cddl_lib::RecordArm::B { .. } => RecordArmKind::B,
+        }
+    }
+
+    pub fn as_a(&self) -> Option<St> {
+        match &self.0 {
+            cddl_lib::RecordArm::A { a, .. } => Some(a.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::RecordArm::B { b, .. } => Some(b.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::RecordArm> for RecordArm {
+    fn from(native: cddl_lib::RecordArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RecordArm> for cddl_lib::RecordArm {
+    fn from(wasm: RecordArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::RecordArm> for RecordArm {
+    fn as_ref(&self) -> &cddl_lib::RecordArm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum RecordArmKind {
+    A,
+    B,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct St(cddl_lib::St);
+
+#[wasm_bindgen]
+impl St {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<St, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn y(&self) -> String {
+        self.0.y.clone()
+    }
+
+    pub fn new(x: u64, y: String) -> Self {
+        Self(cddl_lib::St::new(x, y))
+    }
+}
+
+impl From<cddl_lib::St> for St {
+    fn from(native: cddl_lib::St) -> Self {
+        Self(native)
+    }
+}
+
+impl From<St> for cddl_lib::St {
+    fn from(wasm: St) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::St> for St {
+    fn as_ref(&self) -> &cddl_lib::St {
+        &self.0
+    }
+}

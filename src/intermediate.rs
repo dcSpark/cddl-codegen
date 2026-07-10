@@ -2774,7 +2774,20 @@ impl EnumVariant {
                             // we can't know this unless there's a way to provide this info
                             RustStructType::Extern => None,
                             RustStructType::Record(record) => {
-                                Self::record_first_cbor_types(types, record)
+                                // Reconcile with the serializer's `serialize_as_embedded_group`
+                                // split (`generate_enum`): an embedded plain-group arm flattens
+                                // the record's fields directly after the outer header, so the arm
+                                // discriminant peeks the record's FIRST FIELD. A non-embedded
+                                // named/aliased record arm instead serializes NESTED — the outer
+                                // header then the record's OWN Array/Map header (or struct-level
+                                // tag) — so the discriminant must peek that own wire type, which
+                                // `RustType::cbor_types` already derives from `record.rep` and any
+                                // struct tag. Hand-mapping `record.rep` here would drop the tag.
+                                if self.serialize_as_embedded_group {
+                                    Self::record_first_cbor_types(types, record)
+                                } else {
+                                    Some(ty.cbor_types(types))
+                                }
                             }
                             RustStructType::GroupChoice { .. } => None,
                             _ => Some(ty.cbor_types(types)),

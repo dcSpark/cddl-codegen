@@ -1,0 +1,163 @@
+---
+source: src/tests/snapshot_tests.rs
+assertion_line: 89
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for RecordArm {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            RecordArm::A { a, len_encoding } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                a.serialize(serializer)?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            RecordArm::B {
+                b,
+                b_encoding,
+                len_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(b, b_encoding.to_str_len_sz(b.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for RecordArm {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            match raw.cbor_type()? {
+                cbor_event::Type::Array => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let a = St::deserialize(raw)?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::A { a, len_encoding })
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (b, b_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::B {
+                        b,
+                        b_encoding,
+                        len_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("RecordArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for St {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.x,
+            fit_sz(
+                self.x,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.x_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_text_sz(
+            &self.y,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.y_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.y.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for St {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let (x, x_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let (y, y_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("y"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(St {
+                x,
+                y,
+                encodings: Some(StEncoding {
+                    len_encoding,
+                    x_encoding,
+                    y_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("St"))
+    }
+}
