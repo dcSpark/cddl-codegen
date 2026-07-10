@@ -137,6 +137,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
      meanwhile the working rule for new rejection work is the float_table_key header comment: check
      which existing reject fixtures the new guard can reach, and respell or reason-assert them.
+   - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
      reach — one proven instance recorded, no machinery yet.** Review of the wasm burn-down
      retirement (dropping the identity `.into()`) exposed `Holder::new(val.clone())` in a wasm
      ctor — a clone of an owned, last-use argument (the boundary ops clone every non-Copy expr
