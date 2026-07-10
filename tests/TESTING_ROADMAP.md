@@ -119,7 +119,22 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      synthetic breadth vs real-world depth — recombination does not replace it.
 
 4. **Small independent residuals (low).**
-   - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
+   - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
+     machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
+     (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it
+     pins: `finalize` short-circuits on prior rejections, so any parse-time rejection added upstream
+     of a finalize-time check silently retargets every fixture whose spec happens to also match the
+     new guard — the label is identical, the provenance is wrong, and the originally-pinned boundary
+     goes unexercised. Proven near-miss (caught by implementation-time reading, not by any gate):
+     the no-occurrence-arrow rejection would have absorbed `tests/robustness/float_table_key{,_composite}.cddl`
+     (their occur-less spellings matched the new guard before the float-key finalize check ever
+     ran); the fixtures were respelled `*` and their headers document the pattern. The mechanical
+     layer, if the class recurs: extend the reject-catalog snapshots from bare labels to a stable
+     rejection-reason fingerprint per fixture (e.g. a distinctive message substring, as the decode
+     catalog's `expect_err` pins already do for decode errors), so a provenance swap flips the
+     snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
+     meanwhile the working rule for new rejection work is the float_table_key header comment: check
+     which existing reject fixtures the new guard can reach, and respell or reason-assert them.
      reach — one proven instance recorded, no machinery yet.** Review of the wasm burn-down
      retirement (dropping the identity `.into()`) exposed `Holder::new(val.clone())` in a wasm
      ctor — a clone of an owned, last-use argument (the boundary ops clone every non-Copy expr
