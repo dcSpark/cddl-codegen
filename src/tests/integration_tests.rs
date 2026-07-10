@@ -244,70 +244,13 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
 /// stem, reason)` marks a cell whose emitted wasm round-trip surface is a known structural gap
 /// UNDER THAT PROFILE — a red the sweep tolerates deliberately, distinct from `WASM_MATRIX_SKIP`'s
-/// "red in EVERY profile" (extern). The Record-arm gchoice cells listed below are red in all three
-/// profiles here but COMPILE (so they can't go in `WASM_MATRIX_SKIP`, which the compile floor also
-/// consults and would flag as "resurfaced") — listed once per profile below, ledgered in
-/// cddl-matrix/ROADMAP.md § findings. A resurfaced guard fails the gate if a listed cell starts
-/// passing, and an up-front stale-pin guard rejects entries naming a dead profile or cell stem, so the
-/// list can't rot silently.
-const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[
-    // Core deserialize-discriminant bug in the group-choice arm path (`codegen_group_choices`): a
-    // RECORD arm (array-rep `struct` `st = [a: uint, b: text]`, generic-instance record `generic`
-    // `uc = cont<uint>` -> `[value: uint]`, or alias-to-record `ralias` `ral = st`) serializes as a
-    // NESTED array — `Holder::F0` writes the outer `[1]` then the record's own array — but the emitted
-    // `Holder` deserializer discriminates F0
-    // on the record's FIRST FIELD's cbor type (`UnsignedInteger`, as if the record were EMBEDDED into
-    // the arm) instead of the record's own `Array` wire type, so the bytes peek `Array` and fall
-    // through to `NoVariantMatched`. Wrapper-struct arms (`coll`/`collmap`) discriminate correctly on
-    // `Array`, so this is Record-arm-specific. A rust-crate serialization bug (reproduces without
-    // `--wasm`); the wasm round-trip merely surfaces it (the decode Err hits `JsError::new`, which
-    // panics off-wasm). Ledgered in cddl-matrix/ROADMAP.md § findings.
-    (
-        "default",
-        "struct__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "preserve",
-        "struct__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "json",
-        "struct__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "default",
-        "generic__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "preserve",
-        "generic__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "json",
-        "generic__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the record's first field (uint), not its Array wire type",
-    ),
-    (
-        "default",
-        "ralias__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
-    ),
-    (
-        "preserve",
-        "ralias__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
-    ),
-    (
-        "json",
-        "ralias__gchoice-variant",
-        "NoVariantMatched: F0 discriminant peeks the alias-to-record's first field (uint), not its Array wire type",
-    ),
-];
+/// "red in EVERY profile" (extern). Such a cell COMPILEs (so it can't go in `WASM_MATRIX_SKIP`,
+/// which the compile floor also consults and would flag as "resurfaced") — it is listed once per
+/// affected profile and ledgered in cddl-matrix/ROADMAP.md § findings. A resurfaced guard fails the
+/// gate if a listed cell starts passing, and an up-front stale-pin guard rejects entries naming a
+/// dead profile or cell stem, so the list can't rot silently. Currently empty: no cell is
+/// profile-specifically red.
+const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 
 /// Multifile-placement cells whose ROUND-TRIP (`multifile_matrix_roundtrips`) is deliberately red
 /// in EVERY profile — `(cell stem, reason)`, the roundtrip precedent's shape (`WASM_MATRIX_SKIP`):

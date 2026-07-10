@@ -1382,7 +1382,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.prelude.null",
         "status": "supported"
       },
@@ -1397,7 +1397,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.prelude.true",
         "status": "supported"
       },
@@ -1452,7 +1452,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.type2.tag.fixed_bool",
         "status": "supported"
       },
@@ -1467,7 +1467,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.type2.tag.fixed_null",
         "status": "supported"
       },
@@ -1697,8 +1697,38 @@
             "status": "supported"
           }
         },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.grpent.member.record_array",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.memberkey.bareword.map",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.memberkey.bareword.record_map",
         "status": "supported"
       },
       {
@@ -1972,7 +2002,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.map-value.prelude.false",
         "status": "supported"
       },
@@ -2207,7 +2237,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },
@@ -2659,6 +2689,14 @@
       "spec": "allowed"
     },
     {
+      "example": "t = { a: st // b: tstr }\nst = [x: uint, y: tstr]",
+      "feature": "memberkey.bareword",
+      "id": "contain.group-choice-arm.memberkey.bareword.record_map",
+      "note": "Map-representation group-choice arm whose bareword-keyed value is a named RECORD type (`a: st`, `st = [x: uint, y: tstr]`) rather than a scalar. The arm collapses to a variant that dispatches on the fixed key `a`, so the record's own array wire header sits one level in and never reaches the arm discriminant — green even when the sibling arm overlaps. RFC8610 §2.2.2, §3.5.1.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
       "example": "t = { 1: uint // b: tstr }",
       "feature": "memberkey.value",
       "id": "contain.group-choice-arm.memberkey.value.map",
@@ -2735,6 +2773,14 @@
       "feature": "grpent.member",
       "id": "contain.group-choice-arm.grpent.member.array",
       "note": "Baseline array-representation group-choice arm: arms are positional entries and carry no map keys. RFC8610 §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ a: st // b: tstr ]\nst = [x: uint, y: tstr]",
+      "feature": "grpent.member",
+      "id": "contain.group-choice-arm.grpent.member.record_array",
+      "note": "Array-representation group-choice arm whose member value is a named RECORD type (`a: st`, `st = [x: uint, y: tstr]` with a uint first field) rather than a scalar. A non-embedded record arm serializes NESTED — the outer array header then the record's OWN array header — so the arm's deserialize discriminant must peek the record's Array header, not its first field's uint type; otherwise spec-valid bytes fall through to NoVariantMatched against the overlapping `tstr` sibling. RFC8610 §2.2.2, §3.4.",
       "role": "role.group-choice-arm",
       "spec": "allowed"
     },

@@ -975,10 +975,8 @@ gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entr
 At HEAD the list holds one permanent resident — `extern__array-element` (references a
 user-supplied type, so the cell can't compile standalone; the construct is integration-tested in
 `tests/extern-deps`), so any OTHER red appearing is a regression to fix, not a backlog item. The
-round-trip gate carries additional ledgered reds that COMPILE — the Record-arm cells
-`struct__gchoice-variant`, `generic__gchoice-variant`, and `ralias__gchoice-variant`, pinned in
-`WASM_MATRIX_PROFILE_SKIP` (a core group-choice-arm deserialize-discriminant bug —
-cddl-matrix/ROADMAP.md § findings).
+round-trip gate's `WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some profiles) is
+empty at HEAD — every cell round-trips green across all three profiles.
 To close one:
 
 1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.

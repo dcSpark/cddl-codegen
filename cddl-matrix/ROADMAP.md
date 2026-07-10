@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 88 containment cells, and 228 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->106 features (95 RFC8610 + 1 RFC9682 + 10 `CDDL_CODEGEN` vendor profile), 90 containment cells, and 230 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -208,40 +208,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     never a green-to-red. Candidate fix: don't mint structural-wrapper imports when recursing
     through an alias target (the alias's own wrapper subsumes them — e.g. recurse the target with
     the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
-- **A RECORD arm in an array-rep group choice deserializes to `NoVariantMatched`** — a core
-  serialization bug (reproduces without `--wasm`) in the `codegen_group_choices` arm path. Surfaced by
-  the `gchoice-variant` wasm-ABI role (`[ f0: T // f1: nint ]`) with the Record shapes — `struct`
-  (`st = [a: uint, b: text]`) and the generic-instance record `generic` (`cont<T0> = [value: T0]`,
-  `uc = cont<uint>` -> `[value: uint]`), plus the alias-to-record shape `ralias` (`ral = st`). The arm
-  serializes as a NESTED array — `Holder::F0` writes the outer `[1]` then the record's OWN array
-  (`new_f0` on `generic` emits `81 81 00`), so the first element is an `Array` — but the emitted
-  `Holder` deserializer discriminates the arms by peeking the first element's CBOR type and matches F0
-  on `cbor_type == UnsignedInteger`: it derives the arm's discriminant from the record's FIRST FIELD
-  (`a`/`value`, a `uint`), as if the record were EMBEDDED (fields flattened) into the arm, rather than
-  from the record's own `Array` wire type. So the bytes peek `Array` and fall through to
-  `NoVariantMatched`. Wrapper-collection arms (`coll` `[* uint]`,
-  `collmap`) discriminate correctly on `Array` (a wrapper struct reports its own array type), so this
-  is RECORD-arm-specific: the mismatch is serialize-writes-nested vs discriminant-assumes-embedded.
-  Under `--wasm` it surfaces as a wasm-bindgen panic (the decode Err reaches `Holder::from_cbor_bytes`'s
-  `JsError::new`, which panics on the native test target). Pinned by nine `WASM_MATRIX_PROFILE_SKIP`
-  entries (three cells × default/preserve/json) in `integration_tests.rs` — the cells compile, so they
-  cannot go in `WASM_MATRIX_SKIP` (the compile floor would flag them "resurfaced"). Candidate fix:
-  derive the group-choice arm's discriminant CBOR type from the arm's WIRE representation (the record's
-  `Array`, not its first field) — reconcile the discriminant with the serializer's nested-array output
-  (or, if embedding was intended, serialize the record embedded so `[a, b]` discriminates on `a`).
-  The group-choice arm path must treat composite arms according to their wire form rather than a
-  shallow conceptual resolution. Because the bug is rust-side, it also exposes a CONTAINMENT
-  enumeration gap: the grid's group-choice-arm rows stop at primitive members
-  (`contain.group-choice-arm.grpent.member.array`) and plain-group splices
-  (`contain.group-choice-arm.grpent.groupname.array` — a plain group EMBEDS by spec, so it is not this
-  shape); no row places a named RECORD type as an arm member (`t = [ a: st // b: tstr ]`, `st` a
-  record). Enumerate that row per the "Intra-alternative variation rows" rule so the rust-side failure
-  carries a serialization-axis pin directly (expected to mint red/limitation while the bug stands),
-  rather than only the wasm-matrix cells. The recombination layer-2 ledger's
-  `[ ga: gen<nil> // tstr ]` `NoVariantMatched` class (held in `LAYER2_KNOWN_BAD`; its ledger entry
-  below) is a confirmed instance of this same class — identical repro signature, the record-carrying
-  variant rejecting while the record itself round-trips — so a fix here must flip that vacuity-guarded
-  ledger entry loudly too.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **A no-occurrence type-domain arrow entry (`{ k => v }`, k non-literal) table-detects to the same
@@ -331,7 +297,7 @@ are ledgered here (that's what the probe/gate error messages point at).
     inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
     constant resolves through the prelude alias on a path the guard does not classify. Pinned by
     `tests/robustness/tagged_prelude_constant.cddl`.
-- **Seven compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
+- **Six compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
@@ -356,14 +322,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   - **The `--emit-tests` minter does not respect `.ne` on a table key domain**: for
     `gen<{ int .ne 0 => uint }>` it mints key `0`, which the (correct) emitted decoder rejects
     with a `RangeCheck` — a minter-side gap, not a decoder bug.
-  - **Two emitted-test baseline decode failures on nested shapes**: a
+  - **An emitted-test baseline decode failure on a nested shape**: a
     `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
     following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
-    up), and `[ ga: gen<nil> // tstr ]` fails `NoVariantMatched` — attribution done: a confirmed
-    instance of the Record-arm group-choice discriminant class (this doc's findings entry pinned by
-    `struct__gchoice-variant`/`generic__gchoice-variant`; repro signature identical — the
-    record-carrying variant rejects while the record itself round-trips), so the discriminant fix
-    should flip this ledgered class together with those pinned cells.
+    up).
 - Array-representation group-choice arm with an anonymous map panics:
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
   `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
@@ -543,7 +505,7 @@ Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
 
 Hand-counted prose lists in this doc (e.g. the findings ledger's "Five panic-class families" /
-"Seven compile/round-trip-class families" headers) are maintained by review: pruning or adding a
+"Six compile/round-trip-class families" headers) are maintained by review: pruning or adding a
 family must update the count and keep the entry in the list whose framing matches its failure
 stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
 through review again, fold these counts into `project_status_headers.ts`'s generated-counter

@@ -1,0 +1,10 @@
+; Array-representation group choice (`//`) whose first arm's member value is a named RECORD type
+; rather than a scalar. A non-embedded record arm serializes NESTED: the outer array header, then
+; the record's OWN array header — so `[ a: st ]` is a one-element array whose element is itself the
+; array `[x, y]`. The arm's deserialize discriminant must therefore peek the record's Array header,
+; NOT its first field's uint type. `st`'s first field is a uint that overlaps nothing in the `tstr`
+; sibling arm, so a discriminant that (wrongly) peeked the first-field uint would send spec-valid
+; bytes to the `tstr` arm and fall through to NoVariantMatched — this fixture pins the fixed
+; nested-header dispatch.
+record_arm = [ a: st // b: tstr ]
+st = [x: uint, y: tstr]
