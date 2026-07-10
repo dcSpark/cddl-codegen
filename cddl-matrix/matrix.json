@@ -1697,7 +1697,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.grpent.member.record_array",
         "status": "supported"
       },
@@ -1727,7 +1727,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.memberkey.bareword.record_map",
         "status": "supported"
       },
@@ -2237,7 +2237,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },

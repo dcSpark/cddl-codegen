@@ -1,0 +1,3 @@
+; cell: ralias x named (shape defs, module a)
+st = [a: uint, b: text]
+ral = st

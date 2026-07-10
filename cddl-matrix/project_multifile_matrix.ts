@@ -75,6 +75,10 @@ const SHAPES: Record<string, Shape> = {
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
+  // transparent alias to a Record struct — like passthru/passthrumap but with a record target, so
+  // the alias-target recursion in `mark_refs` descends into a type with its own wasm wrapper (the
+  // shape whose wasm-matrix gchoice cell exposed the ctor alias-resolution divergence)
+  ralias: { defs: ["st = [a: uint, b: text]", "ral = st"], ty: "ral" },
   mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst" },
   // cborwrap's anon form references the named `foo` (which lives in module `a`) — a cross-module named
   // ref embedded in an anonymous `.cbor` wrapper. It still individuates the anon-placement class (the
@@ -179,7 +183,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 46; // 18 shapes × {named, unref} = 36 + 7 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 46
+const EXPECTED_CELLS = 48; // 19 shapes × {named, unref} = 38 + 7 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 48
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

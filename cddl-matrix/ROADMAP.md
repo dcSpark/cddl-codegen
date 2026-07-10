@@ -465,7 +465,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review
   asked which other alias shapes the divergent `resolve_alias_shallow` could reach — now enumerated
   as the `ralias` cells (green). Both instances were found by review asking "what else can this
-  code path reach?", which is exactly the question the periodic sweep mechanizes.
+  code path reach?", which is exactly the question the periodic sweep mechanizes. One near-miss on
+  the multifile half of this rule is on record: `ralias` initially landed only in the wasm
+  projection's `SHAPES`, silently breaking the multifile list's "every self-contained shape with
+  defs" claim until a doc-coherence review caught it — a SECOND such near-miss is the signal to
+  make `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm
+  projection's (minus its documented exclusions) instead of relying on review.
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
